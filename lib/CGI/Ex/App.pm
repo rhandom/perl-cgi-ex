@@ -1669,4 +1669,8 @@ hashes (or objects with references to the global hashes) there.
 
 =back
 
+=head1 AUTHOR
+
+Paul Seamons
+
 =cut
