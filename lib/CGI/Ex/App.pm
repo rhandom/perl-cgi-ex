@@ -751,17 +751,17 @@ More examples will come with time.  Here are the basics for now.
 
 =head1 DESCRIPTION
 
-Fill in the blanks and get a ready made CGI.  This module is
-somewhat similar to CGI::Application and CGI::Path and CGI::Builder
-and any other "CGI framework."  As with the others, CGI::App tries
-to do as much as possible, in a simple manner, without getting in
-the developer's way.  Your milage may vary.
+Fill in the blanks and get a ready made CGI.  This module is somewhat
+similar to CGI::Application and CGI::Path and CGI::Builder and any
+other "CGI framework."  As with the others, CGI::App tries to do as
+much as possible, in a simple manner, without getting in the
+developer's way.  Your milage may vary.
 
 =head1 HOOKS / METHODS
 
 Hooks are basically methods calls that look for a variety of method
-names.  See the discussion under the method named "hook" for more details.
-Hooks and methods are looked for in the following order:
+names.  See the discussion under the method named "hook" for more
+details.  Hooks and methods are looked for in the following order:
 
 =over 4
 
@@ -771,20 +771,21 @@ Object creator.  Takes a hash or hashref.
 
 =item Method C<-E<gt>init>
 
-Called by the default new method.  Allows for any object initilizations.
+Called by the default new method.  Allows for any object
+initilizations.
 
 =item Method C<-E<gt>form>
 
-Returns a hashref of the items passed to the CGI.  Returns $self->{form}.
-Defaults to CGI::Ex::get_form.
+Returns a hashref of the items passed to the CGI.  Returns
+$self->{form}.  Defaults to CGI::Ex::get_form.
 
 =item Method C<-E<gt>navigate>
 
-This is the main loop runner.  Figures out path and runs all
-of the appropriate hooks.  Once all steps in the path run successfully,
-it will call it self with a path set to ['main'] to allow for a default
-main path to run.  The basic outline of navigation is as follows (default
-hooks are shown):
+This is the main loop runner.  Figures out path and runs all of the
+appropriate hooks.  Once all steps in the path run successfully, it
+will call it self with a path set to ['main'] to allow for a default
+main path to run.  The basic outline of navigation is as follows
+(default hooks are shown):
 
   navigate {
 
@@ -863,59 +864,63 @@ hooks are shown):
 
 =item Method C<-E<gt>path>
 
-Return an arrayref (modifyable) of the steps in the path.
-For each step the remaining hooks can be run.  Hook methods
-are looked up and ran using the method "run_hook" which uses
-the method "hook" to lookup the hook.  A history of ran hooks
-is stored in $self->{history}.  Default will be a single step
-path looked up in $form->{path} or in $ENV{PATH_INFO}.  By default, path
-will look for $ENV{'PATH_INFO'} or the value of the form by the key path_key.
-For the best functionality, the arrayref returned should be the same reference
-returned for every call to path - this ensures that other methods can add
-to the path (and will most likely break if the arrayref is not the same).
-If navigation runs out of steps to run, the default step found in default_step
-will be run.
+Return an arrayref (modifyable) of the steps in the path.  For each
+step the remaining hooks can be run.  Hook methods are looked up and
+ran using the method "run_hook" which uses the method "hook" to lookup
+the hook.  A history of ran hooks is stored in $self->{history}.
+Default will be a single step path looked up in $form->{path} or in
+$ENV{PATH_INFO}.  By default, path will look for $ENV{'PATH_INFO'} or
+the value of the form by the key path_key.  For the best
+functionality, the arrayref returned should be the same reference
+returned for every call to path - this ensures that other methods can
+add to the path (and will most likely break if the arrayref is not the
+same).  If navigation runs out of steps to run, the default step found
+in default_step will be run.
 
 =item Method C<-E<gt>default_step>
 
-Step to show if the path runs out of steps.  Default value is the 'default_step' property
-or the value 'main'.
+Step to show if the path runs out of steps.  Default value is the
+'default_step' property or the value 'main'.
 
 =item Method C<-E<gt>path_key>
 
-Used by default to determine which step to put in the path.  The default path
-will only have one step within it
+Used by default to determine which step to put in the path.  The
+default path will only have one step within it
 
 =item Method C<-E<gt>set_path>
 
-Arguments are the steps to set.  Should be called before navigation begins.  This will set the
-path arrayref to the passed steps.
+Arguments are the steps to set.  Should be called before navigation
+begins.  This will set the path arrayref to the passed steps.
 
 =item Method C<-E<gt>append_path>
 
-Arguments are the steps to append.  Can be called any time.  Adds more steps to the end of the current path.
+Arguments are the steps to append.  Can be called any time.  Adds more
+steps to the end of the current path.
 
 =item Method C<-E<gt>replace_path>
 
-Arguments are the steps used to replace.  Can be called any time.  Replaces the remaining steps (if any) of the current path.
+Arguments are the steps used to replace.  Can be called any time.
+Replaces the remaining steps (if any) of the current path.
 
 =item Method C<-E<gt>insert_path>
 
-Arguments are the steps to insert.  Can be called any time.  Inserts the new steps at the current path location.
+Arguments are the steps to insert.  Can be called any time.  Inserts
+the new steps at the current path location.
 
 =item Method C<-E<gt>valid_paths>
 
-Returns a hashref of path steps that are allowed.  If step found in default
-method path is not in the hash, the method path will return a single
-step "forbidden" and run its hooks.  If no hash or undef is returned,
-all paths are allowed (default).  A key "forbidden_step" containing the
-step that was not valid will be placed in the stash.
+Returns a hashref of path steps that are allowed.  If step found in
+default method path is not in the hash, the method path will return a
+single step "forbidden" and run its hooks.  If no hash or undef is
+returned, all paths are allowed (default).  A key "forbidden_step"
+containing the step that was not valid will be placed in the stash.
 
 =item Method C<-E<gt>pre_loop>
 
-Called right before the navigation loop is started.  At this point the path
-is set (but could be modified).  The only argument is a reference to the path
-array.  If it returns a true value - the navigation routine is aborted.
+Called right before the navigation loop is started.  At this point the
+path is set (but could be modified).  The only argument is a reference
+to the path array.  If it returns a true value - the navigation
+routine is aborted.
 
 =item Method C<-E<gt>run_hook>
 
@@ -925,8 +930,8 @@ result.  Arguments are the same as that for "hook".
 =item Method C<-E<gt>hook>
 
 Arguments are a pathstep name, a hook name, and an optional code sub
-or default value (default value will be turned to a sub) (code sub will
-be called as method of $self).
+or default value (default value will be turned to a sub) (code sub
+will be called as method of $self).
 
   my $code = $self->hook('main', 'info_complete', sub {return 0});
   ### will look first for $self->main_info_complete;
@@ -935,47 +940,60 @@ be called as method of $self).
 
 =item Method C<-E<gt>handle_error>
 
-If anything dies during execution, handle_error will be called with the error
-that had happened.  Default is to debug the error and path history.
+If anything dies during execution, handle_error will be called with
+the error that had happened.  Default is to debug the error and path
+history.
 
 =item Method C<-E<gt>morph>
 
-Allows for temporarily "becoming" another object type for the execution of the
-current step.  This allows for separating some steps out into their own packages.
-Morph will only run if the method allow_morph returns true.  The morph call occurs at the beginning
-of the step loop.  A corresponding unmorph call occurs before the loop is exited.  An object
-can morph several levels deep if allow_nested_morph returns true. For example, an object
-running as Foo::Bar that is looping on the step "my_step" that has allow_morph = 1, will do the following:
-call the hook morph_package (which would default to returning Foo::Bar::MyStep in this case), translate
-this to a package filename (Foo/Bar/MyStep.pm) and try and require it, if the file can be required, the
-object is blessed into that package.  If that package has a "fixup_after_morph" method, it is called.  The navigate
-loop then continues for the current step.  At any exit point of the loop, the unmorph call is made which
-reblesses the object into the original package.
+Allows for temporarily "becoming" another object type for the
+execution of the current step.  This allows for separating some steps
+out into their own packages.  Morph will only run if the method
+allow_morph returns true.  The morph call occurs at the beginning of
+the step loop.  A corresponding unmorph call occurs before the loop is
+exited.  An object can morph several levels deep if allow_nested_morph
+returns true. For example, an object running as Foo::Bar that is
+looping on the step "my_step" that has allow_morph = 1, will do the
+following: call the hook morph_package (which would default to
+returning Foo::Bar::MyStep in this case), translate this to a package
+filename (Foo/Bar/MyStep.pm) and try and require it, if the file can
+be required, the object is blessed into that package.  If that package
+has a "fixup_after_morph" method, it is called.  The navigate loop
+then continues for the current step.  At any exit point of the loop,
+the unmorph call is made which reblesses the object into the original
+package.
 
 =item Method C<-E<gt>unmorph>
 
-Allows for returning an object back to its previous blessed state.  This only happens if the object was
-previously morphed into another object type.  Before the object is reblessed the method "fixup_before_unmorph"
-is called if it exists.
+Allows for returning an object back to its previous blessed state.
+This only happens if the object was previously morphed into another
+object type.  Before the object is reblessed the method
+"fixup_before_unmorph" is called if it exists.
 
 =item Method C<-E<gt>allow_morph>
 
-Boolean value.  Specifies whether or not morphing is allowed.  Defaults to the property "allow_morph" if found, otherwise false.
+Boolean value.  Specifies whether or not morphing is allowed.
+Defaults to the property "allow_morph" if found, otherwise false.
 
 =item Method C<-E<gt>allow_nested_morph>
 
-Boolean value.  Specifies whether or not nested morphing is allowed.  Defaults to the property "allow_nested_morph" if found, otherwise false.
+Boolean value.  Specifies whether or not nested morphing is allowed.
+Defaults to the property "allow_nested_morph" if found, otherwise
+false.
 
 =item Hook C<-E<gt>morph_package>
 
-Used by morph.  Return the package name to morph into during a morph call.  Defaults to using the
-current object type as a base.  For example, if the current object running is a Foo::Bar
-object and the step running is my_step, then morph_package will return Foo::Bar::MyStep.
+Used by morph.  Return the package name to morph into during a morph
+call.  Defaults to using the current object type as a base.  For
+example, if the current object running is a Foo::Bar object and the
+step running is my_step, then morph_package will return
+Foo::Bar::MyStep.
 
 =item Hook C<-E<gt>pre_step>
 
-Ran at the beginning of the loop before info_compelete is called.  If it
-returns true, execution of navigate is returned and no more steps are processed.
+Ran at the beginning of the loop before info_compelete is called.  If
+it returns true, execution of navigate is returned and no more steps
+are processed.
 
 =item Hook C<-E<gt>info_complete>
 
@@ -984,106 +1002,125 @@ Calls hooks ready_validate, and validate.
 
 =item Hook C<-E<gt>ready_validate>
 
-Should return true if enough information is present to run validate.  Default is to
-look if $ENV{'REQUEST_METHOD'} is 'POST'.  A common usage is to pass a common
-flag in the form such as 'processing' => 1 and check for its presence.
+Should return true if enough information is present to run validate.
+Default is to look if $ENV{'REQUEST_METHOD'} is 'POST'.  A common
+usage is to pass a common flag in the form such as 'processing' => 1
+and check for its presence.
 
 =item Method C<-E<gt>set_ready_validate>
 
-Sets that the validation is ready to validate.  Should set the value checked by the
-hook ready_validate.
+Sets that the validation is ready to validate.  Should set the value
+checked by the hook ready_validate.
 
 =item Hook C<-E<gt>validate>
 
-Runs validation on the information posted in $self->form.  Uses CGI::Ex::Validate
-for the validation.  Calls the hook hash_validation to load validation information.
-Should return true if enough information is present to run validate.  Errors
-are stored as a hash in $self->{hash_errors} via method add_errors and can be checked
-for at a later time with method has_errors (if the default validate was used).
+Runs validation on the information posted in $self->form.  Uses
+CGI::Ex::Validate for the validation.  Calls the hook hash_validation
+to load validation information.  Should return true if enough
+information is present to run validate.  Errors are stored as a hash
+in $self->{hash_errors} via method add_errors and can be checked for
+at a later time with method has_errors (if the default validate was
+used).
 
 =item Hook C<-E<gt>hash_validation>
 
-Returns a hash of the validation information to check form against.  By default,
-will look for a filename using the hook file_val and will pass it to
-CGI::Ex::Validate::get_validation.
+Returns a hash of the validation information to check form against.
+By default, will look for a filename using the hook file_val and will
+pass it to CGI::Ex::Validate::get_validation.
 
 =item Hook C<-E<gt>file_val>
 
-Returns a filename containing the validation.  Adds method base_dir_rel to hook name_module,
-and name_step and adds on the default file extension found in $self->ext_val which defaults
-to the global $EXT_VAL (the property $self->{ext_val} may also be set).  File
+Returns a filename containing the validation.  Adds method
+base_dir_rel to hook name_module, and name_step and adds on the
+default file extension found in $self->ext_val which defaults to the
+global $EXT_VAL (the property $self->{ext_val} may also be set).  File
 should be readible by CGI::Ex::Validate::get_validation.
 
 =item Hook C<-E<gt>hash_form>
 
-Called in preparation for print after failed info_complete.  Should contain a hash
-of any items needed to be swapped into the html during print.
+Called in preparation for print after failed info_complete.  Should
+contain a hash of any items needed to be swapped into the html during
+print.
 
 =item Hook C<-E<gt>hash_fill>
 
-Called in preparation for print after failed info_complete.  Should contain a hash
-of any items needed to be filled into the html form during print.
+Called in preparation for print after failed info_complete.  Should
+contain a hash of any items needed to be filled into the html form
+during print.
 
 =item Hook C<-E<gt>hash_errors>
 
-Called in preparation for print after failed info_complete.  Should contain a hash
-of any errors that occured.  Will be merged into hash_form before the pass to print.
-Eash error that occured will be passed to method format_error before being added to the
-hash.  If an error has occurred, the default validate will automatically add {has_errors =>1}.
-To the error hash at the time of validation.  has_errors will also be added during the
-merge incase the default validate was not used.
+Called in preparation for print after failed info_complete.  Should
+contain a hash of any errors that occured.  Will be merged into
+hash_form before the pass to print.  Eash error that occured will be
+passed to method format_error before being added to the hash.  If an
+error has occurred, the default validate will automatically add
+{has_errors =>1}.  To the error hash at the time of validation.
+has_errors will also be added during the merge incase the default
+validate was not used.
 
 =item Hook C<-E<gt>hash_common>
 
-A hash of common items to be merged with hash_form - such as pulldown menues.
+A hash of common items to be merged with hash_form - such as pulldown
+menues.
 
 =item Hook C<-E<gt>name_module>
 
-Return the name (relative path) that should be prepended to name_step during the default file_print
-and file_val lookups.  Defaults to base_name_module.
+Return the name (relative path) that should be prepended to name_step
+during the default file_print and file_val lookups.  Defaults to
+base_name_module.
 
 =item Hook C<-E<gt>name_step>
 
-Return the step (appended to name_module) that should used when looking up the file in file_print
-and file_val lookups.  Defaults to the current step.
+Return the step (appended to name_module) that should used when
+looking up the file in file_print and file_val lookups.  Defaults to
+the current step.
 
 =item Hook C<-E<gt>file_print>
 
-Returns a filename of the content to be used in the default print hook.  Adds method base_dir_rel to
-hook name_module, and name_step and adds on the default file extension found in $self->ext_print
-which defaults to the global $EXT_PRINT (the property $self->{ext_print} may also be set).
-Should be a file that can be handled by hook print.
+Returns a filename of the content to be used in the default print
+hook.  Adds method base_dir_rel to hook name_module, and name_step and
+adds on the default file extension found in $self->ext_print which
+defaults to the global $EXT_PRINT (the property $self->{ext_print} may
+also be set).  Should be a file that can be handled by hook print.
 
 =item Hook C<-E<gt>print>
 
-Take the information and print it out.  Default incarnation uses Template.  Arguments
-are: step name, form hashref, and fill hashref.
+Take the information and print it out.  Default incarnation uses
+Template.  Arguments are: step name, form hashref, and fill hashref.
 
 =item Hook C<-E<gt>post_print>
 
-A hook which occurs after the printing has taken place.  Is only run if the information
-was not complete.  Useful for printing rows of a database query.
+A hook which occurs after the printing has taken place.  Is only run
+if the information was not complete.  Useful for printing rows of a
+database query.
 
 =item Hook C<-E<gt>post_step>
 
-Ran at the end of the step's loop if info_complete returned true.  Allows for cleanup.  If a true
-value is returned, execution of navigate is returned and no more steps are processed.
+Ran at the end of the step's loop if info_complete returned true.
+Allows for cleanup.  If a true value is returned, execution of
+navigate is returned and no more steps are processed.
 
 =item Method C<-E<gt>post_loop>
 
-Ran after all of the steps in the loop have been processed (if info_complete was true for each of the steps).
-If it returns a true value the navigation loop will be aborted.  If it does not return true, navigation
-continues by then running $self->navigate({path => [$self->default_step]}) to fall back to the default step.
+Ran after all of the steps in the loop have been processed (if
+info_complete was true for each of the steps).  If it returns a true
+value the navigation loop will be aborted.  If it does not return
+true, navigation continues by then running $self->navigate({path =>
+[$self->default_step]}) to fall back to the default step.
 
 =item Method C<-E<gt>stash>
 
-Returns a hashref that can store arbitrary user space data without clobering the internals of the Application.
+Returns a hashref that can store arbitrary user space data without
+clobering the internals of the Application.
 
 =item Method C<-E<gt>add_property>
 
-Takes the property name as an argument.  Creates an accessor that can be used to access a new property.
-Calling the new accessor with an argument will set the property.  Using the accessor in an assignment
-will also set the property (it is an lvalue).  Calling the accessor in any other way will return the value.
+Takes the property name as an argument.  Creates an accessor that can
+be used to access a new property.  Calling the new accessor with an
+argument will set the property.  Using the accessor in an assignment
+will also set the property (it is an lvalue).  Calling the accessor in
+any other way will return the value.
 
 =back
 
