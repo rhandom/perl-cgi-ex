@@ -12,19 +12,23 @@ package CGI::Ex::Validate;
 use strict;
 use vars qw($VERSION
             $ERROR_PACKAGE
-            @DEFAULT_EXT %EXT_HANDLERS
+            $DEFAULT_EXT %EXT_HANDLERS
             %DEFAULT_OPTIONS);
 
 $VERSION = '0.93';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
-@DEFAULT_EXT = ('val');
+$DEFAULT_EXT = 'val';
 
-%EXT_HANDLERS = ('val'      => \&conf_handler_yaml,
-                 'yaml'     => \&conf_handler_yaml,
+%EXT_HANDLERS = ('conf'     => \&conf_handler_yaml,
+                 'ini'      => \&conf_handler_ini,
                  'pl'       => \&conf_handler_pl,
+                 'sto'      => \&conf_handler_storable,
                  'storable' => \&conf_handler_storable,
+                 'val'      => \&conf_handler_yaml,
+                 'xml'      => \&conf_handler_xml,
+                 'yaml'     => \&conf_handler_yaml,
                  );
 
 ###----------------------------------------------------------------###
@@ -675,11 +679,9 @@ sub get_validation {
   } elsif ($val =~ /\.(\w+)$/) {
     $ext = $1;
   } else {
-    foreach my $_ext (@DEFAULT_EXT) {
-      next if ! -e "$val.$_ext";
-      $ext = $_ext;
-      $val = "$val.$_ext";
-    }
+    $ext = $DEFAULT_EXT;
+    $ext = '' if ! defined $ext;
+    $val = length($ext) ? "$val.$ext" : $val;
   }
 
   ### now get the file
@@ -746,6 +748,25 @@ sub get_validation_keys {
   return \%keys;
 }
 
+###----------------------------------------------------------------###
+
+sub conf_handler_ini {
+  my $file = shift;
+  require Config::IniHash;
+  return &Config::IniHash::ReadINI($file);
+}
+
+sub conf_handler_pl {
+  my $file = shift;
+  return do $file;
+}
+
+sub conf_handler_storable {
+  my $file = shift;
+  require Storable;
+  return &Storable::retrieve($file);
+}
+
 sub conf_handler_yaml {
   my $file = shift;
   local $/ = undef;
@@ -766,15 +787,10 @@ sub yaml_load {
   return ($#ret == 0) ? $ret[0] : \@ret;
 }
 
-sub conf_handler_pl {
+sub conf_handler_xml {
   my $file = shift;
-  return do $file;
-}
-
-sub conf_handler_storable {
-  my $file = shift;
-  require Storable;
-  return &Storable::retrieve($file);
+  require XML::Simple;
+  return XML::Simple::XMLin($file);
 }
 
 ###----------------------------------------------------------------###
@@ -1016,7 +1032,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.40 2003-11-24 23:11:50 pauls Exp $
+$Id: Validate.pm,v 1.41 2003-11-25 07:23:17 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1131,7 +1147,7 @@ group is contained in the file, it will return an arrayref of hashrefs.
 Given a filename or YAML string or a validation hashref, will return all
 of the possible keys found in the validation hash.  This can be used to
 check to see if extra items have been passed to validate.  If a second
-argument containt a form hash is passed, get_validation_keys will only
+argument contains a form hash is passed, get_validation_keys will only
 return the keys of groups that were validated.
 
   my $key_hashref = $self->get_validation_keys($val_hash);
@@ -1164,8 +1180,8 @@ has been set, validate will die with a CGI::Ex::validate::Error object as the va
 The validation hash may be passed as a perl a hashref or 
 as a filename, or as a YAML document string.  If it is a filename,
 it will be translated into a hash using the %EXT_HANDLER for the
-extension on the file.  If there is no extension, it will look through the
-extensions in @DEFAULT_EXT until it finds an existing file.
+extension on the file.  If there is no extension, it will use $DEFAULT_EXT
+as a default.
 
 The validation hash may also be an arrayref of hashrefs.  In this
 case, each arrayref is treated as a group and is validated separately.
