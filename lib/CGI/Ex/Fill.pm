@@ -315,24 +315,12 @@ sub get_tagval_by_key {
   my $key = lc(shift);
   my $all = $_[0] && $_[0] eq 'all';
   my @all = ();
-  ### this is the old way and is actually slower
-  #while ($$ref =~ m{(?<!\w|\.)    # isn't preceded by a word or dot
-  #                    \Q$key\E    # the key
-  #                    \s*=\s*     # equals
-  #                    ([\"\']?)   # possible opening quote
-  #                    (|.*?[^\\]) # nothing or anything not ending in \
-  #                    \1          # close quote
-  #                    (?=\s|>|/>) # a space or closing >
-  #                  }sigx) {
-  #  my ($quot, $val) = ($1, $2);
-  #  $val =~ s/\\$quot/$quot/g if $quot; # unescape escaped quotes
-  #  return $val if ! $all;
-  #  push @all, $val;
-  #}
-  pos($tag) = 0; # fix for regex below not resetting and forcing order on key value pairs
+  pos($$ref) = 0; # fix for regex below not resetting and forcing order on key value pairs
+
+  ### loop looking for tag pairs
   while ($$ref =~ m{
     (?<![\w\.\-])                  # 0 - not proceded by letter or .
-      (\S+)                        # 1 - the key
+      ([\w\.\-]+)                  # 1 - the key
       \s*=                         # equals
       (?: \s*([\"\'])(|.*?[^\\])\2 # 2 - a quote, 3 - the quoted
        |  ([^\s/]*? (?=\s|>|/>))   # 4 - a non-quoted string
@@ -357,18 +345,8 @@ sub swap_tagval_by_key {
   my $key = lc(shift);
   my $val = shift;
   my $n   = 0;
-  ### this commented method is faster but doesn't handle nested
-  ### html or javascript at all
-  #  $$ref =~ s{(?<!\w|\.)    # isn't preceded by a word or dot
-  #               (\Q$key\E   # the key
-  #               \s*=\s*)    # equals
-  #               ([\"\']?)   # possible opening quote
-  #               (|.*?[^\\]) # nothing or anything not ending in \
-  #               \2          # close quote
-  #               (?=\s|>|/>) # a space or closing >
-  #             }{
-  #               ($n++) ? "" : "$1$2$val$2";
-  #             }sigex;
+
+  ### swap a key/val pair at time
   $$ref =~ s{(^\s*<\s*\w+\s+ | \G\s+)         # 1 - open tag or previous position
                ( ([\w\-\.]+)                  # 2 - group, 3 - the key
                  (\s*=)                       # 4 - equals
