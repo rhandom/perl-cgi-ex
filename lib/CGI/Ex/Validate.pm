@@ -7,7 +7,7 @@ use vars qw($VERSION
 
 use Data::DumpEx;
 
-$VERSION = (qw$Revision: 1.23 $ )[1];
+$VERSION = (qw$Revision: 1.24 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -838,7 +838,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.23 2003-11-13 05:10:40 pauls Exp $
+$Id: Validate.pm,v 1.24 2003-11-13 06:38:29 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1325,6 +1325,31 @@ being run in the cgi
     required    => 1,
     exclude_cgi => 1,
   }
+
+=back
+
+=head1 MODIFYING VALIDATION TYPES
+
+=over 4
+
+=item C<do_not_trim>
+
+By default, validate will trim leading and trailing whitespace
+from submitted values.  Set do_not_trim to 1 to allow it to
+not trim.
+
+  {field => 'foo', do_not_trim => 1}
+
+=item C<strip_characters>
+
+Pass a pattern of characters that will be removed from the field.
+Any perl regex can be passed.
+
+  {field => 'foo', strip_characters => '\D'}
+
+=item C<to_upper_case> and C<to_lower_case>
+
+Do what they say they do.
 
 =back
 
