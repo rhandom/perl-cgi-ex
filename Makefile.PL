@@ -6,10 +6,10 @@ use ExtUtils::MakeMaker;
 ###----------------------------------------------------------------###
 
 WriteMakefile(
-              NAME          => "HTML::Form",
+              NAME          => "CGI::Ex",
               AUTHOR        => "Paul Seamons",
-              ABSTRACT_FROM => "lib/HTML/Form.pm",
-              VERSION_FROM  => "lib/HTML/Form.pm",
+              ABSTRACT_FROM => "lib/CGI/Ex.pm",
+              VERSION_FROM  => "lib/CGI/Ex.pm",
               INSTALLDIRS   => 'site',
               
               dist          => {

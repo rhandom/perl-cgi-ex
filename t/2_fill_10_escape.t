@@ -3,7 +3,7 @@
 use strict;
 
 print "1..1\n";
-use HTML::Form;
+use CGI::Ex;
  
 my $html =<<"__HTML__";
 <HTML>
@@ -29,7 +29,7 @@ __HTML__
 
 my %fdat = ();
 
-my $fif = HTML::Form->new;
+my $fif = CGI::Ex->new;
 my $output = $fif->fill(scalarref => \$html,
 			fdat => \%fdat);
 

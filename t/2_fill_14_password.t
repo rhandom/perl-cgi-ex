@@ -3,7 +3,7 @@
 #!/usr/bin/perl -w
 
 use CGI qw(:no_debug);
-use HTML::Form;
+use CGI::Ex;
 use Test;
 
 BEGIN { plan tests => 2 }
@@ -14,7 +14,7 @@ my $q = new CGI;
 $q->param( foo => 'bar' );
 
 {
-    my $fif = new HTML::Form;
+    my $fif = new CGI::Ex;
     my $output = $fif->fill(
 	scalarref => \$html,
 	fobject   => $q,
@@ -26,7 +26,7 @@ $q->param( foo => 'bar' );
 
 
 {
-    my $fif = new HTML::Form;
+    my $fif = new CGI::Ex;
     my $output = $fif->fill(
 	scalarref => \$html,
 	fobject   => $q,

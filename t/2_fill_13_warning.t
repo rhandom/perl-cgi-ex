@@ -5,7 +5,7 @@
 # emits warnings for HTML::FIF <= 0.22
 
 use CGI qw(:no_debug);
-use HTML::Form;
+use CGI::Ex;
 use Test;
 
 BEGIN { plan tests => 1 }
@@ -16,7 +16,7 @@ my $html = qq{<input type="submit" value="Commit">};
 my $q = new CGI;
  
 $q->param( "name", "John Smith" );
-my $fif = new HTML::Form;
+my $fif = new CGI::Ex;
 my $output = $fif->fill(
                          scalarref => \$html,
                          fobject   => $q

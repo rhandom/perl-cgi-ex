@@ -4,7 +4,7 @@ use strict;
 use Test;
 BEGIN { plan tests => 3 }
 
-use HTML::Form;
+use CGI::Ex;
 
 my $form = <<EOF;
 <FORM name="foo1">
@@ -25,7 +25,7 @@ my %fdat = (
   foo3 => 'bar3',
 );
 
-my $fif = new HTML::Form;
+my $fif = new CGI::Ex;
 my $output = $fif->fill(
   scalarref => \$form,
   fdat => \%fdat,

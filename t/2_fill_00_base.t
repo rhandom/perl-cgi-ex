@@ -3,6 +3,6 @@ BEGIN {
 	print "1..1\n";
 }
 
-use HTML::Form;
+use CGI::Ex;
 
 BEGIN { print "ok 1\n"; }

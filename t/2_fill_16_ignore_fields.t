@@ -6,7 +6,7 @@ $^W = 1;
 
 print "1..2\n";
 
-use HTML::Form;
+use CGI::Ex;
 use CGI;
 
 print "ok 1\n";
@@ -36,7 +36,7 @@ my $q = new CGI( { foo1 => '0',
 	   foo3 => '' }
 	);
 
-my $fif = new HTML::Form;
+my $fif = new CGI::Ex;
 my $output = $fif->fill(scalarref => \$hidden_form_in,
                        fobject => $q,
 			ignore_fields => ['asdf','foo1','asdf']);

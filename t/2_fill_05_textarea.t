@@ -6,7 +6,7 @@ $^W = 1;
 
 print "1..3\n";
 
-use HTML::Form;
+use CGI::Ex;
 
 print "ok 1\n";
 
@@ -14,7 +14,7 @@ my $hidden_form_in = qq{<TEXTAREA NAME="foo">blah</TEXTAREA>};
 
 my %fdat = (foo => 'bar>bar');
 
-my $fif = new HTML::Form;
+my $fif = new CGI::Ex;
 my $output = $fif->fill(scalarref => \$hidden_form_in,
 			fdat => \%fdat);
 if ($output eq '<TEXTAREA NAME="foo">bar&gt;bar</TEXTAREA>'){
@@ -28,7 +28,7 @@ if ($output eq '<TEXTAREA NAME="foo">bar&gt;bar</TEXTAREA>'){
 
 %fdat = (foo => '');
 
-$fif = new HTML::Form;
+$fif = new CGI::Ex;
 $output = $fif->fill(scalarref => \$hidden_form_in,
 			fdat => \%fdat);
 if ($output eq '<TEXTAREA NAME="foo"></TEXTAREA>'){

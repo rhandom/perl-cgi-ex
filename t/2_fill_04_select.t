@@ -6,7 +6,7 @@ $^W = 1;
 
 print "1..5\n";
 
-use HTML::Form;
+use CGI::Ex;
 use CGI;
 
 print "ok 1\n";
@@ -36,7 +36,7 @@ my $q = new CGI( { foo1 => '0',
 	   foo3 => '' }
 	);
 
-my $fif = new HTML::Form;
+my $fif = new CGI::Ex;
 my $output = $fif->fill(scalarref => \$hidden_form_in,
                        fobject => $q);
 
@@ -75,7 +75,7 @@ $q = new CGI( { foo1 => 'bar1',
 	   foo3 => '' }
 	);
 
-$fif = new HTML::Form;
+$fif = new CGI::Ex;
 $output = $fif->fill(scalarref => \$hidden_form_in,
                        fobject => $q);
 
@@ -91,7 +91,7 @@ if ($is_selected eq "yes no no yes yes no no no no no yes no"){
 # test empty option tag
 
 $hidden_form_in = qq{<select name="x"><option></select>};
-$fif = new HTML::Form;
+$fif = new CGI::Ex;
 $output = $fif->fill(scalarref => \$hidden_form_in,
                        fobject => $q);
 if ($output eq qq{<select name="x"><option></select>}){
@@ -102,7 +102,7 @@ if ($output eq qq{<select name="x"><option></select>}){
 }
 
 $hidden_form_in = qq{<select name="foo1"><option><option value="bar1"></select>};
-$fif = new HTML::Form;
+$fif = new CGI::Ex;
 $output = $fif->fill(scalarref => \$hidden_form_in,
                        fobject => $q);
 if ($output =~ m!^<select name="foo1"><option><option( selected| value="bar1"){2}></select>$!){

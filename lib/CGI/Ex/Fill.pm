@@ -1,4 +1,13 @@
-package HTML::Form::Fill;
+package CGI::Ex::Fill;
+
+### CGI Extended Form Filler
+
+###----------------------------------------------------------------###
+#  Copyright 2003 - Paul Seamons                                     #
+#  Distributed under the GNU General Public License without warranty #
+###----------------------------------------------------------------###
+
+### See perldoc at bottom
 
 use strict;
 use vars qw($VERSION
@@ -319,7 +328,7 @@ __END__
 
 =head1 SYNOPSIS
 
-  use HTML::Form::Fill qw(form_fill);
+  use CGI::Ex::Fill qw(form_fill);
 
   my $text = my_own_template_from_somewhere();
 

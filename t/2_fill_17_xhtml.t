@@ -6,7 +6,7 @@ $^W = 1;
 
 print "1..1\n";
 
-use HTML::Form;
+use CGI::Ex;
 use CGI;
 
 my $html = <<EOF;
@@ -28,7 +28,7 @@ EOF
 my $q = CGI->new;
 $q->param('status', 1 );
 
-my $fif = HTML::Form->new;
+my $fif = CGI::Ex->new;
 
 my $output = $fif->fill(
     scalarref => \$html,

@@ -6,7 +6,7 @@ $^W = 1;
 
 print "1..3\n";
 
-use HTML::Form;
+use CGI::Ex;
 
 print "ok 1\n";
 
@@ -15,7 +15,7 @@ my $hidden_form_in = qq{<INPUT TYPE="TEXT" NAME="foo1" value="cat1">
 
 my %fdat = (foo1 => ['bar1','bar2']);
 
-my $fif = new HTML::Form;
+my $fif = new CGI::Ex;
 my $output = $fif->fill(scalarref => \$hidden_form_in,
 			fdat => \%fdat);
 if ($output =~ m/^<input( (type="TEXT"|name="foo1"|value="bar1")){3}>\s*<input( (type="text"|name="foo1"|value="bar2")){3}\s*\/>$/i){

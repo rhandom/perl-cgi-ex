@@ -1,4 +1,6 @@
-package HTML::Form;
+package CGI::Ex;
+
+### CGI Extended
 
 ###----------------------------------------------------------------###
 #  Copyright 2003 - Paul Seamons                                     #
@@ -53,7 +55,7 @@ sub AUTOLOAD {
 
 ###----------------------------------------------------------------###
 
-### form filler that will use either HTML::FillInForm, HTML::Form::Fill
+### form filler that will use either HTML::FillInForm, CGI::Ex::Fill
 ### or another specified filler.  Argument style is similar to
 ### HTML::FillInForm.
 sub fill {
@@ -92,9 +94,9 @@ sub fill {
 
   ### well - we will use our own then
   } else {
-    eval { require HTML::Form::Fill };
+    eval { require CGI::Ex::Fill };
     if ($@) {
-      die "Couldn't require HTML::Form::Fill: $@";
+      die "Couldn't require CGI::Ex::Fill: $@";
     }
 
     ### get the text to work on
@@ -121,12 +123,12 @@ sub fill {
     my $form = $args->{form} || $args->{fobject}
       || $args->{fdat} || $self->object;
     
-    &HTML::Form::Fill::form_fill($ref,
-                                 $form,
-                                 $args->{target},
-                                 $args->{fill_password},
-                                 $args->{ignore_fields},
-                                 );
+    &CGI::Ex::Fill::form_fill($ref,
+                              $form,
+                              $args->{target},
+                              $args->{fill_password},
+                              $args->{ignore_fields},
+                              );
     return ! $args->{text} ? $$ref : 1;
   }
 
@@ -141,11 +143,11 @@ __END__
 
 =head1 NAME
 
-HTML::Form - Yet Another Form Utility
+CGI::Ex - Yet Another Form Utility
 
 =head1 DESCRIPTION
 
-HTML::Form is another form filler/ validator.  Its goal is to take
+CGI::Ex is another form filler/ validator.  Its goal is to take
 the wide scope of validators out there and merge them into one
 utility that has all of the necessary features of them all, as well
 as several that I have found useful in working on the web.
@@ -192,7 +194,7 @@ Pro - HTML::Parser based.  Very simple script.  Supports most
 things you'd want to do.
 
 Con - HTML::Parser based.  Being based on HTML::Parser is good for
-standards and poor for performance.  L<HTML::Form::Fill>
+standards and poor for performance.  L<CGI::Ex::Fill>.
 
 =item C<CGI> - CGI Getter.  Form filler-iner
 
