@@ -11,9 +11,9 @@ package CGI::Ex;
 
 use strict;
 use vars qw($VERSION
-            $PREFERRED_FILL_PACKAGE
-            $PREFERRED_CGI_PACKAGE
-            $PREFERRED_CGI_FILE
+            $PREFERRED_FILL_MODULE
+            $PREFERRED_CGI_MODULE
+            $PREFERRED_CGI_REQUIRED
             $OBJECT_METHOD
             $AUTOLOAD
             $DEBUG_LOCATION_BOUNCE
@@ -41,7 +41,7 @@ sub new {
 ### allow for holding another classed CGI style object
 sub object {
   return shift()->{object} ||= do {
-    $PREFERRED_CGI_FILE ||= do {
+    $PREFERRED_CGI_REQUIRED ||= do {
       my $file = $PREFERRED_CGI_MODULE;
       $file .= ".pm" if $file !~ /\.\w+$/;
       $file =~ s|::|/|g;
@@ -49,7 +49,7 @@ sub object {
       if ($@) {
         die "Couldn't require $PREFERRED_CGI_MODULE: $@";
       }
-      $file; # return of inner do
+      1; # return of inner do
     };
     $PREFERRED_CGI_MODULE->new(); # return of the do
   };
