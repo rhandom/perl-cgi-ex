@@ -1,3 +1,12 @@
+2004-03-22  Paul Seamons  <cgi_ex@seamons.com>
+        * Verion 0.99 is done
+        * Allow swap_template to be called with one argument
+        * Added extended examples in t/samples/cgi_ex_*
+        * Remove dependency on CGI::Util (doesn't exists on some perls)
+        * A few fixes on App
+        * Added set_form
+        * Updated tests
+
 2004-03-19  Paul Seamons  <cgi_ex@seamons.com>
 
         * Verion 0.98 is done
