@@ -22,7 +22,7 @@ use vars qw($VERSION
             );
 use base qw(Exporter);
 
-$VERSION               = '0.97';
+$VERSION               = '0.98';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
 $PREFERRED_VAL_MODULE  ||= '';
@@ -461,10 +461,13 @@ CGI::Ex - Yet Another Form Utility
 
   my $err_obj = $cgix->validate($hashref, $val_hash);
   if ($err_obj) {
-    my $errors = $err_obj->as_hash;
-    my $content = "Some content";
+    my $errors  = $err_obj->as_hash;
+    my $input   = "Some content";
+    my $content = "";
+    SomeTemplateObject->process($input, $errors, $content);
     $cgix->fill({text => \$content, form => $hashref});
     print $content;
+    exit;
   }
 
   print "Success\n";
@@ -787,6 +790,10 @@ See also L<CGI::Ex::Fill>.
 See also L<CGI::Ex::Validate>.
 
 See also L<CGI::Ex::Conf>.
+
+See also L<CGI::Ex::App>.
+
+See also L<CGI::Ex::Dump>.
 
 =head1 AUTHOR
 
