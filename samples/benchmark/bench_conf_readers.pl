@@ -1,33 +1,35 @@
 #!/usr/bin/perl -w
 
 # [pauls@localhost lib]$ perl ../t/samples/bench_conf_readers.pl
-# g_conf => /tmp/filehQovio.g_conf
-# ini => /tmp/fileRGPhw9.ini
-# pl => /tmp/filelumCbQ.pl
-# sto => /tmp/file1vHisW.sto
-# sto2 => /tmp/filexesmCu.sto2
-# xml => /tmp/fileX9hbUH.xml
-# yaml => /tmp/fileNID3S2.yaml
-# yaml2 => /tmp/filejt9uaB.yaml2
-# Benchmark: timing 3000 iterations of g_conf, ini, pl, sto, sto2, xml, yaml, yaml2...
-#  g_conf:  3 wallclock secs ( 2.88 usr +  0.07 sys =  2.95 CPU) @ 1016.95/s (n=3000)
-#  ini:  7 wallclock secs ( 7.64 usr +  0.06 sys =  7.70 CPU) @ 389.61/s (n=3000)
-#  pl:  2 wallclock secs ( 2.00 usr +  0.08 sys =  2.08 CPU) @ 1442.31/s (n=3000)
-#  sto:  2 wallclock secs ( 1.07 usr +  0.02 sys =  1.09 CPU) @ 2752.29/s (n=3000)
-#  sto2:  0 wallclock secs ( 0.64 usr +  0.01 sys =  0.65 CPU) @ 4615.38/s (n=3000)
-#  xml: 28 wallclock secs (27.42 usr +  0.60 sys = 28.02 CPU) @ 107.07/s (n=3000)
-#  yaml: 34 wallclock secs (33.22 usr +  0.20 sys = 33.42 CPU) @ 89.77/s (n=3000)
-#  yaml2: 34 wallclock secs (32.80 usr +  0.17 sys = 32.97 CPU) @ 90.99/s (n=3000)
-#          Rate   yaml  yaml2    xml    ini g_conf     pl    sto   sto2
-# yaml   89.8/s     --    -1%   -16%   -77%   -91%   -94%   -97%   -98%
-# yaml2  91.0/s     1%     --   -15%   -77%   -91%   -94%   -97%   -98%
-# xml     107/s    19%    18%     --   -73%   -89%   -93%   -96%   -98%
-# ini     390/s   334%   328%   264%     --   -62%   -73%   -86%   -92%
-# g_conf 1017/s  1033%  1018%   850%   161%     --   -29%   -63%   -78%
-# pl     1442/s  1507%  1485%  1247%   270%    42%     --   -48%   -69%
-# sto    2752/s  2966%  2925%  2471%   606%   171%    91%     --   -40%
-# sto2   4615/s  5042%  4972%  4211%  1085%   354%   220%    68%     --
-# [pauls@localhost lib]$ fg
+# g_conf => /tmp/fileqBaJ1E.g_conf
+# ini => /tmp/fileuLkfJ1.ini
+# pl => /tmp/fileSubm3q.pl
+# sto => /tmp/fileCaIv2S.sto
+# sto2 => /tmp/fileq55w36.sto2
+# xml => /tmp/filemO8S2f.xml
+# yaml => /tmp/filegBGRal.yaml
+# yaml2 => /tmp/fileuvSUiz.yaml2
+# yaml3 => /tmp/fileGKhErN.yaml
+# Benchmark: timing 3000 iterations of g_conf, ini, pl, sto, sto2, xml, yaml, yaml2, yaml3...
+#  g_conf:  4 wallclock secs ( 3.88 usr +  0.08 sys =  3.96 CPU) @ 757.58/s (n=3000)
+#  ini: 10 wallclock secs ( 9.97 usr +  0.10 sys = 10.07 CPU) @ 297.91/s (n=3000)
+#  pl:  3 wallclock secs ( 2.68 usr +  0.07 sys =  2.75 CPU) @ 1090.91/s (n=3000)
+#  sto:  1 wallclock secs ( 1.31 usr +  0.12 sys =  1.43 CPU) @ 2097.90/s (n=3000)
+#  sto2:  1 wallclock secs ( 0.81 usr +  0.03 sys =  0.84 CPU) @ 3571.43/s (n=3000)
+#  xml: 36 wallclock secs (34.95 usr +  0.59 sys = 35.54 CPU) @ 84.41/s (n=3000)
+#  yaml: 42 wallclock secs (41.95 usr +  0.65 sys = 42.60 CPU) @ 70.42/s (n=3000)
+#  yaml2: 42 wallclock secs (41.97 usr +  0.10 sys = 42.07 CPU) @ 71.31/s (n=3000)
+#  yaml3:  1 wallclock secs ( 0.52 usr +  0.00 sys =  0.52 CPU) @ 5769.23/s (n=3000)
+#          Rate   yaml  yaml2    xml    ini g_conf     pl    sto   sto2  yaml3
+# yaml   70.4/s     --    -1%   -17%   -76%   -91%   -94%   -97%   -98%   -99%
+# yaml2  71.3/s     1%     --   -16%   -76%   -91%   -93%   -97%   -98%   -99%
+# xml    84.4/s    20%    18%     --   -72%   -89%   -92%   -96%   -98%   -99%
+# ini     298/s   323%   318%   253%     --   -61%   -73%   -86%   -92%   -95%
+# g_conf  758/s   976%   962%   797%   154%     --   -31%   -64%   -79%   -87%
+# pl     1091/s  1449%  1430%  1192%   266%    44%     --   -48%   -69%   -81%
+# sto    2098/s  2879%  2842%  2385%   604%   177%    92%     --   -41%   -64%
+# sto2   3571/s  4971%  4908%  4131%  1099%   371%   227%    70%     --   -38%
+# yaml3  5769/s  8092%  7990%  6735%  1837%   662%   429%   175%    62%     --
 
 use strict;
 use vars qw($PLACEHOLDER);
@@ -116,6 +118,16 @@ if (eval {require YAML}) {
     my $hash = &YAML::LoadFile($_file);
   };
   $files{yaml2} = $_file;
+}
+
+if (eval {require YAML}) {
+  my $_file = tmpnam(). '.yaml';
+  &YAML::DumpFile($_file, $conf);
+  $cob->preload_files($_file);
+  $TESTS{yaml3} = sub {
+    my $hash = $cob->read($_file);
+  };
+  $files{yaml3} = $_file;
 }
 
 if (eval {require Config::IniHash}) {
