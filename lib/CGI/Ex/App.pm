@@ -330,11 +330,25 @@ sub print {
   my $step = shift;
   my $form = shift;
   my $fill = shift;
-
+  
+  ### get a filename relative to base_dir_abs
   my $file = $self->run_hook($step, 'file_print');
 
   require Template;
-  return Template->print($file, $form, $fill);
+  my $t = Template->new({
+    INCLUDE_PATH => $self->base_dir_abs,
+  });
+
+  ### process the document
+  my $out = '';
+  my $status = $t->process($file, $form, \$out) || die $Template::ERROR;
+
+  ### fill in any forms
+  $self->cgix->fill(\$out, $fill) if $fill && ! $self->{no_fill};
+
+  ### now print
+  $self->cgix->print_content_type();
+  print $out;
 }
 
 sub base_dir_rel {
