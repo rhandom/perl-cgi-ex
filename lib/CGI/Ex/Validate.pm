@@ -1074,7 +1074,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.67 2004-11-05 17:43:17 pauls Exp $
+$Id: Validate.pm,v 1.68 2004-11-05 17:46:42 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1196,10 +1196,12 @@ return the keys of groups that were validated.
 
 =item C<validate>
 
-Arguments are a form hashref or cgi object, and a validation hashref or filename.
+Arguments are a form hashref or cgi object, a validation hashref or filename, and
+an optional what_was_validated arrayref.
 If a CGI object is passed, CGI::Ex::get_form will be called on that object
 to turn it into a hashref.  If a filename is given for the validation, get_validation
-will be called on that filename.
+will be called on that filename.  If the what_was_validated_arrayref is passed - it
+will be populated (pushed) with the field hashes that were actually validated.
 
 If the form passes validation, validate will return undef.  If it fails validation, it
 will return a CGI::Ex::Validate::Error object.  If the 'raise_error' general option
