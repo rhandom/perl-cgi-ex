@@ -62,6 +62,38 @@ if (! document.validate) {
   </td>
 </tr>
 <tr>
+  <td valign=top>Enum Check:</td>
+  <td>
+    <input type=text size=10 name=enum><br>
+    <span id=enum_error class=error></span>
+  </td>
+</tr>
+<tr>
+  <td valign=top>Compare Check:</td>
+  <td>
+    <input type=text size=10 name=compare><br>
+    <span id=compare_error class=error></span>
+  </td>
+</tr>
+<tr>
+  <td valign=top>Check one:</td>
+  <td>
+    <input type=checkbox name=checkone value=1> Foo<br>
+    <input type=checkbox name=checkone value=2> Bar<br>
+    <input type=checkbox name=checkone value=3> Baz<br>
+    <span id=checkone_error class=error></span>
+  </td>
+</tr>
+<tr>
+  <td valign=top>Check two:</td>
+  <td>
+    <input type=checkbox name=checktwo value=1> Foo<br>
+    <input type=checkbox name=checktwo value=2> Bar<br>
+    <input type=checkbox name=checktwo value=3> Baz<br>
+    <span id=checktwo_error class=error></span>
+  </td>
+</tr>
+<tr>
   <td colspan=2 align=right>
     <input type=submit>
   </td>
@@ -69,16 +101,19 @@ if (! document.validate) {
 </table>
 </form>
 
+<script src="../../lib/CGI/Ex/yaml_load.js"></script>
+<script src="../../lib/CGI/Ex/validate.js"></script>
 <script>
-var val_yaml = "\n\
-general do_inline: 1\n\
+document.show_yaml_errors = 1;
+document.validation = "\n\
+#general no_inline: 1\n\
 general no_confirm: 1\n\
 general no_alert: 1\n\
 general as_array_prefix: ' -- '\n\
-general as_hash_header: '<ul><li>'\n\
-general as_hash_join:   '</li><li>'\n\
-general as_hash_footer: '</li></ul>'\n\
-group order: [username, password, password2, email, email2]\n\
+#general as_hash_header: '<ul><li>'\n\
+#general as_hash_join:   '</li><li>'\n\
+#general as_hash_footer: '</li></ul>'\n\
+group order: [username, password, password2, email, email2, enum, compare, checkone, checktwo]\n\
 username:\n\
  name: Username\n\
  required: 1\n\
@@ -99,15 +134,34 @@ password2:\n\
 email: &em\n\
  name: Email\n\
  required: 1\n\
- min_len: 6\n\
  max_len: 100\n\
+ match: 'm/^[^@]+@([\\w-]+\.)+\\w+$/'\n\
+ match_error: '$name must be a valid email address.'\n\
 email2:\n\
  name: Verify email\n\
  validate_if: *em\n\
  equals: email\n\
  equals_name: email\n\
+enum:\n\
+ name: Enum check\n\
+ enum: [one, two, three, four]\n\
+ enum_error: '$name must be one of one, two, three, or four.'\n\
+compare:\n\
+ required: 1\n\
+ replace: 's/\\D//g'\n\
+ name: Compare check\n\
+ compare: ['> 99', '< 1000']\n\
+ compare_error: '$name must be greater than 99 and less than 1000.'\n\
+checkone:\n\
+ name: Check one\n\
+ required: 1\n\
+ max_values: 1\n\
+checktwo:\n\
+ name: Check two\n\
+ min_values: 2\n\
+ max_values: 2\n\
 ";
-if (document.check_form) document.check_form('a',val_yaml);
+if (document.check_form) document.check_form('a');
 </script>
 
 </html>
