@@ -306,7 +306,10 @@ sub time_calc {
 sub send_status {
   my $self = ref($_[0]) ? shift : __PACKAGE__; # may be called as function or method
   my $code = shift || die "Missing status";
-  my $mesg = shift || "HTTP Status of $code received\n";
+  my $mesg = shift;
+  if (! defined $mesg) {
+    $mesg = "HTTP Status of $code received\n";
+  }
   if ($self->content_typed) {
     die "Cannot send a status ($code - $mesg) after content has been sent";
   }
@@ -988,9 +991,7 @@ at the time of this writing (I'm sure this probably isn't exaustive).
 
 =head1 TODO
 
-Add an integrated template toolkit interface.
-
-Add an integrated debug module.
+Allow for mod_perl 2 header support.
 
 =head1 MODULES
 
@@ -1000,11 +1001,13 @@ See also L<CGI::Ex::Validate>.
 
 See also L<CGI::Ex::Conf>.
 
+See also L<CGI::Ex::Dump>.
+
 See also L<CGI::Ex::Die>.
 
 See also L<CGI::Ex::App>.
 
-See also L<CGI::Ex::Dump>.
+See also L<CGI::Ex::Auth>.
 
 =head1 AUTHOR
 
