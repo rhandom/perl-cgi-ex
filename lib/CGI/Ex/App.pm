@@ -66,23 +66,27 @@ sub navigate {
   my $args = ref($_[0]) ? shift : {@_};
   $self = $self->new($args) if ! ref $self;
 
-  ### a chance to do things at the very beginning
-  return $self if $self->pre_navigate;
+  eval {
 
-  ### run the step loop
-  eval { $self->nav_loop };
+    ### a chance to do things at the very beginning
+    return $self if $self->pre_navigate;
+
+    ### run the step loop
+    eval { $self->nav_loop };
+    if ($@) {
+      ### rethrow the error unless we long jumped out of recursive nav_loop calls
+      die $@ if $@ ne "Long Jump\n";
+    }
+
+    ### one chance to do things at the very end
+    $self->post_navigate;
+
+  };
 
   ### catch errors - if any
   if ($@) {
-    if ($@ eq "Long Jump\n") {
-      # do nothing - we had to long jump out of recursive navigate_loop calls
-    } else {
-      $self->handle_error($@);
-    }
+    $self->handle_error($@);
   }
-
-  ### one chance to do things at the very end
-  $self->post_navigate;
 
   return $self;
 }
@@ -1112,10 +1116,12 @@ The basic outline of navigation is as follows (the default actions for hooks
 are shown):
 
   navigate {
-    ->pre_navigate
-    eval { ->nav_loop }
+    eval {
+      ->pre_navigate
+      ->nav_loop
+      ->post_navigate
+    }
     # dying errors will run the ->handle_error method
-    ->post_navigate
   }
 
   nav_loop {
