@@ -536,4 +536,30 @@ sub basic_login_javascript {
 
 ###----------------------------------------------------------------###
 
+### return arguments to add on to a url to allow login (for emails)
+sub auth_string_sha1 {
+  my $self = shift;
+  my $user = shift;
+  my $pass = shift;
+  my $save = shift || 0;
+  my $time = shift || time;
+
+  require Digest::SHA1;
+
+  if ($pass =~ /^sha1\((.+)\)$/) {
+    $pass = $1;
+  } else {
+    $pass = &Digest::SHA1::sha1_hex($pass);
+  }
+  $pass = &Digest::SHA1::sha1_hex("$time/$save/$pass");
+
+  return $self->cgix->make_form({
+    $self->key_user => $user,
+    $self->key_pass => "sha1($time/$save/$pass)",
+    $self->key_save => $save,
+  });
+}
+
+###----------------------------------------------------------------###
+
 1;
