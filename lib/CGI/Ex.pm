@@ -600,15 +600,24 @@ __END__
 
 =head1 NAME
 
-CGI::Ex - Yet Another CGI suite
+CGI::Ex - Yet Another CGI suite (well - ok not "just" another)
 
 =head1 SYNOPSIS
 
-  ### CGI Module Extensions
+  ### CGI::Ex::App example
+  use base qw(CGI::Ex::App);
+  sub main_print { print "Hello world" }
+  __PACKAGE__navigate;
+  exit;
+    # CGI::Ex::App uses just about all of the functionality of
+    # the CGI::Ex suite.  A reading of the CGI::Ex::App perldoc
+    # is suggested.
+
+  ### CGI::Ex Module Extensions
 
   my $cgix = CGI::Ex->new;
   my $hashref = $cgix->get_form; # uses CGI by default
-  
+
   ### send the Content-type header - whether or not we are mod_perl
   $cgix->print_content_type;
 
@@ -697,7 +706,9 @@ may be used separately, or together through the CGI::Ex interface.
 
 Possibly the most useful module is CGI::Ex::App which merges most of
 this functionality together and allows for easy CGI building out
-of the box.
+of the box.  Really, it seems that all of the modules included with
+CGI::Ex, and all of their features, are fully exploited by using
+CGI::Ex::App.
 
 =over 4
 
@@ -731,6 +742,8 @@ it does more of the common tasks for you.
 =back
 
 =head1 METHODS
+
+The following methods are provided by the CGI::Ex object:
 
 =over 4
 
