@@ -5,7 +5,7 @@
     required => 1,
   },
   foo => {
-    required => 1,
+    required_if => 'bar',
   },
 }
 # last item returned must be the ref
