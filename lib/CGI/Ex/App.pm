@@ -501,11 +501,15 @@ sub morph {
         $self->$method($step);
       }
     } else {
-      $$sref .= " - failed from $cur to $new: $@";
-      if ($@ && $@ !~ /^\s*Can\'t locate/) { # let us know what happened
-        my $err = "Trouble while morphing to $file: $@";
-        debug $err;
-        warn $err;
+      if ($@) {
+        if ($@ =~ /^\s*(Can\'t locate \S+ in \@INC)/) { # let us know what happened
+          $$sref .= " - failed from $cur to $new: $1";
+        } else {
+          $$sref .= " - failed from $cur to $new: $@";
+          my $err = "Trouble while morphing to $file: $@";
+          debug $err;
+          warn $err;
+        }
       }
     }
   }
