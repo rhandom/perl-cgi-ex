@@ -5,16 +5,22 @@ package HTML::Form;
 #  Distributed under the GNU General Public License without warranty #
 ###----------------------------------------------------------------###
 
+### See perldoc at bottom
+
 use strict;
 use vars qw($PREFERRED_FILL_MODULE
+            $PREFERRED_CGI_MODULE
+            $OBJECT_METHOD
+            $AUTOLOAD
             );
 
 use Data::DumpEx;
 
-use CGI;
-#use base qw(CGI);
-
 $PREFERRED_FILL_MODULE = '';
+$PREFERRED_CGI_MODULE  = 'CGI';
+$OBJECT_METHOD = 'param';
+
+###----------------------------------------------------------------###
 
 sub new {
   my $class = shift;
@@ -22,6 +28,28 @@ sub new {
   return bless $self, $class;
 }
 
+### allow for holding another classed CGI style object
+sub object {
+  return shift()->{object} ||= do {
+    my $file = $PREFERRED_CGI_MODULE;
+    $file .= ".pm" if $file !~ /\.\w+$/;
+    $file =~ s|::|/|g;
+    eval {require $file};
+    if ($@) {
+      die "Couldn't require $PREFERRED_CGI_MODULE: $@";
+    }
+    $PREFERRED_CGI_MODULE->new(); # return of the do
+  };
+}
+
+### allow for calling their methods
+sub AUTOLOAD {
+  my $self   = shift;
+  my $method = ($AUTOLOAD =~ /(\w+)$/) ? $1 : die "Invalid method $AUTOLOAD";
+  return wantarray # does wantarray propogate up ?
+    ? ($self->object->$method(@_))
+    :  $self->object->$method(@_);
+}
 
 ###----------------------------------------------------------------###
 
@@ -66,7 +94,7 @@ sub fill {
   } else {
     eval { require HTML::Form::Fill };
     if ($@) {
-      die "Couldn't require HTML::Form::Fill";
+      die "Couldn't require HTML::Form::Fill: $@";
     }
 
     ### get the text to work on
@@ -89,7 +117,9 @@ sub fill {
       die "No suitable text found for fill.";
     }
 
-    my $form = $args->{form} || $args->{fobject} || $args->{fdat} || $self;
+    ### allow for data to be passed many ways
+    my $form = $args->{form} || $args->{fobject}
+      || $args->{fdat} || $self->object;
     
     &HTML::Form::Fill::form_fill($ref,
                                  $form,
@@ -144,9 +174,15 @@ will inherit - we will use it natively.
 
 =item C<Embperl::Form::Validate> - Validator
 
-Pro - Add multiple rules.  Rules are array based (in order).  Has multilanguage support.  Returns array individual hashes for errors.  Can also return array of messages.  Ability to generate JavaScript code.  Extensible for other types (requires inheritance.
+Pro - Add multiple rules.  Rules are array based (in order).  Has
+multilanguage support.  Returns array individual hashes for errors.
+Can also return array of messages.  Ability to generate JavaScript
+code.  Extensible for other types (requires inheritance.
 
-Con - Part of the Embperl distribution (not that Embperl is wrong, just that this is a general function utility in a specialized package - anybody wanting to use it has to install all of Embperl).  JavaScript requires form name passed to it.
+Con - Part of the Embperl distribution (not that Embperl is wrong,
+just that this is a general function utility in a specialized package
+- anybody wanting to use it has to install all of Embperl).
+JavaScript requires form name passed to it.
 
 =item C<Data::CGIForm> - Validator
 
@@ -156,21 +192,12 @@ Pro - HTML::Parser based.  Very simple script.  Supports most
 things you'd want to do.
 
 Con - HTML::Parser based.  Being based on HTML::Parser is good for
-standards and poor for performance.  Testing the internal Fill module
-against HTML::FillInForm gave some surprising results.  On tiny forms
-(< 1 k) FillInForm was 30% faster (avg).  As soon as the html document
-incorporated very many entities at all, the performace kept going down
-(and down).  On one simple form, FillInForm was 30% faster.  I added
-180 <BR> tags.  FillInForm lagged behind.  The internal filler kept
-on par and was ~420% faster.  I added another 180 <BR> and the
-difference jumped to 740%. Another 180 and it was 1070% faster.  The
-problem is that HTML::Parser has to fire events for every tag it
-finds.  I would be interested to test a Recursive Descent form filler
-against these two.
+standards and poor for performance.  L<HTML::Form::Fill>
 
-=item C<CGI> - Form filler-iner
+=item C<CGI> - CGI Getter.  Form filler-iner
 
-Pro - It's with every distribution.
+Pro - It's with every distribution.  It is the king of CGI modules (that is
+why we are based off of it). 
 
 Con - Your html is in your cgi - not good at all.  Even for one-off's it is better to use a form filler.
 
