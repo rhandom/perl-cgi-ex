@@ -22,7 +22,7 @@ use vars qw($VERSION
             );
 use base qw(Exporter);
 
-$VERSION               = '1.12';
+$VERSION               = '1.14';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
 $TEMPLATE_OPEN         ||= qr/\[%\s*/;
