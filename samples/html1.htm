@@ -1,0 +1,14 @@
+<form name="foo">
+<input type=text name=user>
+<input type=text name=foo>
+<input type=hidden name=bar value=1>
+</form>
+
+
+<script>
+document.validation="\n\
+  user:\n\
+    required: 1\n\
+  foo: {required_if => 'bar'}\n\
+";
+</script>
