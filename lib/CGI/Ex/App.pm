@@ -486,7 +486,7 @@ sub unmorph {
     if (my $method = $self->can('fixup_before_unmorph')) {
       $self->$method($step);
     }
-    bless $self, delete $self->{'_parent_pckg'};
+    bless $self, $prev;
   }
 
   return $self;
