@@ -2,7 +2,7 @@
 
 use strict;
 $^W = 1;
-print "1..2\n";
+print "1..27\n";
 use CGI::Ex;
 print "ok 1\n";
 
