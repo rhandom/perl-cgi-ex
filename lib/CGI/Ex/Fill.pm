@@ -17,6 +17,7 @@ use vars qw($VERSION
             $MARKER_SCRIPT
             $MARKER_COMMENT
             $OBJECT_METHOD
+            $TEMP_TARGET
             );
 use Exporter;
 
@@ -69,6 +70,7 @@ sub form_fill {
 
   ### if there is a target - focus in on it
   if ($target) {
+    local $TEMP_TARGET = $target;
     $$ref =~ s{(<form            # open form
                 [^>]+            # some space
                 \bname=([\"\']?) # the name tag
@@ -108,7 +110,7 @@ sub form_fill {
         $val = $form->$OBJECT_METHOD($key);
         last if defined $val;
       } elsif (UNIVERSAL::isa($form, 'CODE')) {
-        $val = &{ $form }($key);
+        $val = &{ $form }($key, $TEMP_TARGET);
         last if defined $val;
       }
     }
@@ -118,7 +120,7 @@ sub form_fill {
 
     ### fix up the value some
     if (UNIVERSAL::isa($val, 'CODE')) {
-      $val = &{ $val }($key);
+      $val = &{ $val }($key, $TEMP_TARGET);
     }
     if (UNIVERSAL::isa($val, 'ARRAY')) {
       $val = [@$val]; # copy the values
