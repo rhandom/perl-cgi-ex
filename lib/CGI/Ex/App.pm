@@ -383,6 +383,8 @@ sub cleanup_cross_references {
           && ! Scalar::Util::isweak($self->{$key})) {
         Scalar::Util::weaken($self->{$key});
         delete $self->{$key};
+      } elsif (UNIVERSAL::isa($self->{$key}, 'CODE')) {
+        delete $self->{$key};
       }
     }
   } elsif (UNIVERSAL::isa($self, 'ARRAY')) {
@@ -394,6 +396,8 @@ sub cleanup_cross_references {
       if (Scalar::Util::blessed($self->[$key])
           && ! Scalar::Util::isweak($self->[$key])) {
         Scalar::Util::weaken($self->[$key]);
+        $self->[$key] = undef;
+      } elsif (UNIVERSAL::isa($self->[$key], 'CODE')) {
         $self->[$key] = undef;
       }
     }
