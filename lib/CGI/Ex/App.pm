@@ -11,9 +11,11 @@ package CGI::Ex::App;
 
 
 use strict;
-use vars qw($EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS $BASE_NAME_MODULE
+use vars qw($VERSION
+            $EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS $BASE_NAME_MODULE
             %CLEANUP_EXCLUDE);
 
+$VERSION = '1.12';
 use CGI::Ex::Dump qw(debug);
 
 BEGIN {
@@ -88,9 +90,10 @@ sub navigate {
     my $valid_paths = $self->valid_paths;
 
     ### iterate on each step of the path
-    foreach (my $i = 0; $i <= $#$path; $i ++) {
-      $self->{path_i} = $i;
-      my $step = $path->[$i];
+    foreach ($step->{path_i} ||= 0;
+             $step->{path_i} <= $#$path;
+             $step->{path_i} ++) {
+      my $step = $path->[$self->{path_i}];
       next if $step !~ /^\w+$/; # don't process the step if it contains odd characters
 
       ### check if this is an allowed step
@@ -116,33 +119,38 @@ sub navigate {
       ### see if we have complete valid information for this step
       ### if so, do the next step
       ### if not, get necessary info and print it out
-      if (! $self->run_hook($step,'info_complete')) {
-        my $formhash = $self->run_hook($step, 'hash_form',   \&form);
-        my $fillhash = $self->run_hook($step, 'hash_fill',   {});
-        my $errhash  = $self->run_hook($step, 'hash_errors', {});
-        my $commhash = $self->run_hook($step, 'hash_common', {});
+      if (   ! $self->run_hook($step, 'prepare', 1)
+          || ! $self->run_hook($step, 'info_complete')
+          || ! $self->run_hook($step, 'finalize', 1)) {
+        my $hash_form = $self->run_hook($step, 'hash_form');
+        my $hash_fill = $self->run_hook($step, 'hash_fill');
+        my $hash_errs = $self->run_hook($step, 'hash_errors');
+        my $hash_comm = $self->run_hook($step, 'hash_common');
 
-        ### layer basic form on top of fill
-        foreach my $key (keys %$formhash) {
-          next if exists $fillhash->{$key};
-          $fillhash->{$key} = $formhash->{$key};
+        ### fix up errors
+        $hash_errs->{$_} = $self->format_error($hash_errs->{$_})
+          foreach keys %$hash_errs;
+        $hash_errs->{has_errors} = 1 if scalar keys %$hash_errs;
+
+        ### compose $fill of fill and form
+        my $fill = {};
+        foreach my $hash ($hash_fill, $hash_form) {
+          foreach my $key (keys %$hash) {
+            $fill->{$key} = $hash->{$key} if ! exists $fill->{$key};
+          }
         }
 
-        ### layer common elements on top of form
-        foreach my $key (keys %$commhash) {
-          next if exists $formhash->{$key};
-          $formhash->{$key} = $commhash->{$key};
-        }
-
-        ### layer errors on top of form
-        $formhash->{has_errors} = 1 if scalar keys %$errhash;
-        foreach my $key (keys %$errhash) {
-          $formhash->{$key} = $self->format_error($errhash->{$key});
+        ### compose $form of form, common, and errors
+        my $form = {};
+        foreach my $hash ($hash_form, $hash_comm, $hash_errs) {
+          foreach my $key (keys %$hash) {
+            $form->{$key} = $hash->{$key} if ! exists $form->{$key};
+          }
         }
 
         ### run the print hook - passing it the form and fill info
         $self->run_hook($step, 'print', undef,
-                        $formhash, $fillhash);
+                        $form, $fill);
 
         ### a hook after the printing process
         $self->run_hook($step, 'post_print');
@@ -835,10 +843,8 @@ More examples will come with time.  Here are the basics for now.
       \n";
   }
 
-  sub main_info_complete {
+  sub main_finalize {
     my $self = shift;
-    return 0 if ! $self->SUPER::info_complete(@_);
-
     debug $self->form, "Do something useful with form here";
 
     ### add success step
@@ -923,7 +929,9 @@ are shown):
       ->pre_step (hook)
         # skips this step if true
 
-      ->info_complete (hook)
+      ->prepare (hook - defaults to true)
+
+      ->info_complete (hook - ran if prepare was true)
         # DEFAULT ACTION
         # ->ready_validate (hook)
         # return false if ! ready_validate
@@ -933,7 +941,9 @@ are shown):
         #   uses CGI::Ex::Validate to validate the hash
         # returns true if validate is true
 
-      if ! info_complete {
+      ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
+
+      if ! ->prepare || ! ->info_complete || ! ->finalize {
         ->hash_form (hook)
         ->hash_fill (hook)
         ->hash_errors (hook)
@@ -1145,22 +1155,39 @@ Ran at the beginning of the loop before info_compelete is called.  If
 it returns true, execution of navigate is returned and no more steps
 are processed.
 
+=item Hook C<-E<gt>prepare>
+
+Defaults to true.  A hook before checking if the info_complete is true.
+
 =item Hook C<-E<gt>info_complete>
 
 Checks to see if all the necessary form elements have been passed in.
-Calls hooks ready_validate, and validate.
+Calls hooks ready_validate, and validate.  Will not be run unless
+prepare returns true (default).
+
+=item Hook C<-E<gt>finalize>
+
+Defaults to true. Used to do whatever needs to be done with the data once
+prepare has returned true and info_complete has returned true.  On failure
+the print operations are ran.  On success navigation moves on to the next
+step.
 
 =item Hook C<-E<gt>ready_validate>
 
 Should return true if enough information is present to run validate.
 Default is to look if $ENV{'REQUEST_METHOD'} is 'POST'.  A common
 usage is to pass a common flag in the form such as 'processing' => 1
-and check for its presence.
+and check for its presence - such as the following:
+
+  sub ready_validate { shift->form->{'processing'} }
 
 =item Method C<-E<gt>set_ready_validate>
 
 Sets that the validation is ready to validate.  Should set the value
-checked by the hook ready_validate.
+checked by the hook ready_validate.  The following would complement the
+processing flag above:
+
+  sub set_ready_validate { shift->form->{'processing'} = shift }
 
 =item Hook C<-E<gt>validate>
 
@@ -1188,27 +1215,27 @@ should be readible by CGI::Ex::Validate::get_validation.
 
 =item Hook C<-E<gt>hash_form>
 
-Called in preparation for print after failed info_complete.  Should
-contain a hash of any items needed to be swapped into the html during
-print.
+Called in preparation for print after failed prepare, info_complete,
+or finalize.  Should contain a hash of any items needed to be swapped
+into the html during print.
 
 =item Hook C<-E<gt>hash_fill>
 
-Called in preparation for print after failed info_complete.  Should
-contain a hash of any items needed to be filled into the html form
-during print.  Items from hash_form will be layered on top during a
-print cycle.
+Called in preparation for print after failed prepare, info_complete,
+or finalize.  Should contain a hash of any items needed to be filled
+into the html form during print.  Items from hash_form will be layered
+on top during a print cycle.
 
 =item Hook C<-E<gt>hash_errors>
 
-Called in preparation for print after failed info_complete.  Should
-contain a hash of any errors that occured.  Will be merged into
-hash_form before the pass to print.  Eash error that occured will be
-passed to method format_error before being added to the hash.  If an
-error has occurred, the default validate will automatically add
-{has_errors =>1}.  To the error hash at the time of validation.
-has_errors will also be added during the merge incase the default
-validate was not used.
+Called in preparation for print after failed prepare, info_complete,
+or finalize.  Should contain a hash of any errors that occured.  Will
+be merged into hash_form before the pass to print.  Eash error that
+occured will be passed to method format_error before being added to
+the hash.  If an error has occurred, the default validate will
+automatically add {has_errors =>1}.  To the error hash at the time of
+validation.  has_errors will also be added during the merge incase the
+default validate was not used.
 
 =item Hook C<-E<gt>hash_common>
 
@@ -1248,17 +1275,19 @@ database query.
 
 =item Hook C<-E<gt>post_step>
 
-Ran at the end of the step's loop if info_complete returned true.
-Allows for cleanup.  If a true value is returned, execution of
-navigate is returned and no more steps are processed.
+Ran at the end of the step's loop if prepare, info_complete, and
+finalize all returned true.  Allows for cleanup.  If a true value is
+returned, execution of navigate is returned and no more steps are
+processed.
 
 =item Method C<-E<gt>post_loop>
 
 Ran after all of the steps in the loop have been processed (if
-info_complete was true for each of the steps).  If it returns a true
-value the navigation loop will be aborted.  If it does not return
-true, navigation continues by then running $self->navigate({path =>
-[$self->default_step]}) to fall back to the default step.
+prepare, info_complete, and finalize were true for each of the steps).
+If it returns a true value the navigation loop will be aborted.  If it
+does not return true, navigation continues by then running
+$self->navigate({path => [$self->default_step]}) to fall back to the
+default step.
 
 =item Method C<-E<gt>stash>
 
