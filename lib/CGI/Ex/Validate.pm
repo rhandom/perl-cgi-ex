@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.20 $ )[1];
+$VERSION = (qw$Revision: 1.21 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -458,6 +458,7 @@ sub validate_buddy {
     my $test  = 0;
     if ($comp =~ /^\s*(>|<|[><!=]=)\s*([\d\.\-]+)\s*$/) {
       $value = 0 if ! $value;
+      $value *= 1;
       if    ($1 eq '>' ) { $test = ($value >  $2) }
       elsif ($1 eq '<' ) { $test = ($value <  $2) }
       elsif ($1 eq '>=') { $test = ($value >= $2) }
@@ -466,13 +467,15 @@ sub validate_buddy {
       elsif ($1 eq '==') { $test = ($value == $2) }
 
     } elsif ($comp =~ /^\s*(eq|ne|gt|ge|lt|le)\s+(.+?)\s*$/) {
-      $value = '' if ! $value && ! length $value;
-      if    ($1 eq 'gt') { $test = ($value gt $2) }
-      elsif ($1 eq 'lt') { $test = ($value lt $2) }
-      elsif ($1 eq 'ge') { $test = ($value ge $2) }
-      elsif ($1 eq 'le') { $test = ($value le $2) }
-      elsif ($1 eq 'ne') { $test = ($value ne $2) }
-      elsif ($1 eq 'eq') { $test = ($value eq $2) }
+      $value = '' if ! defined($value);
+      my ($op, $value2) = ($1, $2);
+      $value2 =~ s/^([\"\'])(.*)\1$/$2/;
+      if    ($op eq 'gt') { $test = ($value gt $value2) }
+      elsif ($op eq 'lt') { $test = ($value lt $value2) }
+      elsif ($op eq 'ge') { $test = ($value ge $value2) }
+      elsif ($op eq 'le') { $test = ($value le $value2) }
+      elsif ($op eq 'ne') { $test = ($value ne $value2) }
+      elsif ($op eq 'eq') { $test = ($value eq $value2) }
 
     } else {
       die "Not sure how to compare \"$comp\"";
@@ -833,7 +836,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.20 2003-11-12 23:09:41 pauls Exp $
+$Id: Validate.pm,v 1.21 2003-11-12 23:39:31 pauls Exp $
 
 =head1 SYNOPSIS
 
