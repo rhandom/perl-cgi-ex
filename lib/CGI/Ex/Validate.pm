@@ -15,9 +15,7 @@ use vars qw($VERSION
             @DEFAULT_EXT %EXT_HANDLERS
             %DEFAULT_OPTIONS);
 
-use Data::DumpEx;
-
-$VERSION = '0.91';
+$VERSION = '0.92';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -92,7 +90,6 @@ sub validate {
       if (my $order = $group_val->{'group order'} || \@order) {
         die "Validation 'group order' must be an arrayref" if ! UNIVERSAL::isa($order,'ARRAY');
         foreach my $field (@$order) {
-          dex_warn $group_val;
           my $field_val = exists($group_val->{$field}) ? $group_val->{$field}
             : ($field eq 'OR') ? 'OR' : die "No element found in group for $field";
           if (ref $field_val && ! $field_val->{'field'}) {
@@ -302,8 +299,9 @@ sub validate_buddy {
     }
   }
   if ($is_required && (! defined($form->{$field}) || ! length($form->{$field}))) {
+    return 1 if ! wantarray;
     $self->add_error(\@errors, $field, $is_required, $field_val, $ifs_match);
-    return wantarray ? @errors : scalar @errors;
+    return @errors;
   }
 
   ### min values check
@@ -312,8 +310,9 @@ sub validate_buddy {
     my $val = exists($form->{$field}) ? $form->{$field} : [];
     my $m   = UNIVERSAL::isa($val, 'ARRAY') ? $#$val + 1 : 1;
     if ($m < $n) {
+      return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-      return wantarray ? @errors : scalar @errors;
+      return @errors;
     }
   }
 
@@ -328,8 +327,9 @@ sub validate_buddy {
     my $val = exists($form->{$field}) ? $form->{$field} : [];
     my $m   = (UNIVERSAL::isa($val, 'ARRAY')) ? $#$val + 1 : 1;
     if ($m > $n) {
+      return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-      return wantarray ? @errors : scalar @errors;
+      return @errors;
     }
   }
   
@@ -339,6 +339,7 @@ sub validate_buddy {
     my $value = $form->{$field};
     $value = '' if ! defined $value;
     if (! grep {$_ eq $value} @$ref) {
+      return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
@@ -360,6 +361,7 @@ sub validate_buddy {
       $success = 1; # occurs if they are both undefined
     }
     if (! $success) {
+      return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
@@ -368,6 +370,7 @@ sub validate_buddy {
   foreach my $type ($self->filter_type('min_len',$types)) {
     my $n = $field_val->{$type};
     if (! exists($form->{$field}) || ! defined($form->{$field}) || length($form->{$field}) < $n) {
+      return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
@@ -376,6 +379,7 @@ sub validate_buddy {
   foreach my $type ($self->filter_type('max_len',$types)) {
     my $n = $field_val->{$type};
     if (exists($form->{$field}) && defined($form->{$field}) && length($form->{$field}) > $n) {
+      return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
@@ -402,6 +406,7 @@ sub validate_buddy {
         if ( (     $not && (  defined($form->{$field}) && $form->{$field} =~ m/(?$opt:$pat)/))
              || (! $not && (! defined($form->{$field}) || $form->{$field} !~ m/(?$opt:$pat)/))
              ) {
+          return 1 if ! wantarray;
           $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
         }
       }
@@ -438,6 +443,7 @@ sub validate_buddy {
       die "Not sure how to compare \"$comp\"";
     }
     if (! $test) {
+      return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
@@ -457,6 +463,7 @@ sub validate_buddy {
     $field_val->{"${type}_error_if"} = 1 if ! defined $field_val->{"${type}_error_if"};
     if ( (! $return && $field_val->{"${type}_error_if"})
          || ($return && ! $field_val->{"${type}_error_if"}) ) {
+      return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
@@ -466,12 +473,14 @@ sub validate_buddy {
     my $value = $field_val->{$type};
     $value = &$value($field, $form->{$field}, $field_val, $type) if UNIVERSAL::isa($value, 'CODE');
     next if $value;
+    return 1 if ! wantarray;
     $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
   }
 
   ### do specific type checks
   foreach my $type ($self->filter_type('type',$types)) {
     if (! $self->check_type($form->{$field},$field_val->{'type'},$field,$form)){
+      return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }            
@@ -882,7 +891,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.29 2003-11-14 06:25:38 pauls Exp $
+$Id: Validate.pm,v 1.30 2003-11-14 18:42:05 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1494,6 +1503,9 @@ items will not be used.  This is so that a failed section can have
 its own settings.  Note though that the first option found will be
 used and that items set in $self override those set in the validation
 hash.
+
+Options may also be set globally before calling validate by
+populating the %DEFAULT_OPTIONS global hash.
 
 =over 4
 
