@@ -15,6 +15,9 @@ my $obj = CGI::Ex::Conf->new({
   paths => ["$dir/conf_path_1", "$dir/conf_path_3"],
 });
 
+### most test for the reading of files
+### are actually performed in the validation tests
+
 ok($obj);
 
 my $hash = $obj->read('apples.pl');
@@ -38,8 +41,7 @@ ok($hash);
 ok($hash->{quantity} == 30);
 ok($hash->{foo} eq 'file2');
 
-local $CGI::Ex::Conf::DIRECTIVE = 'MERGE';
-$hash = $obj->read('apples.pl');
+$hash = $obj->read('apples.pl', {directive => 'MERGE'});
 ok($hash);
 ok($hash->{quantity} == 30);
 ok($hash->{foo} eq 'file1'); # has immutable value
