@@ -30,15 +30,11 @@ sub set_deparse {
 
 BEGIN {
   ### setup the Data::Dumper usage
-  {
-    package Data::Dumper;
-    no strict;
-    $Sortkeys  = 1    if ! defined $Sortkeys; # not available 5.6 or earlier
-    $Useqq     = 1    if ! defined $Useqq;
-    $Quotekeys = 0    if ! defined $Quotekeys;
-    $Pad       = '  ' if ! defined $Pad;
-    #$Deparse   = 1    if ! defined $Deparse; # very useful
-  }
+  $Data::Dumper::Sortkeys  = 1    if ! defined $Data::Dumper::Sortkeys; # not avail pre 5.8
+  $Data::Dumper::Useqq     = 1    if ! defined $Data::Dumper::Useqq;
+  $Data::Dumper::Quotekeys = 0    if ! defined $Data::Dumper::Quotekeys;
+  $Data::Dumper::Pad       = '  ' if ! defined $Data::Dumper::Pad;
+  #$Data::Dumper::Deparse   = 1    if ! defined $Data::Dumper::Deparse; # very useful
   $SUB = sub {
     require Data::Dumper;
     return Data::Dumper->Dumpperl(\@_);
