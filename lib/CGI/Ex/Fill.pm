@@ -4,7 +4,7 @@ package CGI::Ex::Fill;
 
 ###----------------------------------------------------------------###
 #  Copyright 2003 - Paul Seamons                                     #
-#  Distributed under the GNU General Public License without warranty #
+#  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
 ### See perldoc at bottom

@@ -4,7 +4,7 @@ package CGI::Ex;
 
 ###----------------------------------------------------------------###
 #  Copyright 2003 - Paul Seamons                                     #
-#  Distributed under the GNU General Public License without warranty #
+#  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
 ### See perldoc at bottom
@@ -23,7 +23,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 use Data::DumpEx;
 
-$VERSION               = '1.0';
+$VERSION               = '0.90';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
 $PREFERRED_VAL_MODULE  ||= '';
@@ -190,21 +190,6 @@ sub set_cookie {
 ### form filler that will use either HTML::FillInForm, CGI::Ex::Fill
 ### or another specified filler.  Argument style is similar to
 ### HTML::FillInForm.
-# $object->fill({text => \$text, form    => \%hash});
-# $object->fill({text => \$text, fdat    => \%hash});
-# $object->fill({text => \$text, fobject => $cgiobject});
-# $object->fill({text => \$text, form    => [\%hash1, $cgiobject]});
-# $object->fill({text => \$text); # uses $self->object as the form
-# $object->fill({text          => \$text,
-#                form          => \%hash,
-#                target        => 'formname',
-#                fill_password => 0,
-#                ignore_fields => ['one','two']});
-# $object->fill(\$text); # uses $self->object as the form
-# $object->fill(\$text, \%hash, 'formname', 0, ['one','two']);
-# my $copy = $object->fill({scalarref => \$text,    fdat => \%hash});
-# my $copy = $object->fill({arrayref  => \@lines,   fdat => \%hash});
-# my $copy = $object->fill({file      => $filename, fdat => \%hash});
 sub fill {
   my $self = shift;
   my $args = shift;
@@ -299,7 +284,10 @@ sub validate {
   if ($@) {
     die "Couldn't require CGI::Ex::Validate: $@";
   }
-  return CGI::Ex::Validate->new->validate($form, $file);
+
+  my $args = {};
+  $args->{raise_error} = 1 if $self->{raise_error};
+  return CGI::Ex::Validate->new($args)->validate($form, $file);
 }
 
 ###----------------------------------------------------------------###
@@ -316,26 +304,66 @@ CGI::Ex - Yet Another Form Utility
 
   ### CGI Module Extensions
 
+  my $cgix = CGI::Ex->new;
+  my $hashref = $cgix->get_form; # uses CGI by default
+  
+  $cgix->content_type;
+
+  my $err_obj = $cgix->validate($hashref, $pathtovalidation);
+  if ($err_obj) {
+    my $errors = $err_obj->as_hash;
+    my $content = "Some content";
+    $cgix->fill({text => \$content, form => $hashref});
+    print $content;
+  }
+
+  print "Success\n";
+
   ### Filling functionality
 
-  $object->fill({text => \$text, form    => \%hash});
-  $object->fill({text => \$text, fdat    => \%hash});
-  $object->fill({text => \$text, fobject => $cgiobject});
-  $object->fill({text => \$text, form    => [\%hash1, $cgiobject]});
-  $object->fill({text => \$text); # uses $self->object as the form
-  $object->fill({text          => \$text,
+  $cgix->fill({text => \$text, form    => \%hash});
+  $cgix->fill({text => \$text, fdat    => \%hash});
+  $cgix->fill({text => \$text, fobject => $cgiobject});
+  $cgix->fill({text => \$text, form    => [\%hash1, $cgiobject]});
+  $cgix->fill({text => \$text); # uses $self->object as the form
+  $cgix->fill({text          => \$text,
                  form          => \%hash,
                  target        => 'formname',
                  fill_password => 0,
                  ignore_fields => ['one','two']});
-  $object->fill(\$text); # uses $self->object as the form
-  $object->fill(\$text, \%hash, 'formname', 0, ['one','two']);
-  my $copy = $object->fill({scalarref => \$text,    fdat => \%hash});
-  my $copy = $object->fill({arrayref  => \@lines,   fdat => \%hash});
-  my $copy = $object->fill({file      => $filename, fdat => \%hash});
+  $cgix->fill(\$text); # uses $self->object as the form
+  $cgix->fill(\$text, \%hash, 'formname', 0, ['one','two']);
+  my $copy = $cgix->fill({scalarref => \$text,    fdat => \%hash});
+  my $copy = $cgix->fill({arrayref  => \@lines,   fdat => \%hash});
+  my $copy = $cgix->fill({file      => $filename, fdat => \%hash});
 
   ### Validation functionality
-  
+
+  my $err_obj = $cgix->validate($form, $val_hash);
+  my $err_obj = $cgix->validate($form, $path_to_validation);
+  my $err_obj = $cgix->validate($form, $yaml_string);
+
+  ### get errors separated by key name
+  ### useful for inline errors
+  my $hash = $err_obj->as_hash;
+  my %hash = $err_obj->as_hash;
+
+  ### get aggregate list of errors
+  ### useful for central error description
+  my $array = $err_obj->as_array;
+  my @array = $err_obj->as_array;
+
+  ### get a string
+  ### useful for central error description
+  my $string = $err_obj->as_string;
+  my $string = "$err_obj";
+
+  $cgix->{raise_error} = 1;
+  $cgix->validate($form, $val_hash);
+    # SAME AS #
+  my $err_obj = $cgix->validate($form, $val_hash);
+  die $err_obj if $err_obj;
+ 
 
 =head1 DESCRIPTION
 
@@ -355,8 +383,9 @@ html document (it doesn't deal at all with how you got the document).
 Arguments may be given as a hash, or a hashref or positional.  Some
 of the following arguments will only work using CGI::Ex::Fill - most
 will work with either CGI::Ex::Fill or HTML::FillInForm (assume they
-are available unless specified otherwise).  The arguments are as
-follows (and in order of posistion):
+are available unless specified otherwise).  (See L<CGI::Ex::Fill> for
+a full explanation of functionality).  The arguments to fill are as
+follows (and in order of position):
 
 =over 4
 
@@ -443,17 +472,65 @@ $PREFERRED_CGI_MODULE which defaults to B<CGI>.
 
 =item C<-E<gt>validate>
 
+Validate has a wide range of options available. (See L<CGI::Ex::Validate>
+for a full explanation of functionality).  Validate has two arguments:
+
+=over 4
+
+=item C<form>
+
+Can be either a hashref to be validated, or a CGI style object (which
+has the param method).
+
+=item C<val_hash>
+
+The val_hash can be one of three items.  First, it can be a straight
+perl hashref containing the validation to be done.  Second, it can
+be a YAML document string.  Third, it can be the path to a file
+containing the validation.  The validation in a validation file will
+be read in depending upon file extension.
+
+=back
+
+=item C<-E<gt>get_form>
+
+Very similar to CGI->new->Val except that arrays are returned as
+arrays.  Not sure why CGI::Val didn't do this anyway.
+
+=item C<-E<gt>get_cookies>
+
+Returns a hash of all cookies.
+
+=item C<-E<gt>content_type>
+
+Can be called multiple times during the same session.  Will only
+print content-type once.  (Useful if you don't know if something
+else already printed content-type).
+
+=item C<-E<gt>set_cookie>
+
+Arguments are the same as those to CGI->new->cookie({}).
+Uses CGI's cookie method to create a cookie, but then, depending on
+if content has already been sent to the browser will either print
+a Set-cookie header, or will add a <meta http-equiv='set-cookie'>
+tag (this is supported on most major browsers).  This is useful if
+you don't know if something else already printed content-type.
+
+=item C<-E<gt>location_bounce>
+
+Depending on if content has already been sent to the browser will either print
+a Location header, or will add a <meta http-equiv='refresh'>
+tag (this is supported on all major browsers).  This is useful if
+you don't know if something else already printed content-type.
+
 =back
 
 =head1 EXISTING MODULES FOR VALIDATION
 
 The following is a list of existing validator and formfiller modules
 at the time of this writing (I'm sure this probably isn't exaustive).
-Inheritable
-Separate direcotry
-Global hash
-function
-add new directory
+Desirable qualities - Inheritable, Separate directory for plugins, Global
+hash (for new types), add new directory.
 
 =over 4
 
@@ -496,9 +573,27 @@ why we are based off of it).
 
 Con - Your html is in your cgi - not good at all.  Even for one-off's it is better to use a form filler.
 
+=head1 TODO
+
+Add an integrated debug module.
+
+Finish JavaScript validation.
+
+Allow for eash plugin framework to Validate.
+
+=head1 MODULES
+
+See also L<CGI::Ex::Fill>.
+
+See also L<CGI::Ex::Validate>.
+
 =head1 AUTHOR
 
 Paul Seamons
+
+=head1 LICENSE
+
+This module may be distributed under the same terms as Perl itself.
 
 =cut
 
