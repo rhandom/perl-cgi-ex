@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.16 $ )[1];
+$VERSION = (qw$Revision: 1.17 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -410,7 +410,7 @@ sub validate_buddy {
   ### length min check
   foreach my $type ($self->filter_type('min_len',$types)) {
     my $n = $field_val->{$type};
-    if (exists($form->{$field}) && defined($form->{$field}) && length($form->{$field}) < $n) {
+    if (! exists($form->{$field}) || defined($form->{$field}) || length($form->{$field}) < $n) {
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
@@ -827,7 +827,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.16 2003-11-12 22:43:07 pauls Exp $
+$Id: Validate.pm,v 1.17 2003-11-12 22:47:43 pauls Exp $
 
 =head1 SYNOPSIS
 
