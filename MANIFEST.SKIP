@@ -5,7 +5,8 @@ CVS/
 \w#$
 \.bak$
 Makefile$
-Makefile.old$
+Makefile\.old$
 blib
 \.gz$
 .cvsignore
+tmon\.out
