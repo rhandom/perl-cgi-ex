@@ -1425,7 +1425,7 @@ Arguments are a hook name, a pathstep name, and an optional code sub
 or default value (default value will be turned to a sub) (code sub
 will be called as method of $self).
 
-  my $code = $self->hook('main', 'info_complete', sub {return 0});
+  my $code = $self->hook('info_complete', 'main', sub {return 0});
   ### will look first for $self->main_info_complete;
   ### will then look  for $self->info_complete;
   ### will then run       $self->$default_passed_sub; # sub {return 0}
