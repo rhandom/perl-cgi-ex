@@ -10,7 +10,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.3 $ )[1];
+$VERSION = (qw$Revision: 1.4 $ )[1];
 
 ### what is allowed in a field name
 #$QR_FIELD_NAME = qr/[\w!\@\#\$%\^&*()\-+=:;\'\",.?]+/;
@@ -116,7 +116,8 @@ sub check_conditional {
   $N_level ++; # prevent too many recursive checks
 
   ### can pass a single hash - or an array ref of hashes
-  if ($ifs || ! ref($ifs)) {
+  if (! $ifs || ! ref($ifs)) {
+    dex dtrace;
     die "Need reference passed to check_conditional";
   } elsif (UNIVERSAL::isa($ifs,'HASH')) {
     $ifs = [$ifs];
@@ -133,7 +134,10 @@ sub check_conditional {
       next;
     }
     last if ! $found;
-    die "Missing field key during validate_if" if ! $ref->{'field'};
+    if (! $ref->{'field'}) {
+
+      die "Missing field key during validate_if";
+    }
     my @err = $self->validate_buddy($form, $ref->{'field'}, $ref, $group, $N_level);
     $found = 0 if scalar @err;
   }
@@ -184,7 +188,7 @@ sub validate {
   GROUP: foreach my $group (@$group_order) {
     die "Validation groups must be a hashref" if ! UNIVERSAL::isa($group,'HASH');
     my $title       = $group->{'group title'} || '';
-    my $validate_if = $group->{'group validate_if'} || {};
+    my $validate_if = $group->{'group validate_if'};
     my $fields      = $group->{'group fields'};
     my $defaults    = $group->{'group defaults'} || {};
     my $optional    = $group->{'group optional'};
@@ -256,7 +260,7 @@ sub validate {
         $hold_error = undef;
       }
     }
-
+    dex \@ERROR;
   }
 
   return (! $return ? undef : $errors);
@@ -956,7 +960,7 @@ __END__
 
 O::Form - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.3 2003-11-11 22:40:28 pauls Exp $
+$Id: Validate.pm,v 1.4 2003-11-11 22:54:32 pauls Exp $
 
 =head1 SYNOPSIS
 
