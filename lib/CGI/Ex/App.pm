@@ -11,7 +11,8 @@ package CGI::Ex::App;
 
 
 use strict;
-use vars qw($EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS $BASE_NAME_MODULE);
+use vars qw($EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS $BASE_NAME_MODULE
+            %CLEANUP_EXCLUDE);
 
 use CGI::Ex::Dump qw(debug);
 
@@ -33,6 +34,14 @@ BEGIN {
   #  require Template;
   #  require CGI::Ex::Validate;
   #}
+
+  ### list of modules to exclude during cleanup
+  ### this takes care of situations such as
+  ### template toolkits rules area which contains
+  ### a nested structure of rules - which are somehow
+  ### referenced in other places
+  $CLEANUP_EXCLUDE{'Template::Parser'} = 1;
+
 }
 
 
@@ -377,6 +386,7 @@ sub cleanup_cross_references {
   my $seen  = shift || {};
   return if $seen->{$self}; # prevent recursive checking
   $seen->{$self} = 1;
+  return if $CLEANUP_EXCLUDE{ ref($self) };
   if (UNIVERSAL::isa($self, 'HASH')) {
     require Scalar::Util; # first self will always be hash
     foreach my $key (keys %$self) {
@@ -1233,9 +1243,14 @@ Used to destroy links in nested structures.  Will spider through the
 data structure of the passed object and remove any blessed objects
 that are no weakly referenced.  This means if you have a reference to
 an object in a global cache, that object should have its reference
-weakened in the global cache.  Requires Scalar::Util to function.
-Use of this function is highly recommended in mod_perl environments to
-make sure that there are no dangling objects in memory.
+weakened in the global cache.  Requires Scalar::Util to function.  Use
+of this function is highly recommended in mod_perl environments to
+make sure that there are no dangling objects in memory.  There are
+some global caches that can't be fixed (such as Template::Parser's
+reference to Template::Grammar in the Template::Toolkit).  For these
+situations there is a %CLEANUP_EXCLUDE hash that contains the names of
+Object types to exclude from the cleanup process.  Add any such global
+hashes (or objects with references to the global hashes) there.
 
 =back
 
