@@ -287,6 +287,15 @@ sub fill {
 
 }
 
+###----------------------------------------------------------------###
+
+sub validate {
+  my $self = shift;
+  my ($form, $file) = (@_ == 2) ? (shift, shift) : ($self->object, shift);
+
+  require CGI::Ex::Validate;
+  return CGI::Ex::Validate->new({raise_error => 1})->validate($form, $file);
+}
 
 ###----------------------------------------------------------------###
 
