@@ -555,6 +555,7 @@ sub add_property {
 sub js_validation {
   my $self = shift;
   my $step = shift;
+  return '' if $self->ext_val eq 'htm'; # let htm validation do it itself
 
   my $form_name = $self->run_hook($step, 'form_name');
   my $hash_val  = $self->run_hook($step, 'hash_validation', {});
@@ -1307,7 +1308,9 @@ the hook hash_validation which will then be encoded into yaml and
 placed in a javascript string.  It will also call the hook form_name
 to determine which html form to attach the validation to.  The method
 js_uri_path is called to determine the path to the appropriate
-yaml_load.js and validate.js files.
+yaml_load.js and validate.js files.  If the method ext_val is htm,
+then js_validation will return an empty string as it assumes the htm
+file will take care of the validation itself.
 
 =item Hook C<-E<gt>form_name>
 
