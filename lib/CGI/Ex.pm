@@ -24,7 +24,7 @@ use vars qw($VERSION
             );
 use base qw(Exporter);
 
-$VERSION               = '0.98';
+$VERSION               = '0.99';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
 $PREFERRED_VAL_MODULE  ||= '';
@@ -876,9 +876,10 @@ for basic template toolkit variable swapping.  There are two arguments.
 First is a string or a reference to a string.  If a string is passed,
 a copy of that string is swapped and returned.  If a reference to a
 string is passed, it is modified in place.  The second argument is
-a form, or a CGI object, or a cgiex object, or a coderef.  If it is a
-coderef, it should accept key as its only argument and return the
-proper value.
+a form, or a CGI object, or a cgiex object, or a coderef (if the second
+argument is missing, the cgiex object which called the method will be
+used).  If it is a coderef, it should accept key as its only argument and
+return the proper value.
 
   my $cgix = CGI::Ex->new;
   my $form = {foo  => 'bar',
