@@ -1029,7 +1029,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.55 2004-03-19 20:51:53 pauls Exp $
+$Id: Validate.pm,v 1.56 2004-03-19 21:45:21 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1666,8 +1666,8 @@ postpended onto the error string.
     as_array_prefix  => '  - ',
     as_array_title   => 'Something went wrong:',
     as_string_join   => '<br />',
-    as_string_header => '<span class="error">'
-    as_string_footer => '</span>'
+    as_string_header => '<span class="error">',
+    as_string_footer => '</span>',
   });
   # $string looks like
   # '<span class="error">Something went wrong:<br />  - error1<br />  - error2</span>'
