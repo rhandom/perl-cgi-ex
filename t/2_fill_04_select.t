@@ -105,7 +105,7 @@ $hidden_form_in = qq{<select name="foo1"><option><option value="bar1"></select>}
 $fif = new CGI::Ex;
 $output = $fif->fill(scalarref => \$hidden_form_in,
                        fobject => $q);
-if ($output =~ m!^<select name="foo1"><option><option( selected| value="bar1"){2}></select>$!){
+if ($output =~ m!^<select name="foo1"><option><option( selected(="selected")?| value="bar1"){2}></select>$!){
        print "ok 5\n";
 } else {
        print "Got unexpected output for empty option:\n$output\n";
