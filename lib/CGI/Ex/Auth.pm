@@ -76,6 +76,11 @@ sub require_auth {
       my $str   = encode_base64(join(":", delete($form->{$key_u}), delete($form->{$key_p})), "");
       my $key_s = $self->key_save;
       $self->set_cookie($str, delete($form->{$key_s}));
+      #return $self->success($user); # assume that cookies will work - if not next page will cause login
+      #### this may actually be the nicer thing to do in the common case - except for the nasty looking
+      #### url - all things considered - should really get location boucing to work properly while being
+      #### able to set a cookie at the same time
+
       if ($has_cookies) {
         return $self->success($user); # assuming if they have cookies - the one we set will work
       } else {
@@ -402,7 +407,7 @@ sub hook_get_pass_by_user {
   if ($meth = $self->{hook_get_pass_by_user}) {
     return $self->$meth($user, $host);
   }
-  die "get_pass_by_user is a virtual method - please override - or use set_hook_get_pass_by_user";
+  die "hook_get_pass_by_user is a virtual method - please override - or use set_hook_get_pass_by_user";
 }
 
 ###----------------------------------------------------------------###
