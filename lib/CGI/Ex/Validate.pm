@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.13 $ )[1];
+$VERSION = (qw$Revision: 1.14 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -94,7 +94,7 @@ sub validate {
               : __PACKAGE__->new;                           # &validate
   my $form = shift || die "Missing form hash";
   my $val  = shift || die "Missing validation hash";
-  
+
   ### turn the form into a form if it is really a CGI object
   if (! ref($form)) {
     die "Invalid form hash or cgi object";
@@ -281,7 +281,9 @@ sub validate_buddy {
   my $types  = [sort keys %$field_val];
 
   ### allow for not running some tests in the cgi
-  return @errors if scalar $self->filter_type('exclude_cgi',$types);
+  if (scalar $self->filter_type('exclude_cgi',$types)) {
+    return wantarray ? @errors : scalar @errors;
+  }
 
   ### allow for field names that contain regular expressions
   if ($field =~ m|^(!?)m(\W)(.*)\2([eigsmx]*)$|s) {
@@ -321,8 +323,9 @@ sub validate_buddy {
     my $ret = $self->check_conditional($form, $ifs, $N_level, $ifs_match);
     $needs_val ++ if $ret;
   }
-  return 0 if ! $needs_val && $n_vif;
-
+  if (! $needs_val && $n_vif) {
+    return wantarray ? @errors : scalar @errors;
+  }
   
   ### check for simple existence
   ### optionally check only if another condition is met
@@ -344,7 +347,7 @@ sub validate_buddy {
   if ($is_required && (! defined($form->{$field}) || ! length($form->{$field}))) {
 #    dex $field_val,$field, $field;
     $self->add_error(\@errors, $field, $is_required, $field_val, $ifs_match);
-    return @errors;
+    return wantarray ? @errors : scalar @errors;
   }
 
   ### min values check
@@ -354,7 +357,7 @@ sub validate_buddy {
     my $m   = UNIVERSAL::isa($val, 'ARRAY') ? $#$val + 1 : 1;
     if ($m < $n) {
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-      return;
+      return wantarray ? @errors : scalar @errors;
     }
   }
 
@@ -370,7 +373,7 @@ sub validate_buddy {
     my $m   = (UNIVERSAL::isa($val, 'ARRAY')) ? $#$val + 1 : 1;
     if ($m > $n) {
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-      return;
+      return wantarray ? @errors : scalar @errors;
     }
   }
   
@@ -826,7 +829,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.13 2003-11-12 21:36:37 pauls Exp $
+$Id: Validate.pm,v 1.14 2003-11-12 21:52:17 pauls Exp $
 
 =head1 SYNOPSIS
 
