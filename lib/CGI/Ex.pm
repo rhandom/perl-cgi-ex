@@ -120,6 +120,11 @@ sub make_form {
 
 ###----------------------------------------------------------------###
 
+sub print_content_type {
+  &content_type;
+}
+
+### will send the Content-type header
 sub content_type {
   my $self = ref($_[0]) ? shift : undef;
   my $type = shift || 'text/html';
@@ -455,6 +460,7 @@ CGI::Ex - Yet Another Form Utility
   my $cgix = CGI::Ex->new;
   my $hashref = $cgix->get_form; # uses CGI by default
   
+  ### send the Content-type header - whether or not we are mod_perl
   $cgix->content_type;
 
   my $val_hash = $cgix->conf_read($pathtovalidation);
@@ -704,7 +710,9 @@ query_string.
 
 Can be called multiple times during the same session.  Will only
 print content-type once.  (Useful if you don't know if something
-else already printed content-type).
+else already printed content-type).  Calling this sends the Content-type
+header.  Trying to print -E<gt>content_type is an error.  For clarity,
+the method -E<gt>print_content_type is available.
 
 =item C<-E<gt>set_cookie>
 
@@ -790,6 +798,8 @@ See also L<CGI::Ex::Fill>.
 See also L<CGI::Ex::Validate>.
 
 See also L<CGI::Ex::Conf>.
+
+See also L<CGI::Ex::Die>.
 
 See also L<CGI::Ex::App>.
 
