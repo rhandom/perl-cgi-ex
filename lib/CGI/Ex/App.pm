@@ -126,7 +126,7 @@ sub navigate {
     $self->post_loop($path);
 
     ### run the main step as a last resort
-    $self->navigate({path => ['main']});
+    return $self->navigate({path => ['main']});
 
   }; # end of eval
 
@@ -236,6 +236,7 @@ sub unmorph {}
 
 sub cgix {
   return shift()->{cgix} ||= do {
+    require CGI::Ex;
     CGI::Ex->new(); # return of the do
   };
 }
