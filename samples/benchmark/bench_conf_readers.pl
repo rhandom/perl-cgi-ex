@@ -1,15 +1,21 @@
 #!/usr/bin/perl -w
 
+use strict;
+use vars qw($PLACEHOLDER);
+use Benchmark qw(cmpthese);
+use CGI::Ex::Conf;
+use POSIX qw(tmpnam);
+
+$PLACEHOLDER = chr(186).'~'.chr(186);
+
+my $n = 3000;
+
+my $cob   = CGI::Ex::Conf->new;
+my %files = ();
+
+###----------------------------------------------------------------###
+
 # [pauls@localhost lib]$ perl ../t/samples/bench_conf_readers.pl
-# g_conf => /tmp/fileqBaJ1E.g_conf
-# ini => /tmp/fileuLkfJ1.ini
-# pl => /tmp/fileSubm3q.pl
-# sto => /tmp/fileCaIv2S.sto
-# sto2 => /tmp/fileq55w36.sto2
-# xml => /tmp/filemO8S2f.xml
-# yaml => /tmp/filegBGRal.yaml
-# yaml2 => /tmp/fileuvSUiz.yaml2
-# yaml3 => /tmp/fileGKhErN.yaml
 # Benchmark: timing 3000 iterations of g_conf, ini, pl, sto, sto2, xml, yaml, yaml2, yaml3...
 #  g_conf:  4 wallclock secs ( 3.88 usr +  0.08 sys =  3.96 CPU) @ 757.58/s (n=3000)
 #  ini: 10 wallclock secs ( 9.97 usr +  0.10 sys = 10.07 CPU) @ 297.91/s (n=3000)
@@ -31,19 +37,6 @@
 # sto2   3571/s  4971%  4908%  4131%  1099%   371%   227%    70%     --   -38%
 # yaml3  5769/s  8092%  7990%  6735%  1837%   662%   429%   175%    62%     --
 
-use strict;
-use vars qw($PLACEHOLDER);
-use Benchmark qw(cmpthese);
-use CGI::Ex::Conf;
-use POSIX qw(tmpnam);
-
-$PLACEHOLDER = chr(186).'~'.chr(186);
-
-my $n = 3000;
-
-my $cob   = CGI::Ex::Conf->new;
-my %files = ();
-
 my $str = '{
   foo     => {key1 => "bar",   key2 => "ralph"},
   pass    => {key1 => "word",  key2 => "ralph"},
@@ -59,6 +52,36 @@ my $str = '{
   one7    => {key1 => "val7",  key2 => "ralph"},
   one8    => {key1 => "val8",  key2 => "ralph"},
 }';
+
+###----------------------------------------------------------------###
+
+#           Rate   yaml  yaml2    xml     pl g_conf    sto  yaml3   sto2
+# yaml     418/s     --    -4%   -56%   -91%   -92%   -93%   -97%   -98%
+# yaml2    436/s     4%     --   -54%   -91%   -92%   -93%   -96%   -98%
+# xml      949/s   127%   118%     --   -80%   -83%   -85%   -92%   -95%
+# pl      4762/s  1038%   992%   402%     --   -13%   -25%   -60%   -73%
+# g_conf  5455/s  1204%  1151%   475%    15%     --   -15%   -55%   -69%
+# sto     6383/s  1426%  1364%   572%    34%    17%     --   -47%   -64%
+# yaml3  12000/s  2768%  2652%  1164%   152%   120%    88%     --   -32%
+# sto2   17647/s  4118%  3947%  1759%   271%   224%   176%    47%     --
+
+$str = '{
+  foo     => "bar",
+  pass    => "word",
+  garbage => "can",
+  mighty  => "ducks",
+  quack   => "moo",
+  one1    => "val1",
+  one2    => "val2",
+  one3    => "val3",
+  one4    => "val4",
+  one5    => "val5",
+  one6    => "val6",
+  one7    => "val7",
+  one8    => "val8",
+}';
+
+###----------------------------------------------------------------###
 
 my $conf = eval $str;
 
