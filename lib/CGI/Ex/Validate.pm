@@ -21,7 +21,8 @@ $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
 $DEFAULT_EXT = 'val';
 
-%EXT_HANDLERS = ('conf'     => \&conf_handler_yaml,
+%EXT_HANDLERS = (''         => \&conf_handler_yaml,
+                 'conf'     => \&conf_handler_yaml,
                  'ini'      => \&conf_handler_ini,
                  'pl'       => \&conf_handler_pl,
                  'sto'      => \&conf_handler_storable,
@@ -685,7 +686,6 @@ sub get_validation {
   }
 
   ### now get the file
-  die "Missing validation file for $val (no extension found)" if ! $ext;
   my $handler = $EXT_HANDLERS{$ext} || die "Unknown file extension: $ext";
 
   return &$handler($val);
@@ -1032,7 +1032,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.41 2003-11-25 07:23:17 pauls Exp $
+$Id: Validate.pm,v 1.42 2003-11-25 07:26:33 pauls Exp $
 
 =head1 SYNOPSIS
 
