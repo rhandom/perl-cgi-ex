@@ -17,3 +17,17 @@ ok('wee' eq $cgix->swap_template("[% this.is.nested.1 %]", $form));
 my $str = "[% this.is.nested.0 %]";
 $cgix->swap_template(\$str, $form);
 ok('wow' eq $str);
+
+$cgix = CGI::Ex->new({form => {
+  foo => 'bar',
+  baz => 'wow',
+  this => 'wee',
+}});
+$str = "<html>([% foo %]) <br>
+([% baz %]) <br>
+([% this %]) </html>";
+$cgix->swap_template(\$str);
+print $str;
+ok($str eq "<html>(bar) <br>
+(wow) <br>
+(wee) </html>");
