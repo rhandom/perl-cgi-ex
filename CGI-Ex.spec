@@ -23,7 +23,8 @@ CGI::Ex is a Perl module that offers an extended suite of
 functionality, over and above that offered by CGI, HTML::FillInForm,
 and the host of Validator scripts on CPAN.  CGI::Ex tries to use the
 best functions from existing modules and extend them with rich
-functionality.
+functionality.  Particularly of interest is CGI::Ex::App which
+provides extremely easy yet robust CGI developement.
 
 %prep
 %setup -q -n %{name}-%{version}
