@@ -792,7 +792,7 @@ sub get_validation_keys {
         next if ! ref($field_val) && $field_val eq 'OR';
         die "Field_val must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');
         my $key = $field_val->{'field'} || die "Missing field key in field_val hashref";
-        $keys{$key} = 1;
+        $keys{$key} = $field_val->{'name'} || 1;
       }
     } elsif ($group_val->{"group order"}) {
       die "Group order must be an arrayref" if ! UNIVERSAL::isa($group_val->{"group order"}, 'ARRAY');
@@ -801,14 +801,16 @@ sub get_validation_keys {
         next if ! $field_val && $key eq 'OR';
         die "Field_val for $key must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');
         $key = $field_val->{'field'} if $field_val->{'field'};
-        $keys{$key} = 1;
+        $keys{$key} = $field_val->{'name'} || 1;
       }
     }
 
     ### get all others
     foreach my $key (keys %$group_val) {
       next if $key =~ /^(general|group)\s/;
-      $keys{$key} = 1;
+      my $field_val = $group_val->{$key};
+      next if ! UNIVERSAL::isa($field_val, 'HASH');
+      $keys{$key} = $field_val->{'name'} || 1;
     }
   }
 
@@ -1117,7 +1119,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.78 2005-02-23 21:16:09 pauls Exp $
+$Id: Validate.pm,v 1.79 2005-02-23 21:28:11 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1236,6 +1238,8 @@ argument contains a form hash is passed, get_validation_keys will only
 return the keys of groups that were validated.
 
   my $key_hashref = $self->get_validation_keys($val_hash);
+
+The values of the hash are the names of the fields.
 
 =item C<validate>
 
