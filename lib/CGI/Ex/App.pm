@@ -789,22 +789,7 @@ sub ext_print {
 
 sub has_errors {
   my $self = shift;
-  return 1 if $self->{hash_errors} && scalar keys %{ $self->{hash_errors} };
-}
-
-sub add_errors {
-  my $self = shift;
-  my $args = ref($_[0]) ? shift : {@_};
-  $self->{hash_errors} ||= {};
-  foreach my $key (keys %$args) {
-    my $_key = ($key =~ /_error$/) ? $key : "${key}_error";
-    if ($self->{hash_errors}->{$_key}) {
-      $self->{hash_errors}->{$_key} .= '<br>' . $args->{$key};
-    } else {
-      $self->{hash_errors}->{$_key} = $args->{$key};
-    }
-  }
-  $self->{hash_errors}->{has_errors} = 1;
+  return 1 if scalar keys %{ $self->hash_errors };
 }
 
 sub format_error {
@@ -991,6 +976,34 @@ sub hash_swap {
   return $self->{hash_swap} ||= {};
 }
 
+sub add_errors {
+  my $self = shift;
+  my $hash = $self->hash_errors;
+  my $args = ref($_[0]) ? shift : {@_};
+  foreach my $key (keys %$args) {
+    my $_key = ($key =~ /error$/) ? $key : "${key}_error";
+    if ($hash->{$_key}) {
+      $hash->{$_key} .= '<br>' . $args->{$key};
+    } else {
+      $hash->{$_key} = $args->{$key};
+    }
+  }
+  $hash->{'has_errors'} = 1;
+}
+
+sub add_to_errors { shift->add_errors(@_) }
+sub add_to_fill   { my $self = shift; $self->add_to_hash($self->hash_fill,   @_) }
+sub add_to_swap   { my $self = shift; $self->add_to_hash($self->hash_swap,   @_) }
+sub add_to_form   { my $self = shift; $self->add_to_hash($self->hash_form,   @_) }
+sub add_to_common { my $self = shift; $self->add_to_hash($self->hash_common, @_) }
+
+sub add_to_hash {
+  my ($self, $old, $new) = @_;
+  my $hash = $self->hash_fill;
+  $new = {$new, @_} if ! ref $new; # non-hashref
+  $old->{$_} = $new->{$_} foreach keys %$new;
+}
+
 ###----------------------------------------------------------------###
 
 sub forbidden_info_complete { 0 }
@@ -1081,13 +1094,16 @@ More examples will come with time.  Here are the basics for now.
     debug $self->form, "Do something useful with form here";
 
     ### add success step
+    $self->add_to_swap({success_msg => "We did something"});
     $self->append_path('success');
     $self->set_ready_validate(0);
     return 1;
   }
 
   sub success_file_print {
-    \ "<h1>Success Step</h1> All done";
+    \ "<h1>Success Step</h1> All done.<br>
+       ([% success_msg %])<br>
+       (foo = [% foo %])";
   }
 
   sub hash_common { # used to include js_validation
@@ -1672,19 +1688,21 @@ default "path" handler.
 Called in preparation for print after failed prepare, info_complete,
 or finalize.  Should contain a hash of any items needed to be swapped
 into the html during print.  Will be merged with hash_common, hash_form,
-and hash_errors.
+and hash_errors.  Can be populated by passing a hash to ->add_to_swap.
 
 =item Hook C<-E<gt>hash_form>
 
 Called in preparation for print after failed prepare, info_complete,
-or finalize.  Defaults to ->form.
+or finalize.  Defaults to ->form.  Can be populated by passing a hash
+to ->add_to_form.
 
 =item Hook C<-E<gt>hash_fill>
 
 Called in preparation for print after failed prepare, info_complete,
 or finalize.  Should contain a hash of any items needed to be filled
 into the html form during print.  Items from hash_form and hash_common
-will be layered on top during a print cycle.
+will be layered on top during a print cycle.  Can be populated by passing
+a hash to ->add_to_fill.
 
 =item Hook C<-E<gt>hash_errors>
 
@@ -1695,13 +1713,15 @@ occured will be passed to method format_error before being added to
 the hash.  If an error has occurred, the default validate will
 automatically add {has_errors =>1}.  To the error hash at the time of
 validation.  has_errors will also be added during the merge incase the
-default validate was not used.
+default validate was not used.  Can be populated by passing a hash to
+->add_to_errors or ->add_errors.
 
 =item Hook C<-E<gt>hash_common>
 
 A hash of common items to be merged with hash_form - such as pulldown
 menues.  It will now also be merged with hash_fill, so it can contain
-default fillins.  By default it is empty, but it would be wise to add the
+default fillins.  Can be populated by passing a hash to ->add_to_common.
+By default it is empty, but it would be wise to add the
 following to allow for js_validation (as needed):
 
   sub hash_common {
