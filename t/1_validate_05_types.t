@@ -157,14 +157,43 @@ $e = &validate({foo => "1234567890"}, $v);
 $e = &validate({foo => "12345678901"}, $v);
 &print_ok($e);
 
-#  ### length max check
-#  foreach my $type ($self->filter_type('max_len',$types)) {
-#    my $n = $field_val->{$type};
-#    if (exists($form->{$field}) && defined($form->{$field}) && length($form->{$field}) > $n) {
-#      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-#    }
-#  }
-#
+### match
+$v = {foo => {match => qr/^\w+$/}};
+$e = &validate({foo => "abc"}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => "abc."}, $v);
+&print_ok($e);
+
+$v = {foo => {match => [qr/^\w+$/, qr/^[a-z]+$/]}};
+$e = &validate({foo => "abc"}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => "abc1"}, $v);
+&print_ok($e);
+
+$v = {foo => {match => 'm/^\w+$/'}};
+$e = &validate({foo => "abc"}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => "abc."}, $v);
+&print_ok($e);
+
+$v = {foo => {match => 'm/^\w+$/ || m/^[a-z]+$/'}};
+$e = &validate({foo => "abc"}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => "abc1"}, $v);
+&print_ok($e);
+
+$v = {foo => {match => '! m/^\w+$/'}};
+$e = &validate({foo => "abc"}, $v);
+&print_ok($e);
+
+$e = &validate({foo => "abc."}, $v);
+&print_ok(! $e);
+
+
 #  ### now do match types
 #  foreach my $type ($self->filter_type('match',$types)) {
 #    my $ref = ref($field_val->{$type}) ? $field_val->{$type} : [split(/\s*\|\|\s*/,$field_val->{$type})];
