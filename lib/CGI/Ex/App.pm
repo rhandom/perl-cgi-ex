@@ -834,7 +834,7 @@ sub file_print {
 
   my $base_dir = $self->base_dir_rel;
   my $module   = $self->run_hook('name_module', $step);
-  my $_step    = $self->run_hook('name_step', $step, $step);
+  my $_step    = $self->run_hook('name_step', $step, $step) || die "Missing name_step";
   my $ext      = $self->ext_print;
 
   foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
@@ -849,7 +849,7 @@ sub file_val {
 
   my $base_dir = $self->base_dir_rel;
   my $module   = $self->run_hook('name_module', $step);
-  my $_step    = $self->run_hook('name_step', $step, $step);
+  my $_step    = $self->run_hook('name_step', $step, $step) || die "Missing name_step;
   my $ext      = $self->ext_val;
   my $abs      = $self->base_dir_abs;
 
