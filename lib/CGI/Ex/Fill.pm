@@ -21,7 +21,7 @@ use vars qw($VERSION
             );
 use Exporter;
 
-$VERSION   = '1.1';
+$VERSION   = '1.2';
 @ISA       = qw(Exporter);
 @EXPORT    = qw(form_fill);
 @EXPORT_OK = qw(form_fill html_escape get_tagval_by_key swap_tagval_by_key);
@@ -329,6 +329,7 @@ sub get_tagval_by_key {
   #  push @all, $val;
   #}
   $key = lc($key);
+  pos($tag) = 0; # fix for regex below not resetting and forcing order on key value pairs
   while ($$ref =~ m{
     (?<!\w|\.)
       (\S+)                     # 1 - the key
