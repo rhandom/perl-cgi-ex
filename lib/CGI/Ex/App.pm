@@ -144,12 +144,17 @@ sub navigate {
   return;
 }
 
+sub path_key {
+  return 'step';
+}
+
 ### determine the path to follow
 sub path {
   my $self = shift;
   return $self->{path} ||= do {
     my $form = $self->form;
-    my $step = $form->{step};
+    my $key  = $self->path_key;
+    my $step = $form->{$key};
     
     if (! $step && $ENV{PATH_INFO} && $ENV{PATH_INFO} =~ m|^/(\w+)|) {
       $step = lc($1);
