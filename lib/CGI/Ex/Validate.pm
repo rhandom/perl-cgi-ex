@@ -1,19 +1,22 @@
 package CGI::Ex::Validate;
 
 use strict;
-use vars qw($VERSION $QR_FIELD_NAME $DEFAULT_RAISE_ERROR $DEFAULT_EXT $EXT_HANDLERS);
 use overload '""' => \&stringify;
+use vars qw($VERSION
+            $QR_FIELD_NAME
+            $DEFAULT_RAISE_ERROR
+            @DEFAULT_EXT %EXT_CONFHANDLERS);
 
 use Data::DumpEx;
 
-$VERSION = (qw$Revision: 1.1 $ )[1];
+$VERSION = (qw$Revision: 1.2 $ )[1];
 
 ### what is allowed in a field name
-$QR_FIELD_NAME = qr/[\w!\@\#\$%\^&*()\-+=:,.?]+/;
+#$QR_FIELD_NAME = qr/[\w!\@\#\$%\^&*()\-+=:;\'\",.?]+/;
 
-$DEFAULT_EXT = 'val';
+@DEFAULT_EXT = ('val');
 
-%EXT_HANDLERS = ('val' => \&val_conf_handler
+%EXT_HANDLERS = ('val' => \&val_conf_handler,
                  );
 
 ###----------------------------------------------------------------###
@@ -952,7 +955,7 @@ __END__
 
 O::Form - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.1 2003-11-06 22:55:47 pauls Exp $
+$Id: Validate.pm,v 1.2 2003-11-06 23:05:57 pauls Exp $
 
 =head1 SYNOPSIS
 
