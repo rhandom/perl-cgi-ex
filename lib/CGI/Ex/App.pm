@@ -1180,7 +1180,10 @@ next step at any point during the nav_loop.  It effectively short circuits
 the remaining hooks for the current step.  It does increment the recursion
 counter (which has a limit of ->recurse_limit - default 10).  It is normally
 better to allow the other hooks in the loop to carry on their normal functions
-and avoid jumping.
+and avoid jumping.  (Essentially, this hook behaves like a goto method to
+bypass everything else and continue at a different location in the path - there
+are times when it is necessary or useful - but most of the time should be
+avoided)
 
 Jump takes a single argument which is the location in the path to jump to.
 The default value, 1, indicates that we should jump to the next step (the
