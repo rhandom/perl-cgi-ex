@@ -10,7 +10,8 @@ package CGI::Ex;
 ### See perldoc at bottom
 
 use strict;
-use vars qw($PREFERRED_FILL_MODULE
+use vars qw($VERSION
+            $PREFERRED_FILL_MODULE
             $PREFERRED_CGI_MODULE
             $OBJECT_METHOD
             $AUTOLOAD
@@ -18,9 +19,10 @@ use vars qw($PREFERRED_FILL_MODULE
 
 use Data::DumpEx;
 
+$VERSION               = '1.0';
 $PREFERRED_FILL_MODULE = '';
 $PREFERRED_CGI_MODULE  = 'CGI';
-$OBJECT_METHOD = 'param';
+$OBJECT_METHOD         = 'param';
 
 ###----------------------------------------------------------------###
 
@@ -58,9 +60,27 @@ sub AUTOLOAD {
 ### form filler that will use either HTML::FillInForm, CGI::Ex::Fill
 ### or another specified filler.  Argument style is similar to
 ### HTML::FillInForm.
+# $object->fill({text => \$text, form    => \%hash});
+# $object->fill({text => \$text, fdat    => \%hash});
+# $object->fill({text => \$text, fobject => $cgiobject});
+# $object->fill({text => \$text, form    => [\%hash1, $cgiobject]});
+# $object->fill({text => \$text); # uses $self->object as the form
+# $object->fill({text          => \$text,
+#                form          => \%hash,
+#                target        => 'formname',
+#                fill_password => 0,
+#                ignore_fields => ['one','two']});
+# my $copy = $object->fill({scalarref => \$text,    fdat => \%hash});
+# my $copy = $object->fill({arrayref  => \@lines,   fdat => \%hash});
+# my $copy = $object->fill({file      => $filename, fdat => \%hash});
 sub fill {
   my $self = shift;
-  my $args = ref $_[0] ? shift : {@_};
+  my $args = shift;
+  if (ref($args)) {
+    $args = {text => $args} if ! UNIVERSAL::isa($args, 'HASH');
+  } else {
+    $args = {$args, @_};
+  }
 
   my $module = $self->{fill_module} || $PREFERRED_FILL_MODULE;
 
