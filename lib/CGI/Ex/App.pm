@@ -136,7 +136,7 @@ sub nav_loop {
     $self->morph($step);
 
     ### run the guts of the step
-    my $status = $self->run_hook($step, 'run_step');
+    my $status = $self->run_hook('run_step', $step);
 
     $self->unmorph($step);
 
@@ -166,30 +166,30 @@ sub run_step {
   my $step = shift;
 
   ### if the pre_step exists and returns true, exit the nav_loop
-  return 1 if $self->run_hook($step, 'pre_step');
+  return 1 if $self->run_hook('pre_step', $step);
 
   ### allow for skipping this step (but stay in the nav_loop)
-  return 0 if $self->run_hook($step, 'skip');
+  return 0 if $self->run_hook('skip', $step);
 
   ### see if we have complete valid information for this step
   ### if so, do the next step
   ### if not, get necessary info and print it out
-  if (   ! $self->run_hook($step, 'prepare', 1)
-      || ! $self->run_hook($step, 'info_complete')
-      || ! $self->run_hook($step, 'finalize', 1)) {
+  if (   ! $self->run_hook('prepare', $step, 1)
+      || ! $self->run_hook('info_complete', $step)
+      || ! $self->run_hook('finalize', $step, 1)) {
 
     ### show the page requesting the information
-    $self->run_hook($step, 'prepared_print');
+    $self->run_hook('prepared_print', $step);
 
     ### a hook after the printing process
-    $self->run_hook($step, 'post_print');
+    $self->run_hook('post_print', $step);
 
     return 2;
   }
 
   ### a hook before end of loop
   ### if the post_step exists and returns true, exit the nav_loop
-  return 1 if $self->run_hook($step, 'post_step');
+  return 1 if $self->run_hook('post_step', $step);
 
   ### let the nav_loop continue searching the path
   return 0;
@@ -200,11 +200,11 @@ sub prepared_print {
   my $self = shift;
   my $step = shift;
 
-  my $hash_swap = $self->run_hook($step, 'hash_swap');
-  my $hash_form = $self->run_hook($step, 'hash_form');
-  my $hash_fill = $self->run_hook($step, 'hash_fill');
-  my $hash_errs = $self->run_hook($step, 'hash_errors');
-  my $hash_comm = $self->run_hook($step, 'hash_common');
+  my $hash_swap = $self->run_hook('hash_swap', $step);
+  my $hash_form = $self->run_hook('hash_form', $step);
+  my $hash_fill = $self->run_hook('hash_fill', $step);
+  my $hash_errs = $self->run_hook('hash_errors', $step);
+  my $hash_comm = $self->run_hook('hash_common', $step);
 
   ### fix up errors
   $hash_errs->{$_} = $self->format_error($hash_errs->{$_})
@@ -216,7 +216,7 @@ sub prepared_print {
   my $fill = {%$hash_form, %$hash_comm, %$hash_fill};
 
   ### run the print hook - passing it the form and fill info
-  $self->run_hook($step, 'print', undef,
+  $self->run_hook('print', $step, undef,
                   $swap, $fill);
 }
 
@@ -264,8 +264,8 @@ sub jump {
     }
   }
   if ($i !~ /^-?\d+$/) {
-    Carp::croak("Invalid jump index ($i)") if eval {require Carp};
-    die "Invalid jump index ($i)";
+    require Carp;
+    Carp::croak("Invalid jump index ($i)");
   }
 
   ### manipulate the path to contain the new jump location
@@ -416,8 +416,8 @@ sub post_loop {}
 ### return the appropriate hook to call
 sub hook {
   my $self    = shift;
+  my $hook    = shift || do { require Carp; Carp::confess("Missing hook name") };
   my $step    = shift || '';
-  my $hook    = shift || die "Missing hook name";
   my $default = shift;
   my $hist    = $self->history;
   my $code;
@@ -441,10 +441,10 @@ sub hook {
 ### get and call the appropriate hook
 sub run_hook {
   my $self    = shift;
-  my $step    = shift;
   my $hook    = shift;
+  my $step    = shift;
   my $default = shift;
-  my $code = $self->hook($step, $hook, $default);
+  my $code = $self->hook($hook, $step, $default);
   return $self->$code($step, @_);
 }
 
@@ -501,7 +501,7 @@ sub morph {
   }
 
   ### if we are not already that package - bless us there
-  my $new  = $self->run_hook($step, 'morph_package');
+  my $new  = $self->run_hook('morph_package', $step);
   if ($cur ne $new) {
     my $file = $new .'.pm';
     $file =~ s|::|/|g;
@@ -692,8 +692,8 @@ sub js_validation {
   my $step = shift;
   return '' if $self->ext_val eq 'htm'; # let htm validation do it itself
 
-  my $form_name = shift || $self->run_hook($step, 'form_name');
-  my $hash_val  = shift || $self->run_hook($step, 'hash_validation', {});
+  my $form_name = shift || $self->run_hook('form_name', $step);
+  my $hash_val  = shift || $self->run_hook('hash_validation', $step, {});
   my $js_uri    = $self->js_uri_path;
   return '' if UNIVERSAL::isa($hash_val, 'HASH')  && ! scalar keys %$hash_val
             || UNIVERSAL::isa($hash_val, 'ARRAY') && $#$hash_val == -1;
@@ -745,7 +745,7 @@ sub print {
   my $fill = shift;
 
   ### get a filename relative to base_dir_abs
-  my $file = $self->run_hook($step, 'file_print');
+  my $file = $self->run_hook('file_print', $step);
 
   require Template;
   my $t = Template->new($self->template_args($step));
@@ -837,8 +837,8 @@ sub file_print {
   my $step = shift;
 
   my $base_dir_rel = $self->base_dir_rel;
-  my $module       = $self->run_hook($step, 'name_module');
-  my $_step        = $self->run_hook($step, 'name_step', $step);
+  my $module       = $self->run_hook('name_module', $step);
+  my $_step        = $self->run_hook('name_step', $step, $step);
   my $ext          = $self->ext_print;
 
   return "$base_dir_rel/$module/$_step.$ext";
@@ -850,8 +850,8 @@ sub file_val {
   my $step = shift;
 
   my $base_dir = $self->base_dir_rel;
-  my $module   = $self->run_hook($step, 'name_module');
-  my $_step    = $self->run_hook($step, 'name_step', $step);
+  my $module   = $self->run_hook('name_module', $step);
+  my $_step    = $self->run_hook('name_step', $step, $step);
   my $ext      = $self->ext_val;
 
   ### get absolute if necessary
@@ -867,9 +867,9 @@ sub info_complete {
   my $self = shift;
   my $step = shift;
 
-  return 0 if ! $self->run_hook($step, 'ready_validate');
+  return 0 if ! $self->run_hook('ready_validate', $step);
 
-  return $self->run_hook($step, 'validate');
+  return $self->run_hook('validate', $step);
 }
 
 sub ready_validate {
@@ -891,7 +891,7 @@ sub validate {
   my $self = shift;
   my $step = shift;
   my $form = shift || $self->form;
-  my $hash = $self->run_hook($step, 'hash_validation', {});
+  my $hash = $self->run_hook('hash_validation', $step, {});
   my $what_was_validated = [];
 
   my $eob = eval { $self->vob->validate($form, $hash, $what_was_validated) };
@@ -927,7 +927,7 @@ sub hash_validation {
   my $step = shift;
   return $self->{hash_validation}->{$step} ||= do {
     my $hash;
-    my $file = $self->run_hook($step, 'file_val');
+    my $file = $self->run_hook('file_val', $step);
 
     ### allow for returning the validation hash in the filename
     ### a scalar ref means it is a yaml document to be read by get_validation
@@ -951,8 +951,8 @@ sub hash_common {
   my $step = shift;
   return $self->{hash_common} ||= {
 ### don't force these to always be there
-#    js_validation => $self->run_hook($step, 'js_validation'),
-#    form_name     => $self->run_hook($step, 'form_name'),
+#    js_validation => $self->run_hook('js_validation', $step),
+#    form_name     => $self->run_hook('form_name', $step),
   };
 }
 
@@ -1072,7 +1072,7 @@ More examples will come with time.  Here are the basics for now.
     ";
   }
 
-  sub post_print {
+  sub post_navigate {
     debug shift->history;
   } # show what happened
 
@@ -1111,8 +1111,8 @@ More examples will come with time.  Here are the basics for now.
     my $step = shift;
     return $self->{hash_common} ||= {
       script_name   => $ENV{SCRIPT_NAME},
-      js_validation => $self->run_hook($step, 'js_validation'),
-      form_name     => $self->run_hook($step, 'form_name'),
+      js_validation => $self->run_hook('js_validation', $step),
+      form_name     => $self->run_hook('form_name', $step),
     };
   }
 
@@ -1435,7 +1435,7 @@ result.  Arguments are the same as that for "hook".
 
 =item Method C<-E<gt>hook>
 
-Arguments are a pathstep name, a hook name, and an optional code sub
+Arguments are a hook name, a pathstep name, and an optional code sub
 or default value (default value will be turned to a sub) (code sub
 will be called as method of $self).
 
@@ -1729,8 +1729,8 @@ following to allow for js_validation (as needed):
     my $step = shift;
     return $self->{hash_common} ||= {
       script_name   => $ENV{SCRIPT_NAME},
-      js_validation => $self->run_hook($step, 'js_validation'),
-      form_name     => $self->run_hook($step, 'form_name'),
+      js_validation => $self->run_hook('js_validation', $step),
+      form_name     => $self->run_hook('form_name', $step),
     };
   }
 
