@@ -475,6 +475,7 @@ sub validate_buddy {
     ### field equality test
     foreach my $type ($self->filter_type('equals',$types)) {
       my $field2  = $field_val->{$type};
+      my $not     = ($field2 =~ s/^!\s*//) ? 1 : 0;
       my $success = 0;
       if ($field2 =~ m/^([\"\'])(.*)\1$/) {
         my $test = $2;
@@ -484,7 +485,7 @@ sub validate_buddy {
       } elsif (! defined($value)) {
         $success = 1; # occurs if they are both undefined
       }
-      if (! $success) {
+      if ($not ? $success : ! $success) {
         return 1 if ! wantarray;
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
@@ -1082,7 +1083,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.76 2004-12-07 21:21:21 pauls Exp $
+$Id: Validate.pm,v 1.77 2005-01-11 19:50:30 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1487,11 +1488,15 @@ value may be passed of the options joined with ||.
 
 =item C<equals>
 
-Allows for comparison of two form elements.
+Allows for comparison of two form elements.  Can have an optional !.
 
   {
     field  => 'password',
     equals => 'password_verify',
+  },
+  {
+    field  => 'domain1',
+    equals => '!domain2', # make sure the fields are not the same
   }
 
 =item C<min_len and max_len>
