@@ -29,20 +29,10 @@ BEGIN {
   $BASE_DIR_ABS ||= ''; # content should be found at "$BASE_DIR_ABS/$BASE_DIR_REL/dir/of/content.html"
   $BASE_NAME_MODULE ||= ''; # the cgi name
 
-  ### the base stub functions use Template Toolkit and CGI::Ex::Validate
-  ### If you are mod_perl and are using the stub functions - you may want
-  ### to make sure that Template and CGI::Ex::Validate are loaded at server startup
-  ### 
-  #if ($ENV{MOD_PERL}) {
-  #  require Template;
-  #  require CGI::Ex::Validate;
-  #}
-
   ### list of modules to exclude during cleanup
   ### this takes care of situations such as
   ### template toolkits rules area which contains
-  ### a nested structure of rules - which are somehow
-  ### referenced in other places
+  ### a nested structure of rules and sub references.
   $CLEANUP_EXCLUDE{'Template::Parser'} = 1;
 }
 
@@ -53,7 +43,7 @@ sub new {
   my $class = shift || __PACKAGE__;
   my $self  = ref($_[0]) ? shift : {@_};
   bless $self, $class;
-  $self->init();
+  $self->init;
   return $self;
 }
 
@@ -999,8 +989,9 @@ sub add_to_form   { my $self = shift; $self->add_to_hash($self->hash_form,   @_)
 sub add_to_common { my $self = shift; $self->add_to_hash($self->hash_common, @_) }
 
 sub add_to_hash {
-  my ($self, $old, $new) = @_;
-  my $hash = $self->hash_fill;
+  my $self = shift;
+  my $old  = shift;
+  my $new  = shift;
   $new = {$new, @_} if ! ref $new; # non-hashref
   $old->{$_} = $new->{$_} foreach keys %$new;
 }
@@ -1505,6 +1496,8 @@ and called:
   Base->navigate;
   # OR - for mod_perl resident programs
   Base->navigate->cleanup;
+  # OR
+  sub post_navigate { shift->cleanup }
 
 and you created a sub module that inherited Base.pm called
 Base/Ball.pm -- you could then access it using cgi/base/ball.  You
