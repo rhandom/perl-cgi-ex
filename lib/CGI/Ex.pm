@@ -886,8 +886,8 @@ return the proper value.
               this => {is => {nested => ['wow', 'wee']}}
              };
 
-  my $str =  $cgix->swap_template("[% foo %]", $form));
-  # $str eq 'bar'
+  my $str =  $cgix->swap_template("<html>[% foo %]<br>[% foo %]</html>", $form));
+  # $str eq '<html>bar<br>bar</html>'
 
   $str = $cgix->swap_template("[% this.is.nested.1 %]", $form));
   # $str eq 'wee'
@@ -895,6 +895,19 @@ return the proper value.
   $str = "[% this.is.nested.0 %]";
   $cgix->swap_template(\$str, $form);
   # $str eq 'wow'
+
+  # may also be called with only one argument as follows:
+  # assuming $cgix had a query string of ?foo=bar&baz=wow&this=wee
+  $str = "<html>([% foo %]) <br>
+          ([% baz %]) <br>
+          ([% this %]) </html>";
+  $cgix->swap_template(\$str);
+  #$str eq "<html>(bar) <br>
+  #        (wow) <br>
+  #        (wee) </html>";
+  
+For further examples, please see the code contained in t/samples/cgi_ex_*
+of this distribution.
 
 If at a later date, the developer upgrades to Template::Toolkit, the
 templates that were being swapped by CGI::Ex::swap_template should
