@@ -20,6 +20,7 @@ use vars qw($VERSION
             $IMMUTABLE_KEY
             %CACHE
             $HTML_KEY
+            $DEBUG_ON_FAIL
             );
 use CGI::Ex::Dump qw(debug dex_warn);
 
@@ -135,7 +136,8 @@ sub read_ref {
   }
 
   return eval { scalar &$handler($file, $self, $args) } || do {
-    dex_warn "Couldn't read $file: $@" if ! $self->{no_warn_on_failed_read};
+    debug    "Couldn't read $file: $@" if $DEBUG_ON_FAIL;
+    dex_warn "Couldn't read $file: $@" if ! $self->{no_warn_on_fail};
     return undef;
   };
 }
@@ -255,10 +257,9 @@ sub read_handler_storable {
 
 sub read_handler_yaml {
   my $file = shift;
-  local $/ = undef;
   local *IN;
-  open (IN,$file) || die "Couldn't open $file: $!";
-  my $text = <IN>;
+  open (IN, $file) || die "Couldn't open $file: $!";
+  CORE::read(IN, my $text, -s $file);
   close IN;
   return &yaml_load($text);
 }
@@ -299,9 +300,10 @@ sub read_handler_html {
   }
 
   ### get the html
-  open(my $fh, $file) || return undef;
-  CORE::read($fh, my $html, -s $file);
-  close $fh;
+  local *IN;
+  open (IN, $file) || return undef;
+  CORE::read(IN, my $html, -s $file);
+  close IN;
 
   return &html_parse_yaml_load($html, $self, $args);
 }
@@ -485,7 +487,8 @@ sub write_ref {
   }
 
   return eval { scalar &$handler($file, $conf, $args) } || do {
-    dex_warn "Couldn't write $file: $@" if ! $self->{no_warn_on_failed_write};
+    debug    "Couldn't write $file: $@" if $DEBUG_ON_FAIL;
+    dex_warn "Couldn't write $file: $@" if ! $self->{no_warn_on_fail};
     return 0;
   };
 
@@ -521,8 +524,10 @@ sub write_handler_pl {
     die "Ref to be written contained circular references - can't write";
   }
 
-  open my $fh, ">$file" || die $!;
-  print $fh $str;
+  local *OUT;
+  open (OUT, ">$file") || die $!;
+  print OUT $str;
+  close(OUT);
 }
 
 sub write_handler_storable {
@@ -543,8 +548,10 @@ sub write_handler_xml {
   my $file = shift;
   my $ref  = shift;
   require XML::Simple;
-  open my $fh, ">$file" || die $!;
-  print $fh scalar(XML::Simple->new->XMLout($ref, noattr => 1));
+  local *OUT;
+  open (OUT, ">$file") || die $!;
+  print OUT scalar(XML::Simple->new->XMLout($ref, noattr => 1));
+  close(OUT);
 }
 
 sub write_handler_html {
