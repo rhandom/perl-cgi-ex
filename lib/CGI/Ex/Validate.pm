@@ -165,7 +165,10 @@ sub validate {
       } else {
         $hold_error = undef;
       }
-      $what_was_validated->{$ref->{'field'}} = $ref if $what_was_validated;
+      if ($what_was_validated) {
+        my $arrayref = $what_was_validated->{$ref->{'field'}} ||= [];
+        push @$arrayref, $ref;
+      }
     }
     push(@errors, @$hold_error) if $hold_error; # allow for final OR to work
 
@@ -1074,7 +1077,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.64 2004-11-04 22:27:30 pauls Exp $
+$Id: Validate.pm,v 1.65 2004-11-04 22:31:11 pauls Exp $
 
 =head1 SYNOPSIS
 
