@@ -23,15 +23,15 @@ $VERSION = '0.1';
 
 $DEFAULT_EXT = 'conf';
 
-%EXT_HANDLERS = (''         => \&conf_handler_yaml,
-                 'conf'     => \&conf_handler_yaml,
-                 'ini'      => \&conf_handler_ini,
-                 'pl'       => \&conf_handler_pl,
-                 'sto'      => \&conf_handler_storable,
-                 'storable' => \&conf_handler_storable,
-                 'val'      => \&conf_handler_yaml,
-                 'xml'      => \&conf_handler_xml,
-                 'yaml'     => \&conf_handler_yaml,
+%EXT_HANDLERS = (''         => \&read_handler_yaml,
+                 'conf'     => \&read_handler_yaml,
+                 'ini'      => \&read_handler_ini,
+                 'pl'       => \&read_handler_pl,
+                 'sto'      => \&read_handler_storable,
+                 'storable' => \&read_handler_storable,
+                 'val'      => \&read_handler_yaml,
+                 'xml'      => \&read_handler_xml,
+                 'yaml'     => \&read_handler_yaml,
                  );
 
 ### $DIRECTIVE controls how files are looked for.
@@ -181,13 +181,13 @@ sub read {
 
 ###----------------------------------------------------------------###
 
-sub conf_handler_ini {
+sub read_handler_ini {
   my $file = shift;
   require Config::IniHash;
   return &Config::IniHash::ReadINI($file);
 }
 
-sub conf_handler_pl {
+sub read_handler_pl {
   my $file = shift;
   ### do has odd behavior in that it turns a simple hashref
   ### into hash - help it out a little bit
@@ -195,13 +195,13 @@ sub conf_handler_pl {
   return ($#ref != 0) ? {@ref} : $ref[0];
 }
 
-sub conf_handler_storable {
+sub read_handler_storable {
   my $file = shift;
   require Storable;
   return &Storable::retrieve($file);
 }
 
-sub conf_handler_yaml {
+sub read_handler_yaml {
   my $file = shift;
   local $/ = undef;
   local *IN;
@@ -221,7 +221,7 @@ sub yaml_load {
   return ($#ret == 0) ? $ret[0] : \@ret;
 }
 
-sub conf_handler_xml {
+sub read_handler_xml {
   my $file = shift;
   require XML::Simple;
   return XML::Simple::XMLin($file);
