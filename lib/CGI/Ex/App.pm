@@ -372,6 +372,7 @@ sub cleanup_cross_references {
   if (UNIVERSAL::isa($self, 'HASH')) {
     require Scalar::Util; # first self will always be hash
     foreach my $key (keys %$self) {
+      next if ! $self->{$key};
       next if $seen->{ $self->{$key} }; # prevent recursive checking
       $seen->{ $self->{$key} } = 1;
       $class->cleanup_cross_references($self->{$key}, $seen);
@@ -386,6 +387,7 @@ sub cleanup_cross_references {
     }
   } elsif (UNIVERSAL::isa($self, 'ARRAY')) {
     for my $key (0 .. $#$self) {
+      next if ! $self->[$key];
       next if $seen->{ $self->[$key] };
       $seen->{ $self->[$key] } = 1;
       $class->cleanup_cross_references($self->[$key], $seen);
