@@ -122,7 +122,7 @@ sub validate {
     my %found = ();
     foreach my $field_val (@$fields) {
       my $field = $field_val->{'field'} || die "Missing field key in validation";
-      die "Duplicate order found for $field in group order or fields" if $found{$field};
+      #die "Duplicate order found for $field in group order or fields" if $found{$field};
       $found{$field} = 1;
     }
 
@@ -1019,7 +1019,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.49 2004-01-20 19:31:12 pauls Exp $
+$Id: Validate.pm,v 1.50 2004-02-18 22:29:12 pauls Exp $
 
 =head1 SYNOPSIS
 
