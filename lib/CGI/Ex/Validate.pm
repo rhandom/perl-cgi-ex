@@ -1011,7 +1011,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.46 2003-11-26 22:36:04 pauls Exp $
+$Id: Validate.pm,v 1.47 2003-12-02 04:52:49 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1504,12 +1504,9 @@ will be swapped with this name.
 =item C<delegate_error>
 
 This option allows for any errors generated on a field to delegate to
-a different field.  This doesn't really apply to javascript.  The errors
-that are displayed in js are not shown to be linked to a specific error
-and will accumulate according to the validation order.  If the key name
-is a regex, any patterns will be swapped into the delegate_error value.
-This option is generally only useful with the as_hash method of the
-error object.
+a different field.  If the field name was a regex, any patterns will
+be swapped into the delegate_error value. This option is generally only
+useful with the as_hash method of the error object (for inline errors).
 
   {
     field => 'zip',
