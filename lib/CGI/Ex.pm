@@ -211,11 +211,12 @@ sub fill_plain {
     }{
       ### get the type and name - intentionally exlude names with nested "'
       my $tag   = $1;
-      my $type  = uc(get_tagval_by_key(\$tag, 'type'));
+      my $type  = uc(get_tagval_by_key(\$tag, 'type') || '');
       my $name  = get_tagval_by_key(\$tag, 'name');
 
       if ($name || ! $self->{no_automatic_swap}) {
-        if ($type eq 'HIDDEN'
+        if (! $type
+            || $type eq 'HIDDEN'
             || $type eq 'TEXT'
             || $type eq 'FILE'
             || ($type eq 'PASSWORD' && $fill_password)) {
@@ -323,7 +324,7 @@ sub get_tagval_by_key {
     return $val if ! $all;
     push @all, $val;
   }
-  
+  return undef if ! $all;
   return \@all;
 }
 
