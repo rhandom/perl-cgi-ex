@@ -438,23 +438,6 @@ results in a speed increase of 5%. The function uses \0COMMENT\0 and
 they may be reset to whatever you'd like via $MARKER_COMMENT and
 $MARKER_SCRIPT).
 
-=head1 BUGS / LIMITATIONS
-
-The only known limitations is that if you have a <input>, <select>,
-<textarea>, or <option> tag that have nested HTML attributes that
-occur before the name, form_fill won't be able to determine the name.
-(Shouldn't these be escaped anyway?)
-
-  <!-- WORKS --> <select name=foo onchange=alert('<b>Wow</b>')>
-  </select>
-
-  <!-- WILL NOT WORK --> <select onchange=alert('<b>Wow</b>')
-  name=foo> </select>
-
-This limitation could be overcome with a more complex regex - but why.
-You won't have this problem (or shouldn't) with HTML::FillInForm
-because of the lengthy process used for descending the structure.
-
 =head1 AUTHOR
 
 Paul Seamons
