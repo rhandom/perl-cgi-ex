@@ -317,10 +317,14 @@ sub morph {
 
   ### make sure we haven't already been reblessed
   if (! $self->allow_nested_morph && $#$ref != -1) {
-    my @old = @$ref;
-    my $err = "morph calls may not be nested: orig (@old), current ($cur), new ($new)";
-    debug $err;
-    die $err;
+    push @$ref, $cur; # needed so unmorph does the right thing
+    return;
+    # This is also possible if we want to die but it
+    # is much nicer to allow us to morph early
+    #my @old = @$ref;
+    #my $err = "morph calls may not be nested: orig (@old), current ($cur), new ($new)";
+    #debug $err;
+    #die $err;
   }
 
   ### store our lineage
