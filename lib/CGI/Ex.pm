@@ -108,7 +108,7 @@ sub get_cookies {
   my %hash = ();
   foreach my $key ($obj->cookie()) {
     my @val = $obj->cookie($key);
-    $hash{$key} = ($#val == -1) ? die : ($#val == 0) ? $val[0] : \@val;
+    $hash{$key} = ($#val == -1) ? next : ($#val == 0) ? $val[0] : \@val;
   }
   return \%hash;
 }
