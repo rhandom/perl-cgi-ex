@@ -1,3 +1,6 @@
+        * Version 1.15 is done
+        * Allow for step to be automatically untainted during loop
+
 2005-02-28  Paul Seamons  <cgi_ex@seamons.com>
 
         * Version 1.14 is done
