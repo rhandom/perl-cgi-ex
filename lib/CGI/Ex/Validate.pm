@@ -251,7 +251,7 @@ sub validate_buddy {
   }
 
   ### allow for field names that contain regular expressions
-  if ($field =~ m|^(!?)m(\W)(.*)\2([eigsmx]*)$|s) {
+  if ($field =~ m|^(!?)m?([^\s\w])(.*)\2([eigsmx]*)$|s) {
     my ($not,$pat,$opt) = ($1,$3,$4);
     $opt =~ tr/g//d;
     die "The e option cannot be used on validation keys on field $field" if $opt =~ /e/;
@@ -405,14 +405,12 @@ sub validate_buddy {
           $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
         }
       } else {
-        my $not = ($rx =~ s/^\s*!~?\s*//) ? 1 : 0;
-        if ($rx !~ /^\s*m?([^\w\s])(.*[^\\])\1([eisgmx]*)\s*$/s
-            && $rx !~ /^\s*m?([^\w\s])()\1([eisgmx]*)\s*$/s) {
+        if ($rx !~ m|^(!?)m?([^\s\w])(.*)\2([eigsmx]*)$|s) {
           die "Not sure how to parse that match ($rx)";
         }
-        my ($pat,$opt) = ($2,$3);
+        my ($not,$pat,$opt) = ($1,$3,$4);
         $opt =~ tr/g//d;
-        die "The e option cannot be used on validation match's" if $opt =~ /e/;
+        die "The e option cannot be used on validation keys on field $field" if $opt =~ /e/;
         if ( (     $not && (  defined($form->{$field}) && $form->{$field} =~ m/(?$opt:$pat)/))
              || (! $not && (! defined($form->{$field}) || $form->{$field} !~ m/(?$opt:$pat)/))
              ) {
@@ -964,7 +962,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.32 2003-11-14 21:50:08 pauls Exp $
+$Id: Validate.pm,v 1.33 2003-11-21 03:37:36 pauls Exp $
 
 =head1 SYNOPSIS
 
