@@ -286,33 +286,36 @@ sub validate_buddy {
   }
   # allow for inline specified modifications (ie s/foo/bar/)
   foreach my $type ($self->filter_type('replace',$types)) { 
-    my $rx = $field_val->{$type} || next;
-    if ($rx !~ m/^\s*s([^\s\w])(.+)\1(.*)\1([eigsmx]*)$/s) {
-      die "Not sure how to parse that match ($rx)";
-    }
-    my ($pat,$swap,$opt) = ($2,$3,$4);
-    die "The e option cannot be used in swap on field $field" if $opt =~ /e/;
-    my $global = $opt =~ s/g//g;
-    $swap =~ s/\\n/\n/g;
-    if ($global) {
-      foreach my $value (@$values) {
-        $value =~ s{(?$opt:$pat)}{
-          my @match = (undef,$1,$2,$3,$4,$5,$6); # limit on the number of matches
-          my $copy = $swap;
-          $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
-          $modified = 1;
-          $copy; # return of the swap
-        }eg;
+    my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
+      : [split(/\s*\|\|\s*/,$field_val->{$type})];
+    foreach my $rx (@$ref) {
+      if ($rx !~ m/^\s*s([^\s\w])(.+)\1(.*)\1([eigsmx]*)$/s) {
+        die "Not sure how to parse that match ($rx)";
       }
-    }else{
-      foreach my $value (@$values) {
-        $value =~ s{(?$opt:$pat)}{
-          my @match = (undef,$1,$2,$3,$4,$5,$6); # limit on the number of matches
-          my $copy = $swap;
-          $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
-          $modified = 1;
-          $copy; # return of the swap
-        }e;
+      my ($pat,$swap,$opt) = ($2,$3,$4);
+      die "The e option cannot be used in swap on field $field" if $opt =~ /e/;
+      my $global = $opt =~ s/g//g;
+      $swap =~ s/\\n/\n/g;
+      if ($global) {
+        foreach my $value (@$values) {
+          $value =~ s{(?$opt:$pat)}{
+            my @match = (undef,$1,$2,$3,$4,$5,$6); # limit on the number of matches
+            my $copy = $swap;
+            $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
+            $modified = 1;
+            $copy; # return of the swap
+          }eg;
+        }
+      }else{
+        foreach my $value (@$values) {
+          $value =~ s{(?$opt:$pat)}{
+            my @match = (undef,$1,$2,$3,$4,$5,$6); # limit on the number of matches
+            my $copy = $swap;
+            $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
+            $modified = 1;
+            $copy; # return of the swap
+          }e;
+        }
       }
     }
   }
@@ -1009,7 +1012,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.38 2003-11-24 22:20:20 pauls Exp $
+$Id: Validate.pm,v 1.39 2003-11-24 22:34:46 pauls Exp $
 
 =head1 SYNOPSIS
 
