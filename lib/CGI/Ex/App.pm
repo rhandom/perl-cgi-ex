@@ -496,7 +496,7 @@ sub morph {
       && (! ($allow = $self->allow_nested_morph) # not true
           || (ref($allow) && ! $allow->{$step})  # hash - but no step
           )) {
-    $$sref .= " - not allowed to nested morph to that step";
+    $$sref .= $allow ? " - not allowed to nested_morph to that step" : " - nested_morph disabled";
     return; # just return - don't die so that we can morph early
   }
 
