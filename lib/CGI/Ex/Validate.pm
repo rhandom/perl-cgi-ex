@@ -251,7 +251,7 @@ sub validate_buddy {
   }
 
   ### allow for field names that contain regular expressions
-  if ($field =~ m|^(!?)m?([^\s\w])(.*)\2([eigsmx]*)$|s) {
+  if ($field =~ m/^(!\s*|)m?([^\s\w])(.*)\2([eigsmx]*)$/s) {
     my ($not,$pat,$opt) = ($1,$3,$4);
     $opt =~ tr/g//d;
     die "The e option cannot be used on validation keys on field $field" if $opt =~ /e/;
@@ -405,7 +405,7 @@ sub validate_buddy {
           $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
         }
       } else {
-        if ($rx !~ m|^(!?)m?([^\s\w])(.*)\2([eigsmx]*)$|s) {
+        if ($rx !~ m/^(!\s*|)m?([^\s\w])(.*)\2([eigsmx]*)$/s) {
           die "Not sure how to parse that match ($rx)";
         }
         my ($not,$pat,$opt) = ($1,$3,$4);
@@ -962,7 +962,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.35 2003-11-21 05:10:59 pauls Exp $
+$Id: Validate.pm,v 1.36 2003-11-21 19:38:02 pauls Exp $
 
 =head1 SYNOPSIS
 
