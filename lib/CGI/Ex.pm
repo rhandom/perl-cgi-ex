@@ -72,9 +72,9 @@ sub AUTOLOAD {
 ### thus infering that portions of CGI.pm are unintelligent
 sub get_form {
   my $self = shift || __PACKAGE__;
-  $self = $self->new(@_) if ! ref $self;
+  $self = $self->new if ! ref $self;
 
-  my $obj  = $self->object;
+  my $obj  = shift || $self->object;
   my %hash = ();
   foreach my $key ($obj->param()) {
     my @val = $obj->param($key);
@@ -87,9 +87,9 @@ sub get_form {
 ### cookies are parsed depending upon the functionality of ->cookie
 sub get_cookies {
   my $self = shift || __PACKAGE__;
-  $self = $self->new(@_) if ! ref $self;
+  $self = $self->new if ! ref $self;
 
-  my $obj  = $self->object;
+  my $obj  = shift || $self->object;
   my %hash = ();
   foreach my $key ($obj->cookie()) {
     my @val = $obj->cookie($key);
