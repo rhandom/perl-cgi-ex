@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.19 $ )[1];
+$VERSION = (qw$Revision: 1.20 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -442,12 +442,10 @@ sub validate_buddy {
         my ($pat,$opt) = ($2,$3);
         $opt =~ tr/g//d;
         die "The e option cannot be used on validation match's" if $opt =~ /e/;
-        if (defined($form->{$field}) && length($form->{$field})) {
-          if ( ($not && $form->{$field} =~ m/(?$opt:$pat)/)
-               || (! $not && $form->{$field} !~ m/(?$opt:$pat)/)
-               ) {
-            $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-          }
+        if ( (     $not && (  defined($form->{$field}) && $form->{$field} =~ m/(?$opt:$pat)/))
+             || (! $not && (! defined($form->{$field}) || $form->{$field} !~ m/(?$opt:$pat)/))
+             ) {
+          $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
         }
       }
     }
@@ -835,7 +833,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.19 2003-11-12 23:03:18 pauls Exp $
+$Id: Validate.pm,v 1.20 2003-11-12 23:09:41 pauls Exp $
 
 =head1 SYNOPSIS
 
