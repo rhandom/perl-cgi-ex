@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.11 $ )[1];
+$VERSION = (qw$Revision: 1.12 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -824,7 +824,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.11 2003-11-12 20:37:58 pauls Exp $
+$Id: Validate.pm,v 1.12 2003-11-12 20:41:42 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1367,13 +1367,13 @@ These items allow for an override of the default errors.
 It is possible to have a group that contains nothing but general options.
 
   my $val_hash = [
-    {'general error_title'  => 'The following things went wrong',
-     'general error_prefix' => '  - ',
-     'general raise_error'  => 1,
-     'general name_suffix'  => '_foo_error',
+    {'general error_title'    => 'The following things went wrong',
+     'general error_prefix'   => '  - ',
+     'general raise_error'    => 1,
+     'general name_suffix'    => '_foo_error',
+     'general required_error' => '$name is required',
     },
     {'group title' => 'User Information',
-     'group required_error' => '$name in the user info section is required',
      username => {required => 1},
      email    => {required => 1},
      password => {required => 1},
