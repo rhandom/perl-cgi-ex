@@ -87,7 +87,9 @@ sub nav_loop {
   ### keep from an infinate nesting
   local $self->{recurse} = $self->{recurse} || 0;
   if ($self->{recurse} ++ >= $self->recurse_limit) {
-    die "recurse_limit reached (".$self->recurse_limit.")";
+    my $err = "recurse_limit reached (".$self->recurse_limit.")";
+    $err .= " number of jumps (".$self->{jumps}.")" if ($self->{jumps} || 0) > 1;
+    die $err;
   }
 
   ### get the path (simple array based thing)
@@ -120,10 +122,16 @@ sub nav_loop {
     ### allow for putting some steps in external files
     $self->morph($step);
 
-    ### if the pre_step exists and returns true, return from navigate
+    ### if the pre_step exists and returns true, exit the nav_loop
     if ($self->run_hook($step, 'pre_step')) {
       $self->unmorph($step);
       return;
+    }
+
+    ### allow for skipping this step (but stay in the nav_loop)
+    if ($self->run_hook($step, 'skip')) {
+      $self->unmorph($step);
+      next;
     }
 
     ### see if we have complete valid information for this step
@@ -178,9 +186,16 @@ sub nav_loop {
   return;
 }
 
-sub recurse_limit { shift->{'recurse_limit'} || $RECURSE_LIMIT || 10 }
+sub recurse_limit { shift->{'recurse_limit'} || $RECURSE_LIMIT || 15 }
 
 sub exit_nav_loop {
+  my $self = shift;
+
+  ### undo morphs
+  if (my $ref = $self->{'_morph_lineage'}) {
+    $self->unmorph while $#$ref != -1;
+  }
+
   ### long jump back
   die "Long Jump\n";
 }
@@ -193,11 +208,24 @@ sub jump {
   die "Can't jump if nav_loop not started" if ! defined $path_i;
 
   ### validate where we are jumping to
-  if ($i) {
-    $i = - $path_i - 1     if $i =~ /first/i;
-    $i = $#$path - $path_i if $i =~ /last/i;
+  if ($i =~ /^\w+$/) {
+    if ($i eq 'FIRST') {
+      $i = - $path_i - 1;
+    } elsif ($i eq 'LAST') {
+      $i = $#$path - $path_i;
+    } else { # look for a step by that name
+      for (my $j = $#$path; $j >= 0; $j --) {
+        if ($path->[$j] eq $i) {
+          $i = $j - $path_i;
+          last;
+        }
+      }
+    }
   }
-  die "Invalid jump index ($i)" if $i !~ /^-?\d+$/;
+  if ($i !~ /^-?\d+$/) {
+    Carp::croak("Invalid jump index ($i)") if eval {require Carp};
+    die "Invalid jump index ($i)";
+  }
 
   ### manipulate the path to contain the new jump location
   my @replace;
@@ -211,10 +239,13 @@ sub jump {
   }
   $self->replace_path(@replace);
 
+  ### record the number of jumps
+  $self->{jumps} ||= 0;
+  $self->{jumps} ++;
+
   ### run the newly fixed up path (recursively)
   $self->{path_i} ++; # move along now that the path is updated
   $self->nav_loop;
-
   $self->exit_nav_loop;
 }
 
@@ -295,6 +326,7 @@ sub insert_path {
 sub valid_steps {}
 
 ###----------------------------------------------------------------###
+### allow for checking where we are in the path
 
 sub step_by_path_index {
   my $self = shift;
@@ -307,17 +339,32 @@ sub step_by_path_index {
 
 sub previous_step {
   my $self = shift;
+  die "previous_step is readonly" if $#_ != -1;
   return $self->step_by_path_index( ($self->{path_i} || 0) - 1 );
 }
 
 sub current_step {
   my $self = shift;
+  die "current_step is readonly" if $#_ != -1;
   return $self->step_by_path_index( ($self->{path_i} || 0) );
 }
 
 sub next_step {
   my $self = shift;
+  die "next_step is readonly" if $#_ != -1;
   return $self->step_by_path_index( ($self->{path_i} || 0) + 1 );
+}
+
+sub last_step {
+  my $self = shift;
+  die "last_step is readonly" if $#_ != -1;
+  return $self->step_by_path_index( $#{ $self->path } );
+}
+
+sub first_step {
+  my $self = shift;
+  die "first_step is readonly" if $#_ != -1;
+  return $self->step_by_path_index( 0 );
 }
 
 ###----------------------------------------------------------------###
@@ -432,7 +479,7 @@ sub unmorph {
   my $step = shift;
   my $ref  = $self->{'_morph_lineage'} || return;
   my $cur  = ref $self;
-  my $prev = pop(@$ref) || die "unmorph called more times than morph current ($cur)";
+  my $prev = pop(@$ref) || die "unmorph called more times than morph - current ($cur)";
 
   ### if we are not already that package - bless us there
   if ($cur ne $prev) {
@@ -1033,7 +1080,7 @@ and runs all of the appropriate hooks for each step of the path.  If
 nav_loop runs out of steps to run (which happens if no path is set, or if
 all other steps run successfully), it will insert the ->default_step into
 the path and run nav_loop again (recursively).  This way a step is always
-assured to run.  There is a method ->recurse_limit (default 10) that
+assured to run.  There is a method ->recurse_limit (default 15) that
 will catch logic errors (such as inadvertently running the same
 step over and over and over).
 
@@ -1069,7 +1116,10 @@ are shown):
         # ->fixup_after_morph if morph_package exists
 
       ->pre_step (hook)
-        # skips this step if true
+        # exits nav_loop if true
+
+      ->skip (hook)
+        # skips this step if true (stays in nav_loop)
 
       ->prepare (hook - defaults to true)
 
@@ -1178,7 +1228,7 @@ the new steps at the current path location.
 This method should not normally be used.  It provides for moving to the
 next step at any point during the nav_loop.  It effectively short circuits
 the remaining hooks for the current step.  It does increment the recursion
-counter (which has a limit of ->recurse_limit - default 10).  It is normally
+counter (which has a limit of ->recurse_limit - default 15).  It is normally
 better to allow the other hooks in the loop to carry on their normal functions
 and avoid jumping.  (Essentially, this hook behaves like a goto method to
 bypass everything else and continue at a different location in the path - there
@@ -1186,23 +1236,47 @@ are times when it is necessary or useful - but most of the time should be
 avoided)
 
 Jump takes a single argument which is the location in the path to jump to.
+This argument may be either a step name, the special words "FIRST" or "LAST",
+or the number of steps to jump forward (or backward) in the path.
 The default value, 1, indicates that we should jump to the next step (the
 default action for jump).  A value of 0 would repeat the current step (watch
 out for recursion).  A value of -1 would jump to the previous step.  The
-special value of "last" will jump to the last step.  The special value of
-"first" will jump back to the first step.  In each of these cases, the
+special value of "LAST" will jump to the last step.  The special value of
+"FIRST" will jump back to the first step.  In each of these cases, the
 path array retured by ->path is modified to allow for the jumping.
+
+  ### goto previous step
+  $self->jump($self->previous_step);
+  $self->jump(-1);
+
+  ### goto next step
+  $self->jump($self->next_step);
+  $self->jump(1);
+  $self->jump;
+
+  ### goto current step (repeat)
+  $self->jump($self->current_step);
+  $self->jump(0);
+
+  ### goto last step
+  $self->jump($self->last_step);
+  $self->jump('LAST');
+
+  ### goto first step
+  $self->jump($self->first_step);
+  $self->jump('FIRST');
 
 =item Method C<-E<gt>exit_nav_loop>
 
 This method should not normally used.  It allows for a long jump to the
 end of all nav_loops (even if they are recursively nested).  This
 effectively short circuits all remaining hooks for the current and
-remaining steps.  It is used to allow the ->jump functionality.
+remaining steps.  It is used to allow the ->jump functionality.  If the
+application has morphed, it will be unmorphed before returning.
 
 =item Method C<-E<gt>recurse_limit>
 
-Default 10.  Maximum number of times to allow nav_loop to call itself.
+Default 15.  Maximum number of times to allow nav_loop to call itself.
 If ->jump is used alot - the recurse_limit will be reached more quickly.
 It is safe to raise this as high as is necessary - so long as it is intentional.
 
@@ -1216,10 +1290,11 @@ containing the step that was not valid will be placed in the stash.
 Often the valid_steps method does not need to be defined as arbitrary
 method calls are not possible with CGI::Ex::App.
 
-=item Method C<-E<gt>previous_step, -E<gt>current_step, -E<gt>next_step>
+=item Method C<-E<gt>previous_step, -E<gt>current_step, -E<gt>next_step, -E<gt>last_step, -E<gt>first_step>
 
-Return the previous, current, and next step name - useful for figuring
-out where you are in the path.
+Return the previous, current, next, last, and first step name - useful for figuring
+out where you are in the path.  Note that first_step may not be the same
+thing as default_step if the path was overridden.
 
 =item Method C<-E<gt>pre_loop>
 
@@ -1332,9 +1407,15 @@ Foo::Bar::MyStep.
 
 =item Hook C<-E<gt>pre_step>
 
-Ran at the beginning of the loop before info_compelete is called.  If
-it returns true, execution of navigate is returned and no more steps
-are processed.
+Ran at the beginning of the loop before prepare, info_compelete, and
+finalize are called.  If it returns true, execution of nav_loop is
+returned and no more steps are processed.
+
+=item Hook C<-E<gt>skip>
+
+Ran at the beginning of the loop before prepare, info_compelete, and
+finalize are called.  If it returns true, nav_loop moves on to the
+next step (the current step is skipped).
 
 =item Hook C<-E<gt>prepare>
 
