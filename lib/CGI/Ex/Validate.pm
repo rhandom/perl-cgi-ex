@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.10 $ )[1];
+$VERSION = (qw$Revision: 1.11 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -698,7 +698,12 @@ sub as_hash {
   foreach my $err (@$errors) {
     next if ! ref $err;
 
-    my $field = $err->[0] || die "Missing field name";
+    my ($field, $type, $field_val, $ifs_match) = @$err;
+    die "Missing field name" if ! $field;
+    if ($field_val->{delegate_error}) {
+      $field = $field_val->{delegate_error};
+      $field =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+    }
 
     my $text = $self->get_error_text($err);
     next if $found{$field}->{$text};
@@ -721,6 +726,12 @@ sub get_error_text {
   my ($field, $type, $field_val, $ifs_match) = @$err;
   my $dig     = ($type =~ s/(_?\d+)$//) ? $1 : '';
   my $type_lc = lc($type);
+
+  ### allow for delegated field names - only used for defaults
+  if ($field_val->{delegate_error}) {
+    $field = $field_val->{delegate_error};
+    $field =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+  }
 
   ### the the name of this thing
   my $name = $field_val->{'name'} || "The field $field";
@@ -813,15 +824,24 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.10 2003-11-12 20:31:07 pauls Exp $
+$Id: Validate.pm,v 1.11 2003-11-12 20:37:58 pauls Exp $
 
 =head1 SYNOPSIS
 
   use CGI::Ex::Validate;
 
+  ### THE SHORT
+
+  my $errobj = CGI::Ex::Validate->new->validate($form, $val_hash);
+
+  ### THE LONG
+
+  my $form = CGI->new;
+   # OR #
   my $form = CGI::Ex->new; # OR CGI::Ex->get_form;
-  # my $form = CGI->new;
-  # my $form = {key1 => 'val1', key2 => 'val2'};
+   # OR #
+  my $form = {key1 => 'val1', key2 => 'val2'};
+
 
   ### simplest
   my $val_hash = {
