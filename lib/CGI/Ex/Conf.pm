@@ -92,7 +92,7 @@ sub read_ref {
   if (ref $file) {
     if (UNIVERSAL::isa($file, 'SCALAR')) {
       if ($$file =~ /^\s*</) {
-        return &html_parse_yaml_load($file); # allow for ref to a YAML string
+        return &html_parse_yaml_load($$file, $self, $args); # allow for ref to a YAML string
       } else {
         return &yaml_load($$file); # allow for ref to a YAML string
       }
@@ -303,12 +303,11 @@ sub read_handler_html {
   CORE::read($fh, my $html, -s $file);
   close $fh;
 
-  return &html_parse_yaml_load(\$html, $self, $args);
+  return &html_parse_yaml_load($html, $self, $args);
 }
 
 sub html_parse_yaml_load {
   my $html = shift;
-  my $sref = ref($html) ? $html : \$html;
   my $self = shift || {};
   my $args = shift || {};
   my $key = $args->{html_key} || $self->{html_key} || $HTML_KEY;
@@ -316,7 +315,7 @@ sub html_parse_yaml_load {
 
   my $str = '';
   my @order = ();
-  while ($$sref =~ m{
+  while ($html =~ m{
     (document\.    # global javascript
      | var\s+      # local javascript
      | <\w+\s+[^>]*?) # input, form, select, textarea tag
