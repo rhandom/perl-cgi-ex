@@ -1,3 +1,12 @@
+2004-12-02  Paul Seamons  <cgi_ex@seamons.com>
+
+        * Version 1.13 is done
+        * Show more App perldoc examples
+        * Fix some App path bugs
+        * Add more app hooks
+        * Cleanup app code
+        * Allow for Conf to write to each of the types
+
 2004-11-010  Paul Seamons  <cgi_ex@seamons.com>
 
         * Version 1.12 is done
