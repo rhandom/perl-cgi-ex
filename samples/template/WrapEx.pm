@@ -1,64 +1,34 @@
-package O::WrapEx;
-
-# [var a.is_disabled [if [|| a.new form.is_updateable] "" else " DISABLED"]]
+package WrapEx;
 
 use strict;
 use vars qw($REVISION $VERSION);
-$REVISION  = q$Revision: 1.1 $; # set the revision number into a variable
+$REVISION  = q$Revision: 1.2 $; # set the revision number into a variable
 $VERSION   = ($REVISION =~ /([\d\.]+)/) ? $1 : "None";
 
 use vars qw(@ISA @EXPORT_OK $sph $sph_qr $UNIQUE_KEY $AUTOLOAD
-            %FUNC_PRE_SWAP %FUNC_POST_SWAP %AREAS
-            %LANGUAGES
+            %FUNC_PRE_SWAP %FUNC_POST_SWAP %AREAS  $PLACEHOLDER
             );
 use Exporter ();
-use O::s2dr ();
-use O::ConfUtil ();
-use O::Is qw(isun cluck confess);
-use O::My qw(isAlpha);
-use O::User ();
-
-BEGIN {
-  if( $ENV{MOD_PERL} ){
-    require O::ENCODE;
-    require O::Form;
-    require O::Graph;
-    require O::Partner;
-    require O::ServiceAuth;
-    require O::Upgrade;
-    require O::WrapISML;
-    require Digest::MD5;
-  }
-}
+use Digest::MD5;
 
 @ISA       = ('Exporter');
 @EXPORT_OK = qw(wrap);
 $sph       = chr(186); # swap placement holder
 $sph_qr    = qr/$sph\d+$sph/;
 $UNIQUE_KEY = '1vunderbund'; # key that won't be anywhere else
-%LANGUAGES = (
-              'es' => 'Spanish',
-              'rn' => 'Red Neck',
-              );
+$PLACEHOLDER = "$sph~$sph";
 
 ###----------------------------------------------------------------###
 
 %AREAS = (
           'browser'      => \&area_browser,
-          'cart'         => \&area_cart,
           'cookie'       => \&area_cookie,
           'env'          => \&area_env,
           'form'         => \&area_form,
           'form_error'   => \&area_form_error,
           'form_hidden'  => \&area_form_hidden,
-          'graph'        => \&area_graph,
-          'isml'         => \&area_isml,
           'pass'         => 1,
-          'partner'      => \&area_partner,
-          'service'      => \&area_service,
-          'site'         => \&area_site,
           'text'         => \&area_text,
-          'upgrade'      => \&area_upgrade,
           'ALT_POINTERS' => 1,
           'DIRS'         => 1,
           'FILE'         => 1,
@@ -95,11 +65,9 @@ $UNIQUE_KEY = '1vunderbund'; # key that won't be anywhere else
                    'gt'      => \&func_eq,
                    'if'      => \&func_if,
                    'join'    => \&func_join,
-                   'jsgen'   => \&func_jsgen,
                    'keys'    => \&func_keys,
                    'le'      => \&func_eq,
                    'length'  => \&func_length,
-                   'logcsv'  => \&func_logcsv,
                    'loop'    => \&func_loop,
                    'lt'      => \&func_eq,
                    'md5'     => \&func_md5,
@@ -108,7 +76,6 @@ $UNIQUE_KEY = '1vunderbund'; # key that won't be anywhere else
                    'regex'   => \&func_regex,
                    'split'   => \&func_split,
                    'sprintf' => \&func_sprintf,
-                   'store'   => \&func_store,
                    'wordwrap'=> \&func_wordwrap, 
                    'values'  => \&func_values,
                    '&&'      => \&func_numeric,
@@ -133,16 +100,13 @@ $UNIQUE_KEY = '1vunderbund'; # key that won't be anywhere else
 sub new {
   my $type  = shift;
   my $class = ref($type) || $type || __PACKAGE__;
-  my $self  = ref($_[0]) ? $_[0] : !(@_ % 2) ? {@_} : die 'Usage: O::WrapEx->new(partner=>$p)';
+  my $self  = ref($_[0]) ? $_[0] : !(@_ % 2) ? {@_} : die 'Usage: WrapEx->new';
   bless $self, $class;
-  $self->{partner} ||= do {
-    require O::Partner;
-    O::Partner->new($ENV{HTTP_HOST} || 'default.partner');
-  };
-  $self->{form}    ||= [];                               # array ref of form hashrefs
-  $self->{step}    ||= 'NOSTEPNAME';                     # step of the cgi
-  $self->{N}       ||= 0;                                # current level of recursion
-  $self->{W}       ||= $self->{partner}->{wrap} ||= {};  # wrap cache location
+  $self->{form}    ||= [];           # array ref of form hashrefs
+  $self->{step}    ||= 'NOSTEPNAME'; # step of the cgi
+  $self->{N}       ||= 0;            # current level of recursion
+  $self->{W}       ||= {};           # wrap cache location
+  $self->{dirs}    ||= [];           # what are my lookup dirs
 
   $ENV{SCRIPT_NAME} ||= $0;
 
@@ -158,9 +122,13 @@ sub DESTROY {}
 
 sub AUTOLOAD {
   my $self = shift;
-  my $meth = $AUTOLOAD =~ /(\w+)$/ ? $1 : cluck "Invalid method \"$AUTOLOAD\"";
-  isun $meth;
+  my $meth = $AUTOLOAD =~ /(\w+)$/ ? $1 : warn "Invalid method \"$AUTOLOAD\"";
   die "unknown method \"$meth\"";
+}
+
+sub content {
+  my $self = shift;
+  die "@_";
 }
 
 ###----------------------------------------------------------------###
@@ -175,27 +143,27 @@ sub wrap {
     die "not implemented";
   }
 
-  ### allow for logging variables
-  if( $ENV{QUERY_STRING} && $ENV{QUERY_STRING} =~ /wrapvars/ ){
-    $self->{VAR} = {};
-  }
+#  ### allow for logging variables
+#  if( $ENV{QUERY_STRING} && $ENV{QUERY_STRING} =~ /wrapvars/ ){
+#    $self->{VAR} = {};
+#  }
 
   ### do the main swap
   my $n = $self->wrap_swap($self->{text});
 
-  ### allow for logging variables
-  if( $self->{VAR} ){
-    my $qr = join("|",($ENV{QUERY_STRING} =~ /wrapvars=([a-z]\w*)/g));
-    $qr = $qr ? qr/^($qr)\./i : qr/./;
-    &O::Is::content_type;
-    print "<b>Wrap Vars...</b><br>\n";
-    foreach (sort keys %{ $self->{VAR} }){
-      next if $_ !~ $qr;
-      print "&nbsp;&nbsp;$_<br>\n";
-    }
-    delete $self->{VAR};
-  }
-
+#  ### allow for logging variables
+#  if( $self->{VAR} ){
+#    my $qr = join("|",($ENV{QUERY_STRING} =~ /wrapvars=([a-z]\w*)/g));
+#    $qr = $qr ? qr/^($qr)\./i : qr/./;
+#    &CGI::Ex::content_type();
+#    print "<b>Wrap Vars...</b><br>\n";
+#    foreach (sort keys %{ $self->{VAR} }){
+#      next if $_ !~ $qr;
+#      print "&nbsp;&nbsp;$_<br>\n";
+#    }
+#    delete $self->{VAR};
+#  }
+#
   return $n;
 }
 
@@ -238,7 +206,7 @@ sub wrap_swap {
     substr($$ref,$i,$len,$tag);
     $j += length($tag) - $len + 1;
     if( $n-- < 0 ){
-      &O::Is::ISUN("Max swaps reached");
+      die "Max swaps reached";
       last;
     }
     
@@ -319,7 +287,6 @@ sub wrap_buddy {
     }
 
     if( $action ne '!' ){
-#      isun "$pre$action$spc$tag$post";
       return "$pre$action$spc$tag$post";
     }else{
       $tag = "$action$spc$tag";
@@ -469,9 +436,9 @@ sub next_alt {
 
   $self->load_element($area,$name) if ! defined($self->{W}->{$area}->{$name});
 
-  if ($self->{VAR}) {
-    $self->{VAR}->{"$area.$name"} ||= 1;
-  }
+#  if ($self->{VAR}) {
+#    $self->{VAR}->{"$area.$name"} ||= 1;
+#  }
 
   ### short circuit isml
   if ($area eq 'isml') {
@@ -514,7 +481,7 @@ sub next_alt {
   }elsif( $ref eq 'HASH' ){
     return {%{ $self->{W}->{$area}->{$name} }};
   }elsif( $ref ne 'ARRAY') {
-    confess "Don't know how to handle type $ref";
+    die "Don't know how to handle type $ref";
   }
 
   ### return a specific index
@@ -615,62 +582,24 @@ sub numify {
 ###----------------------------------------------------------------###
 ### extra subs
 
-sub lang {
-  my $self = shift;
-  return $self->{W}->{user}->{lang} ||= do {
-    $self->load_site;
-    $self->area_cookie('cookie','lang');
-    my $lang = $self->get_form_val('lang');
-    $lang ||= $self->{W}->{form}->{lang};
-    $lang ||= $self->{W}->{cookie}->{lang};
-    $lang ||= $self->{W}->{site}->{util_language};
-    $lang ||= $ENV{HTTP_ACCEPT_LANGUAGE};
-    $lang ||= '';
-    $lang = lc($lang);
-    $lang =~ tr/a-z//cd;
-    $lang =~ s/^(..).+$/$1/;
-    $lang = '' if ! $LANGUAGES{$lang};
-    $lang; # return of the do
-  };
-}
-
-sub load_site {
-  my $self = shift;
-  return if $self->{W}->{site} && ref($self->{W}->{site}) && keys(%{ $self->{W}->{site} }) > 1;
-  
-  my $u = $self->{W}->{site} = $self->{user} ||= O::User->new( $self->{W}->{site}->{site}
-                                                               || $self->{partner}->{test_site_name} );
-  $u->{email_username} ||= 'webmaster';
-  $u->{email_domain} ||= $u->{site};
-  $self->{W}->{site}->{email} = "$u->{email_username}\@$u->{email_domain}";
-  delete $self->{W}->{site}->{password};
-
-  if (&O::My::isBizHosting($self->{partner})){
-    $self->{W}->{site}->{"biz_enabled"} = "1";
-  }
-}
-
 sub get_wrap_directories {
-  my $self     = shift;
-  my $_partner = shift;
-  my $type     = shift() || 'wrap';
-  my $ref      = [];
-  push @$ref, &O::s2dr::s2sr($_partner->{test_site_name})."/filebox/$type"
-    if $type ne 'content';
+  my $self = shift;
+  my $type = shift || 'wrap';
+  my $ref  = [];
+  my $dirs = $self->{dirs} || [];
 
-  $_partner->start_lineage if ! $_partner->{lineage};
-  foreach my $domain ( @{ $_partner->{lineage} } ) {
-    push @$ref, &O::s2dr::s2dr("my.$domain")."/public/$type";
+  foreach my $dir (@$dirs) {
+    next if ! -d "$dir/$type";
+    push @$ref, "$dir/$type";
   }
 
-  @$ref = grep { -d } @$ref;
   return $ref;
 }
 
 sub get_content_directories {
   my $self = shift;
   my $_partner = shift;
-  return $self->get_wrap_directories($_partner,'content');
+  return $self->get_wrap_directories('content');
 }
 
 
@@ -680,7 +609,6 @@ sub get_form_val {
   my $ref  = ref($self->{form});
   return if ! $ref;
   if( $ref ne 'ARRAY' ){
-    isun &O::Is::caller_trace();
     if( $ref eq 'HASH' ){
       $self->{form} = [$self->{form}];
     }
@@ -692,47 +620,6 @@ sub get_form_val {
     }
   }
   return '';
-}
-
-sub conf_read {
-  my $self = shift;
-  my $area = shift;
-
-  my @pieces = split(m|/|,$area);
-  foreach (@pieces){
-    die 'Usage : $conf = $self->conf_read("area") or $conf = $self->conf_read("cgi/area")' if /\W/;
-  }
-  my $cgi = (@pieces >= 2) ? shift(@pieces) : $ENV{SCRIPT_NAME} || 'NOSCRIPT';
-  my $step = "$cgi/none";
-  $area = pop(@pieces);
-
-  $self->func_var("$area 'wrap:$step/$area.wrap'");
-  $self->load_element($area,$UNIQUE_KEY);
-  delete $self->{W}->{$area}->{$UNIQUE_KEY};
-  
-  return $self->{W}->{$area} || {};
-}
-
-sub conf_write {
-  my $self = shift;
-  my $area = shift;
-  my $update = shift || return 0;
-
-  ### setup wrap info
-  my @pieces = split(m|/|,$area);
-  foreach (@pieces){
-    die 'Usage : conf_write("area",$update,$partner) or conf_read("cgi/area",$update)' if /\W/;
-  }
-  my $cgi = (@pieces >= 2) ? shift(@pieces) : $ENV{SCRIPT_NAME} || 'NOSCRIPT';
-  my $step = "$cgi/none";
-  $area = pop(@pieces);
-
-  $self->func_var("$area 'wrap:$step/$area.wrap'");
-  local $self->{W}->{$area} = $update;
-  my $ret = $self->func_store($area);
-  isun $ret
-    if $ret;
-  return 1;
 }
 
 ###----------------------------------------------------------------###
@@ -752,22 +639,6 @@ sub area_browser {
   }
   $self->{W}->{$area}->{ie} = $ie;
   $self->{W}->{$area}->{nn} = $nn;
-  return 1;
-}
-
-sub area_cart {
-  my ($self,$area,$name) = @_;
-  if( $name =~ /^(is_setup_started|is_setup|is_activated|is_deactivated|options_not_set|options_not_set_required|is_testmode|was_old_cart)$/ ){
-    return 1 if exists $self->{W}->{$area}->{$name};
-    $self->load_site;
-    require O::Cart;
-    my $obj = $self->{W}->{$area}->{obj_cache} ||= O::Cart->new({
-      user    => $self->{W}->{site},
-      partner => $self->{partner},
-      form    => {},
-    });
-    $self->{W}->{$area}->{$name} = $obj->$name();
-  }
   return 1;
 }
 
@@ -799,17 +670,8 @@ sub area_default {
     my $dirs;
 
     ### check for user overrides on content
-    my $user_c_dir = &O::s2dr::s2sr($ENV{HTTP_HOST} || '') ."/filebox/content";
-    if( $self->{W}->{user}->{override} ){
-      $dirs = [$user_c_dir];
-    }else{
-      $self->{W}->{DIRS_C}->{ALL} ||= $self->get_content_directories($self->{partner});
-      $dirs = exists($self->{W}->{DIRS_C}->{$area}) ? $self->{W}->{DIRS_C}->{$area} : $self->{W}->{DIRS_C}->{ALL};
-      if( $dirs->[0] && $dirs->[0] eq $user_c_dir ){
-        $dirs = [@$dirs]; # copy values of ref
-        shift(@$dirs);    # get rid of user directory - overrides not allowed
-      }
-    }
+    $self->{W}->{DIRS_C}->{ALL} ||= $self->get_content_directories;
+    $dirs = exists($self->{W}->{DIRS_C}->{$area}) ? $self->{W}->{DIRS_C}->{$area} : $self->{W}->{DIRS_C}->{ALL};
 
     ### allow for language
     my @files = ($file);
@@ -825,7 +687,7 @@ sub area_default {
         
         if( -e $file_long ){
           $self->{W}->{FILE}->{"$file_long - $area"} ++;
-          my $ref = &O::ConfUtil::conf_read( $file_long );
+          my $ref = &conf_read( $file_long );
           
           foreach my $key (keys %$ref){
             next if exists $self->{W}->{$area}->{$key};
@@ -840,15 +702,15 @@ sub area_default {
 
 
   ### now look in the normal wrap directories
-  $self->{W}->{DIRS}->{ALL} ||= $self->get_wrap_directories($self->{partner});
+  $self->{W}->{DIRS}->{ALL} ||= $self->get_wrap_directories;
   my $dirs = exists($self->{W}->{DIRS}->{$area}) ? $self->{W}->{DIRS}->{$area} : $self->{W}->{DIRS}->{ALL};
 
-  ### files to look at on each partner
+  ### files to look at on each directory
   my @subs = ("");
   unshift @subs, "$cgi/"       if length($cgi);
   unshift @subs, "$cgi/$step/" if length($step);
 
-  ### loop through the partner area
+  ### loop through the directory area
   foreach my $dir (@$dirs){
     foreach my $sub ( @subs ){
 
@@ -858,7 +720,7 @@ sub area_default {
 
       if( -e $file_long ){
         $self->{W}->{FILE}->{"$file_long - $area"} ++;
-        my $ref = &O::ConfUtil::conf_read( $file_long );
+        my $ref = &conf_read( $file_long );
 
         foreach my $key (keys %$ref){
           next if exists $self->{W}->{$area}->{$key};
@@ -888,10 +750,7 @@ sub area_env {
     hostname      => $ENV{HOSTNAME} || '',
     step          => $self->{W}->{PROP}->{ALL}->{step},
     cgi           => $self->{W}->{PROP}->{ALL}->{cgi},
-    title         => $self->{partner}->{html_title} || '',
     time          => time(),
-    is_secure     => O::My::isSecure(),
-    is_alpha      => isAlpha,
     http          => 'http://',
     q             => '?',
     plus          => '+',
@@ -954,123 +813,6 @@ sub area_form_hidden {
   return 1;
 }
 
-sub area_graph {
-  my ($self,$area,$name) = @_;
-  if ($name eq 'html' || $name eq 'draw' || $name eq 'text') {
-    my $html = eval {
-      require O::Graph;
-      my $g = O::Graph->new(%{$self->{W}->{$area} || {}}, %{$self->{W}->{'pass'} || {}});
-      $g->{type} = 'text' if $name eq 'text';
-      $g->html; # return of the eval
-    };
-    $html = "&#91;O::Graph Error - $@&#93;" if $@;
-    $self->{W}->{$area}->{$name} = $html;
-    return 1;
-  }
-  return 0;
-}
-
-sub area_isml {
-  my ($self,$area,$name) = @_;
-  return 1 if $self->{W}->{$area} && UNIVERSAL::isa($self->{W}->{isml},'O::WrapISML');
-  require O::WrapISML;
-  $self->{W}->{isml} = O::WrapISML->new($self->{partner});
-  return 1;
-}
-
-sub area_partner {
-  my ($self,$area,$name) = @_;
-  $self->{W}->{$area}->{domain} ||= $self->{partner}->{domain};
-  ### this is to give the url that the site was signed up on
-  ### needs to return fs.earl for t87.fs.earl
-  ### needs to return freeservers.com for spack.8m.com
-  my $return = 0;
-  if($name eq 'signup_partner') {
-    $self->load_site;
-    $self->{partner}->start_lineage;
-    my $lineage = [@{$self->{partner}{lineage}}];
-    if($self->{user}{service_level} > $O::User::DEFAULT_SERVICE_LEVEL) {
-      $self->{user}->get("unupgraded_partner_domain");
-      unshift @{$lineage}, $self->{user}{unupgraded_partner_domain} if($self->{user}{unupgraded_partner_domain});
-    }
-    foreach(@{$lineage}) {
-      if(-e O::s2dr::s2dr($_)) {
-        $self->{W}->{$area}->{$name} = $_;
-        $return = 1;
-        last;
-      }
-    }
-  }
-
-  return $return;
-}
-
-sub area_service {
-  my ($self,$area,$name) = @_;
-  return 0 if $name !~ /(^|\.|_)(auth|avail|grand|free)$/;
-  require O::ServiceAuth;
-
-  $self->load_site;
-
-  my $service = O::ServiceAuth->new({
-    user    => $self->{W}->{site},
-    partner => $self->{partner},
-    service => $self->{W}->{PROP}->{ALL}->{cgi},
-  });
-  
-  $service->{service} = $1 if $name =~ /^(.+)_(avail|auth|free|grand)$/;
-  if   ( $2 eq 'avail' ){ $self->{W}->{$area}->{$name} = $service->ServiceAvail; }
-  elsif( $2 eq 'auth'  ){ $self->{W}->{$area}->{$name} = $service->ServiceAuth; }
-  elsif( $2 eq 'free'  ){ $self->{W}->{$area}->{$name} = $service->ServiceFree; }
-  elsif( $2 eq 'grand' ){ $self->{W}->{$area}->{$name} = $service->grand; }
-  return 1;
-}
-
-sub area_site {
-  my ($self,$area,$name) = @_;
-  my @keys = qw(banners email email_type_id file_size name quota site webmaster_gender bitmask);
-  $self->load_site;
-  if( ! $self->{W}->{$area} ){
-    $self->{W}->{$area} = {};
-    $self->{W}->{$area}->{$_} = $self->{W}->{site}->{$_} foreach (@keys);
-  }
-  if( $name eq 'username' ){
-    my $suffix = $self->wrap_buddy("[preferences.allow_short_username]") || '';
-    my $username = $self->wrap_buddy("[site.site]") || '';
-    $username =~ s/\Q.$suffix\E$//;
-    $self->{W}->{$area}->{username} = $username;
-
-  }elsif( $name =~ /^bitmask_(\w+)$/ ){
-    my $mask = $1;
-    my $val  = 0;
-    if( exists($O::User::MASK->{$mask}) && $self->{W}->{$area}->{bitmask} ){
-      $val = &O::User::mask($self->{W}->{$area}->{bitmask},$mask) || 0;
-    }
-    $self->{W}->{$area}->{$name} = $val;
-
-  }elsif( $name eq 'epoch' ) {
-    if($self->{user} && !$self->{user}{epoch}) {
-      $self->{user}->setup_date2epoch;
-    }
-    $self->{W}->{$area}->{$name} = $self->{user}{epoch} || 0;
-  }elsif( $name eq 'days_old' ) {
-    my $user = $self->{W}{site} || $self->{user};
-    $user->setup_date2epoch;
-    $self->{W}->{$area}->{$name} = int( (time - $user->{epoch}) / 86400);
-
-  }elsif( $name eq 'weeks_old' ) {
-    my $user = $self->{W}{site} || $self->{user};
-    $user->setup_date2epoch;
-    require O::tima;
-    $self->{W}->{$area}->{$name} = O::tima::weeks_old($user->{epoch});
-
-  }elsif( ! exists $self->{W}->{$area}->{$name} ){
-    $self->{W}->{$area}->{$name} = '';
-
-  }
-  return 1;
-}
-
 sub area_text {
   my ($self,$area,$name) = @_;
   if (! exists($self->{W}->{PROP}->{$area})) {
@@ -1079,16 +821,6 @@ sub area_text {
     $self->{W}->{PROP}->{$area}->{content} = $file;
   }
   return 0;
-}
-
-sub area_upgrade {
-  my ($self,$area,$name) = @_;
-  if( ! $self->{W}->{$area} || ! tied(%{ $self->{W}->{$area} }) ){
-    require O::Upgrade;
-    $self->{W}->{$area} = {};
-    O::Upgrade->new($self->{partner}->{'test_site_name'})->get_upgrade_swaps( $self->{W}->{$area}, {} );
-  }
-  return 1;
 }
 
 ###----------------------------------------------------------------###
@@ -1129,7 +861,7 @@ sub func_content{
   $self->wrap_swap(\$file);
   return "&#91;Unsecure file \"$file\"&#93;" if $file=~m|\.\./| || $file=~m|^/|;
   $file = "$self->{W}->{PROP}->{ALL}->{cgi}/$file" unless $file =~ m|/|;
-  my $ret = $self->{partner}->content($file,{suppress_header=>1,relative_to_s2dr=>$relative});
+  my $ret = $self->content($file,{suppress_header=>1,relative_to_s2dr=>$relative});
   $self->wrap_swap(\$ret) if ! $no_wrap;
   return $ret;
 }
@@ -1276,27 +1008,6 @@ sub func_join {
   return $ret;
 }
 
-sub func_jsgen {
-  my ($self,$tag,$SWAP,$action) = @_;
-  require O::Form;
-  my $cgi_step = $self->next_val_from_str(\$tag,$SWAP);
-  $self->wrap_swap(\$cgi_step);
-  if ($cgi_step =~ /onsubmit/i) {
-    return &O::Form::onsubmit_js();
-  }
-  if (! $cgi_step || $cgi_step =~ m|^/| || $cgi_step =~ m|/\.+/|) {
-    $cgi_step = $self->{W}->{PROP}->{ALL}->{cgi} .'/'. $self->{W}->{PROP}->{ALL}->{step};
-  } elsif ($cgi_step !~ m|/|) {
-    $cgi_step = $self->{W}->{PROP}->{ALL}->{cgi} ."/$cgi_step";
-  }
-  my $js_hashname = $self->next_val_from_str(\$tag,$SWAP) || '';
-  $self->wrap_swap(\$js_hashname) if $js_hashname;
-  my $fob = O::Form->new({partner => $self->{partner}});
-  my $ret = $fob->generate_js($cgi_step,[],$js_hashname); # second argument is order - gen_js will create it for us
-  $self->wrap_swap(\$ret);
-  return $ret;
-}
-
 sub func_keys {
   my ($self,$tag,$SWAP,$action) = @_;
   $self->wrap_unswap(\$tag,$SWAP);
@@ -1342,38 +1053,6 @@ sub func_lc {
 sub func_length {
   my ($self,$tag,$SWAP,$action) = @_;
   return length($self->next_val_from_str(\$tag,$SWAP)) || 0;
-}
-
-sub func_logcsv {
-  my ($self,$tag,$SWAP,$action) = @_;
-  my @param = ();
-  push @param, $self->next_val_from_str(\$tag,$SWAP) while (length($tag) && scalar(@param) < 30);
-
-  my $file = shift(@param);
-  die "Invalid file $file" if $file =~ /\W/;
-  $file .= ".csv";
-
-  my $dir = "$O::magics::ROOTDIR_TMPCOMMON/wrapex";
-  return "&#91;Couldn't create dir wrapex: $!&#93;" if ! -d $dir && ! mkdir $dir, 0755;
-
-  ### create a csv line
-  my $str  = join ",", map {s/^\s+//;                     # remove pre whitespace
-                            s/\s+$//;                     # remove post whitespace
-                            s/(?<!\\)\"/\\\"/;            # escape unescaped quotes
-                            (/[\s\,\"]/) ? "\"$_\"" : $_; # quote strings that need it
-                          } @param;
-  my ($sec,$min,$hour,$day,$mon,$year) = localtime;
-  my $time = sprintf("%4d-%02d-%02d,%02d:%02d",$year+1900,$mon+1,$day,$hour,$min);
-
-  ### spit it out
-  open(_OUT,">>$dir/$file") || return "&#91;Couldn't open $file for writing: $!&#93;";
-  print _OUT "$time,$str\n";
-  close(_OUT);
-
-  ### move old files if they are too large
-  rename("$dir/$file","$dir/$file.$time") if -s "$dir/$file" > 1_000_000;
-
-  return "";
 }
 
 sub func_loop {
@@ -1542,43 +1221,6 @@ sub func_sort {
   return [sort @$array];
 }
 
-sub func_store {
-  my ($self,$tag,$SWAP,$action) = @_;
-  my $element = $self->next_val_from_str(\$tag,$SWAP,'returnstrnotval');
-  $element =~ s/[\[\]]//g;
-
-  my ($area,$name);
-  if( $element =~ /^(\w+)$/ ){
-    ($area,$name) = ($1,"");
-  }elsif( $element =~ /^(\w+)\.(\w+)/ ){
-    ($area,$name) = ($1,$2);
-  }else{
-    return "&#91;Invalid store ($element)&#93;";
-  }
-  
-  return "&#91;Protected area ($area)&#93;" if $AREAS{$area};
-
-  ### where does this conf come from
-  my ($cgi,$file) = (exists $self->{W}->{PROP}->{$area})
-    ? ($self->{W}->{PROP}->{$area}->{cgi}, $self->{W}->{PROP}->{$area}->{area})
-    : ($self->{W}->{PROP}->{ALL}->{cgi}, $area);
-
-  $self->load_site;
-  my $s2sr = $self->{user}->{s2sr} || &O::s2dr::s2sr($ENV{HTTP_HOST} || '');
-  return "&#91;Cannot store a value on an uninstalled site.&#93;" if ! -d $s2sr;
-  mkdir("$s2sr/filebox",0755)           if ! -d "$s2sr/filebox";
-  mkdir("$s2sr/filebox/wrap",0755)      if ! -d "$s2sr/filebox/wrap";
-  mkdir("$s2sr/filebox/wrap/$cgi",0755) if ! -d "$s2sr/filebox/wrap/$cgi";
-
-  my $update = $name ? {$name => $self->{W}->{$area}->{$name}} : $self->{W}->{$area};
-  eval{ &O::ConfUtil::conf_write("$s2sr/filebox/wrap/$cgi/$file.wrap",$update) };
-  if( $@ ){
-    return "&#91;Error saving values ($@)&#93;";
-  }
-  return "";
-
-}
-
 sub func_sub {
   my $self = shift;
   my $tag  = shift;
@@ -1587,7 +1229,7 @@ sub func_sub {
   my $sub_name = $1;
 
   ### load the sub if necessary
-  if( $sub_name !~ /^isun$/i ){
+  if( $sub_name !~ /^dex$/i ){
     if( ! exists $self->{W}->{form}->{$sub_name} ){
       $self->{W}->{form}->{$sub_name} = $self->get_form_val( $sub_name );
     }
@@ -1619,14 +1261,13 @@ sub func_sub {
     }
   }
 
-  ### allow for debugging
-  if( $sub_name =~ /^isun$/i ){
-    my $txt  = &O::Is::is_dump($is_area ? $param->[0] : $param);
-    &O::Is::is_cleanup(\$txt,$tag,1);
-    &O::Is::content_type();
-    print "<b>Wrap isun...</b><br>\n" . $txt ."<hr width=100%>\n";
-    return '';
-  }
+#  ### allow for debugging
+#  if( $sub_name =~ /^dex$/i ){
+#    my $txt = &Data::DumpEx::dex_text($is_area ? $param->[0] : $param);
+#    &CGI::Ex::content_type();
+#    print "<b>Wrap dex...</b><br>\n" . $txt ."<hr width=100%>\n";
+#    return '';
+#  }
 
   ### get the result and swap it
   my $txt = &{ $self->{W}->{form}->{$sub_name} }( @$param );
@@ -1719,8 +1360,8 @@ sub func_var {
         delete $self->{W}->{DIRS}->{$one};
         delete $self->{W}->{DIRS_C}->{$one};
       }else{
-        $self->{W}->{DIRS}->{$one}   = $self->get_wrap_directories(O::Partner->new($site));
-        $self->{W}->{DIRS_C}->{$one} = $self->get_content_directories(O::Partner->new($site));
+        $self->{W}->{DIRS}->{$one}   = $self->get_wrap_directories;
+        $self->{W}->{DIRS_C}->{$one} = $self->get_content_directories;
       }
       return "";
 
@@ -1832,7 +1473,7 @@ sub func_var {
         my $relative = ($2 && $2 =~ /relative/i) ? 1 : 0;
         return "&#91;Unsecure file \"$file\"&#93;" if $file=~m|\.\./| || $file=~m|^/|;
         $file = "$self->{W}->{PROP}->{ALL}->{cgi}/$file" unless $file =~ m|/|;
-        my $ret = $self->{partner}->content($file,{suppress_header=>1, relative_to_s2dr=>$relative});
+        my $ret = $self->content($file,{suppress_header=>1, relative_to_s2dr=>$relative});
         if( $do_push && ref($ret) ){
           splice @{ $self->{W}->{$area}->{$name} }, -1, 1, $ret;
         }else{
@@ -1908,10 +1549,7 @@ sub func_wordwrap {
 # function to help track which templates are actually still in use
 sub func_throw {
   my ($self, $tag) = @_;
-  require O::ERROR;
-  O::ERROR::THROW($tag, {
-    template => $self->{W}{PROP}{ALL}{step},
-  });
+  die "Throw: $tag";
   return "<!-- threw $tag -->";
 }
 
@@ -1935,5 +1573,232 @@ sub get_unresolved_brackets {
   }
   return $return;
 }
+
+###----------------------------------------------------------------###
+
+sub conf_read {
+  my $file = shift || die "No filename supplied";
+  my $sep_by_newlines = ($_[0] && lc($_[0]) eq 'sep_by_newlines') ? 1 : 0;
+
+  ### fh will now lose scope and close itself if necessary
+  my $FH = do { local *FH; \*FH };
+  open ($FH, "<$file");
+  if( ! defined $FH ){
+    return {};
+  }
+
+  my $x = 0;
+  my $conf = {};
+  my $key  = '';
+  my $val;
+  my $line;
+  my ($is_array,$is_hash,$is_multiline);
+  my $order;
+  $order = [] if wantarray;
+  
+  while( defined($line = <$FH>) ){
+    last if ! defined $line;
+    last if $x++ > 10000;
+    
+    next if index($line,'#') == 0;
+
+    if ($line =~ /^\s/ && ($is_multiline || $line ne "\n")){
+      next if ! length($key);
+      $conf->{$key} .= $line;
+      $is_multiline = 1;
+
+    }else{
+      ### duplicate trim section
+      if( length($key) ){
+        $conf->{$key} =~ s/\s+$//;
+        if( $is_array || $is_hash ){
+          $conf->{$key} =~ s/^\s+//;
+          my $urldec = (index($conf->{$key},'%')>-1 || index($conf->{$key},'+')>-1);
+          my @pieces;
+          if ($sep_by_newlines) {
+            @pieces = split(/\s*\n\s*/,$conf->{$key});
+            @pieces = map {split(/\s+/,$_,2)} @pieces if $is_hash;
+          } else {
+            @pieces = split(/\s+/,$conf->{$key});
+          }
+          if( $urldec ){
+            foreach my $_val (@pieces){
+              $_val =~ y/+/ / if ! $sep_by_newlines;
+              $_val =~ s/%([a-f0-9]{2})/chr(hex($1))/egi;
+            }
+          }
+          if( $is_array ){
+            foreach (@pieces){ $_="" if index($_,$PLACEHOLDER)>-1 }
+            $conf->{$key} = \@pieces;
+          }elsif( $is_hash ){
+            foreach (@pieces){ $_="" if index($_,$PLACEHOLDER)>-1 }
+            shift(@pieces) if scalar(@pieces) % 2;
+            $conf->{$key} = {@pieces};
+          }
+        }elsif( ! $is_multiline ){
+          $conf->{$key} =~ y/+/ / if ! $sep_by_newlines;
+          $conf->{$key} =~ s/%([a-f0-9]{2})/chr(hex($1))/egi;
+        }
+      }
+
+      ($key,$val) = split(/\s+/,$line,2);
+      $is_array = 0;
+      $is_hash = 0;
+      $is_multiline = 0;
+      if (! length($key)) {
+        next;
+      } elsif (index($key,'array:') == 0) {
+        $is_array = $key =~ s/^array://i;
+      } elsif (index($key,'hash:') == 0) {
+        $is_hash = $key =~ s/^hash://i;
+      }
+      $key =~ y/+/ / if ! $sep_by_newlines;
+      $key =~ s/%([a-f0-9]{2})/chr(hex($1))/egi;
+      $conf->{$key} = $val;
+      push @$order, $key if $order;
+    }
+  }
+
+  ### duplicate trim section
+  if( length($key) && defined($conf->{$key}) ){
+    $conf->{$key} =~ s/\s+$//;
+    if( $is_array || $is_hash ){
+      $conf->{$key} =~ s/^\s+//;
+      my $urldec = (index($conf->{$key},'%')>-1 || index($conf->{$key},'+')>-1);
+      my @pieces;
+      if ($sep_by_newlines) {
+        @pieces = split(/\s*\n\s*/,$conf->{$key});
+        @pieces = map {split(/\s+/,$_,2)} @pieces if $is_hash;
+      } else {
+        @pieces = split(/\s+/,$conf->{$key});
+      }
+      if( $urldec ){
+        foreach my $_val (@pieces){
+          $_val =~ y/+/ / if ! $sep_by_newlines;
+          $_val =~ s/%([a-f0-9]{2})/chr(hex($1))/egi;
+        }
+      }
+      if( $is_array ){
+        foreach (@pieces){ $_="" if index($_,$PLACEHOLDER)>-1 }
+        $conf->{$key} = \@pieces;
+      }elsif( $is_hash ){
+        foreach (@pieces){ $_="" if index($_,$PLACEHOLDER)>-1 }
+        shift(@pieces) if scalar(@pieces) % 2;
+        $conf->{$key} = {@pieces};
+      }
+    }elsif( ! $is_multiline ){
+      $conf->{$key} =~ y/+/ / if ! $sep_by_newlines;
+      $conf->{$key} =~ s/%([a-f0-9]{2})/chr(hex($1))/egi;
+    }
+  }
+
+
+  close($FH);
+  return $order ? ($conf,$order) : $conf;
+}
+
+
+sub conf_write{
+  my $file = shift || die "No filename supplied";
+
+  if (! @_) {
+    return;
+  }
+
+  my $new_conf = shift || die "Missing update hashref";
+  return if ! keys %$new_conf;
+  
+  ### do we allow writing out hashes in a nice way
+  my $sep_by_newlines = ($_[0] && lc($_[0]) eq 'sep_by_newlines') ? 1 : 0;
+
+  ### touch the file if necessary
+  if( ! -e $file ){
+    open(TOUCH,">$file") || die "Conf file \"$file\" could not be opened for writing: $!";
+    close(TOUCH);
+  }
+
+  ### read old values
+  my $conf = conf_read($file) || {};
+  my $key;
+  my $val;
+
+  ### remove duplicates and undefs
+  while (($key,$val) = each %$new_conf){
+    $conf->{$key} = $new_conf->{$key};
+  }
+
+  ### prepare output
+  my $output = '';
+  my $qr = qr/([^\ \!\"\$\&-\*\,-\~])/;
+  foreach $key (sort keys %$conf){
+    next if ! defined $conf->{$key};
+    $val = delete $conf->{$key};
+    $key =~ s/([^\ \!\"\$\&-\*\,-9\;-\~\/])/sprintf("%%%02X",ord($1))/eg;
+    $key =~ tr/\ /+/;
+    my $ref = ref($val);
+    if( $ref ){
+      if( $ref eq 'HASH' ){
+        $output .= "hash:$key\n";
+        foreach my $_key (sort keys %$val){
+          my $_val = $val->{$_key};
+          next if ! defined $_val;
+          $_val =~ s/$qr/sprintf("%%%02X",ord($1))/ego;
+          $_key =~ s/$qr/sprintf("%%%02X",ord($1))/ego;
+          if ($sep_by_newlines) {
+            $_val =~ s/^(\s)/sprintf("%%%02X",ord($1))/ego;
+            $_val =~ s/(\s)$/sprintf("%%%02X",ord($1))/ego;
+            $_key =~ s/\ /%20/g;
+          } else {
+            $_val =~ tr/\ /+/;
+            $_key =~ tr/\ /+/;
+          }
+          $_val = $PLACEHOLDER if ! length($_val);
+          $output .= "\t$_key\t$_val\n";
+        }
+      }elsif( $ref eq 'ARRAY' ){
+        $output .= "array:$key\n";
+        foreach (@$val){
+          my $_val = $_;
+          $_val =~ s/$qr/sprintf("%%%02X",ord($1))/ego;
+          if ($sep_by_newlines) {
+            $_val =~ s/^(\s)/sprintf("%%%02X",ord($1))/ego;
+            $_val =~ s/(\s)$/sprintf("%%%02X",ord($1))/ego;
+          } else {
+            $_val =~ tr/\ /+/;
+          }
+          $_val = $PLACEHOLDER if ! length($_val);
+          $output .= "\t$_val\n";
+        }
+      }else{
+        $output .= "$key\tbless('$val','$ref')\n"; # stringify the ref
+      }
+    }else{
+      if( $val =~ /\n/ ){ # multiline values that are indented properly don't need encoding
+        if( $val =~ /^\s/ || $val =~ /\s$/ || $val =~ /\n\n/ || $val =~ /\n([^\ \t])/ ){
+          if ($sep_by_newlines) {
+            $val =~ s/([^\!\"\$\&-\~])/sprintf("%%%02X",ord($1))/eg;
+          } else {
+            $val =~ s/([^\ \!\"\$\&-\*\,-\~])/sprintf("%%%02X",ord($1))/eg;
+            $val =~ y/ /+/;
+          }
+        }
+      }else{
+        $val =~ s/([^\ \t\!\"\$\&-\*\,-\~])/sprintf("%%%02X",ord($1))/eg;
+        $val =~ s/^(\s)/sprintf("%%%02X",ord($1))/eg;
+        $val =~ s/(\s)$/sprintf("%%%02X",ord($1))/eg;
+      }
+      $output .= "$key\t$val\n";
+    }
+  }
+
+  open (CONF,"+<$file") || die "Could not open the file for writing ($file) -- [$!]";
+  print CONF $output;
+  truncate CONF, length($output);
+  close CONF;
+
+  return 1;
+}
+
+###----------------------------------------------------------------###
 
 1;
