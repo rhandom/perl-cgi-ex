@@ -194,12 +194,8 @@ sub set_cookie {
   }
 
   ### default path to / and allow for 1hour instead of 1h
-  ### (if your gonna make expires useful - make it useful)
   $args->{-path} ||= '/';
-  if ($args->{-expires}
-      && $args->{-expires} =~ m/^([+-]|)\s*(\d+)\s*([a-zA-Z])\w*$/) {
-    $args->{-expires} = ($1) ? "$1$2$3" : "+$2$3";
-  }
+  $args->{-expires} = &time_calc($args->{-expires}) if $args->{-expires};
 
   my $cookie = "" . $self->object->cookie(%$args);
 
@@ -220,15 +216,11 @@ sub last_modified {
   my $self = shift;
   my $time = shift;
   my $key  = shift || 'Last-Modified';
-  if (! defined $time) {
-    $time = time;
-  } elsif ($time =~ m/^([+-]|)\s*(\d+)\s*([a-zA-Z])\w*$/) {
-    $time = ($1) ? "$1$2$3" : "+$2$3";
-  } elsif (-e $time) {
-    $time = (stat _)[9]; # file modified time
-  }
-  require CGI::Util;
-  $time = &CGI::Util::expires($time);
+
+  ### get a time string - looks like:
+  ### Mon Dec  9 18:03:21 2002
+  ### valid RFC (although not prefered)
+  $time = scalar(gmtime(&time_calc(shift)));
 
   if (&content_typed()) {
     print "<meta http-equiv=\"$key\" content=\"$time\" />\n";
@@ -248,6 +240,31 @@ sub expires {
   my $time = shift;
   return $self->last_modified($time, 'Expires');
 }
+
+### similar to expires_calc from CGI::Util
+### allows for lenient calling, hour instead of just h, etc
+### takes time or 0 or now or types of -23minutes 
+sub time_calc {
+  my $time = shift;
+  if (! $time || lc($time) eq 'now') {
+    $time = time;
+  } elsif ($time =~ m/^([+-]?\s*(?:\d+|\d*\.\d+))\s*(\w)\w*$/) {
+    my $m = {
+      's' => 1,
+      'm' => 60,
+      'h' => 60 * 60,
+      'd' => 60 * 60 * 24,
+      'w' => 60 * 60 * 24 * 7,
+      'M' => 60 * 60 * 24 * 30,
+      'y' => 60 * 60 * 24 * 365,
+    };
+    $time = time + ($m->{$2} || 1) * $1;
+  } elsif ($time =~ /\D/) {
+    die "Invalid time passed to time_calc ($time)";
+  }
+  return $time;
+}
+
 
 ### allow for generic status send
 sub send_status {
@@ -315,7 +332,7 @@ sub print_js {
 
   ### no - file - 404
   if (! $stat) {
-    return $self->send_status(404, "File not found\n");
+    return $self->send_status(404, "JS File not found for print_js\n");
   }
 
   ### do headers
