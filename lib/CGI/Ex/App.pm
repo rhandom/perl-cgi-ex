@@ -832,12 +832,12 @@ sub file_print {
   my $self = shift;
   my $step = shift;
 
-  my $base_dir_rel = $self->base_dir_rel;
-  my $module       = $self->run_hook('name_module', $step);
-  my $_step        = $self->run_hook('name_step', $step, $step);
-  my $ext          = $self->ext_print;
+  my $base_dir = $self->base_dir_rel;
+  my $module   = $self->run_hook('name_module', $step);
+  my $_step    = $self->run_hook('name_step', $step, $step);
+  my $ext      = $self->ext_print;
 
-  return "$base_dir_rel/$module/$_step.$ext";
+  return length($base_dir) ? "$base_dir/$module/$_step.$ext" : "$module/$_step.$ext";
 }
 
 ### which file is used for validation
@@ -850,10 +850,7 @@ sub file_val {
   my $_step    = $self->run_hook('name_step', $step, $step);
   my $ext      = $self->ext_val;
 
-  ### get absolute if necessary
-  if ($base_dir !~ m|^/|) {
-    $base_dir = $self->base_dir_abs . "/$base_dir";
-  }
+  $base_dir = length($base_dir) ? $self->base_dir_abs . "/$base_dir" : $self->base_dir_abs;
 
   return "$base_dir/$module/$_step.$ext";
 }
