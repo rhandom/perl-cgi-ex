@@ -9,13 +9,15 @@ package CGI::Ex::Dump;
 
 ### See perldoc at bottom
 
-use vars qw(@ISA @EXPORT @EXPORT_OK $ON $SUB $QR1 $QR2 $full_filename);
+use vars qw(@ISA @EXPORT @EXPORT_OK
+            $CALL_LEVEL
+            $ON $SUB $QR1 $QR2 $full_filename);
 use strict;
 use Exporter;
 
 @ISA       = qw(Exporter);
 @EXPORT    = qw(dex dex_warn dex_text dex_html ctrace dex_trace);
-@EXPORT_OK = qw(dex dex_warn dex_text dex_html ctrace dex_trace debug what_is_this);
+@EXPORT_OK = qw(dex dex_warn dex_text dex_html ctrace dex_trace debug);
 
 ### is on or off
 sub on  { $ON = 1 };
@@ -50,11 +52,10 @@ BEGIN {
 
 ### same as dumper but with more descriptive output and auto-formatting
 ### for cgi output
-sub what_is_this {
+sub _what_is_this {
   return if ! $ON;
   ### figure out which sub we called
-  my ($pkg, $file, $line_n, $called) = caller(0);
-  ($pkg, $file, $line_n, $called) = caller(1) if $pkg eq __PACKAGE__;
+  my ($pkg, $file, $line_n, $called) = caller(1 + ($CALL_LEVEL || 0));
   substr($called, 0, length(__PACKAGE__) + 2, '');
 
   ### get the actual line
@@ -92,27 +93,27 @@ sub what_is_this {
     elsif ($called eq 'dex_warn') { warn  $txt  }
     else                          { print $txt  }
   } else {
-    my $html = "<pre><b>$called: $file line $line_n</b>\n";
+    my $html = "<pre class=debug><span class=debughead><b>$called: $file line $line_n</b></span>\n";
     for (0 .. $#dump) {
       $dump[$_] =~ s/\\n/\n/g;
       $dump[$_] = _html_quote($dump[$_]);
-      $dump[$_] =~ s|\$VAR1|<b>$var[$_]</b>|g;
+      $dump[$_] =~ s|\$VAR1|<span class=debugvar><b>$var[$_]</b></span>|g;
       $html .= $dump[$_];
     }
     $html .= "</pre>\n";
     return $html if $called eq 'dex_html';
     require CGI::Ex;
-    &CGI::Ex::print_content_type();
+    CGI::Ex::print_content_type();
     print $html;
   }
 }
 
 ### some aliases
-sub debug    { &what_is_this }
-sub dex      { &what_is_this }
-sub dex_warn { &what_is_this }
-sub dex_text { &what_is_this }
-sub dex_html { &what_is_this }
+sub debug    { &_what_is_this }
+sub dex      { &_what_is_this }
+sub dex_warn { &_what_is_this }
+sub dex_text { &_what_is_this }
+sub dex_html { &_what_is_this }
 
 sub _html_quote {
   my $value = shift;
@@ -135,7 +136,7 @@ sub ctrace {
   my $max1 = 0;
   my $max2 = 0;
   my $max3 = 0;
-  while (my %i = &Carp::caller_info(++$i)) {
+  while (my %i = Carp::caller_info(++$i)) {
     $i{sub_name} =~ s/\((.*)\)$//;
     $i{args} = $i{has_args} ? $1 : "";
     $i{sub_name} =~ s/^.*?([^:]+)$/$1/;
@@ -153,7 +154,7 @@ sub ctrace {
 }
 
 sub dex_trace {
-  &what_is_this(ctrace(1));
+  _what_is_this(ctrace(1));
 }
 
 ###----------------------------------------------------------------###
