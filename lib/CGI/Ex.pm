@@ -70,6 +70,8 @@ sub AUTOLOAD {
 #                target        => 'formname',
 #                fill_password => 0,
 #                ignore_fields => ['one','two']});
+# $object->fill(\$text); # uses $self->object as the form
+# $object->fill(\$text, \%hash, 'formname', 0, ['one','two']);
 # my $copy = $object->fill({scalarref => \$text,    fdat => \%hash});
 # my $copy = $object->fill({arrayref  => \@lines,   fdat => \%hash});
 # my $copy = $object->fill({file      => $filename, fdat => \%hash});
@@ -77,7 +79,10 @@ sub fill {
   my $self = shift;
   my $args = shift;
   if (ref($args)) {
-    $args = {text => $args} if ! UNIVERSAL::isa($args, 'HASH');
+    if (! UNIVERSAL::isa($args, 'HASH')) {
+      $args = {text => $args};
+      @$args{'form','target','fill_password','ignore_fields'} = @_;
+    }
   } else {
     $args = {$args, @_};
   }
@@ -165,12 +170,138 @@ __END__
 
 CGI::Ex - Yet Another Form Utility
 
+=head1 SYNOPSIS
+
+  ### CGI Module Extensions
+
+  ### Filling functionality
+
+  $object->fill({text => \$text, form    => \%hash});
+  $object->fill({text => \$text, fdat    => \%hash});
+  $object->fill({text => \$text, fobject => $cgiobject});
+  $object->fill({text => \$text, form    => [\%hash1, $cgiobject]});
+  $object->fill({text => \$text); # uses $self->object as the form
+  $object->fill({text          => \$text,
+                 form          => \%hash,
+                 target        => 'formname',
+                 fill_password => 0,
+                 ignore_fields => ['one','two']});
+  $object->fill(\$text); # uses $self->object as the form
+  $object->fill(\$text, \%hash, 'formname', 0, ['one','two']);
+  my $copy = $object->fill({scalarref => \$text,    fdat => \%hash});
+  my $copy = $object->fill({arrayref  => \@lines,   fdat => \%hash});
+  my $copy = $object->fill({file      => $filename, fdat => \%hash});
+
+  ### Validation functionality
+  
+
 =head1 DESCRIPTION
 
 CGI::Ex is another form filler/ validator.  Its goal is to take
 the wide scope of validators out there and merge them into one
 utility that has all of the necessary features of them all, as well
 as several that I have found useful in working on the web.
+
+=head1 METHODS
+
+=over 4
+
+=item C<-E<gt>fill>
+
+fill is used for filling hash or cgi object values into an existing
+html document (it doesn't deal at all with how you got the document).
+Arguments may be given as a hash, or a hashref or positional.  Some
+of the following arguments will only work using CGI::Ex::Fill - most
+will work with either CGI::Ex::Fill or HTML::FillInForm (assume they
+are available unless specified otherwise).  The arguments are as
+follows (and in order of posistion):
+
+=over 4
+
+=item C<text>
+
+Text should be a reference to a scalar string containing the html to
+be modified (actually it could be any reference or object reference
+that can be modfied as a string).  It will be modified in place.
+Another named argument B<scalarref> is available if you would like to
+copy rather than modify.
+
+=item C<form>
+
+Form may be a hashref, a cgi style object, a coderef, or an array of
+multiple hashrefs, cgi objects, and coderefs.  Hashes should be key
+value pairs.  CGI objects should be able
+to call the method B<param> (This can be overrided).  Coderefs should
+expect expect the field name as an argument and should return a value.
+Values returned by form may be undef, scalar, arrayref, or coderef 
+(coderef values should expect an argument of field name and should
+return a value).  The code ref options are available to delay or add
+options to the bringing in of form informatin - without having to
+tie the hash.  Coderefs are not available in HTML::FillInForm.  Also
+HTML::FillInForm only allows CGI objects if an arrayref is used.
+
+NOTE: Only one of the form, fdat, and fobject arguments are allowed at
+a time.
+
+=item C<target>
+
+The name of the form that the fields should be filled to.  The default
+value of undef, means to fill in all forms in the html.
+
+=item C<fill_passwords>
+
+Boolean value defaults to 1.  If set to zero - password fields will
+not be filled.
+
+=item C<ignore_fields>
+
+Specify which fields to not fill in.  It takes either array ref of
+names, or a hashref with the names as keys.  The hashref option is
+not available in CGI::Ex::Fill.
+
+=back
+
+Other named arguments are available for compatiblity with HTML::FillInForm.
+They may only be used as named arguments.
+
+=over 4
+
+=item C<scalarref>
+
+Almost the same as the argument text.  If scalarref is used, the filled
+html will be returned.  If text is used the html passed is filled in place.
+
+=item C<arrayref>
+
+An array ref of lines of the document.  Forces a returned filled html
+document.
+
+=item C<file>
+
+An filename that will be opened, filled, and returned.
+
+=item C<fdat>
+
+A hashref of key value pairs.
+
+=item C<fobject>
+
+A cgi style object or arrayref of cgi style objects used for getting
+the key value pairs.
+
+=back
+
+See L<CGI::Ex::Fill> for more information about the filling process.
+
+=item C<-E<gt>object>
+
+Returns the CGI object that is currently being used by CGI::Ex.  If none
+has been set it will automatically generate an object of type
+$PREFERRED_CGI_MODULE which defaults to B<CGI>.
+
+=item C<-E<gt>validate>
+
+=back
 
 =head1 EXISTING MODULES FOR VALIDATION
 
