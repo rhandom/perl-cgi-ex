@@ -194,8 +194,8 @@ sub fill_plain {
       return ref($val) ? $val : [$val];
     } elsif (ref($val)) {
       $indexes{$key} ||= 0;
-      my $ret = $val->[$indexes{$key}];
-      $indexes{$key} = ($indexes{$key} + 1) % @$val;
+      my $ret = $val->[$indexes{$key}] || '';
+      $indexes{$key} ++; # don't wrap - if we run out of values - we're done
       return $ret;
     } else {
       return $val;
