@@ -22,6 +22,10 @@ sub on  { $ON = 1 };
 sub off { $ON = 0; }
 &on();
 
+sub set_deparse {
+  $Data::Dumper::Deparse = eval {require B::Deparse};
+}
+
 ###----------------------------------------------------------------###
 
 BEGIN {
@@ -29,7 +33,7 @@ BEGIN {
   {
     package Data::Dumper;
     no strict;
-    $Sortkeys  = 1    if ! defined $Sortkeys;
+    $Sortkeys  = 1    if ! defined $Sortkeys; # not available 5.6 or earlier
     $Useqq     = 1    if ! defined $Useqq;
     $Quotekeys = 0    if ! defined $Quotekeys;
     $Pad       = '  ' if ! defined $Pad;
@@ -45,7 +49,11 @@ BEGIN {
   $QR2 = qr{\A.+?(\w+/[\w\.]+)\Z};
 }
 
-### same as dumper but with more descriptive output and autoformatting
+###----------------------------------------------------------------###
+
+
+### same as dumper but with more descriptive output and auto-formatting
+### for cgi output
 sub what_is_this {
   return if ! $ON;
   my ($pkg, $file, $line_n, $called) = caller(0);
@@ -148,13 +156,19 @@ sub dex_trace {
   &what_is_this(ctrace(1));
 }
 
+###----------------------------------------------------------------###
+
+1;
+
+__END__
+
 =head1 NAME
 
 CGI::Ex::Dump - A debug utility
 
 =head1 SYNOPSIS
 
-  use CGI::Ex::Dump; # auto imports dex, dex_warn, dex_text
+  use CGI::Ex::Dump; # auto imports dex, dex_warn, dex_text and others
 
   my $hash = {
     foo => ['a', 'b', 'Foo','a', 'b', 'Foo','a', 'b', 'Foo','a'],
@@ -179,14 +193,17 @@ CGI::Ex::Dump - A debug utility
 Uses the base Data::Dumper of the distribution and gives it nicer formatting - and
 allows for calling just about anytime during execution.
 
+Calling &CGI::Ex::set_deparse() will allow for dumped output of subroutines
+if available.
+
 perl -e 'use CGI::Ex::Dump;  dex "foo";'
 
 See also L<Data::Dumper>.
+
+Setting any of the Data::Dumper globals will alter the output.
 
 =head1 AUTHORS
 
 Paul Seamons <perlspam at seamons dot com>
 
 =cut
-
-1;
