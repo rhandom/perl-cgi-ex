@@ -835,11 +835,11 @@ sub file_print {
   my $base_dir = $self->base_dir_rel;
   my $module   = $self->run_hook('name_module', $step);
   my $_step    = $self->run_hook('name_step', $step, $step) || die "Missing name_step";
-  my $ext      = $self->ext_print;
+  $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
 
   foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
 
-  return $base_dir . $module . $_step .'.'. $ext;
+  return $base_dir . $module . $_step;
 }
 
 ### which file is used for validation
@@ -849,13 +849,13 @@ sub file_val {
 
   my $base_dir = $self->base_dir_rel;
   my $module   = $self->run_hook('name_module', $step);
-  my $_step    = $self->run_hook('name_step', $step, $step) || die "Missing name_step;
-  my $ext      = $self->ext_val;
+  my $_step    = $self->run_hook('name_step', $step, $step) || die "Missing name_step";
+  $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
   my $abs      = $self->base_dir_abs;
 
   foreach ($base_dir, $module, $abs) { $_ .= '/' if length($_) && ! m|/$| }
 
-  return $abs . $base_dir . $module . $_step .'.'. $ext;
+  return $abs . $base_dir . $module . $_step;
 }
 
 
