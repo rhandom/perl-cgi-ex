@@ -50,8 +50,8 @@ sub new {
 }
 
 ### allow for holding another classed CGI style object
-#   my $query = $cgix_obj->object;
-#   $cgix_obj->object(CGI->new);
+#   my $query = $cgix->object;
+#   $cgix->object(CGI->new);
 sub object {
   my $self = shift;
   die 'Usage: my $query = $cgix_obj->object' if ! ref $self;
@@ -224,7 +224,7 @@ sub apache_request {
 #   my $version = $cgix->mod_perl_version;
 sub mod_perl_version {
   my $self = shift;
-  die "Usage: $cgix_obj->mod_perl_version" if ! ref $self;
+  die 'Usage: $cgix_obj->mod_perl_version' if ! ref $self;
   if (! defined $self->{'mod_perl_version'}) {
     return 0 if ! $ENV{'MOD_PERL'};
     # mod_perl/1.27 or mod_perl/1.99_16
