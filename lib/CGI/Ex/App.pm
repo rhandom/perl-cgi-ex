@@ -31,7 +31,7 @@ BEGIN {
   ### the base stub functions use Template Toolkit and CGI::Ex::Validate
   ### If you are mod_perl and are using the stub functions - you may want
   ### to make sure that Template and CGI::Ex::Validate are loaded at server startup
-  ### 
+  ###
   #if ($ENV{MOD_PERL}) {
   #  require Template;
   #  require CGI::Ex::Validate;
@@ -87,7 +87,7 @@ sub navigate {
     }
 
     ### get a hash of valid paths (if any)
-    my $valid_paths = $self->valid_paths;
+    my $valid_steps = $self->valid_steps;
 
     ### iterate on each step of the path
     foreach ($step->{path_i} ||= 0;
@@ -97,8 +97,8 @@ sub navigate {
       next if $step !~ /^\w+$/; # don't process the step if it contains odd characters
 
       ### check if this is an allowed step
-      if ($valid_paths) {
-        if (! $valid_paths->{$step}
+      if ($valid_steps) {
+        if (! $valid_steps->{$step}
             && $step ne $self->default_step
             && $step ne 'forbidden') {
           $self->stash->{'forbidden_step'} = $step;
@@ -268,7 +268,7 @@ sub insert_path {
 }
 
 ### a hash of paths that are allowed, default undef is all
-sub valid_paths {}
+sub valid_steps {}
 
 ###----------------------------------------------------------------###
 
@@ -549,6 +549,47 @@ sub add_property {
 }
 
 ###----------------------------------------------------------------###
+### js_validation items
+
+### creates javascript suitable for validating the form
+sub js_validation {
+  my $self = shift;
+  my $step = shift;
+
+  my $form_name = $self->run_hook($step, 'form_name');
+  my $hash_val  = $self->run_hook($step, 'hash_validation', {});
+  my $js_uri    = $self->js_uri_path;
+  return '' if ! scalar keys %$hash_val;
+
+  return $self->vob->generate_js($hash_val, $form_name, $js_uri);
+}
+
+### where to find the javascript files
+### default to using this script as a handler
+sub js_uri_path {
+  my $script = $ENV{'SCRIPT_NAME'} || die "Missing SCRIPT_NAME";
+  return $script . '/js';
+}
+
+### name to attach js validation to
+sub form_name { 'MYFORM' }
+
+### provide some rudimentary javascript support
+### if valid_steps is defined - it should include "js"
+sub js_pre_step {
+  my $self = shift;
+
+  ### make sure path info looks like /js/CGI/Ex/foo.js
+  return ! $ENV{'PATH_INFO'}
+    || $ENV{'PATH_INFO'} !~ m|^(?:/js)?/(\w+(?:/\w+)*\.js)$|;
+
+  ### print it
+  $self->cgix->print_js($1);
+
+  return 1;
+}
+
+###----------------------------------------------------------------###
 ### implementation specific subs
 
 sub template_args {
@@ -734,29 +775,60 @@ sub validate {
     die "Step $step: $@";
   }
 
-  ### if no errors return true
-  return 1 if ! $eob;
+  ### had an error - store the errors and return false
+  if ($eob) {
+    $self->add_errors($eob->as_hash({
+      as_hash_join   => "<br>\n",
+      as_hash_suffix => '_error',
+    }));
+    return 0;
+  }
 
-  ### store the errors and return false
-  $self->add_errors($eob->as_hash({
-    as_hash_join   => "<br>\n",
-    as_hash_suffix => '_error',
-  }));
+  ### allow for the validation to give us some redirection
+  my $val;
+  foreach my $ref (@$what_was_validated) {
+    foreach my $method (qw(append_path replace_path insert_path)) {
+      next if ! ($val = $ref->{$method});
+      $self->$method(ref $val ? @$val : $val);
+    }
+  }
 
-  return 0;
+  return 1;
 }
 
+### allow for using ConfUtil instead of yaml
 sub hash_validation {
   my $self = shift;
   my $step = shift;
-  my $file = $self->run_hook($step, 'file_val');
-  require CGI::Ex::Validate;
-  return CGI::Ex::Validate->new->get_validation($file);
+  return $self->{hash_validation}->{$step} ||= do {
+    my $hash;
+    my $file = $self->run_hook($step, 'file_val');
+
+    ### allow for returning the validation hash in the filename
+    ### a scalar ref means it is a yaml document to be read by get_validation
+    if (ref($file) && ! UNIVERSAL::isa($file, 'SCALAR')) {
+      $hash = $file;
+
+    ### read the file - it it fails - errors should shown in the error logs
+    } elsif ($file) {
+      $hash = eval { $self->vob->get_validation($file) } || {};
+
+    } else {
+      $hash = {};
+    }
+
+    $hash; # return of the do
+  };
 }
 
 sub hash_common {
   my $self = shift;
-  return $self->{hash_common} ||= {};
+  my $step = shift;
+  return $self->{hash_common} ||= {
+### don't force these to always be there
+#    js_validation => $self->run_hook($step, 'js_validation'),
+#    form_name     => $self->run_hook($step, 'form_name'),
+  };
 }
 
 sub hash_errors {
@@ -812,7 +884,7 @@ More examples will come with time.  Here are the basics for now.
   use base qw(CGI::Ex::App);
   use CGI::Ex::Dump qw(debug);
 
-  sub valid_paths { return {success => 1} }
+  sub valid_steps { return {success => 1} }
     # default_step (main) is a valid path
 
   # base_dir_abs is only needed if default print is used
@@ -913,7 +985,7 @@ are shown):
     ->pre_loop
        # navigation stops if true
 
-    ->valid_paths (get list of valid paths)
+    ->valid_steps (get list of valid paths)
 
     foreach step of path {
 
@@ -1027,7 +1099,7 @@ Replaces the remaining steps (if any) of the current path.
 Arguments are the steps to insert.  Can be called any time.  Inserts
 the new steps at the current path location.
 
-=item Method C<-E<gt>valid_paths>
+=item Method C<-E<gt>valid_steps>
 
 Returns a hashref of path steps that are allowed.  If step found in
 default method path is not in the hash, the method path will return a
@@ -1199,11 +1271,23 @@ in $self->{hash_errors} via method add_errors and can be checked for
 at a later time with method has_errors (if the default validate was
 used).
 
+Upon success, it will look through all of the items which
+were validated, if any of them contain the keys append_path, insert_path,
+or replace_path, that method will be called with the value as arguments.
+This allows for the validation to apply redirection to the path.  A
+validation item of:
+
+  {field => 'foo', required => 1, append_path => ['bar', 'baz']}
+
+would append 'bar' and 'baz' to the path should all validation succeed.
+
 =item Hook C<-E<gt>hash_validation>
 
 Returns a hash of the validation information to check form against.
 By default, will look for a filename using the hook file_val and will
-pass it to CGI::Ex::Validate::get_validation.
+pass it to CGI::Ex::Validate::get_validation.  If no file_val is
+returned or if the get_validation fails, an empty hash will be returned.
+Validation is implemented by ->vob which loads a CGI::Ex::Validate object.
 
 =item Hook C<-E<gt>file_val>
 
@@ -1212,6 +1296,31 @@ base_dir_rel to hook name_module, and name_step and adds on the
 default file extension found in $self->ext_val which defaults to the
 global $EXT_VAL (the property $self->{ext_val} may also be set).  File
 should be readible by CGI::Ex::Validate::get_validation.
+
+=item Hook C<-E<gt>js_validation>
+
+Will return Javascript that is capable of validating the form.  This
+is done using the capabilities of CGI::Ex::Validate.  This will call
+the hook hash_validation which will then be encoded into yaml and
+placed in a javascript string.  It will also call the hook form_name
+to determine which html form to attach the validation to.  The method
+js_uri_path is called to determine the path to the appropriate
+yaml_load.js and validate.js files.
+
+=item Hook C<-E<gt>form_name>
+
+Return the name of the form to attach the js validation to.  Used by
+js_validation.
+
+=item Method C<-E<gt>js_uri_path>
+
+Return the URI path where the CGI/Ex/yaml_load.js and CGI/Ex/validate.js
+files can be found.  This will default to $ENV{'SCRIPT_NAME'} .'/js'.
+A default handler for the "js" step has been provided in "js_pre_step"
+(this handler will nicely print out the javascript found in the js files
+which are included with this distribution - if valid_steps is defined,
+it must include the step "js" - js_pre_step will work properly with
+the default "path" handler.
 
 =item Hook C<-E<gt>hash_form>
 
