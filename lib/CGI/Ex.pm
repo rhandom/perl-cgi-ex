@@ -78,13 +78,24 @@ sub get_form {
   my $self = shift || __PACKAGE__;
   $self = $self->new if ! ref $self;
 
+  ### allow for custom hash
+  return $self->{form} if $self->{form};
+
+  ### get the info out of the object
   my $obj  = shift || $self->object;
+  my $meth = $obj->can($OBJECT_METHOD);
   my %hash = ();
-  foreach my $key ($obj->param()) {
-    my @val = $obj->param($key);
+  foreach my $key ($obj->$meth()) {
+    my @val = $obj->$meth($key);
     $hash{$key} = ($#val == -1) ? die : ($#val == 0) ? $val[0] : \@val;
   }
   return \%hash;
+}
+
+### allow for a setter
+sub set_form {
+  my $self = shift;
+  $self->{form} = shift || {};
 }
 
 ### like get_form - but a hashref of cookies
@@ -105,7 +116,7 @@ sub get_cookies {
 ### allow for creating a query_string
 sub make_form {
   my $self = shift;
-  my $form = shift;
+  my $form = shift || $self->get_form();
   my $keys = (ref $_[0]) ? {map {$_ => 1} @{ shift() }} : undef;
   my $str = '';
   foreach my $key (sort keys %$form) {
@@ -481,7 +492,8 @@ sub swap_template {
   ### basic - allow for passing a hash, or object, or code ref
   my $form = shift;
   $form = $self if ! $form && ref($self);
-
+  $form = $self->get_form() if UNIVERSAL::isa($form, __PACKAGE__);
+  
   my $get_form_value;
   my $meth;
   if (UNIVERSAL::isa($form, 'HASH')) {
@@ -797,6 +809,11 @@ be read in depending upon file extension.
 Very similar to CGI->new->Val except that arrays are returned as
 arrays.  Not sure why CGI::Val didn't do this anyway.
 
+=item C<-E<gt>set_form>
+
+Allow for setting a custom form hash.  Useful for testing, or other
+purposes.
+
 =item C<-E<gt>get_cookies>
 
 Returns a hash of all cookies.
@@ -805,7 +822,8 @@ Returns a hash of all cookies.
 
 Takes a hash and returns a query_string.  A second optional argument
 may contain an arrayref of keys to use from the hash in building the
-query_string.
+query_string.  First argument is undef, it will use the form stored
+in itself as the hash.
 
 =item C<-E<gt>content_type>
 
