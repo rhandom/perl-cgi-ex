@@ -16,7 +16,7 @@ use vars qw($VERSION
             $RECURSE_LIMIT
             %CLEANUP_EXCLUDE);
 
-$VERSION = '1.15';
+$VERSION = '1.13';
 use CGI::Ex::Dump qw(debug);
 
 BEGIN {
