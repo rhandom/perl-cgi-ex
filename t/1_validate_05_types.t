@@ -21,6 +21,7 @@ sub validate {
 sub print_ok {
   my $ok = shift;
   $N ++;
+  warn "Test failed at line ".(caller)[2]."\n" if ! $ok;
   print "" . ($ok ? "" : "not ") . "ok $N\n";
 }
 &print_ok(1);
