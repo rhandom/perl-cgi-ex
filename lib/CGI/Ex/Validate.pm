@@ -12,7 +12,7 @@ package CGI::Ex::Validate;
 use strict;
 use vars qw($VERSION
             $ERROR_PACKAGE
-            $DEFAULT_EXT %EXT_HANDLERS
+            $DEFAULT_EXT
             %DEFAULT_OPTIONS);
 
 $VERSION = '0.93';
@@ -21,16 +21,7 @@ $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
 $DEFAULT_EXT = 'val';
 
-%EXT_HANDLERS = (''         => \&conf_handler_yaml,
-                 'conf'     => \&conf_handler_yaml,
-                 'ini'      => \&conf_handler_ini,
-                 'pl'       => \&conf_handler_pl,
-                 'sto'      => \&conf_handler_storable,
-                 'storable' => \&conf_handler_storable,
-                 'val'      => \&conf_handler_yaml,
-                 'xml'      => \&conf_handler_xml,
-                 'yaml'     => \&conf_handler_yaml,
-                 );
+use CGI::Ex::Conf ();
 
 ###----------------------------------------------------------------###
 
@@ -666,29 +657,13 @@ sub check_type {
 sub get_validation {
   my $self = shift;
   my $val  = shift;
-  my $ext;
 
-  ### they passed the right stuff already
-  if (ref $val) {
-    return $val;
+  my $cob = $self->{conf} ||= CGI::Ex::Conf->new({
+    default_ext => $DEFAULT_EXT,
+    directive   => 'LAST',
+  });
 
-  ### if contains a newline - treat it as a YAML string
-  } elsif ($val =~ /\n/) {
-    return &yaml_load($val);
-
-  ### otherwise base it off of the file extension
-  } elsif ($val =~ /\.(\w+)$/) {
-    $ext = $1;
-  } else {
-    $ext = $DEFAULT_EXT;
-    $ext = '' if ! defined $ext;
-    $val = length($ext) ? "$val.$ext" : $val;
-  }
-
-  ### now get the file
-  my $handler = $EXT_HANDLERS{$ext} || die "Unknown file extension: $ext";
-
-  return &$handler($val);
+  return $cob->read($val);
 }
 
 ### returns all keys from all groups - even if group has validate_if
@@ -746,51 +721,6 @@ sub get_validation_keys {
   }
 
   return \%keys;
-}
-
-###----------------------------------------------------------------###
-
-sub conf_handler_ini {
-  my $file = shift;
-  require Config::IniHash;
-  return &Config::IniHash::ReadINI($file);
-}
-
-sub conf_handler_pl {
-  my $file = shift;
-  return do $file;
-}
-
-sub conf_handler_storable {
-  my $file = shift;
-  require Storable;
-  return &Storable::retrieve($file);
-}
-
-sub conf_handler_yaml {
-  my $file = shift;
-  local $/ = undef;
-  local *IN;
-  open (IN,$file) || die "Couldn't open $file: $!";
-  my $text = <IN>;
-  close IN;
-  return &yaml_load($text);
-}
-
-sub yaml_load {
-  my $text = shift;
-  require YAML;
-  my @ret = eval { &YAML::Load($text) };
-  if ($@) {
-    die "$@";
-  }
-  return ($#ret == 0) ? $ret[0] : \@ret;
-}
-
-sub conf_handler_xml {
-  my $file = shift;
-  require XML::Simple;
-  return XML::Simple::XMLin($file);
 }
 
 ###----------------------------------------------------------------###
@@ -1032,7 +962,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.42 2003-11-25 07:26:33 pauls Exp $
+$Id: Validate.pm,v 1.43 2003-11-25 21:45:33 pauls Exp $
 
 =head1 SYNOPSIS
 
