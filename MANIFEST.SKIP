@@ -10,3 +10,4 @@ blib
 \.gz$
 .cvsignore
 tmon\.out
+t/samples/template
