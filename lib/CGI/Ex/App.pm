@@ -1695,7 +1695,7 @@ By default - forms are sticky and data from previous requests will
 try and populate the form.  There is a method called ->no_fill which
 will turn off sticky forms.
 
-=item Method C<-E<gt>no_fill
+=item Method C<-E<gt>no_fill>
 
 Passed the current step.  Should return boolean value of whether or not
 to fill in the form on the printed page. (prevents sticky forms)
