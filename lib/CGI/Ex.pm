@@ -234,10 +234,7 @@ sub fill {
 
   ### well - we will use our own then
   } else {
-    eval { require CGI::Ex::Fill };
-    if ($@) {
-      die "Couldn't require CGI::Ex::Fill: $@";
-    }
+    require CGI::Ex::Fill;
 
     ### get the text to work on
     my $ref;
@@ -280,14 +277,26 @@ sub validate {
   my $self = shift;
   my ($form, $file) = (@_ == 2) ? (shift, shift) : ($self->object, shift);
 
-  eval { require CGI::Ex::Validate };
-  if ($@) {
-    die "Couldn't require CGI::Ex::Validate: $@";
-  }
+  require CGI::Ex::Validate;
 
   my $args = {};
   $args->{raise_error} = 1 if $self->{raise_error};
   return CGI::Ex::Validate->new($args)->validate($form, $file);
+}
+
+###----------------------------------------------------------------###
+
+sub conf_obj {
+  my $self = shift;
+  return $self->{conf_obj} ||= do {
+    require CGI::Ex::Conf;
+    CGI::Ex::Conf->new(@_);
+  };
+}
+
+sub conf_read {
+  my $self = shift;
+  return $self->conf_obj->read(@_);
 }
 
 ###----------------------------------------------------------------###
@@ -309,7 +318,9 @@ CGI::Ex - Yet Another Form Utility
   
   $cgix->content_type;
 
-  my $err_obj = $cgix->validate($hashref, $pathtovalidation);
+  my $val_hash = $cgix->conf_read($pathtovalidation);
+
+  my $err_obj = $cgix->validate($hashref, $val_hash);
   if ($err_obj) {
     my $errors = $err_obj->as_hash;
     my $content = "Some content";
@@ -367,10 +378,40 @@ CGI::Ex - Yet Another Form Utility
 
 =head1 DESCRIPTION
 
-CGI::Ex is another form filler/ validator.  Its goal is to take
-the wide scope of validators out there and merge them into one
+CGI::Ex is another form filler / validator / conf reader / template
+interface.  Its goal is to take the wide scope of validators and other
+useful CGI application modules out there and merge them into one
 utility that has all of the necessary features of them all, as well
-as several that I have found useful in working on the web.
+as several extended methods that I have found useful in working on the web.
+
+The main functionality is provided by several other modules that
+may be used separately, or together through the CGI::Ex interface.
+
+=over 4
+
+=item C<CGI::Ex::Fill>
+
+A regular expression based form filler inner (accessed through B<-E<gt>fill>
+or directly via its own functions).  Can be a drop in replacement for
+HTML::FillInForm.  See L<CGI::Ex::Fill> for more information.
+
+=item C<CGI::Ex::Validate>
+
+A form field / cgi parameter / any parameter validator (accessed through
+B<-E<gt>validate> or directly via its own methods).  Not quite a drop in
+for most validators, although it has most of the functionality of most
+of the validators but with the key additions of conditional validation.
+Has a tightly integrated JavaScript portion that allows for duplicate client
+side validation.  See L<CGI::Ex::Validate> for more information.
+
+=item C<CGI::Ex::Conf>
+
+A general use configuration, or settings, or key / value file reader.  Has
+ability for providing key fallback as well as immutable key definitions.  Has
+default support for yaml, storable, perl, ini, and xml and open architecture
+for definition of others.  See L<CGI::Ex::Conf> for more information.
+
+=back
 
 =head1 METHODS
 
@@ -525,67 +566,38 @@ you don't know if something else already printed content-type.
 
 =back
 
-=head1 EXISTING MODULES FOR VALIDATION
+=head1 EXISTING MODULES
 
 The following is a list of existing validator and formfiller modules
 at the time of this writing (I'm sure this probably isn't exaustive).
-Desirable qualities - Inheritable, Separate directory for plugins, Global
-hash (for new types), add new directory.
 
 =over 4
 
 =item C<Email::Valid> - Validator
 
-Pro - Good email checker. Con - doesn't do much else.  What we
-will inherit - well - we will have a type that uses it natively.
-
 =item C<SSN::Validate> - Validator
 
-Pro - Good SSN checker.  Con - doesn't do much else. What we
-will inherit - we will use it natively.
-
 =item C<Embperl::Form::Validate> - Validator
-
-Pro - Add multiple rules.  Rules are array based (in order).  Has
-multilanguage support.  Returns array individual hashes for errors.
-Can also return array of messages.  Ability to generate JavaScript
-code.  Extensible for other types (requires inheritance.
-
-Con - Part of the Embperl distribution (not that Embperl is wrong,
-just that this is a general function utility in a specialized package
-- anybody wanting to use it has to install all of Embperl).
-JavaScript requires form name passed to it.
 
 =item C<Data::CGIForm> - Validator
 
 =item C<HTML::FillInForm> - Form filler-iner
 
-Pro - HTML::Parser based.  Very simple script.  Supports most
-things you'd want to do.
-
-Con - HTML::Parser based.  Being based on HTML::Parser is good for
-standards and poor for performance.  L<CGI::Ex::Fill>.
-
 =item C<CGI> - CGI Getter.  Form filler-iner
-
-Pro - It's with every distribution.  It is the king of CGI modules (that is
-why we are based off of it). 
-
-Con - Your html is in your cgi - not good at all.  Even for one-off's it is better to use a form filler.
 
 =head1 TODO
 
 Add an integrated debug module.
 
-Finish JavaScript validation.
-
-Allow for eash plugin framework to Validate.
+Add an integrated template toolkit interface.
 
 =head1 MODULES
 
 See also L<CGI::Ex::Fill>.
 
 See also L<CGI::Ex::Validate>.
+
+See also L<CGI::Ex::Conf>.
 
 =head1 AUTHOR
 
