@@ -72,7 +72,7 @@ sub navigate {
     ### allow for a hook
     if ($self->pre_loop($path)) {
       ### a true value means to abort the navigate
-      return;
+      return $self;
     }
 
     ### get a hash of valid paths (if any)
@@ -101,7 +101,7 @@ sub navigate {
       ### if the pre_step exists and returns true, return from navigate
       if ($self->run_hook($step, 'pre_step')) {
         $self->unmorph($step);
-        return;
+        return $self;
       }
 
       ### see if we have complete valid information for this step
@@ -140,14 +140,14 @@ sub navigate {
 
         $self->unmorph($step);
 
-        return;
+        return $self;
       }
 
       ### a hook before end of loop
       ### if the post_step exists and returns true, return from navigate
       if ($self->run_hook($step, 'post_step')) {
         $self->unmorph($step);
-        return;
+        return $self;
       }
 
       $self->unmorph($step);
@@ -156,11 +156,12 @@ sub navigate {
     ### allow for one more hook after the loop
     if ($self->post_loop($path)) {
       ### a true value means to abort the navigate
-      return;
+      return $self;
     }
 
     ### run the main step as a last resort
-    return $self->navigate({path => [$self->default_step]});
+    $self->navigate({path => [$self->default_step]});
+    return $self;
 
   }; # end of eval
 
@@ -169,13 +170,13 @@ sub navigate {
     if ($self->{recurse} == 1) {
       if (my $meth = $self->can('handle_error')) {
         $self->$meth("$@");
-        return;
+        return $self;
       }
     }
     die $@;
   }
 
-  return;
+  return $self;
 }
 
 sub default_step {
