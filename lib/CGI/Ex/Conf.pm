@@ -23,7 +23,7 @@ use vars qw($VERSION
             );
 use CGI::Ex::Dump qw(debug dex_warn);
 
-$VERSION = '0.3';
+$VERSION = '0.03';
 
 $DEFAULT_EXT = 'conf';
 
