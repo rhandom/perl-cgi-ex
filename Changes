@@ -1,8 +1,12 @@
-2004-05-04  Paul Seamons  <cgi_ex@seamons.com>
+2004-11-05  Paul Seamons  <cgi_ex@seamons.com>
 
-        * Version 1.01 is done
+        * Version 1.10 is done
         * Make CGI::Ex::App->print really work with Template
         * Fix very large javascript variable swapping bug
+        * Numerous upgrades to App
+        * Fix module access in CGI::Ex
+        * Allow validate to populate what_was_validated array
+        * Allow for App to cleanup crossed references
 
 2004-04-23  Paul Seamons  <cgi_ex@seamons.com>
 

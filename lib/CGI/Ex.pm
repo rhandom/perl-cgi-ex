@@ -718,6 +718,11 @@ ability for providing key fallback as well as immutable key definitions.  Has
 default support for yaml, storable, perl, ini, and xml and open architecture
 for definition of others.  See L<CGI::Ex::Conf> for more information.
 
+=item C<CGI::Ex::App>
+
+A general purpose application framework.  Somewhat like CGI::Application - but
+it does more of the common tasks for you.
+
 =back
 
 =head1 METHODS
