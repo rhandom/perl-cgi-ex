@@ -248,37 +248,37 @@ sub key_cookie_check {
 
 sub key_user {
   my $self = shift;
-  $self->{key_user} = shift if $# != -1;
+  $self->{key_user} = shift if $#_ != -1;
   return $self->{key_user} ||= 'ce_user';
 }
 
 sub key_pass {
   my $self = shift;
-  $self->{key_pass} = shift if $# != -1;
+  $self->{key_pass} = shift if $#_ != -1;
   return $self->{key_pass} ||= 'ce_pass';
 }
 
 sub key_save {
   my $self = shift;
-  $self->{key_save} = shift if $# != -1;
+  $self->{key_save} = shift if $#_ != -1;
   return $self->{key_save} ||= 'ce_save';
 }
 
 sub key_redirect {
   my $self = shift;
-  $self->{key_redirect} = shift if $# != -1;
+  $self->{key_redirect} = shift if $#_ != -1;
   return $self->{key_redirect} ||= 'redirect';
 }
 
 sub form_name {
   my $self = shift;
-  $self->{form_name} = shift if $# != -1;
+  $self->{form_name} = shift if $#_ != -1;
   return $self->{form_name} ||= 'ce_form';
 }
 
 sub allow_htauth {
   my $self = shift;
-  $self->{allow_htauth} = shift if $# != -1;
+  $self->{allow_htauth} = shift if $#_ != -1;
   return $self->{allow_htauth} ||= 0;
 }
 
