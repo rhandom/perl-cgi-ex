@@ -1,0 +1,51 @@
+<html>
+<title>Yaml Test</title>
+<body>
+
+<table border=1 cellspacing=0>
+  <tr>
+    <td colspan=2>
+<script src="../../lib/CGI/Ex/yaml_load.js"></script>
+<script>
+
+if (! document.yaml_load) {
+  document.writeln('<span style="color:red"><h1>Missing document.yaml_load</h1>Path to yaml_load.js may be invalid.</span>');
+} else {
+  document.writeln('<span style="color:green"><h1>Found document.yaml_load</h1></span>');
+}
+
+</script>
+    </td>
+  </tr>
+
+  <tr><th colspan=2>YAML text</th></tr>
+  <tr>
+    <td colspan=2>
+<pre><script>
+var yaml = "foo: bar\nbaz: bee\nhem: haw\n";
+document.write(yaml)
+</script></pre>
+    </td>
+  </tr>
+
+
+  <tr>
+    <th>Produces</th><th>Should look like</th>
+  </tr>
+  <tr>
+    <td>
+<pre><script>
+document.write(document.js_dump(document.yaml_load(yaml)));
+</script></pre>
+    </td>
+    <td>
+<pre>Dump:
+[obj].0.baz=bee
+[obj].0.foo=bar
+[obj].0.hem=haw
+</pre>
+    </td>
+  </tr>
+
+</body>
+</html>
