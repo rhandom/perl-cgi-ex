@@ -1,3 +1,9 @@
+2004-05-04  Paul Seamons  <cgi_ex@seamons.com>
+
+        * Version 1.01 is done
+        * Make CGI::Ex::App->print really work with Template
+        * Fix very large javascript variable swapping bug
+
 2004-04-23  Paul Seamons  <cgi_ex@seamons.com>
 
         * Version 1.00 is done
@@ -28,7 +34,7 @@
         * Addition of App module
 
 2004-03-05  Paul Seamons  <cgi_ex@seamons.com>
-        
+
         * Allow for custom_js type
         * Fix unshift, shift, and push in ie 5.0
         * Fix type CC in validate.js
@@ -49,4 +55,3 @@
 2003-11-01  Paul Seamons  <cgi_ex@seamons.com>
 
 	* Version 0.0 checked in
-	
