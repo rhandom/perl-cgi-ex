@@ -24,7 +24,7 @@ use vars qw($VERSION
             );
 use base qw(Exporter);
 
-$VERSION               = '1.10';
+$VERSION               = '1.11';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
 $PREFERRED_VAL_MODULE  ||= '';
