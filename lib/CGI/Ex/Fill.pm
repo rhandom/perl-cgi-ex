@@ -1,12 +1,14 @@
 package HTML::Form::Fill;
 
 use strict;
-use vars qw(@ISA @EXPORT @EXPORT_OK
+use vars qw($VERSION
+            @ISA @EXPORT @EXPORT_OK
             $REMOVE_SCRIPT
             $REMOVE_COMMENTS
             );
 use Exporter;
 
+$VERSION   = '1.0';
 @ISA       = qw(Exporter);
 @EXPORT    = qw(form_fill);
 @EXPORT_OK = qw(form_fill get_tagval_by_key swap_tagval_by_key);
@@ -296,33 +298,79 @@ __END__
   my $text = my_own_template_from_somewhere();
 
   my $form = CGI->new;
-
-  OR
-
-  my $form = {key => 'value'}
-
-  OR 
-
-  my $form = [CGI->new, CGI->new, {key1 => 'val1'}, CGI->new];
+  # OR
+  # my $form = {key => 'value'}
+  # OR 
+  # my $form = [CGI->new, CGI->new, {key1 => 'val1'}, CGI->new];
 
 
   form_fill(\$text, $form); # modifies $text
-
-  OR
-
-  my $copy = form_fill($text, $form); # copies $text
+  # OR
+  # my $copy = form_fill($text, $form); # copies $text
 
 
   ALSO
 
-  my $formname = 'formname';     # name of table to parse (undef = anytable)
+  my $formname = 'formname';     # table to parse (undef = anytable)
   my $fp = 0;                    # fill_passwords ? default is true
   my $ignore = ['key1', 'key2']; # OR {key1 => 1, key2 => 1};
 
   form_fill(\$text, $form, $formname, $fp, $ignore);
 
+  ALSO
+
+  ### delay getting the value until we find an element that needs it
+  my $form = {key => sub {my $key = shift; # get and return value}};
+
 
 =head1 DESCRIPTION
+
+form_fill is directly comparable to HTML::FillInForm.  It will pass the
+same suite of tests (actually - it is a little bit kinder on the parse as
+it won't change case, reorder your attributes, or miscellaneous spaces).
+
+HTML::FillInForm both benefits and suffers from being based on
+HTML::Parser. It is good for standards and poor for performance.  Testing
+the form_fill module against HTML::FillInForm gave some surprising
+results.  On tiny forms (< 1 k) FillInForm was 30% faster (avg).  As
+soon as the html document incorporated very many entities at all, the
+performace kept going down (and down).  On one simple form, FillInForm
+was 30% faster.  I added 180 <BR> tags.  FillInForm lagged behind.
+form_fill kept on par and ended up 420% faster.  I added another
+180 <BR> and the difference jumped to 740%. Another 180 and it was
+1070% faster (ALL BENCHMARKS SHOULD BE TAKEN WITH A GRAIN OF SALT).
+The problem is that HTML::Parser has to fire events for
+every tag it finds.  I would be interested to test a Recursive Descent
+form filler against these two.
+
+=head1 HTML COMMENTS / JAVASCRIPT
+
+Because there are too many problems that could occur with html comments
+and javascript, form_fill temporarily removes them during the fill.  You
+may disable this behavior by setting $REMOVE_COMMENTS and $REMOVE_SCRIPT
+to 0 before calling form_fill.  The main reason for doing this would be if
+you wanted to have form elments inside the javascript and comments get filled.
+Disabling the removal only results in a speed increase of 5%. The function
+uses \0COMMENT\0 and \0SCRIPT\0 as placeholders so i'd avoid these in your
+text.
+
+=head1 BUGS / LIMITATIONS
+
+The only known limitations is that if you have a <select>, <textarea>,
+or <option> tag that have nested HTML attributes that occur before
+the name, form_fill won't be able to determine the name.
+
+  <!-- WORKS -->
+  <select name=foo onchange=alert('<b>Wow</b>')>
+  </select>
+
+  <!-- WILL NOT WORK -->
+  <select onchange=alert('<b>Wow</b>') name=foo>
+  </select>
+
+This limitation could be overcome with a more complex regex - but why.
+You won't have this problem (or shouldn't) with HTML::FillInForm because
+of the lengthy process used for descending the structure.
 
 =head1 AUTHOR
 
