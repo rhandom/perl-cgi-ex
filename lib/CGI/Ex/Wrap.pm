@@ -164,3 +164,36 @@ sub as_string {
 ###----------------------------------------------------------------###
   
 1;
+
+__END__
+
+[(set foo "what is all this")] # sets it
+[(foo)]                 # prints it out
+[( foo )]               # prints it out
+[( "[(foo)]" )]         # prints it out
+[(set foo)]             # goes to undef
+[( "[(foo)]" )]         # prints [(foo)]
+[(set baz "hmm")]       # sets it
+[( || foo bar baz )]    # prints "hmm"
+[( || foo "[(bar)]" baz # prints [(bar)]
+[( set foo "one" "two" "three" )]
+
+
+[( set foo "Some odd strin)g&#@#" )]
+[( henc foo )]          # html encode
+[( uenc foo )]          # url encode
+[( set foo {Some extended string} )]
+[(if foo {
+    A long string
+  } else {
+    The other case
+  }
+)] 
+
+
+
+[( set grr (match 'm//' dog) )]
+
+[(if (eq foo "bar") ()
+  elsif (eq foo "baz") ()
+  else ())] 
