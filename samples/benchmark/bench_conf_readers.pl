@@ -8,34 +8,23 @@ use POSIX qw(tmpnam);
 
 $PLACEHOLDER = chr(186).'~'.chr(186);
 
-my $n = 3000;
+my $n = -2;
 
 my $cob   = CGI::Ex::Conf->new;
 my %files = ();
 
 ###----------------------------------------------------------------###
 
-# [pauls@localhost lib]$ perl ../t/samples/bench_conf_readers.pl
-# Benchmark: timing 3000 iterations of g_conf, ini, pl, sto, sto2, xml, yaml, yaml2, yaml3...
-#  g_conf:  4 wallclock secs ( 3.88 usr +  0.08 sys =  3.96 CPU) @ 757.58/s (n=3000)
-#  ini: 10 wallclock secs ( 9.97 usr +  0.10 sys = 10.07 CPU) @ 297.91/s (n=3000)
-#  pl:  3 wallclock secs ( 2.68 usr +  0.07 sys =  2.75 CPU) @ 1090.91/s (n=3000)
-#  sto:  1 wallclock secs ( 1.31 usr +  0.12 sys =  1.43 CPU) @ 2097.90/s (n=3000)
-#  sto2:  1 wallclock secs ( 0.81 usr +  0.03 sys =  0.84 CPU) @ 3571.43/s (n=3000)
-#  xml: 36 wallclock secs (34.95 usr +  0.59 sys = 35.54 CPU) @ 84.41/s (n=3000)
-#  yaml: 42 wallclock secs (41.95 usr +  0.65 sys = 42.60 CPU) @ 70.42/s (n=3000)
-#  yaml2: 42 wallclock secs (41.97 usr +  0.10 sys = 42.07 CPU) @ 71.31/s (n=3000)
-#  yaml3:  1 wallclock secs ( 0.52 usr +  0.00 sys =  0.52 CPU) @ 5769.23/s (n=3000)
-#          Rate   yaml  yaml2    xml    ini g_conf     pl    sto   sto2  yaml3
-# yaml   70.4/s     --    -1%   -17%   -76%   -91%   -94%   -97%   -98%   -99%
-# yaml2  71.3/s     1%     --   -16%   -76%   -91%   -93%   -97%   -98%   -99%
-# xml    84.4/s    20%    18%     --   -72%   -89%   -92%   -96%   -98%   -99%
-# ini     298/s   323%   318%   253%     --   -61%   -73%   -86%   -92%   -95%
-# g_conf  758/s   976%   962%   797%   154%     --   -31%   -64%   -79%   -87%
-# pl     1091/s  1449%  1430%  1192%   266%    44%     --   -48%   -69%   -81%
-# sto    2098/s  2879%  2842%  2385%   604%   177%    92%     --   -41%   -64%
-# sto2   3571/s  4971%  4908%  4131%  1099%   371%   227%    70%     --   -38%
-# yaml3  5769/s  8092%  7990%  6735%  1837%   662%   429%   175%    62%     --
+#           Rate  yaml2   yaml    xml    ini g_conf     pl    sto   sto2  yaml3
+#yaml2     159/s     --    -1%   -72%   -80%   -91%   -95%   -98%   -98%  -100%
+#yaml      160/s     1%     --   -72%   -80%   -91%   -95%   -98%   -98%  -100%
+#xml       565/s   255%   253%     --   -28%   -68%   -84%   -93%   -94%  -100%
+#ini       785/s   393%   391%    39%     --   -55%   -78%   -90%   -91%   -99%
+#g_conf   1756/s  1004%   998%   211%   124%     --   -50%   -78%   -80%   -98%
+#pl       3524/s  2115%  2103%   524%   349%   101%     --   -55%   -61%   -97%
+#sto      7838/s  4826%  4799%  1288%   898%   346%   122%     --   -12%   -93%
+#sto2     8924/s  5508%  5477%  1480%  1037%   408%   153%    14%     --   -92%
+#yaml3  113328/s 71115% 70730% 19961% 14336%  6353%  3116%  1346%  1170%     -- #memory
 
 my $str = '{
   foo     => {key1 => "bar",   key2 => "ralph"},
@@ -55,31 +44,31 @@ my $str = '{
 
 ###----------------------------------------------------------------###
 
-#           Rate   yaml  yaml2    xml     pl g_conf    sto  yaml3   sto2
-# yaml     418/s     --    -4%   -56%   -91%   -92%   -93%   -97%   -98%
-# yaml2    436/s     4%     --   -54%   -91%   -92%   -93%   -96%   -98%
-# xml      949/s   127%   118%     --   -80%   -83%   -85%   -92%   -95%
-# pl      4762/s  1038%   992%   402%     --   -13%   -25%   -60%   -73%
-# g_conf  5455/s  1204%  1151%   475%    15%     --   -15%   -55%   -69%
-# sto     6383/s  1426%  1364%   572%    34%    17%     --   -47%   -64%
-# yaml3  12000/s  2768%  2652%  1164%   152%   120%    88%     --   -32%
-# sto2   17647/s  4118%  3947%  1759%   271%   224%   176%    47%     --
+#           Rate   yaml  yaml2    xml g_conf     pl    sto   sto2  yaml3
+#yaml      431/s     --    -2%   -61%   -91%   -94%   -97%   -98%  -100%
+#yaml2     438/s     2%     --   -60%   -91%   -94%   -97%   -98%  -100%
+#xml      1099/s   155%   151%     --   -78%   -85%   -92%   -94%   -99%
+#g_conf   4990/s  1057%  1038%   354%     --   -33%   -64%   -72%   -96%
+#pl       7492/s  1637%  1609%   582%    50%     --   -46%   -58%   -93%
+#sto     13937/s  3130%  3078%  1169%   179%    86%     --   -22%   -88%
+#sto2    17925/s  4055%  3988%  1532%   259%   139%    29%     --   -84%
+#yaml3  114429/s 26423% 25996% 10316%  2193%  1427%   721%   538%     -- # memory
 
-$str = '{
-  foo     => "bar",
-  pass    => "word",
-  garbage => "can",
-  mighty  => "ducks",
-  quack   => "moo",
-  one1    => "val1",
-  one2    => "val2",
-  one3    => "val3",
-  one4    => "val4",
-  one5    => "val5",
-  one6    => "val6",
-  one7    => "val7",
-  one8    => "val8",
-}';
+#$str = '{
+#  foo     => "bar",
+#  pass    => "word",
+#  garbage => "can",
+#  mighty  => "ducks",
+#  quack   => "moo",
+#  one1    => "val1",
+#  one2    => "val2",
+#  one3    => "val3",
+#  one4    => "val4",
+#  one5    => "val5",
+#  one6    => "val6",
+#  one7    => "val7",
+#  one8    => "val8",
+#}';
 
 ###----------------------------------------------------------------###
 
@@ -93,15 +82,16 @@ open OUT, ">$file";
 print OUT $str;
 close OUT;
 $TESTS{pl} = sub {
-  my $hash = $cob->read($file);
+  my $hash = $cob->read_ref($file);
 };
 $files{pl} = $file;
 
 ### do a generic conf_write
 my $file2 = tmpnam(). '.g_conf';
 &generic_conf_write($file2, $conf);
+local $CGI::Ex::Conf::EXT_READERS{g_conf} = \&generic_conf_read;
 $TESTS{g_conf} = sub {
-  my $hash = &generic_conf_read($file2);
+  my $hash = $cob->read_ref($file2);
 };
 $files{g_conf} = $file2;
 
@@ -111,7 +101,7 @@ if (eval {require Storable}) {
   my $_file = tmpnam(). '.sto';
   &Storable::store($conf, $_file);
   $TESTS{sto} = sub {
-    my $hash = $cob->read($_file);
+    my $hash = $cob->read_ref($_file);
   };
   $files{sto} = $_file;
 }
@@ -129,7 +119,7 @@ if (eval {require YAML}) {
   my $_file = tmpnam(). '.yaml';
   &YAML::DumpFile($_file, $conf);
   $TESTS{yaml} = sub {
-    my $hash = $cob->read($_file);
+    my $hash = $cob->read_ref($_file);
   };
   $files{yaml} = $_file;
 }
@@ -148,7 +138,7 @@ if (eval {require YAML}) {
   &YAML::DumpFile($_file, $conf);
   $cob->preload_files($_file);
   $TESTS{yaml3} = sub {
-    my $hash = $cob->read($_file);
+    my $hash = $cob->read_ref($_file);
   };
   $files{yaml3} = $_file;
 }
@@ -158,7 +148,7 @@ if (eval {require Config::IniHash}) {
   &Config::IniHash::WriteINI($_file, $conf);
   $TESTS{ini} = sub {
     local $^W = 0;
-    my $hash = $cob->read($_file);
+    my $hash = $cob->read_ref($_file);
   };
   $files{ini} = $_file;
 }
@@ -170,7 +160,7 @@ if (eval {require XML::Simple}) {
   print OUT $xml;
   close OUT;
   $TESTS{xml} = sub {
-    my $hash = $cob->read($_file);
+    my $hash = $cob->read_ref($_file);
   };
   $files{xml} = $_file;
 }
