@@ -15,12 +15,14 @@ use vars qw($USE_PLAINTEXT
             $CHECK_CRYPTED
             $EXPIRE_LOGINS
             $FAILED_SLEEP
+            $VERSION
             );
 
 use CGI::Ex::Dump qw(debug);
 use MIME::Base64 qw(encode_base64 decode_base64);
 
 BEGIN {
+  $VERSION = '0.10';
   $CHECK_CRYPTED = 1        if ! defined $CHECK_CRYPTED;
   $FAILED_SLEEP  = 2        if ! defined $FAILED_SLEEP;
   $EXPIRE_LOGINS = 6 * 3600 if ! defined $EXPIRE_LOGINS;
@@ -627,6 +629,12 @@ Passwords stored in the database this way are still susceptible to bruteforce
 attack, but are much more secure than storing plain text.
 
 If MD5 is used, the above procedure is replaced with md5_hex.
+
+A downside to this module is that it does not use a session to preserve state
+so authentication has to happen on every request.  A plus is that you don't
+need to use a session.  With later releases, a method will be added to allow
+authentication to look inside of a stored session somewhat similar to
+CGI::Session::Auth.
 
 =head1 METHODS
 
