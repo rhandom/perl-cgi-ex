@@ -219,6 +219,90 @@ sub expires {
   return $self->last_modified($time, 'Expires');
 }
 
+### allow for generic status send
+sub send_status {
+  my $self = shift;
+  my $code = shift || die "Missing status";
+  my $mesg = shift || "HTTP Status of $code received\n";
+  if (&content_typed()) {
+    die "Cannot send a status ($code - $mesg) after content has been sent";
+  }
+  if ($ENV{MOD_PERL} && (my $r = Apache->request)) {
+    $r->status($code);
+    $r->content_type('text/html');
+    $r->send_http_header;
+    $r->print($mesg);
+  } else {
+    print "Status: $code\r\n";
+    &content_type();
+    print $mesg;
+  }
+}
+
+### allow for sending a simple header
+sub send_header {
+  my $self = shift;
+  my $key  = shift;
+  my $value = shift;
+  if (&content_typed()) {
+    die "Cannot send a header ($key - $value) after content has been sent";
+  }
+
+  if ($ENV{MOD_PERL} && (my $r = Apache->request)) {
+    $r->header_out($key, $value);
+  } else {
+    print "$key: $value\r\n";
+  }
+}
+
+###----------------------------------------------------------------###
+
+### allow for printing out a static javascript file
+### for example $self->print_js("CGI::Ex::validate.js");
+sub print_js {
+  my $self    = shift;
+  my $js_file = shift || '';
+
+  ### fix up the file - force .js on the end
+  $js_file .= '.js' if $js_file !~ /\.js$/i;
+  $js_file =~ s|::|/|g;
+
+  ### get file info
+  my $stat;
+  if ($js_file !~ m|^\.{0,2}/|) {
+    foreach my $path (@INC) {
+      my $file = "$path/$js_file";
+      next if ! -f $file;
+      $js_file = $file;
+      $stat = [stat _];
+    }
+  } else {
+    if (-f $js_file) {
+      $stat = [stat _];
+    }
+  }
+
+  ### no - file - 404
+  if (! $stat) {
+    return $self->send_status(404, "File not found\n");
+  }
+
+  ### do headers
+  $self->last_modified($stat->[9]);
+  $self->expires('+ 1 year');
+  $self->send_header('Content-length', $stat->[7] || 0);
+  &content_type('application/x-javascript');
+
+  return if $ENV{REQUEST_METHOD} && $ENV{REQUEST_METHOD} eq 'HEAD';
+
+  ### send the contents
+  if (open IN, $js_file) {
+    local $/ = undef;
+    print <IN>;
+    close IN;
+  }
+}
+
 ###----------------------------------------------------------------###
 
 ### form filler that will use either HTML::FillInForm, CGI::Ex::Fill
@@ -614,6 +698,23 @@ a Expires header, or will add a <meta http-equiv='Expires'>
 tag (this is supported on most major browsers).  This is useful if
 you don't know if something else already printed content-type.  Takes an
 argument of a time (may be a CGI -expires style time).
+
+=item C<-E<gt>send_status>
+
+Send a custom status.  Works in both CGI and mod_perl.  Arguments are
+a status code and the content (optional).
+
+=item C<-E<gt>send_header>
+
+Send a http header.  Works in both CGI and mod_perl.  Arguments are
+a header name and the value for that header.
+
+=item C<-E<gt>print_js>
+
+Prints out a javascript file.  Does everything it can to make sure
+that the javascript will cache.  Takes either a full filename,
+or a shortened name which will be looked for in @INC. (ie /full/path/to/my.js
+or CGI/Ex/validate.js or CGI::Ex::validate)
 
 =back
 
