@@ -16,6 +16,8 @@ use vars qw($VERSION
             $PREFERRED_CGI_REQUIRED
             $PREFERRED_VAL_MODULE
             $OBJECT_METHOD
+            $TEMPLATE_OPEN
+            $TEMPLATE_CLOSE
             $AUTOLOAD
             $DEBUG_LOCATION_BOUNCE
             @EXPORT @EXPORT_OK
@@ -26,6 +28,9 @@ $VERSION               = '0.98';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
 $PREFERRED_VAL_MODULE  ||= '';
+$OBJECT_METHOD         ||= 'param';
+$TEMPLATE_OPEN         ||= qr/\[%\s*/;
+$TEMPLATE_CLOSE        ||= qr/\s*%\]/;
 @EXPORT = ();
 @EXPORT_OK = qw(get_form get_cookies
                 content_type content_typed
@@ -445,6 +450,83 @@ sub conf_read {
 
 ###----------------------------------------------------------------###
 
+### This is intended as a simple yet strong subroutine to swap
+### in tags to a document.  It is intended to be very basic
+### for those who may not want the full features of a Templating
+### system such as Template::Toolkit (even though they should
+### investigate them because they are pretty nice)
+sub swap_template {
+  my $self = shift;
+  my $str  = shift;
+  return $str if ! $str;
+  my $ref  = ref($str) ? $str : \$str;
+
+  ### basic - allow for passing a hash, or object, or code ref
+  my $form = shift;
+  my $get_form_value;
+  my $meth;
+  if (UNIVERSAL::isa($form, 'HASH')) {
+    $get_form_value = sub {
+      my $key = shift;
+      return defined($form->{$key}) ? $form->{$key} : '';
+    };
+  } elsif ($meth = UNIVERSAL::can($form, $OBJECT_METHOD)) {
+    $get_form_value = sub {
+      my $key = shift;
+      my $val = $form->$meth($key);
+      return defined($val) ? $val : '';
+    };
+  } elsif (UNIVERSAL::isa($form, 'CODE')) {
+    $get_form_value = sub {
+      my $key = shift;
+      my $val = &{ $form }($key);
+      return defined($val) ? $val : '';
+    };
+  } else {
+    die "Not sure how to use $form passed to swap_template_tags";
+  }
+
+  ### now do the swap
+  $$ref =~ s{$TEMPLATE_OPEN \b (\w+) ((?:\.\w+)*) \b $TEMPLATE_CLOSE}{
+    if (! $2) {
+      &$get_form_value($1);
+    } else {
+      my @extra = split(/\./, substr($2,1));
+      my $ref   = &$get_form_value($1);
+      my $val;
+      while (defined(my $key = shift(@extra))) {
+        if (UNIVERSAL::isa($ref, 'HASH')) {
+          if (! exists($ref->{$key}) || ! defined($ref->{$key})) {
+            $val = '';
+            last;
+          }
+          $ref = $ref->{$key};
+        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+          if (! exists($ref->[$key]) || ! defined($ref->[$key])) {
+            $val = '';
+            last;
+          }
+          $ref = $ref->[$key];
+        } else {
+          $val = '';
+          last;
+        }
+      }
+      if (! defined($val)) {
+        if ($#extra == -1) {
+          $val = $ref;
+        }
+        $val = '' if ! defined($val);
+      }
+      $val; # return of the swap
+    }
+  }xeg;
+
+  return ref($str) ? 1 : $$ref;
+}
+
+###----------------------------------------------------------------###
+
 1;
 
 __END__
@@ -763,6 +845,40 @@ Prints out a javascript file.  Does everything it can to make sure
 that the javascript will cache.  Takes either a full filename,
 or a shortened name which will be looked for in @INC. (ie /full/path/to/my.js
 or CGI/Ex/validate.js or CGI::Ex::validate)
+
+=item C<-E<gt>swap_template>
+
+This is intended as a simple yet strong subroutine to swap
+in tags to a document.  It is intended to be very basic
+for those who may not want the full features of a Templating
+system such as Template::Toolkit (even though they should
+investigate them because they are pretty nice).  The default allows
+for basic template toolkit variable swapping.  There are two arguments.
+First is a string or a reference to a string.  If a string is passed,
+a copy of that string is swapped and returned.  If a reference to a
+string is passed, it is modified in place.  The second argument is
+a form, or a CGI object, or a cgiex object, or a coderef.  If it is a
+coderef, it should accept key as its only argument and return the
+proper value.
+
+  my $cgix = CGI::Ex->new;
+  my $form = {foo  => 'bar',
+              this => {is => {nested => ['wow', 'wee']}}
+             };
+
+  my $str =  $cgix->swap_template("[% foo %]", $form));
+  # $str eq 'bar'
+
+  $str = $cgix->swap_template("[% this.is.nested.1 %]", $form));
+  # $str eq 'wee'
+
+  $str = "[% this.is.nested.0 %]";
+  $cgix->swap_template(\$str, $form);
+  # $str eq 'wow'
+
+If at a later date, the developer upgrades to Template::Toolkit, the
+templates that were being swapped by CGI::Ex::swap_template should
+be compatible with Template::Toolkit.
 
 =back
 
