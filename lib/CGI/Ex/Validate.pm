@@ -10,7 +10,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.5 $ )[1];
+$VERSION = (qw$Revision: 1.6 $ )[1];
 
 ### what is allowed in a field name
 #$QR_FIELD_NAME = qr/[\w!\@\#\$%\^&*()\-+=:;\'\",.?]+/;
@@ -108,43 +108,6 @@ sub are_errors {
 
 ###----------------------------------------------------------------###
 
-### allow for optional validation on groups and on individual items
-sub check_conditional {
-  my ($self, $form, $ifs, $group, $N_level) = @_;
-
-  $N_level ||= 0;
-  $N_level ++; # prevent too many recursive checks
-
-  ### can pass a single hash - or an array ref of hashes
-  if (! $ifs || ! ref($ifs)) {
-    dex dtrace;
-    die "Need reference passed to check_conditional";
-  } elsif (UNIVERSAL::isa($ifs,'HASH')) {
-    $ifs = [$ifs];
-  }
-
-  ### run the if options here
-  ### multiple items can be passed - all are required unless OR is used to separate
-  my $found = 1;
-  foreach (my $i = 0; $i <= $#$ifs; $i ++) {
-    my $ref = $ifs->[$i];
-    if (! ref($ref) && $ref eq 'OR') {
-      $i += ($found) ? 2 : 1; # if found skip the OR altogether
-      $found = 1; # reset
-      next;
-    }
-    last if ! $found;
-    if (! $ref->{'field'}) {
-
-      die "Missing field key during validate_if";
-    }
-    my @err = $self->validate_buddy($form, $ref->{'field'}, $ref, $group, $N_level);
-    $found = 0 if scalar @err;
-  }
-  return $found;
-}
-
-
 ### the main validation routine
 sub validate {
   my $self = shift;
@@ -157,7 +120,7 @@ sub validate {
     $val = $self->get_validation($val);
     die "Trouble getting validation" if ! ref $val;
   }
-  dex $val;
+#  dex $val;
 
 #  my $val1 = {
 #    'group title' => 'User Information',
@@ -251,9 +214,9 @@ sub validate {
       ### test the error - if errors occur allow for OR - if OR fails use errors from first fail
       if (scalar @err) {
         if ($i < $#$fields && ! ref($fields->[$i + 1]) && $fields->[$i + 1] eq 'OR') {
-          $hold_error = {$ref->{'field'} => \@err}; 
+          $hold_error = \@err;
         } else {
-          push @ERROR, $hold_error || {$ref->{'field'} => \@err};
+          push @ERROR, $hold_error ? @$hold_error : @err;
           $hold_error = undef;
         }
       } else {
@@ -266,16 +229,56 @@ sub validate {
   return (! $return ? undef : $errors);
 }
 
+
+### allow for optional validation on groups and on individual items
+sub check_conditional {
+  my ($self, $form, $ifs, $group, $N_level, $ifs_match) = @_;
+
+  $N_level ||= 0;
+  $N_level ++; # prevent too many recursive checks
+
+  ### can pass a single hash - or an array ref of hashes
+  if (! $ifs || ! ref($ifs)) {
+    dex dtrace();
+    die "Need reference passed to check_conditional";
+  } elsif (UNIVERSAL::isa($ifs,'HASH')) {
+    $ifs = [$ifs];
+  }
+
+  ### run the if options here
+  ### multiple items can be passed - all are required unless OR is used to separate
+  my $found = 1;
+  foreach (my $i = 0; $i <= $#$ifs; $i ++) {
+    my $ref = $ifs->[$i];
+    if (! ref($ref) && $ref eq 'OR') {
+      $i += ($found) ? 2 : 1; # if found skip the OR altogether
+      $found = 1; # reset
+      next;
+    }
+    last if ! $found;
+
+    ### get the field - allow for custom variables based upon a match
+    my $field = $ref->{'field'} || die "Missing field key during validate_if";
+    $field =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+
+    my @err = $self->validate_buddy($form, $field, $ref, $group, $N_level);
+    $found = 0 if scalar @err;
+  }
+  return $found;
+}
+
+
+### this is where the main checking goes on
 sub validate_buddy {
   my $self = shift;
-  my ($form, $field, $field_val, $group_val, $N_level) = @_;
+  my ($form, $field, $field_val, $group_val, $N_level, $ifs_match) = @_;
 
   my @errors  = ();
 
-  ### only do once (RequiredIf may nest calls)
-  my $is_done = {};
-  return @errors if $is_done->{$field};
-  $is_done->{$field} = 1;
+#  ### only do once (RequiredIf may nest calls)
+#  my $is_done = {};
+#  return @errors if $is_done->{$field};
+#  $is_done->{$field} = 1;
 
   $N_level ||= 0;
   $N_level ++; # prevent too many recursive checks
@@ -284,23 +287,38 @@ sub validate_buddy {
   my $types = [sort keys %$field_val];
 
   ### supported validation types are as follows
-  ##  ValidateIf
-  ##  RequiredIf
-  ##  Required
-  ##  MinValues
-  ##  MaxValues (defaults to 1)
-  ##  Enum      (programming side if choices > 10)
-  ##  Equals
-  ##  MinLength
-  ##  MaxLength
-  ##  RegEx
-  ##  Compare
-  ##  Sql       (programming side)
-  ##  Boolean   (programming side)
-  ##  Type
+  ##  validate_if
+  ##  required_if
+  ##  required
+  ##  min_values
+  ##  max_values (defaults to 1)
+  ##  enum      (programming side if choices > 10)
+  ##  equals
+  ##  min_len
+  ##  max_len
+  ##  regex
+  ##  compare
+  ##  sql       (programming side)
+  ##  boolean   (programming side)
+  ##  type
 
   ### allow for not running some tests in the cgi
   return @errors if scalar $self->filter_type('exclude_cgi',$types);
+
+
+  ### allow for field names that contain regular expressions
+  if ($field =~ m|^(!?)m(\W)(.*)\2([eigsmx]*)$|s) {
+    my ($not,$pat,$opt) = ($1,$3,$4);
+    $opt =~ tr/g//d;
+    die "The e option cannot be used on validation keys on field $field" if $opt =~ /e/;
+    foreach my $_field (sort keys %$form) {
+      next if ($not && $_field =~ m/(?$opt:$pat)/) || (! $not && $_field !~ m/(?$opt:$pat)/);
+      my @match = (undef,$1,$2,$3,$4,$5); # limit to the matches
+      push @errors, $self->validate_buddy($form, $_field, $field_val, $group_val, $N_level, \@match);
+    }
+    return wantarray ? @errors : scalar @errors;
+  }
+
 
   ### allow for a few form modifiers
   if (defined $form->{$field}) {
@@ -312,7 +330,6 @@ sub validate_buddy {
       $form->{$field} =~ s/$pat//;
     }
     if (scalar $self->filter_type('to_upper_case',$types)) { # uppercase
-      dex $field, $form->{$field}, scalar $self->filter_type('to_upper_case',$types);
       $form->{$field} = uc($form->{$field});
     } elsif (scalar $self->filter_type('to_lower_case',$types)) { # lowercase
       $form->{$field} = lc($form->{$field});
@@ -327,7 +344,7 @@ sub validate_buddy {
     $n_vif ++;
     my $ifs = $field_val->{$type};
     die "Conditions for $type on field $field must be a ref" if ! ref $ifs;
-    my $ret = $self->check_conditional($form, $ifs, $group_val, $N_level);
+    my $ret = $self->check_conditional($form, $ifs, $group_val, $N_level, $ifs_match);
     $needs_val ++ if $ret;
   }
   return 0 if ! $needs_val && $n_vif;
@@ -345,24 +362,24 @@ sub validate_buddy {
     foreach my $type ($self->filter_type('required_if',$types)) {
       my $ifs = $field_val->{$type};
       die "Conditions for $type on field $field must be a ref" if ! ref $ifs;
-      next if ! $self->check_conditional($form, $ifs, $group_val, $N_level);
+      next if ! $self->check_conditional($form, $ifs, $group_val, $N_level, $ifs_match);
       $is_required = $type;
       last;
     }
   }
   if ($is_required && (! defined($form->{$field}) || ! length($form->{$field}))) {
 #    isun $field_val,$field, $field;
-    push @errors, [$is_required];
+    $self->add_error(\@errors, $field, $is_required, $field_val, $ifs_match);
     return @errors;
   }
 
   ### min values check
   foreach my $type ($self->filter_type('min_values',$types)) {
     my $n   = $field_val->{$type};
-    my $ref = exists($form->{$field}) ? $form->{$field} : [];
-    my $m   = ref($ref) ? scalar(@$ref) : 1;
-    if ($m > $n) {
-      push @errors, $type;
+    my $val = exists($form->{$field}) ? $form->{$field} : [];
+    my $m   = UNIVERSAL::isa($val, 'ARRAY') ? $#$val + 1 : 1;
+    if ($m < $n) {
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       return;
     }
   }
@@ -376,10 +393,9 @@ sub validate_buddy {
   foreach my $type (@keys) {
     my $n   = $field_val->{$type};
     my $val = exists($form->{$field}) ? $form->{$field} : [];
-    my $ref = ref($val);
-    my $m   = ($ref && $ref eq 'ARRAY') ? scalar(@$val) : 1;
+    my $m   = (UNIVERSAL::isa($val, 'ARRAY')) ? $#$val + 1 : 1;
     if ($m > $n) {
-      push @errors, $type;
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       return;
     }
   }
@@ -390,7 +406,7 @@ sub validate_buddy {
     my $value = $form->{$field};
     $value = '' if ! defined $value;
     if (! grep {$_ eq $value} @$ref) {
-      push @errors, $type;
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
 
@@ -412,7 +428,7 @@ sub validate_buddy {
       $success = 1; # occurs if they are both undefined
     }
     if (! $success) {
-      push @errors, $type;
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
 
@@ -420,43 +436,42 @@ sub validate_buddy {
   foreach my $type ($self->filter_type('min_len',$types)) {
     my $n = $field_val->{$type};
     if (exists($form->{$field}) && defined($form->{$field}) && length($form->{$field}) < $n) {
-      push @errors, [$type, $n];
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
 
   ### length max check
-  foreach my $type ($self->filter_type('MaxLength',$types)) {
+  foreach my $type ($self->filter_type('max_len',$types)) {
     my $n = $field_val->{$type};
     if (exists($form->{$field}) && defined($form->{$field}) && length($form->{$field}) > $n) {
-      $self->add_error($field,$type,$field_val,\@errors);
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
 
-  ### now do regex types 
-  foreach my $type ($self->filter_type('RegEx',$types)) {
+  ### now do match types
+  foreach my $type ($self->filter_type('match',$types)) {
     my $ref = ref($field_val->{$type}) ? $field_val->{$type} : [split(/\s*\|\|\s*/,$field_val->{$type})];
     foreach my $rx (@$ref) {
-      $rx =~ s/^\s*=~\s*//;
       my $not = ($rx =~ s/^\s*!~?\s*//) ? 1 : 0;
-      if ($rx =~ /^\s*m?([^\w\s])(.*[^\\])\1([eisgmx]*)\s*$/s || $rx =~ /^\s*m?([^\w\s])()\1([eisgmx]*)\s*$/s) {
-        my ($pat,$opt) = ($2,$3);
-        $opt =~ tr/g//d;
-        die "Error:invalid_regex_option - The e option cannot be used on validation regex's" if $opt =~ /e/;
-        if (defined($form->{$field}) && length($form->{$field})) {
-          if ( ($not && $form->{$field} =~ m/(?$opt:$pat)/)
-               || (! $not && $form->{$field} !~ m/(?$opt:$pat)/)
-               ) {
-            $self->add_error($field,$type,$field_val,\@errors);
-          }
+      if ($rx !~ /^\s*m?([^\w\s])(.*[^\\])\1([eisgmx]*)\s*$/s
+          && $rx !~ /^\s*m?([^\w\s])()\1([eisgmx]*)\s*$/s) {
+        die "Not sure how to parse that match ($rx)";
+      }
+      my ($pat,$opt) = ($2,$3);
+      $opt =~ tr/g//d;
+      die "The e option cannot be used on validation match's" if $opt =~ /e/;
+      if (defined($form->{$field}) && length($form->{$field})) {
+        if ( ($not && $form->{$field} =~ m/(?$opt:$pat)/)
+             || (! $not && $form->{$field} !~ m/(?$opt:$pat)/)
+             ) {
+          $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
         }
-      } else {
-        die "Error:regex_parse_error - Not sure how to parse that regex ($rx)";
       }
     }
   }
 
   ### allow for comparison checks
-  foreach my $type ($self->filter_type('Compare',$types)) {
+  foreach my $type ($self->filter_type('compare',$types)) {
     my $comp  = $field_val->{$type} || next;
     my $value = $form->{$field};
     my $test  = 0;
@@ -482,88 +497,67 @@ sub validate_buddy {
       die "Error:parse_compare - Not sure how to compare \"$comp\"";
     }
     if (! $test) {
-      $self->add_error($field,$type,$field_val,\@errors);
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
 
   ### program side sql type
-  foreach my $type ($self->filter_type('Sql',$types)) {
-    my $db_type = lc($field_val->{"${type}DbType"}) || 'oracle';
-    die "Error:db_type - invalid type $db_type" if $db_type !~ /^(oracle|mysql)$/;
-    require O::DBI;
-    my $dbh = ($self->{dbh}) ? $self->{dbh} : ($db_type eq 'oracle')
-      ? O::DBI->connect_common : O::DBI->connect(@O::magics::MYSQL);
-    my $s = $field_val->{$type};
-    $s =~ s/\$(\w+)\b/defined($form->{$1}) ? $form->{$1} : ""/eg;
-    my $return = $dbh->selectrow_array($s); # is this right - copied from O::FORMS
-    $field_val->{"${type}ErrorIf"} = 1 if ! defined $field_val->{"${type}ErrorIf"};
-    if ( (! $return && $field_val->{"${type}ErrorIf"}) || ($return && ! $field_val->{"${type}ErrorIf"}) ) {
-      $self->add_error($field,$type,$field_val,\@errors);
+  foreach my $type ($self->filter_type('sql',$types)) {
+    my $db_type = $field_val->{"${type}_db_type"};
+    my $dbh = ($db_type) ? $self->{dbhs}->{$db_type} : $self->{dbh};
+    if (! $dbh) {
+      die "Missing dbh for $type type on field $field" . ($db_type ? " and db_type $db_type" : "");
+    } elsif (UNIVERSAL::isa($dbh,'CODE')) {
+      $dbh = &$dbh($field, $self) || die "SQL Coderef did not return a dbh";
+    }
+    my $sql  = $field_val->{$type};
+    my @args = ($field_val) x $sql =~ tr/?//;
+    my $return = $dbh->selectrow_array($sql, {}, @args); # is this right - copied from O::FORMS
+    $field_val->{"${type}_error_if"} = 1 if ! defined $field_val->{"${type}_error_if"};
+    if ( (! $return && $field_val->{"${type}_error_if"})
+         || ($return && ! $field_val->{"${type}_error_if"}) ) {
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }
 
-  ### program side boolean type
-  foreach my $type ($self->filter_type('Boolean',$types)) {
+  ### server side boolean type
+  foreach my $type ($self->filter_type('boolean',$types)) {
     next if $field_val->{$type};
-    $self->add_error($field,$type,$field_val,\@errors);
+    $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
   }
 
   ### do specific type checks
-  foreach my $type ($self->filter_type('Type',$types)) {
-    if (! $self->check_type($form->{$field},$field_val->{Type},$field,$form,$group_val)){
-      $self->add_error($field,$type,$field_val,\@errors);
+  foreach my $type ($self->filter_type('type',$types)) {
+    if (! $self->check_type($form->{$field},$field_val->{'type'},$field,$form,$group_val)){
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }            
 
   ### all done - time to return
-  return @errors;
+  return wantarray ? @errors : scalar @errors;
+}
+
+### simple error adder abstraction
+sub add_error {
+  my $self = shift;
+  my $errors = shift;
+  push @$errors, \@_;
 }
 
 ### allow for multiple validations in the same hash
-### ie RegEx, RegEx1, RegEx2, RegEx234
+### ie Match, Match1, Match2, Match234
 sub filter_type {
   my $self  = shift;
   my $type  = shift;
-  my $order = shift || die "Error:missing_order_array";
+  my $order = shift || die "Missing order array";
   my @array = ();
   foreach (@$order) {
-    push @array, $_ if /^\Q$type\E\d*$/;
+    push @array, $_ if /^\Q$type\E_?\d*$/;
   }
   return wantarray ? @array : scalar @array;
 }
 
-### allow for validation on multiple form keys at once
-sub filter_form_keys {
-  my $self  = shift;
-  my $field = shift;
-  my $form  = shift;
-  my $val   = shift || {};
-
-  ### hash will contain the keys of the form that matched
-  ### the value will be the validation sub hash for that form element
-  my %hash = ();
-
-  ### let the key name match a regex
-  if ($field =~ m|^(!?)m(\W)(.*)\2([eigsmx]*)$|s) {
-    my ($not,$pat,$opt) = ($1,$3,$4);
-    $opt =~ tr/g//d;
-    die "Error:invalid_regex_option - The e option cannot be used on validation keys" if $opt =~ /e/;
-
-    foreach my $key (sort keys %$form) {
-      next if ($not && $key =~ m/(?$opt:$pat)/) || $key !~ m/(?$opt:$pat)/;
-      my @match = (undef,$1,$2,$3,$4,$5); # limit to the matches
-      my $field_val = $hash{$key} = { %{ $val->{$field} || {} } };
-      foreach my $_key (qw(RequiredIf RequiredIfError ValidateIf DelegateError Proxy)) {
-        next if ! $field_val->{$_key};
-        $field_val->{$_key} =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
-      }
-    }
-  } else {
-    $hash{$field} = $val->{$field} || {};
-  }
-
-  return \%hash;
-}
+###----------------------------------------------------------------###
 
 ### used to validate specific types
 sub check_type {
@@ -664,111 +658,6 @@ sub check_type {
 }
 
 ###----------------------------------------------------------------###
-
-sub add_error {
-  my $self      = shift;
-  my $field     = shift; # field receiving the error
-  my $type      = shift;
-  my $field_val = shift; # the validation hash
-  my $group_val = shift; # wrap prefix
-  my $errors    = shift; # the errorr
-
-  push @$errors, $self->get_error_text($field,$type,$field_val);
-}
-
-sub get_error_text {
-  my $self    = shift;
-  my $field   = shift;
-  my $type    = shift;
-  my $field_val  = shift;
-  my $prefix  = shift || $self->{error_prefix} || 'text';
-  my $dig     = ($type =~ s/(\d+)$//) ? $1 : '';
-  my $type_lc = lc($type);
-
-  ### type can look like "Required" or "Required2" or "Required100023"
-  ### allow for fallback from Required100023 through Required
-
-  ### setup where to look for the error message
-  my @error_keys = ("${type}Error");
-  unshift @error_keys, "${type}${dig}Error" if length($dig);
-  my $wrap_error;
-  if ($field =~ /\W/) {
-    $wrap_error = '';
-  } else {
-    $wrap_error = "$prefix.${field}_${type_lc}_error $prefix.${field}_error";
-    if (length($dig)) {
-      $wrap_error = "$prefix.${field}_${type_lc}${dig}_error " . $wrap_error;
-    }
-  }
-
-  ### look in the passed hash or self first
-  my $return;
-  foreach my $key (@error_keys){
-    $return = $field_val->{$key} || $self->{$key} || next;
-    last;
-  }
-
-  ### set default messages
-  if (! $return) {
-    if ($type eq 'Required' || $type eq 'RequiredIf') {
-      $return = "[|| $wrap_error '".field($field)." is required.']";
-  
-    } elsif ($type eq 'MinValues') {
-      my $n = $field_val->{"MinValues${dig}"};
-      $return = "[var pass.minvalues $n][|| $wrap_error '".field($field)." had less than $n values.']";
-  
-    } elsif ($type eq 'MaxValues') {
-      my $n = $field_val->{"MaxValues${dig}"};
-      $return = "[var pass.maxvalues $n][|| $wrap_error '".field($field)." had more than $n values.']";
-      
-    } elsif ($type eq 'Enum') {
-      $return = "[|| $wrap_error '".field($field)." is not in the list.']";
-  
-    } elsif ($type eq 'Equals') {
-      my $field2 = $field_val->{"Equals${dig}"};
-      $return = "[|| $wrap_error '".field($field)." did not equal ".field($field2).".']";
-  
-    } elsif ($type eq 'MinLength') {
-      my $n = $field_val->{"MinLength${dig}"};
-      $return = "[var pass.minlength $n][|| $wrap_error '".field($field)." was less than $n characters.']";
-
-    } elsif ($type eq 'MaxLength') {
-      my $n = $field_val->{"MaxLength${dig}"};
-      $return = "[var pass.maxlength $n][|| $wrap_error '".field($field)." was more than $n characters.']";
-
-    } elsif ($type eq 'RegEx') {
-      $return = "[|| $wrap_error '".field($field)." did not match regex.']";
-
-    } elsif ($type eq 'Compare') {
-      $return = "[|| $wrap_error '".field($field)." did not fit comparison.']";
-  
-    } elsif ($type eq 'Sql') {
-      $return = "[|| $wrap_error '".field($field)." did not match sql query.']";
-      
-    } elsif ($type eq 'Boolean') {
-      $return = "[|| $wrap_error '".field($field)." did not match boolean.']";
-      
-    } elsif ($type eq 'Type') {
-      $return = "[|| $wrap_error '".field($field)." did not match type $field_val->{Type}.']";
-
-    }
-  }
-
-  die "Error:missing_error - Missing error on field $field for type $type$dig" if ! $return;
-  return $return;
-
-}
-
-sub field {
-  my $field = shift;
-  return 'Field' if $field =~ /\W/;
-  $field =~ tr/_/ /;
-  $field =~ s/\b(\w)/\u$1/g;
-  return $field;
-}
-
-###----------------------------------------------------------------###
-
 
 sub onsubmit_js {
   return "ONSUBMIT=\"if(document.validate_form){if(document.validate_form(this,arguments)) return true; else return false;}\"";
@@ -961,7 +850,7 @@ __END__
 
 O::Form - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.5 2003-11-11 23:26:19 pauls Exp $
+$Id: Validate.pm,v 1.6 2003-11-12 06:30:29 pauls Exp $
 
 =head1 SYNOPSIS
 
