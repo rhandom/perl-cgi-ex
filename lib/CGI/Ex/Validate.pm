@@ -749,6 +749,7 @@ sub generate_js {
   my $str = &YAML::Dump($val_hash);
   $str =~ s/(?<!\\)\\(?=[sSdDwWbB0-9?.*+|\-\^\${}()\[\]])/\\\\/g;
   $str =~ s/\n/\\n\\\n/g; # allow for one big string
+  $str =~ s/\"/\\\"/g; # quotify it
 
   ### get the paths
   my $js_uri_path_yaml = $JS_URI_PATH_YAML || do {
@@ -1010,7 +1011,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.45 2003-11-26 22:03:37 pauls Exp $
+$Id: Validate.pm,v 1.46 2003-11-26 22:36:04 pauls Exp $
 
 =head1 SYNOPSIS
 
