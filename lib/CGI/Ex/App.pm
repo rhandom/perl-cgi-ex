@@ -459,22 +459,17 @@ sub morph {
   return if ref($allow) && ! $allow->{$step};   # hash - but no step
 
   ### place to store the lineage
-  my $ref = $self->{'_morph_lineage'} ||= [];
-
-  ### which package we are blessing into
-  my $cur = ref $self;
+  my $lin = $self->{'_morph_lineage'} ||= [];
+  my $cur = ref $self; # what are we currently
+  push @$lin, $cur;    # store so subsequent unmorph calls can do the right thing
 
   ### make sure we haven't already been reblessed
-  if ($#$ref != -1                               # is this the second morph call
+  if ($#$lin != -1                               # is this the second morph call
       && (! ($allow = $self->allow_nested_morph) # not true
           || (ref($allow) && ! $allow->{$step})  # hash - but no step
           )) {
-    push @$ref, $cur; # needed so unmorph does the right thing
-    return; # just return - allow us to morph early
+    return; # just return - don't die so that we can morph early
   }
-
-  ### store our lineage
-  push @$ref, $cur;
 
   ### if we are not already that package - bless us there
   my $new = $self->run_hook($step, 'morph_package');
@@ -501,9 +496,9 @@ sub morph {
 sub unmorph {
   my $self = shift;
   my $step = shift;
-  my $ref  = $self->{'_morph_lineage'} || return;
+  my $lin  = $self->{'_morph_lineage'} || return;
   my $cur  = ref $self;
-  my $prev = pop(@$ref) || die "unmorph called more times than morph - current ($cur)";
+  my $prev = pop(@$lin) || die "unmorph called more times than morph - current ($cur)";
 
   ### if we are not already that package - bless us there
   if ($cur ne $prev) {
