@@ -724,7 +724,7 @@ sub as_array {
     }
   }
     
-  return wantarray ? @array : \@array;
+  return \@array;
 }
 
 ### return a hash of applicable errors
@@ -773,7 +773,7 @@ sub as_hash {
     }
   }
 
-  return wantarray ? %return : \%return;
+  return \%return;
 }
 
 ### return a user friendly error message
@@ -882,7 +882,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.28 2003-11-14 06:19:19 pauls Exp $
+$Id: Validate.pm,v 1.29 2003-11-14 06:25:38 pauls Exp $
 
 =head1 SYNOPSIS
 
