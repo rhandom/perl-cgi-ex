@@ -464,7 +464,7 @@ sub morph {
   push @$lin, $cur;    # store so subsequent unmorph calls can do the right thing
 
   ### make sure we haven't already been reblessed
-  if ($#$lin != -1                               # is this the second morph call
+  if ($#$lin != 0                                # is this the second morph call
       && (! ($allow = $self->allow_nested_morph) # not true
           || (ref($allow) && ! $allow->{$step})  # hash - but no step
           )) {
@@ -472,17 +472,20 @@ sub morph {
   }
 
   ### if we are not already that package - bless us there
-  my $new = $self->run_hook($step, 'morph_package');
+  my $new  = $self->run_hook($step, 'morph_package');
+  my $hist = $self->history;
   if ($cur ne $new) {
     my $file = $new .'.pm';
     $file =~ s|::|/|g;
     if (eval { require $file }) { # check for the file that holds this package
       ### become that package
       bless $self, $new;
+      push @$hist, "$step - morph - morph - changed from $cur to $new";
       if (my $method = $self->can('fixup_after_morph')) {
         $self->$method($step);
       }
     } else {
+      push @$hist, "$step - morph - morph - failed morph from $cur to $new: $@";
       if ($@ && $@ !~ /^\s*Can\'t locate/) { # let us know what happened
         my $err = "Trouble while morphing to $file: $@";
         debug $err;
@@ -506,6 +509,8 @@ sub unmorph {
       $self->$method($step);
     }
     bless $self, $prev;
+    my $hist = $self->history;
+    push @$hist, "$step - unmorph - unmorph - changed from $cur to $prev";
   }
 
   return $self;
@@ -991,7 +996,7 @@ More examples will come with time.  Here are the basics for now.
   use base qw(CGI::Ex::App);
   use CGI::Ex::Dump qw(debug);
 
-  sub valid_paths { return {success => 1, js => 1} }
+  sub valid_steps { return {success => 1, js => 1} }
     # default_step (main) is a valid path
     # note the inclusion of js step for js_validation
 
