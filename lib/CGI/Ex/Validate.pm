@@ -2,13 +2,15 @@ package CGI::Ex::Validate;
 
 use strict;
 use vars qw($VERSION
-            $DEFAULT_RAISE_ERROR
+            $ERROR_PACKAGE
             @DEFAULT_EXT %EXT_HANDLERS);
 
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.8 $ )[1];
+$VERSION = (qw$Revision: 1.9 $ )[1];
+
+$ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
 @DEFAULT_EXT = ('val');
 
@@ -20,10 +22,6 @@ $VERSION = (qw$Revision: 1.8 $ )[1];
 sub new {
   my $class = shift() || __PACKAGE__;
   my $self  = (@_ && ref($_[0])) ? shift() : {@_}; 
-
-  ### set the default to allow for override
-  $self->{raise_error} = $DEFAULT_RAISE_ERROR if ! exists $self->{raise_error};
-
   return bless $self, $class;
 }
 
@@ -108,14 +106,15 @@ sub validate {
   ### allow for validation passed as single group hash, single group array,
   ### or array of group hashes or group arrays
   my @ERRORS = ();
+  my %EXTRA  = ();
   my $group_order = (UNIVERSAL::isa($val,'HASH')) ? [$val] : $val;
-  foreach my $group (@$group_order) {
-    die "Validation groups must be a hashref" if ! UNIVERSAL::isa($group,'HASH');
-    my $title       = $group->{'group title'};
-    my $validate_if = $group->{'group validate_if'};
-    my $fields      = $group->{'group fields'};
-    my $defaults    = $group->{'group defaults'} || {};
-    my $optional    = $group->{'group optional'};
+  foreach my $group_val (@$group_order) {
+    die "Validation groups must be a hashref" if ! UNIVERSAL::isa($group_val,'HASH');
+    my $title       = $group_val->{'group title'};
+    my $validate_if = $group_val->{'group validate_if'};
+    my $fields      = $group_val->{'group fields'};
+    my $defaults    = $group_val->{'group defaults'} || {};
+    my $optional    = $group_val->{'group optional'};
 
     
     ### only validate this group if it is supposed to be checked
@@ -125,15 +124,15 @@ sub validate {
     ### if the validation items were not passed as an arrayref
     ### look for a group order and then fail back to the keys of the group
     if (! $fields) {
-      my @order  = sort grep {! /^group\s/} keys %$group;
+      my @order  = sort grep {! /^(group|general)\s/} keys %$group_val;
       my @fields = ();
       my %found  = ();
-      if (my $_order = $group->{'group order'}) {
+      if (my $_order = $group_val->{'group order'}) {
         die "Validation group order must be an arrayref" if ! UNIVERSAL::isa($_order,'ARRAY');
         foreach my $field (@$_order) {
           die "Duplicate order found for $field in group order" if $found{$field};
           $found{$field} = 1;
-          my $value = exists($group->{$field}) ? $group->{$field}
+          my $value = exists($group_val->{$field}) ? $group_val->{$field}
             : ($field eq 'OR') ? 'OR' : die "No element found in group for $field";
           push @fields, $value;
         }
@@ -143,7 +142,7 @@ sub validate {
       foreach my $field (@order) {
         next if $found{$field};
         $found{$field} = 1;
-        my $ref = $group->{$field};
+        my $ref = $group_val->{$field};
         if (! exists $ref->{'field'}) {
           my $_field = $field;
           $_field =~ s/_?\d+$//;
@@ -190,26 +189,34 @@ sub validate {
       push @ERRORS, $title if $title;
       push @ERRORS, @errors;
     }
-  }
 
+    ### if errors occurred - or no fields were tested - add on general items
+    if ($#errors != -1 || $#$fields == -1) {
+      ### store general extra items
+      foreach my $key (keys %$group_val) {
+        next if $key !~ /^general\s+(\w+)$/;
+        $EXTRA{$1} = $group_val->{$key};
+      }
+    }
+
+  }
 #  dex \@ERRORS;
 
-  ### add on the top level title
-  if ($#ERRORS != -1) {
-    my $title = exists($self->{general_title}) ? $self->{general_title} : "Please correct the following items:";
-    unshift(@ERRORS, $title) if $title;
+  ### store any extra items from self
+  foreach my $key (keys %$self) {
+    next if $key !~ /_error$/
+      && $key !~ /^(error_title|error_prefix|name_suffix|raise_error)$/;
+    $EXTRA{$key} = $self->{$key};
   }
 
   ### return what they want
   if ($#ERRORS != -1) {
-    push @ERRORS, $self; # save for posterity
-    my $pkg = __PACKAGE__."::Error"; # not overridable
-    if ($self->{raise_error}) {
-      die $pkg->new(\@ERRORS); # die with error object
+    if ($EXTRA{raise_error}) {
+      die $ERROR_PACKAGE->new(\@ERRORS, \%EXTRA); # die with error object
     } elsif (wantarray) {
-      return @ERRORS; # give back the bulk info
+      return @ERRORS; # give back the bulk info (loses %EXTRA)
     } else {
-      return $pkg->new(\@ERRORS); # return error object
+      return $ERROR_PACKAGE->new(\@ERRORS, \%EXTRA); # return error object
     }
   } elsif (wantarray) {
     return ();
@@ -617,10 +624,12 @@ use overload '""' => \&as_string;
 use Data::DumpEx;
 
 sub new {
-  my $class = shift || __PACKAGE__;
-  my $self  = shift;
-  die "Missing or invalid arrayref" if ! UNIVERSAL::isa($self, 'ARRAY');
-  return bless $self, $class;
+  my $class  = shift || __PACKAGE__;
+  my $errors = shift;
+  my $extra  = shift || {};
+  die "Missing or invalid arrayref" if ! UNIVERSAL::isa($errors, 'ARRAY');
+  die "Missing or invalid hashref"  if ! UNIVERSAL::isa($extra,  'HASH');
+  return bless {errors => $errors, extra => $extra}, $class;
 }
 
 sub as_string {
@@ -628,31 +637,43 @@ sub as_string {
   return join "\n", @{ $self->as_array };
 }
 
+### return an array of applicable errors
 sub as_array {
-  my $err_obj = shift;
-  die "Invalid object" if ! UNIVERSAL::isa($err_obj, 'ARRAY');
-  my $self = UNIVERSAL::isa($err_obj->[$#$err_obj],'CGI::Ex::Validate') ? pop(@$err_obj) : {};
+  my $self = shift;
+  my $errors = $self->{errors} || die "Missing errors";
+  my $extra  = $self->{extra}  || {};
+
+  my $title = defined($extra->{error_title}) ? $extra->{error_title} : "Please correct the following items:";
 
   ### if there are heading items then we may end up needing a prefix
-  my $has_headings = 0;
-  foreach (@$err_obj) {
-    next if ref;
+  my $has_headings;
+  if ($title) {
     $has_headings = 1;
-    last;
+  } else {
+    foreach (@$errors) {
+      next if ref;
+      $has_headings = 1;
+      last;
+    }
   }
 
-  ### now build the array
+  ### get the array ready
   my @array = ();
+  push @array, $title if length $title;
+
+  ### add on extra text ?
   my $prefix  = defined($_[0]) ? shift()
-    : defined($self->{error_prefix}) ? $self->{error_prefix}
+    : defined($extra->{error_prefix}) ? $extra->{error_prefix}
     : $has_headings ? '  ' : '';
+
+  ### add the errors
   my %found = ();
-  foreach my $err (@$err_obj) {
+  foreach my $err (@$errors) {
     if (! ref $err) {
       push @array, $err;
       %found = ();
     } else {
-      my $text = $err_obj->get_error_text($err);
+      my $text = $self->get_error_text($err);
       next if $found{$text};
       $found{$text} = 1;
       push @array, "$prefix$text";
@@ -662,24 +683,25 @@ sub as_array {
   return wantarray ? @array : \@array;
 }
 
+### return a hash of applicable errors
 sub as_hash {
-  my $err_obj = shift;
-  die "Invalid object" if ! UNIVERSAL::isa($err_obj, 'ARRAY');
-  my $self = UNIVERSAL::isa($err_obj->[$#$err_obj],'CGI::Ex::Validate') ? pop(@$err_obj) : {};
+  my $self = shift;
+  my $errors = $self->{errors} || die "Missing errors";
+  my $extra  = $self->{extra}  || {};
 
   my $form = ref($_[0]) ? shift : {};
   my $suffix = defined($_[0]) ? shift()
-    : defined($self->{name_suffix}) ? $self->{name_suffix}
+    : defined($extra->{name_suffix}) ? $extra->{name_suffix}
     : '_error';
 
   ### now add to the hash
   my %found = ();
-  foreach my $err (@$err_obj) {
+  foreach my $err (@$errors) {
     next if ! ref $err;
 
     my $field = $err->[0] || die "Missing field name";
 
-    my $text = $err_obj->get_error_text($err);
+    my $text = $self->get_error_text($err);
     next if $found{$field}->{$text};
     $found{$field}->{$text} = 1;
 
@@ -692,35 +714,39 @@ sub as_hash {
   return wantarray ? %$form : $form;
 }
 
+### return a user friendly error message
 sub get_error_text {
   my $self  = shift;
   my $err   = shift;
+  my $extra = $self->{extra} || {};
   my ($field, $type, $field_val, $ifs_match) = @$err;
   my $dig     = ($type =~ s/(_?\d+)$//) ? $1 : '';
   my $type_lc = lc($type);
-  
+
+  ### the the name of this thing
+  my $name = $field_val->{'name'} || "The field $field";
+  $name =~ s/$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+
   ### type can look like "required" or "required2" or "required100023"
-  ### allow for fallback from Required100023 through Required
-    
-  ### setup where to look for the error message
-  my @error_keys = ("${type}_error");
-  unshift @error_keys, "${type}${dig}_error" if length($dig);
+  ### allow for fallback from required100023_error through required_error
+  my @possible_error_keys = ("${type}_error");
+  unshift @possible_error_keys, "${type}${dig}_error" if length($dig);
   
   ### look in the passed hash or self first
   my $return;
-  foreach my $key (@error_keys){
-    $return = $field_val->{$key} || next;
-    $return =~ s/$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+  foreach my $key (@possible_error_keys){
+    $return = $field_val->{$key} || $extra->{$key} || next;
+    $return =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+    $return =~ s/\$field/$field/g;
+    $return =~ s/\$name/$name/g;
+    if (my $value = $field_val->{"$type$dig"}) {
+      $return =~ s/\$value/$value/g if ! ref $value;
+    }
     last;
   }
 
-
   ### set default messages
   if (! $return) {
-    ### the the name of this thing
-    my $name = $field_val->{'name'} || "The field $field";
-    $name =~ s/$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
-
     if ($type eq 'required' || $type eq 'required_if') {
       $return = "$name is required.";
   
@@ -786,49 +812,53 @@ __END__
 
 =head1 NAME
 
-O::Form - Yet another form validator - does good javascript too
+CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.8 2003-11-12 09:12:10 pauls Exp $
+$Id: Validate.pm,v 1.9 2003-11-12 17:34:58 pauls Exp $
 
 =head1 SYNOPSIS
 
-  use O::Form;
+  use CGI::Ex::Validate;
 
-  my $partner = O::Partner->new($ENV{HTTP_HOST});
-  my $form = &O::CGI::GET_FORM();
-  my $step = 'somestep'; # same as passed to partner->print
+  my $form = CGI::Ex->new; # OR CGI::Ex->get_form;
+  # my $form = CGI->new;
+  # my $form = {key1 => 'val1', key2 => 'val2'};
 
-  # simple way ###
+  my $validation = {
+    'group title'  => '-- User Information --',
+    'group fields' => [
+
+
   
-  my $fob  = O::Form->new;
-  my $errors = $fob->validate($form,'somestep'); # returns hash of errors
+  my $vob  = CGI::Ex::Validate->new;
+  my $errors = $vob->validate($form,'somestep'); # returns hash of errors
 
-  if ($fob->are_errors($errors)) {
-    $partner->print($step,$form,$errors, {js => $fob->generate_js($step)});
+  if ($vob->are_errors($errors)) {
+    $partner->print($step,$form,$errors, {js => $vob->generate_js($step)});
   }
 
   ### extended way ###
 
-  my $fob  = O::Form->new({
+  my $vob  = CGI::Ex::Validate->new({
     partner => $partner, # reuse the same partner object
   });
 
-  my ($val_hash,$val_order) = $fob->get_val_hash($step);
-  my $filtered_order = $fob->filter_order($val_hash,$val_order); # redundant
+  my ($val_hash,$val_order) = $vob->get_val_hash($step);
+  my $filtered_order = $vob->filter_order($val_hash,$val_order); # redundant
 
-  my $errors = $fob->validate($form,$val_hash);
+  my $errors = $vob->validate($form,$val_hash);
   OR
-  my $errors = $fob->validate($form,$val_hash,$val_order);
+  my $errors = $vob->validate($form,$val_hash,$val_order);
   OR
   my $errors = {};
-  $fob->validate($form,$val_hash,$val_order,$errors); # errors added to hash
+  $vob->validate($form,$val_hash,$val_order,$errors); # errors added to hash
 
-  if ($fob->are_errors($errors)) {
+  if ($vob->are_errors($errors)) {
     $partner->print($step,$form,$errors, {
-      js => $fob->generate_js($step),
+      js => $vob->generate_js($step),
       OR
-      js => $fob->generate_js($step,$val_hash,$val_order),
-      js_onsubmit => $fob->onsubmit_js,
+      js => $vob->generate_js($step,$val_hash,$val_order),
+      js_onsubmit => $vob->onsubmit_js,
     });
   }
 
@@ -844,7 +874,7 @@ $Id: Validate.pm,v 1.8 2003-11-12 09:12:10 pauls Exp $
 
 =head1 DESCRIPTION
 
-O::Form is yet another module used for validating input.  It
+CGI::Ex::Validate is yet another module used for validating input.  It
 aims to have all of the power of former modules, while advancing them
 with more flexibility, external validation files, and identical
 javascript validation.  Other functions from O::FORMS and 
@@ -900,7 +930,7 @@ are form, partner, validation and validation errors.  All arguments
 are optional and should probably not be used - in favor of passing
 them through other methods.
 
-  $fob = O::Form->new({
+  $vob = CGI::Ex::Validate->new({
     partner => O::Partner->new($ENV{HTTP_HOST}),
     form    => &O:::CGI::GET_FORM(),
     validation => $val_hash,
@@ -918,14 +948,14 @@ which to validate the validation keys.  An option last argument is an
 error hashref.  If this is passed then the errors will be added to it
 rather than returned in a hashref.
 
-  $errors = $fob->validate($form, $valhash);
+  $errors = $vob->validate($form, $valhash);
 
-  $errors = $fob->validate($form, $valhash, $valorder);
+  $errors = $vob->validate($form, $valhash, $valorder);
 
-  $errors = $fob->validate($form, "cgi/step");
+  $errors = $vob->validate($form, "cgi/step");
 
   my $errors = {};
-  $fob->validate($form, "cgi/step", [], $errors);
+  $vob->validate($form, "cgi/step", [], $errors);
 
 =item C<are_errors>
 
@@ -934,7 +964,7 @@ from validate.  At the moment, only keys that have errors will
 be in the hash so it is possible to do if (keys %$errors) but it is 
 better to use the method anyway.
 
-  if ($fob->are_errors($errors)) { die "Invalid" }
+  if ($vob->are_errors($errors)) { die "Invalid" }
 
 =item C<generate_js>
 
@@ -945,9 +975,9 @@ Normally this method is not necessary, as there is a wrap function that
 will bring the code in by merely placing "[jsgen]" or "[jsgen 'cgi/step']" in
 the html.
 
-  $js = $fob->generate_js($valhash);
-  $js = $fob->generate_js($valhash,$valorder);
-  $js = $fob->generate_js('cgi/step');
+  $js = $vob->generate_js($valhash);
+  $js = $vob->generate_js($valhash,$valorder);
+  $js = $vob->generate_js('cgi/step');
 
 =item C<onsubmit_js>
 
@@ -956,7 +986,7 @@ Normally this method is not necessary, as there is a wrap function that
 will bring the code in by merely placing "[jsgen]" or "[jsgen 'cgi/step']" in
 the html.
 
-  $onsubmit = $fob->onsubmit_js;
+  $onsubmit = $vob->onsubmit_js;
 
 =item C<get_val_hash>
 
@@ -964,14 +994,14 @@ Takes the validation step as an arugment.  Will return the validation hash in sc
 context and the validation hash and order in an array context.  It will use the
 partner object found in $self->{partner}.
 
-  $valhash = $fob->get_val_hash('cgi/step');
-  ($valhash,$val_order) = $fob->get_val_hash('cgi/step');
+  $valhash = $vob->get_val_hash('cgi/step');
+  ($valhash,$val_order) = $vob->get_val_hash('cgi/step');
 
 =item C<filter_order>
 
 Removes keys that don't pertain to validation.
 
-  $order = $fob->filter_order($val,$val_order);
+  $order = $vob->filter_order($val,$val_order);
 
 =back
 
