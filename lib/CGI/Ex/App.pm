@@ -793,6 +793,7 @@ sub validate {
     foreach my $method (qw(append_path replace_path insert_path)) {
       next if ! ($val = $ref->{$method});
       $self->$method(ref $val ? @$val : $val);
+      last;
     }
   }
 
