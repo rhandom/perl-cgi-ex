@@ -31,7 +31,7 @@ BEGIN {
   ### the base stub functions use Template Toolkit and CGI::Ex::Validate
   ### If you are mod_perl and are using the stub functions - you may want
   ### to make sure that Template and CGI::Ex::Validate are loaded at server startup
-  ###
+  ### 
   #if ($ENV{MOD_PERL}) {
   #  require Template;
   #  require CGI::Ex::Validate;
@@ -90,9 +90,9 @@ sub navigate {
     my $valid_steps = $self->valid_steps;
 
     ### iterate on each step of the path
-    foreach ($step->{path_i} ||= 0;
-             $step->{path_i} <= $#$path;
-             $step->{path_i} ++) {
+    foreach ($self->{path_i} ||= 0;
+             $self->{path_i} <= $#$path;
+             $self->{path_i} ++) {
       my $step = $path->[$self->{path_i}];
       next if $step !~ /^\w+$/; # don't process the step if it contains odd characters
 
@@ -201,9 +201,9 @@ sub default_step {
   return $self->{'default_step'} || 'main';
 }
 
-sub path_key {
+sub step_key {
   my $self = shift;
-  return $self->{'path_key'} || 'step';
+  return $self->{'step_key'} || 'step';
 }
 
 ### determine the path to follow
@@ -211,9 +211,9 @@ sub path {
   my $self = shift;
   return $self->{path} ||= do {
     my @path     = (); # default to empty path
-    my $path_key = $self->path_key;
+    my $step_key = $self->step_key;
 
-    if (my $step = $self->form->{$path_key}) {
+    if (my $step = $self->form->{$step_key}) {
       push @path, $step;
     } elsif ($ENV{PATH_INFO} && $ENV{PATH_INFO} =~ m|^/(\w+)|) {
       push @path, lc($1);
@@ -567,12 +567,15 @@ sub js_validation {
 ### where to find the javascript files
 ### default to using this script as a handler
 sub js_uri_path {
+  my $self   = shift;
   my $script = $ENV{'SCRIPT_NAME'} || die "Missing SCRIPT_NAME";
-  return $script . '/js';
+  return ($self->can('path') == \&CGI::Ex::App::path)
+    ? $script . '/js' # try to use a cache friendly URI (if path is our own)
+    : $script . '?'.$self->step_key.'=js&js='; # use one that works with more paths
 }
 
 ### name to attach js validation to
-sub form_name { 'MYFORM' }
+sub form_name { 'theform' }
 
 ### provide some rudimentary javascript support
 ### if valid_steps is defined - it should include "js"
@@ -580,12 +583,10 @@ sub js_pre_step {
   my $self = shift;
 
   ### make sure path info looks like /js/CGI/Ex/foo.js
-  return ! $ENV{'PATH_INFO'}
-    || $ENV{'PATH_INFO'} !~ m|^(?:/js)?/(\w+(?:/\w+)*\.js)$|;
+  my $file = $self->form->{'js'} || $ENV{'PATH_INFO'} || '';
+  $file = ($file =~  m!^(?:/js/|/)?(\w+(?:/\w+)*\.js)$!) ? $1 : '';
 
-  ### print it
-  $self->cgix->print_js($1);
-
+  $self->cgix->print_js($file);
   return 1;
 }
 
@@ -769,8 +770,9 @@ sub validate {
   my $step = shift;
   my $form = $self->form;
   my $hash = $self->run_hook($step, 'hash_validation', {});
+  my $what_was_validated = [];
 
-  my $eob = eval { $self->vob->validate($form, $hash) };
+  my $eob = eval { $self->vob->validate($form, $hash, $what_was_validated) };
   if (! $eob && $@) {
     die "Step $step: $@";
   }
@@ -980,7 +982,7 @@ are shown):
     ->path (get the path steps)
        # DEFAULT ACTION
        # look in $ENV{'PATH_INFO'}
-       # look in ->form for ->path_key
+       # look in ->form for ->step_key
 
     ->pre_loop
        # navigation stops if true
@@ -1062,7 +1064,7 @@ ran using the method "run_hook" which uses the method "hook" to lookup
 the hook.  A history of ran hooks is stored in $self->{history}.
 Default will be a single step path looked up in $form->{path} or in
 $ENV{PATH_INFO}.  By default, path will look for $ENV{'PATH_INFO'} or
-the value of the form by the key path_key.  For the best
+the value of the form by the key step_key.  For the best
 functionality, the arrayref returned should be the same reference
 returned for every call to path - this ensures that other methods can
 add to the path (and will most likely break if the arrayref is not the
@@ -1074,7 +1076,7 @@ in default_step will be run.
 Step to show if the path runs out of steps.  Default value is the
 'default_step' property or the value 'main'.
 
-=item Method C<-E<gt>path_key>
+=item Method C<-E<gt>step_key>
 
 Used by default to determine which step to put in the path.  The
 default path will only have one step within it
@@ -1314,13 +1316,16 @@ js_validation.
 
 =item Method C<-E<gt>js_uri_path>
 
-Return the URI path where the CGI/Ex/yaml_load.js and CGI/Ex/validate.js
-files can be found.  This will default to $ENV{'SCRIPT_NAME'} .'/js'.
-A default handler for the "js" step has been provided in "js_pre_step"
-(this handler will nicely print out the javascript found in the js files
-which are included with this distribution - if valid_steps is defined,
-it must include the step "js" - js_pre_step will work properly with
-the default "path" handler.
+Return the URI path where the CGI/Ex/yaml_load.js and
+CGI/Ex/validate.js files can be found.  This will default to
+"$ENV{SCRIPT_NAME}/js" if the path method has not been overridden,
+otherwise it will default to "$ENV{SCRIPT_NAME}?step=js&js=" (the
+latter is more friendly with overridden paths).  A default handler for
+the "js" step has been provided in "js_pre_step" (this handler will
+nicely print out the javascript found in the js files which are
+included with this distribution - if valid_steps is defined, it must
+include the step "js" - js_pre_step will work properly with the
+default "path" handler.
 
 =item Hook C<-E<gt>hash_form>
 
