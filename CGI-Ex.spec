@@ -45,6 +45,7 @@ rm -rf $RPM_BUILD_ROOT
 
 # Clean up some files we don't want/need
 find $RPM_BUILD_ROOT%{_prefix} -type d | tac | xargs rmdir --ign
+find $RPM_BUILD_ROOT%{_prefix} | grep i386 | tac | xargs rm -rf
 
 %clean
 rm -rf $RPM_BUILD_ROOT
