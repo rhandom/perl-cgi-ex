@@ -3,7 +3,7 @@ package CGI::Ex::Validate;
 ### CGI Extended Validator
 
 ###----------------------------------------------------------------###
-#  Copyright 2003 - Paul Seamons                                     #
+#  Copyright 2004 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -21,7 +21,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '1.13';
+$VERSION = '1.14';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 $DEFAULT_EXT   = 'val';
@@ -150,7 +150,7 @@ sub validate {
     foreach (my $i = 0; $i <= $#$fields; $i ++) {
       my $ref = $fields->[$i];
       if (! ref($ref) && $ref eq 'OR') {
-        $i += ($found) ? 2 : 1; # if found skip the OR altogether
+        $i ++ if $found; # if found skip the OR altogether
         $found = 1; # reset
         next;
       }
@@ -242,7 +242,7 @@ sub check_conditional {
     my $ref = $ifs->[$i];
     if (! ref $ref) {
       if ($ref eq 'OR') {
-        $i += ($found) ? 2 : 1; # if found skip the OR altogether
+        $i ++ if $found; # if found skip the OR altogether
         $found = 1; # reset
         next;
       } else {
@@ -1082,7 +1082,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.75 2004-12-07 20:59:56 pauls Exp $
+$Id: Validate.pm,v 1.76 2004-12-07 21:21:21 pauls Exp $
 
 =head1 SYNOPSIS
 
