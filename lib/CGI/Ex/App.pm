@@ -1108,11 +1108,6 @@ Object creator.  Takes a hash or hashref.
 Called by the default new method.  Allows for any object
 initilizations.
 
-=item Method C<-E<gt>form>
-
-Returns a hashref of the items passed to the CGI.  Returns
-$self->{form}.  Defaults to CGI::Ex::get_form.
-
 =item Method C<-E<gt>navigate>
 
 Takes a class name or a CGI::Ex::App object as arguments.  If a class
@@ -1260,6 +1255,40 @@ Returns an arrayref of which hooks of which steps of the path were ran.
 Useful for seeing what happened.  In general - each line of the history
 will show the current step, the hook requested, and which hook was
 actually called. (hooks that don't find a method don't add to history)
+
+=item Method C<-E<gt>cgix>
+
+Returns a CGI::Ex object.  The CGI::Ex object is essentially a wrapper
+around CGI.pm and other modules to ease the gateway layer.  Normally
+the CGI::Ex object is used for sending headers and setting cookies
+and also for location bouncing (see the CGI::Ex perldoc for more
+information).  Any object that supports the CGI::Ex interface can
+be returned (primary methods used are get_form and print_content_type).
+
+=item Method C<-E<gt>form>
+
+Returns a hashref of the items passed to the CGI.  Returns
+$self->{'form'}.  Defaults to ->cgix->get_form - which in turn
+defaults to input returned from a standard CGI.pm object.
+Direct access to a CGI.pm object can be found by calling:
+
+  my $cgi = $self->cgix->object;
+
+Common usage is to normally just deal with the hashref returned
+by ->form.
+
+=item Method C<-E<gt>cookies>
+
+Returns a hashref composed of the cookies passed to the server.
+Returns $self->{'cookies'} which defaults to ->cgix->get_cookies which
+defaults to cookies returned from a standard CGI.pm object.  If cookies
+need to be set - they should be done with the CGI::Ex object (which
+uses CGI.pm to set the cookie) as follows:
+
+  $self->cgix->set_cookie({
+    name  => $cookie_name,
+    value => $cookie_value,
+  }); # will correctly call CGI->cookie
 
 =item Method C<-E<gt>path>
 
@@ -1781,9 +1810,9 @@ hashes (or objects with references to the global hashes) there.
 
 The concepts used in CGI::Ex::App are not novel or unique.  However, they
 are all commonly used and very useful.  All application builders were
-built because somebody observed that there are common design patterns
-in CGI building.  CGI::Ex::App differs in that it has found more common design
-patterns of CGI's.
+built because somebody observed that there are common runtime phases
+in CGI building.  CGI::Ex::App differs in that it has found more phases
+of building CGIs.
 
 CGI::Ex::App is intended to be sub classed, and sub sub classed, and each step
 can choose to be sub classed or not.  CGI::Ex::App tries to remain simple
@@ -1875,6 +1904,11 @@ There are a lot of hooks.  Actually this is not a bug.  Some may
 prefer not calling as many hooks - they just need to override
 methods high in the chain and subsequent hooks will not be called.
 
+There is a lot of code.  If the code base for CGI::Ex::App seems large,
+consider that what it does for you would normally be repeated in the
+individual runmodes of other applications - so CGI::Ex::App is a little
+bigger so your application doesn't have to be.
+
 =head1 THANKS
 
 Bizhosting.com - giving a problem that fit basic design patterns.
@@ -1884,6 +1918,6 @@ James Lance    - design feedback, bugfixing, feature suggestions.
 
 =head1 AUTHOR
 
-Paul Seamons
+Paul Seamons <cgi_ex@seamons.com>
 
 =cut
