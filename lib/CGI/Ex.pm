@@ -35,7 +35,7 @@ $PREFERRED_VAL_MODULE  ||= '';
 ###----------------------------------------------------------------###
 
 sub new {
-  my $class = shift;
+  my $class = shift || __PACKAGE__;
   my $self  = ref($_[0]) ? shift : {@_};
   return bless $self, $class;
 }
@@ -130,7 +130,7 @@ sub content_typed {
 
 ### location bounce nicely - even if we have already sent content
 sub location_bounce {
-  my $self = ref($_[0]) ? shift : undef;
+  my $self = shift;
   my $loc  = shift || '';
   if (&content_typed()) {
     if ($DEBUG_LOCATION_BOUNCE) {
@@ -156,7 +156,7 @@ sub location_bounce {
 
 ### set a cookie nicely - even if we have already sent content
 sub set_cookie {
-  my $self = UNIVERSAL::isa($_[0], __PACKAGE__) ? shift : undef;
+  my $self = shift;
   my $args = ref($_[0]) ? shift : {@_};
   foreach (keys %$args) {
     next if /^-/;
@@ -166,10 +166,9 @@ sub set_cookie {
   ### default path to / and allow for 1hour instead of 1h
   ### (if your gonna make expires useful - make it useful)
   $args->{-path} ||= '/';
-  if ($args->{-expires} && $args->{-expires} =~ /[a-z]/) {
-    $args->{-expires} =~ s/(?<=\d[a-z])[a-z]+$//; # trim hour to h
-    $args->{-expires} =~ s/(?<=\d) +(?=[a=z])//; # optional space
-    $args->{-expires} =~ s/^(?=\d)/+/; # required leading +
+  if ($args->{-expires}
+      && $args->{-expires} =~ m/^([+-]|)\s*(\d+)\s*([a-zA-Z])\w*$/) {
+    $args->{-expires} = ($1) ? "$1$2$3" : "+$2$3";
   }
 
   my $cookie = "" . $self->object->cookie(%$args);
@@ -183,6 +182,41 @@ sub set_cookie {
       print "Set-cookie: $cookie\r\n"
     }
   }
+}
+
+### print the last modified time
+### takes a time or filename and an optional keyname
+sub last_modified {
+  my $self = shift;
+  my $time = shift;
+  my $key  = shift || 'Last-Modified';
+  if (! defined $time) {
+    $time = time;
+  } elsif ($time =~ m/^([+-]|)\s*(\d+)\s*([a-zA-Z])\w*$/) {
+    $time = ($1) ? "$1$2$3" : "+$2$3";
+  } elsif (-e $time) {
+    $time = (stat _)[9]; # file modified time
+  }
+  require CGI::Util;
+  $time = &CGI::Util::expires($time);
+
+  if (&content_typed()) {
+    print "<meta http-equiv=\"$key\" content=\"$time\" />\n";
+  } else {
+    if ($ENV{MOD_PERL} && (my $r = Apache->request)) {
+      $r->header_out($key, $time);
+    } else {
+      print "$key: $time\r\n"
+    }
+  }
+
+}
+
+### add expires header
+sub expires { 
+  my $self = shift;
+  my $time = shift;
+  return $self->last_modified($time, 'Expires');
 }
 
 ###----------------------------------------------------------------###
@@ -562,7 +596,24 @@ you don't know if something else already printed content-type.
 Depending on if content has already been sent to the browser will either print
 a Location header, or will add a <meta http-equiv='refresh'>
 tag (this is supported on all major browsers).  This is useful if
-you don't know if something else already printed content-type.
+you don't know if something else already printed content-type.  Takes
+single argument of a url.
+
+=item C<-E<gt>last_modified>
+
+Depending on if content has already been sent to the browser will either print
+a Last-Modified header, or will add a <meta http-equiv='Last-Modified'>
+tag (this is supported on most major browsers).  This is useful if
+you don't know if something else already printed content-type.  Takes an
+argument of either a time (may be a CGI -expires style time) or a filename.
+
+=item C<-E<gt>expires>
+
+Depending on if content has already been sent to the browser will either print
+a Expires header, or will add a <meta http-equiv='Expires'>
+tag (this is supported on most major browsers).  This is useful if
+you don't know if something else already printed content-type.  Takes an
+argument of a time (may be a CGI -expires style time).
 
 =back
 
