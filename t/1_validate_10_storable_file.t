@@ -30,11 +30,24 @@ sub print_ok {
 
 ### where are my samples
 my $dir = __FILE__;
+$dir =~ tr|\\|/|; # should probably use File::Spec
 $dir =~ s|[^/]+$|samples| || die "Couldn't determine dir";
 $dir =~ s|^t/|./t/|; # to satisfy conf
 
 ### single group
 $v = "$dir/storable1.storable";
+
+### don't use the included binary - write our own - for portable tests
+my $val = {
+  user => {
+    required => 1,
+  },
+  foo => {
+    required_if => 'bar',
+  },
+};
+&print_ok(eval {require Storable});
+&print_ok(&Storable::store($val, $v));
 
 $e = &validate({}, $v);
 &print_ok($e);
