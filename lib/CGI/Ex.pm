@@ -498,21 +498,15 @@ sub print_js {
 
   ### get file info
   my $stat;
-  if (! $js_file) {
-    # do nothing - give the 404
-  } elsif ($js_file !~ m|^\.{0,2}/|) {
+  if ($js_file =~ m|^(\w+(?:/+\w+)*\.js)$|i) {
     foreach my $path (@INC) {
-      my $_file = "$path/$js_file";
+      my $_file = "$path/$1";
       next if ! -f $_file;
       $js_file = $_file;
       $stat = [stat _];
       last;
     }
-  } else {
-    if (-f $js_file) {
-      $stat = [stat _];
-    }
-  }
+  } # no else
 
   ### no - file - 404
   if (! $stat) {
@@ -535,7 +529,7 @@ sub print_js {
   return if $ENV{REQUEST_METHOD} && $ENV{REQUEST_METHOD} eq 'HEAD';
 
   ### send the contents
-  if (open IN, $js_file) {
+  if (open IN, "<$js_file") {
     local $/ = undef;
     print <IN>;
     close IN;
