@@ -102,8 +102,10 @@ sub get_cookies {
 sub make_form {
   my $self = shift;
   my $form = shift;
+  my $keys = (ref $_[0]) ? {map {$_ => 1} @{ shift() }} : undef;
   my $str = '';
   foreach my $key (sort keys %$form) {
+    next if $keys && ! $keys->{$key};
     $key =~ s/([^\w.\- ])/sprintf('%%%02X',ord($1))/eg;
     $key =~ y/ /+/;
     foreach (ref($form->{$key}) ? @{ $form->{$key} } : $form->{$key}) {
@@ -689,6 +691,12 @@ arrays.  Not sure why CGI::Val didn't do this anyway.
 =item C<-E<gt>get_cookies>
 
 Returns a hash of all cookies.
+
+=item C<-E<gt>make_form>
+
+Takes a hash and returns a query_string.  A second optional argument
+may contain an arrayref of keys to use from the hash in building the
+query_string.
 
 =item C<-E<gt>content_type>
 
