@@ -410,6 +410,29 @@ sub validate_buddy {
     }
   }
 
+  ### max_in_set and min_in_set checks
+  foreach my $minmax (qw(min max)) {
+    my @keys = $self->filter_type("${minmax}_in_set",$types);
+    foreach my $type (@keys) {
+      $field_val->{$type} =~ m/^\s*(\d+)(?i:\s*of)?\s+(.+)\s*$/
+        || die "Invalid in_set check $field_val->{$type}";
+      my $n = $1;
+      foreach my $_field (split /[\s,]+/, $2) {
+        my $ref = UNIVERSAL::isa($form->{$_field},'ARRAY') ? $form->{$_field} : [$form->{$_field}];
+        foreach my $_value (@$ref) {
+          $n -- if defined($_value) && length($_value);
+        }
+      }
+      if (   ($minmax eq 'min' && $n > 0)
+          || ($minmax eq 'max' && $n < 0)) {
+        return 1 if ! wantarray;
+        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+        return @errors;
+      }
+    }
+  }
+
+
   ### loop on values of field
   foreach my $value (@$values) {
     
@@ -992,6 +1015,14 @@ sub get_error_text {
       my $char = ($n == 1) ? 'character' : 'characters';
       $return = "$name was more than $n $char.";
 
+    } elsif ($type eq 'max_in_set') {
+      my $set = $field_val->{"max_in_set${dig}"};
+      $return = "Not enough fields were chosen from the set ($set)";
+
+    } elsif ($type eq 'min_in_set') {
+      my $set = $field_val->{"min_in_set${dig}"};
+      $return = "Too many fields were chosen from the set ($set)";
+
     } elsif ($type eq 'match') {
       $return = "$name contains invalid characters.";
 
@@ -1029,7 +1060,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.57 2004-03-22 20:52:21 pauls Exp $
+$Id: Validate.pm,v 1.58 2004-04-09 20:47:11 pauls Exp $
 
 =head1 SYNOPSIS
 
