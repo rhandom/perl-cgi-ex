@@ -1,11 +1,16 @@
-2004-12-06  Paul Seamons  <cgi_ex@seamons.com>
+2005-02-28  Paul Seamons  <cgi_ex@seamons.com>
 
         * Version 1.14 is done
         * Bug fix in validate (OR's were not working)
         * Allow for checking for package existence without require in App
         * Add hash_swap
+        * Add hash_base
         * Add add_to_ methods for swap, fill, form, common, and errors
         * Swap the run_hook order of step and hookname
+        * Allow for untaint in CGI::Ex::Validate
+        * Allow for !field in equals of CGI::Ex::Validate
+        * Allow for return of names in CGI::Ex::Validate
+        * All CGI::Ex to work better with CGI/mod_perl1/mod_perl2
 
 2004-12-02  Paul Seamons  <cgi_ex@seamons.com>
 
