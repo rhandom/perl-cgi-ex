@@ -71,7 +71,7 @@ sub require_auth {
     if ($self->verify_userpass($form->{$key_u}, $form->{$key_p})) {
       my $has_cookies = scalar keys %$cookies;
       my $user  = $form->{$key_u};
-      my $str   = encode_base64(join ":", delete($form->{$key_u}), delete($form->{$key_p}));
+      my $str   = encode_base64(join(":", delete($form->{$key_u}), delete($form->{$key_p})), "");
       my $key_s = $self->key_save;
       $self->set_cookie($str, delete($form->{$key_s}));
       if ($has_cookies) {
@@ -132,9 +132,24 @@ sub hook_print {
   my $self = shift;
   my $page = shift;
   my $form = shift;
-  my $meth;
-  if ($meth = $self->{hook_print}) {
-    $self->$meth($page, $form);
+
+  ### copy the form and add various pieces
+  my $FORM = {%$form};
+  $FORM->{payload}      = $self->payload;
+  $FORM->{error}        = ($form->{login_error}) ? "Login Failed" : "";
+  $FORM->{key_user}     = $self->key_user;
+  $FORM->{key_pass}     = $self->key_pass;
+  $FORM->{key_save}     = $self->key_save;
+  $FORM->{key_redirect} = $self->key_redirect;
+  $FORM->{form_name}    = 'ce_form';
+  $FORM->{script_name}  = $ENV{SCRIPT_NAME};
+  $FORM->{path_info}    = $ENV{PATH_INFO} || '';
+  $FORM->{login_script} = $self->basic_login_javascript($FORM);
+  delete $FORM->{$FORM->{key_pass}};
+
+  ### allow for custom hook
+  if (my $meth = $self->{hook_print}) {
+    $self->$meth($page, $FORM);
     return 0;
   }
 
@@ -143,7 +158,7 @@ sub hook_print {
   if ($page eq 'no_cookies') {
     $content = qq{<div style="border: 2px solid black;background:red;color:white">You do not appear to have cookies enabled.</div>};
   } elsif ($page eq 'get_login_info') {
-    $content = $self->basic_login_page($form);
+    $content = $self->basic_login_page($FORM);
   } else {
     $content = "No content for page \"$page\"";
   }
@@ -330,7 +345,7 @@ sub hook_verify_userpass {
       return 0;
     }
 
-    ### no payload - compre directly
+    ### no payload - compare directly
     if ($hash_test !~ m|^(.+)/([^/]+)$|) {
       return lc($pass_test) eq lc($pass_real);
 
@@ -338,8 +353,12 @@ sub hook_verify_userpass {
     } else {
       my $payload = $1; # payload can be anything
       my $compare = $2; # a checksum which is the enc of the payload + '/' + enc of password
+      my @payload = split /\//, $payload;
+
       return 0 if $self->enc_func($type_test, "$payload/$hash_real") ne $compare;
-      if ($EXPIRE_LOGINS && $payload =~ m/^(\d+)/) {
+
+      ### if no save password && greater than expire time- expire
+      if ($EXPIRE_LOGINS && ! $payload[1] && $payload[0] =~ m/^(\d+)/) {
         return 0 if time() > $1 + $EXPIRE_LOGINS;
       }
       return 1;
@@ -423,16 +442,6 @@ sub basic_login_page {
   my $self = shift;
   my $form = shift;
 
-  $form->{payload}      = $self->payload;
-  $form->{error}        = ($form->{login_error}) ? "Login Failed" : "";
-  $form->{key_user}     = $self->key_user;
-  $form->{key_pass}     = $self->key_pass;
-  $form->{key_save}     = $self->key_save;
-  $form->{key_redirect} = $self->key_redirect;
-  $form->{form_name}    = 'ce_form';
-  $form->{script}       = $self->basic_login_javascript($form);
-  delete $form->{$form->{key_pass}};
- 
   my $text = $self->basic_login_template();
   $self->cgix->swap_template(\$text, $form);
   $self->cgix->fill(\$text, $form);
@@ -443,6 +452,7 @@ sub basic_login_page {
 sub basic_login_template {
   return qq{
     [% header %]
+    <div align="center">
     <span class="error" style="color:red">[% error %]</span>
     <form name="[% form_name %]" method="get" action="[% script_name %]">
     <table border="0" class="login_table">
@@ -461,51 +471,65 @@ sub basic_login_template {
     </tr>
     <tr>
       <td colspan="2" align="right">
-        <input type="hidden" name="[% key_redirect %]"
-        <input type="hidden" name="[% ce_payload %]"
+        <input type="hidden" name="[% key_redirect %]">
+        <input type="hidden" name="payload">
         <input type="submit" value="Submit">
       </td>
     </tr>
     [% extra_table %]
     </table>
     </form>
-    [% script %]
+    </div>
+    [% login_script %]
     [% footer %]
   };
 }
 
+sub login_type {
+  my $self = shift;
+  if ($#_ != -1) {
+    $self->{login_type} = defined($_[0]) ? lc(shift) : undef;
+  }
+  $self->{login_type} = do {
+    my $type;
+    if ($USE_PLAINTEXT) {
+      $type = '';
+    } elsif (eval {require Digest::SHA1}) {
+      $type = 'sha1';
+    } elsif (eval {require Digest::MD5}) {
+      $type = 'md5';
+    } else {
+      $type = "";
+    }
+    $type; # return of the do
+  } if ! defined $self->{login_type};
+  return $self->{login_type};
+}
+
+
 sub basic_login_javascript {
   my $self = shift;
   my $form = shift;
-  my $type;
-  if ($USE_PLAINTEXT) {
-    return '';
-  } elsif (eval {require Digest::SHA1}) {
-    $type = 'sha1';
-  } elsif (eval {require Digest::MD5}) {
-    $type = 'md5';
-  } else {
-    return "";
-  }
+  my $type = $self->login_type;
+  return if ! $type || $type !~ /^(sha1|md5)$/;
 
   return qq{
-    <script src="$ENV{SCRIPT_NAME}/js/CGI/Ex/$type.js"></script>
+    <script src="$form->{script_name}/js/CGI/Ex/$type.js"></script>
     <script>
     function send_it () {
-      var u = document.$form->{form_name}.$form->{key_user}.value;
-      var p = document.$form->{form_name}.$form->{key_pass}.value;
-      var s = (document.$form->{form_name}.$form->{key_save}.checked) ? 1 : 0;
-      var r = document.$form->{form_name}.$form->{key_redirect}.value;
-      var l = document.$form->{form_name}.ce_payload.value;
+      var f = document.$form->{form_name};
+      var s = (f.$form->{key_save}.checked) ? 1 : 0;
+      var l = f.payload.value + '/' + s;
+      var r = f.$form->{key_redirect}.value;
       var q = document.$form->{form_name}.action;
-      q += '?$form->{key_user}='+escape(u);
-      q += '?$form->{key_save}='+escape(s);
-      q += '?$form->{key_pass}='+escape(document.${type}_hex(l+'/'+document.${type}_hex(p)));
-      alert(q);
+      var sum = document.${type}_hex(l+'/'+document.${type}_hex(f.$form->{key_pass}.value));
+      q += '?$form->{key_user}='+escape(f.$form->{key_user}.value);
+      q += '&$form->{key_save}='+escape(s);
+      q += '&$form->{key_pass}='+escape('$type('+l+'/'+sum+')');
       location.href = q;
       return false;
     }
-    if (document.${type}_hex) document.$form->{form_name}.onsubmit = send_it;
+    if (document.${type}_hex) document.$form->{form_name}.onsubmit = function () { return send_it() }
     </script>
   };
 }
