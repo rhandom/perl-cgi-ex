@@ -818,11 +818,11 @@ sub validate {
 
   ### allow for the validation to give us some redirection
   my $val;
-  foreach my $ref (@$what_was_validated) {
+  OUTER: foreach my $ref (@$what_was_validated) {
     foreach my $method (qw(append_path replace_path insert_path)) {
       next if ! ($val = $ref->{$method});
       $self->$method(ref $val ? @$val : $val);
-      last;
+      last OUTER;
     }
   }
 
