@@ -54,7 +54,7 @@ rm -rf $HERE
 
 %files
 %defattr(-,root,root)
-%doc README Changes
+#%doc README Changes
 %{_prefix}
 
 %changelog
