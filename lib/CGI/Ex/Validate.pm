@@ -12,7 +12,8 @@ package CGI::Ex::Validate;
 use strict;
 use vars qw($VERSION
             $ERROR_PACKAGE
-            @DEFAULT_EXT %EXT_HANDLERS);
+            @DEFAULT_EXT %EXT_HANDLERS
+            %DEFAULT_OPTIONS);
 
 use Data::DumpEx;
 
@@ -33,6 +34,12 @@ $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 sub new {
   my $class = shift || __PACKAGE__;
   my $self  = (@_ && ref($_[0])) ? shift : {@_}; 
+
+  ### allow for global defaults
+  foreach (keys %DEFAULT_OPTIONS) {
+    $self->{$_} = $DEFAULT_OPTIONS{$_} if ! exists $self->{$_};
+  }
+
   return bless $self, $class;
 }
 
@@ -85,6 +92,7 @@ sub validate {
       if (my $order = $group_val->{'group order'} || \@order) {
         die "Validation 'group order' must be an arrayref" if ! UNIVERSAL::isa($order,'ARRAY');
         foreach my $field (@$order) {
+          dex_warn $group_val;
           my $field_val = exists($group_val->{$field}) ? $group_val->{$field}
             : ($field eq 'OR') ? 'OR' : die "No element found in group for $field";
           if (ref $field_val && ! $field_val->{'field'}) {
@@ -874,7 +882,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.27 2003-11-13 20:55:28 pauls Exp $
+$Id: Validate.pm,v 1.28 2003-11-14 06:19:19 pauls Exp $
 
 =head1 SYNOPSIS
 
