@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.12 $ )[1];
+$VERSION = (qw$Revision: 1.13 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -89,7 +89,9 @@ sub get_validation {
 
 ### the main validation routine
 sub validate {
-  my $self = UNIVERSAL::isa($_[0], __PACKAGE__) ? shift : __PACKAGE__->new;
+  my $self = (! ref($_[0])) ? shift->new                    # $class->validate
+              : UNIVERSAL::isa($_[0], __PACKAGE__) ? shift  # $self->validate
+              : __PACKAGE__->new;                           # &validate
   my $form = shift || die "Missing form hash";
   my $val  = shift || die "Missing validation hash";
   
@@ -824,7 +826,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.12 2003-11-12 20:41:42 pauls Exp $
+$Id: Validate.pm,v 1.13 2003-11-12 21:36:37 pauls Exp $
 
 =head1 SYNOPSIS
 
