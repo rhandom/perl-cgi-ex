@@ -99,8 +99,7 @@ sub navigate {
       $self->morph($step);
 
       ### if the pre_step exists and returns true, return from navigate
-      my $hook = $self->hook($step,'pre_step');
-      if ($hook && $self->$hook($step)) {
+      if ($self->run_hook($step, 'pre_step')) {
         $self->unmorph($step);
         return;
       }
@@ -146,8 +145,7 @@ sub navigate {
 
       ### a hook before end of loop
       ### if the post_step exists and returns true, return from navigate
-      $hook = $self->hook($step,'post_step');
-      if ($hook && $self->$hook($step)) {
+      if ($self->run_hook($step, 'post_step')) {
         $self->unmorph($step);
         return;
       }
