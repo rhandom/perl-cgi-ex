@@ -69,7 +69,9 @@ sub navigate {
     $self->pre_loop($path);
 
     ### iterate on each step of the path
-    foreach my $step (@$path) {
+    foreach (my $i = 0; $i <= $#$path; $i ++) {
+      $self->{path_i} = $i;
+      my $step = $path->[$i];
       $self->morph($step);
 
       ### if the pre_step exists and returns true, return from navigate
@@ -185,9 +187,18 @@ sub set_path {
   splice @$path, 0, $#$path + 1, @_; # change entries in the ref
 }
 
+### append entries onto the end
 sub add_to_path {
   my $self = shift;
   push @{ $self->path }, @_;
+}
+
+### replace all entries that are left
+sub replace_path {
+  my $self = shift;
+  my $ref  = $self->path;
+  my $i    = $self->{path_i} || 0;
+  splice(@$ref, $i + 1, $#$ref - $i, @_); # replace remaining entries
 }
 
 ### a hash of paths that are allowed, default undef is all
@@ -326,6 +337,14 @@ sub set_auth {
 ###----------------------------------------------------------------###
 ### implementation specific subs
 
+sub template_args {
+  my $self = shift;
+  my $step = shift;
+  return {
+    INCLUDE_PATH => $self->base_dir_abs,
+  };
+}
+
 sub print {
   my $self = shift;
   my $step = shift;
@@ -336,9 +355,7 @@ sub print {
   my $file = $self->run_hook($step, 'file_print');
 
   require Template;
-  my $t = Template->new({
-    INCLUDE_PATH => $self->base_dir_abs,
-  });
+  my $t = Template->new($self->template_args($step));
 
   ### process the document
   my $out = '';
