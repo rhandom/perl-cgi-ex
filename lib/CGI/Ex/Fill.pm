@@ -11,7 +11,7 @@ use Exporter;
 $VERSION   = '1.0';
 @ISA       = qw(Exporter);
 @EXPORT    = qw(form_fill);
-@EXPORT_OK = qw(form_fill get_tagval_by_key swap_tagval_by_key);
+@EXPORT_OK = qw(form_fill html_escape get_tagval_by_key swap_tagval_by_key);
 
 ### These directives are used to determine whether or not to
 ### remove html comments and script sections while filling in
@@ -64,7 +64,7 @@ sub form_fill {
               }{
                 local $REMOVE_SCRIPT   = undef;
                 local $REMOVE_COMMENTS = undef;
-                form_fill($1, $form, undef, $fill_password, $ignore);
+                &form_fill($1, $form, undef, $fill_password, $ignore);
               }sigex;
 
     ### put scripts and comments back and return
@@ -112,7 +112,7 @@ sub form_fill {
     }
     
     ### html escape them all
-    $_ = &CGI::escapeHTML($_) foreach (ref($val) ? @$val : $val);
+    &html_escape(\$_) foreach (ref($val) ? @$val : $val);
 
     ### allow for returning all elements
     ### or one at a time
@@ -137,8 +137,8 @@ sub form_fill {
     }{
       ### get the type and name - intentionally exlude names with nested "'
       my $tag   = $1;
-      my $type  = uc(get_tagval_by_key(\$tag, 'type') || '');
-      my $name  = get_tagval_by_key(\$tag, 'name');
+      my $type  = uc(&get_tagval_by_key(\$tag, 'type') || '');
+      my $name  = &get_tagval_by_key(\$tag, 'name');
 
       if ($name && ! $ignore->{$name}) {
         if (! $type
@@ -149,7 +149,7 @@ sub form_fill {
           
           my $value = &$get_form_value($name, 'next') || '';
           if (defined $value) {
-            swap_tagval_by_key(\$tag, 'value', $value);
+            &swap_tagval_by_key(\$tag, 'value', $value);
           }          
 
         } elsif ($type eq 'CHECKBOX'
@@ -161,7 +161,7 @@ sub form_fill {
             if ($type eq 'CHECKBOX' && @$values == 1 && $values->[0] eq 'on') {
               $tag =~ s|(/?>)| checked$1|;
             } else {
-              my $fvalue = get_tagval_by_key(\$tag, 'value');
+              my $fvalue = &get_tagval_by_key(\$tag, 'value');
               foreach (@$values) {
                 next if $_ ne $fvalue;
                 $tag =~ s|(\s*/?>)| checked$1|;
@@ -182,7 +182,7 @@ sub form_fill {
       (</select>)      # closing
     }{
       my ($tag, $opts, $close) = ($1, $2, $3);
-      my $name   = get_tagval_by_key(\$tag, 'name');
+      my $name   = &get_tagval_by_key(\$tag, 'name');
       my $values = $ignore->{$name} ? [] : &$get_form_value($name, 'all');
       if (@$values) {
         $opts =~ s{
@@ -193,7 +193,7 @@ sub form_fill {
             my ($tag2, $opt) = ($1, $2);
             $tag2 =~ s%\s+\bSELECTED\b(?=\s|>|/>)%%ig;
             
-            my $fvalues = get_tagval_by_key(\$tag2, 'value', 'all');
+            my $fvalues = &get_tagval_by_key(\$tag2, 'value', 'all');
             my $fvalue  = @$fvalues ? $fvalues->[0]
               : $opt =~ /^\s*(.*?)\s*$/ ? $1 : "";
             foreach (@$values) {
@@ -215,7 +215,7 @@ sub form_fill {
       (</textarea>)      # closing
     }{
       my ($tag, $opts, $close) = ($1, $2, $3);
-      my $name  = get_tagval_by_key(\$tag, 'name');
+      my $name  = &get_tagval_by_key(\$tag, 'name');
       my $value = $ignore->{$name} ? "" : &$get_form_value($name, 'next') || '';
       "$tag$value$close"; # return of swap
     }sigex;
@@ -228,9 +228,24 @@ sub form_fill {
 }
 
 
+### yet another html escaper
+### allow pass by value or by reference (reference is modified inplace)
+sub html_escape {
+  my $str = shift;
+  return $str if ! $str;
+  my $ref = ref($str) ? $str : \$str;
+
+  $$ref =~ s/&/&amp;/g;
+  $$ref =~ s/</&lt;/g;
+  $$ref =~ s/>/&gt;/g;
+  $$ref =~ s/\"/&quot;/g;
+
+  return ref($str) ? 1 : $$ref;
+}
+
 ### get a named value for key="value" pairs
-### usage: my $val     = get_tagval_by_key(\$tag, $key);
-### usage: my $valsref = get_tagval_by_key(\$tag, $key, 'all');
+### usage: my $val     = &get_tagval_by_key(\$tag, $key);
+### usage: my $valsref = &get_tagval_by_key(\$tag, $key, 'all');
 sub get_tagval_by_key {
   my $tag = shift;
   my $ref = ref($tag) ? $tag : \$tag;
@@ -255,8 +270,8 @@ sub get_tagval_by_key {
 }
 
 ### swap out values for key="value" pairs
-### usage: my $count  = swap_tagval_by_key(\$tag, $key, $val);
-### usage: my $newtag = swap_tagval_by_key($tag, $key, $val);
+### usage: my $count  = &swap_tagval_by_key(\$tag, $key, $val);
+### usage: my $newtag = &swap_tagval_by_key($tag, $key, $val);
 sub swap_tagval_by_key {
   my $tag = shift;
   my $ref = ref($tag) ? $tag : \$tag;
