@@ -737,7 +737,7 @@ More examples will come with time.  Here are the basics for now.
 
   #!/usr/bin/perl -w
 
-  MyApp->navigate;
+  MyApp->navigate->cleanup;
   exit;
 
   package MyApp;
@@ -1180,6 +1180,8 @@ data structure of the passed object and remove any blessed objects
 that are no weakly referenced.  This means if you have a reference to
 an object in a global cache, that object should have its reference
 weakened in the global cache.  Requires Scalar::Util to function.
+Use of this function is highly recommended in mod_perl environments to
+make sure that there are no dangling objects in memory.
 
 =back
 
