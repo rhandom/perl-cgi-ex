@@ -105,7 +105,7 @@ sub die_handler {
   ### web based - give more options
   if ($ENV{REQUEST_METHOD}) {
     my $cgix = CGI::Ex->new;
-
+    $| = 1;
     ### get the template and swap it in
     # allow for a sub that returns the template
     # or a string
@@ -123,7 +123,7 @@ sub die_handler {
     if ($out) {
       $cgix->swap_template(\$out, $args);
     } else {
-      $out = $msg.$ctrace;
+      $out = $msg.'<p></p>'.$ctrace;
     }
 
     ### similar to CGI::Carp
