@@ -107,11 +107,11 @@ sub content_type {
     $r->content_type($type);
     $r->send_http_header;
   } else {
-    my $ref = $ENV{CONTENT_TYPED} ||= [];
-    if ($#$ref == -1) {
+    if (! $ENV{CONTENT_TYPED}) {
       print "Content-type: $type\r\n\r\n";
+      $ENV{CONTENT_TYPED} = '';
     }
-    push @$ref, [caller] if $#$ref < 10;
+    $ENV{CONTENT_TYPED} .= sprintf("%s, %d\n", (caller)[1,2]);
   }
 }
 
@@ -120,8 +120,7 @@ sub content_typed {
   if ($ENV{MOD_PERL} && (my $r = Apache->request)) {
     return $r->bytes_sent;
   } else {
-    my $ref = $ENV{CONTENT_TYPED} ||= [];
-    return $#$ref != -1;
+    return ($ENV{CONTENT_TYPED}) ? 1 : undef;
   }
 }
 
