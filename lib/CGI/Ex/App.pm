@@ -132,21 +132,9 @@ sub navigate {
           foreach keys %$hash_errs;
         $hash_errs->{has_errors} = 1 if scalar keys %$hash_errs;
 
-        ### compose $fill of fill and form
-        my $fill = {};
-        foreach my $hash ($hash_fill, $hash_form) {
-          foreach my $key (keys %$hash) {
-            $fill->{$key} = $hash->{$key} if ! exists $fill->{$key};
-          }
-        }
-
-        ### compose $form of form, common, and errors
-        my $form = {};
-        foreach my $hash ($hash_form, $hash_comm, $hash_errs) {
-          foreach my $key (keys %$hash) {
-            $form->{$key} = $hash->{$key} if ! exists $form->{$key};
-          }
-        }
+        ### layer hashes together (micro-optimized)
+        my $form = {%$hash_comm, %$hash_errs, %$hash_form};
+        my $fill = {%$hash_comm, %$hash_form, %$hash_fill};
 
         ### run the print hook - passing it the form and fill info
         $self->run_hook($step, 'print', undef,
@@ -1048,9 +1036,10 @@ are shown):
         ->hash_errors (hook)
         ->hash_common (hook)
 
-        # merge common, errors, and form
+        # merge common, errors, and form into merged form
+        # merge common, form, and fill into merged fill
 
-        ->print (hook - passed current step, merged hash, and fill)
+        ->print (hook - passed current step, merged form hash, and merged fill)
           # DEFAULT ACTION
           # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
           # ->template_args
@@ -1385,8 +1374,9 @@ default validate was not used.
 =item Hook C<-E<gt>hash_common>
 
 A hash of common items to be merged with hash_form - such as pulldown
-menues.  By default it is empty, but it would be wise to add the
-following to allow for js_validation (if needed):
+menues.  It will now also be merged with hash_fill, so it can contain
+default fillins.  By default it is empty, but it would be wise to add the
+following to allow for js_validation (as needed):
 
   sub hash_common {
     my $self = shift;
