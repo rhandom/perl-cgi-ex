@@ -14,6 +14,7 @@ use vars qw($VERSION
             $PREFERRED_FILL_MODULE
             $PREFERRED_CGI_MODULE
             $PREFERRED_CGI_REQUIRED
+            $PREFERRED_VAL_MODULE
             $OBJECT_METHOD
             $AUTOLOAD
             $DEBUG_LOCATION_BOUNCE
@@ -25,6 +26,7 @@ use Data::DumpEx;
 $VERSION               = '1.0';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
+$PREFERRED_VAL_MODULE  ||= '';
 @EXPORT = ();
 @EXPORT_OK = qw(get_form get_cookies
                 content_type content_typed
@@ -293,7 +295,10 @@ sub validate {
   my $self = shift;
   my ($form, $file) = (@_ == 2) ? (shift, shift) : ($self->object, shift);
 
-  require CGI::Ex::Validate;
+  eval { require CGI::Ex::Validate };
+  if ($@) {
+    die "Couldn't require CGI::Ex::Validate: $@";
+  }
   return CGI::Ex::Validate->new({raise_error => 1})->validate($form, $file);
 }
 
