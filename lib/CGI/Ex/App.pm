@@ -950,9 +950,10 @@ sub hash_common {
   my $self = shift;
   my $step = shift;
   return $self->{hash_common} ||= {
-### don't force these to always be there
-#    js_validation => $self->run_hook('js_validation', $step),
-#    form_name     => $self->run_hook('form_name', $step),
+    script_name   => $ENV{'SCRIPT_NAME'} || $0,
+    path_info     => $ENV{'PATH_INFO'}   || '',
+    js_validation => sub { $self->run_hook('js_validation', $step, shift) },
+    form_name     => sub { $self->run_hook('form_name', $step) },
   };
 }
 
@@ -1052,7 +1053,8 @@ More examples will come with time.  Here are the basics for now.
 
   sub valid_steps { return {success => 1, js => 1} }
     # default_step (main) is a valid path
-    # note the inclusion of js step to allow js_validation
+    # note the inclusion of js step to allow the
+    # javascript scripts in js_validation to function properly.
 
   # base_dir_abs is only needed if default print is used
   # template toolkit needs an INCLUDE_PATH
@@ -1106,13 +1108,14 @@ More examples will come with time.  Here are the basics for now.
        (foo = [% foo %])";
   }
 
+  ### not necessary - this is the default hash_common
   sub hash_common { # used to include js_validation
     my $self = shift;
     my $step = shift;
     return $self->{hash_common} ||= {
-      script_name   => $ENV{SCRIPT_NAME},
-      js_validation => $self->run_hook('js_validation', $step),
-      form_name     => $self->run_hook('form_name', $step),
+      script_name   => $ENV{SCRIPT_NAME} || '',
+      js_validation => sub { $self->run_hook('js_validation', $step) },
+      form_name     => sub { $self->run_hook('form_name', $step) },
     };
   }
 
@@ -1721,16 +1724,17 @@ default validate was not used.  Can be populated by passing a hash to
 A hash of common items to be merged with hash_form - such as pulldown
 menues.  It will now also be merged with hash_fill, so it can contain
 default fillins.  Can be populated by passing a hash to ->add_to_common.
-By default it is empty, but it would be wise to add the
-following to allow for js_validation (as needed):
+By default the following sub is what is used for hash_common (or something
+similiar).  Note the use of values that are code refs - so that the
+js_validation and form_name hooks are only called if requested:
 
   sub hash_common {
     my $self = shift;
     my $step = shift;
     return $self->{hash_common} ||= {
       script_name   => $ENV{SCRIPT_NAME},
-      js_validation => $self->run_hook('js_validation', $step),
-      form_name     => $self->run_hook('form_name', $step),
+      js_validation => sub { $self->run_hook('js_validation', $step) },
+      form_name     => sub { $self->run_hook('form_name', $step) },
     };
   }
 
