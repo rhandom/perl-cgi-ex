@@ -209,6 +209,33 @@ See also L<Data::Dumper>.
 
 Setting any of the Data::Dumper globals will alter the output.
 
+=head1 SUBROUTINES
+
+=over 4
+
+=item C<dex>, C<debug>
+
+Prints out pretty output to STDOUT.  Formatted for the web if on the web.
+
+=item C<dex_warn>
+
+Prints to STDERR.
+
+=item C<dex_text>
+
+Return the text as a scalar.
+
+=item C<ctrace>
+
+Caller trace returned as an arrayref.  Suitable for use like "debug ctrace".
+This does require at least perl 5.8.0's Carp.
+
+=item C<on>, C<off>
+
+Turns calls to routines on or off.  Default is to be on.
+
+=back
+
 =head1 AUTHORS
 
 Paul Seamons <perlspam at seamons dot com>
