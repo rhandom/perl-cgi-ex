@@ -18,6 +18,7 @@ use vars qw($VERSION
             $JS_URI_PATH_YAML
             $JS_URI_PATH_VALIDATE
             $QR_EXTRA
+            @UNSUPPORTED_BROWSERS
             );
 
 $VERSION = '0.97';
@@ -25,6 +26,7 @@ $VERSION = '0.97';
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
+@UNSUPPORTED_BROWSERS = (qr/MSIE\s+5.0\d/i);
 
 use CGI::Ex::Conf ();
 
@@ -740,6 +742,14 @@ sub get_validation_keys {
 
 ### spit out a chunk that will do the validation
 sub generate_js {
+  ### allow for some browsers to not receive the validation
+  if ($ENV{HTTP_USER_AGENT}) {
+    foreach (@UNSUPPORTED_BROWSERS) {
+      next if $ENV{HTTP_USER_AGENT} !~ $_;
+      return "<!-- JS Validation not supported in this browser $_ -->"
+    }
+  }
+
   my $self        = shift;
   my $val_hash    = shift || die "Missing validation";
   my $form_name   = shift || die "Missing form name";
@@ -1019,7 +1029,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.52 2004-03-05 18:37:05 pauls Exp $
+$Id: Validate.pm,v 1.53 2004-03-08 20:23:18 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1491,7 +1501,7 @@ the t/samples/js_validate_3.html page for a sample of usage.
     custom_js => "
       var t=new Date();
       var y=t.getYear()+1900;
-      var m=t.getMonth();
+      var m=t.getMonth() + 1;
       var d=t.getDate();
       if (m<10) m = '0'+m;
       if (d<10) d = '0'+d;
