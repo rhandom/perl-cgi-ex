@@ -1,5 +1,14 @@
 package CGI::Ex::Validate;
 
+### CGI Extended Validator
+
+###----------------------------------------------------------------###
+#  Copyright 2003 - Paul Seamons                                     #
+#  Distributed under the Perl Artistic License without warranty      #
+###----------------------------------------------------------------###
+
+### See perldoc at bottom
+
 use strict;
 use vars qw($VERSION
             $ERROR_PACKAGE
@@ -7,7 +16,7 @@ use vars qw($VERSION
 
 use Data::DumpEx;
 
-$VERSION = (qw$Revision: 1.24 $ )[1];
+$VERSION = '0.90';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -838,7 +847,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.24 2003-11-13 06:38:29 pauls Exp $
+$Id: Validate.pm,v 1.25 2003-11-13 16:45:12 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1448,13 +1457,17 @@ It is possible to have a group that contains nothing but general options.
     },
   ];
 
+=head1 TODO
+
+Finish javascript.
+
 =head1 AUTHOR
 
 Paul Seamons
 
 =head1 LICENSE
 
-This module may be distributed under the same terms as perl itself.
+This module may be distributed under the same terms as Perl itself.
 
 =cut
 
