@@ -72,8 +72,8 @@ sub AUTOLOAD {
 
 ###----------------------------------------------------------------###
 
-### form getter that will act like ->Vars only it will be intelligent
-### thus infering that portions of CGI.pm are unintelligent
+### form getter that will act like ->Vars only it will return arrayrefs
+### for values that are arrays
 sub get_form {
   my $self = shift || __PACKAGE__;
   $self = $self->new if ! ref $self;
@@ -806,7 +806,7 @@ be read in depending upon file extension.
 
 =item C<-E<gt>get_form>
 
-Very similar to CGI->new->Val except that arrays are returned as
+Very similar to CGI->new->Vars except that arrays are returned as
 arrays.  Not sure why CGI::Val didn't do this anyway.
 
 =item C<-E<gt>set_form>
