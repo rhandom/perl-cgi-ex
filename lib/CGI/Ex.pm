@@ -239,7 +239,7 @@ sub fill_plain {
               my $fvalue = get_tagval_by_key(\$tag, 'value');
               foreach (@$values) {
                 next if $_ ne $fvalue;
-                $tag =~ s|(/?>)| checked$1|;
+                $tag =~ s|(\s*/?>)| checked$1|;
                 last;
               }
             }
@@ -273,7 +273,7 @@ sub fill_plain {
               : $opt =~ /^\s*(.*?)\s*$/ ? $1 : "";
             foreach (@$values) {
               next if $_ ne $fvalue;
-              $tag2 =~ s|(/?>)| selected$1|;
+              $tag2 =~ s|(\s*/?>)| selected$1|;
               last;
             }
             "$tag2$opt"; # return of inner swap
