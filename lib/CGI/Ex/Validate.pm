@@ -10,7 +10,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.4 $ )[1];
+$VERSION = (qw$Revision: 1.5 $ )[1];
 
 ### what is allowed in a field name
 #$QR_FIELD_NAME = qr/[\w!\@\#\$%\^&*()\-+=:;\'\",.?]+/;
@@ -299,8 +299,8 @@ sub validate_buddy {
   ##  Boolean   (programming side)
   ##  Type
 
-  my $ref = $self->filter_type('exclude_cgi',$types);
-  return @errors if $#$ref > -1;
+  ### allow for not running some tests in the cgi
+  return @errors if scalar $self->filter_type('exclude_cgi',$types);
 
   ### allow for a few form modifiers
   if (defined $form->{$field}) {
@@ -312,9 +312,10 @@ sub validate_buddy {
       $form->{$field} =~ s/$pat//;
     }
     if (scalar $self->filter_type('to_upper_case',$types)) { # uppercase
+      dex $field, $form->{$field}, scalar $self->filter_type('to_upper_case',$types);
       $form->{$field} = uc($form->{$field});
     } elsif (scalar $self->filter_type('to_lower_case',$types)) { # lowercase
-      $form->{$field} = uc($form->{$field});
+      $form->{$field} = lc($form->{$field});
     }
   }
 
@@ -356,21 +357,21 @@ sub validate_buddy {
   }
 
   ### min values check
-  foreach my $type ($self->filter_type('MinValues',$types)) {
+  foreach my $type ($self->filter_type('min_values',$types)) {
     my $n   = $field_val->{$type};
     my $ref = exists($form->{$field}) ? $form->{$field} : [];
     my $m   = ref($ref) ? scalar(@$ref) : 1;
     if ($m > $n) {
-      $self->add_error($field,$type,$field_val,\@errors);
+      push @errors, $type;
       return;
     }
   }
 
   ### max values check
-  my @keys = $self->filter_type('MaxValues',$types);
+  my @keys = $self->filter_type('max_values',$types);
   if ($#keys == -1) {
-    push @keys, 'MaxValues';
-    $field_val->{MaxValues} = 1;
+    push @keys, 'max_values';
+    $field_val->{'max_values'} = 1;
   }
   foreach my $type (@keys) {
     my $n   = $field_val->{$type};
@@ -378,23 +379,23 @@ sub validate_buddy {
     my $ref = ref($val);
     my $m   = ($ref && $ref eq 'ARRAY') ? scalar(@$val) : 1;
     if ($m > $n) {
-      $self->add_error($field,$type,$field_val,\@errors);
+      push @errors, $type;
       return;
     }
   }
   
   ### allow for enum types
-  foreach my $type ($self->filter_type('Enum',$types)) {
+  foreach my $type ($self->filter_type('enum',$types)) {
     my $ref = ref($field_val->{$type}) ? $field_val->{$type} : [split(/\s*\|\|\s*/,$field_val->{$type})];
     my $value = $form->{$field};
     $value = '' if ! defined $value;
     if (! grep {$_ eq $value} @$ref) {
-      $self->add_error($field,$type,$field_val,\@errors);
+      push @errors, $type;
     }
   }
 
   ### field equality test
-  foreach my $type ($self->filter_type('Equals',$types)) {
+  foreach my $type ($self->filter_type('equals',$types)) {
     my $field2  = $field_val->{$type};
     my $success = 0;
     if ($field2 =~ m/^([\"\'])(.*)\1$/) {
@@ -411,15 +412,15 @@ sub validate_buddy {
       $success = 1; # occurs if they are both undefined
     }
     if (! $success) {
-      $self->add_error($field,$type,$field_val,\@errors);
+      push @errors, $type;
     }
   }
 
   ### length min check
-  foreach my $type ($self->filter_type('MinLength',$types)) {
+  foreach my $type ($self->filter_type('min_len',$types)) {
     my $n = $field_val->{$type};
     if (exists($form->{$field}) && defined($form->{$field}) && length($form->{$field}) < $n) {
-      $self->add_error($field,$type,$field_val,\@errors);
+      push @errors, [$type, $n];
     }
   }
 
@@ -515,7 +516,7 @@ sub validate_buddy {
   }            
 
   ### all done - time to return
-  return;
+  return @errors;
 }
 
 ### allow for multiple validations in the same hash
@@ -528,7 +529,7 @@ sub filter_type {
   foreach (@$order) {
     push @array, $_ if /^\Q$type\E\d*$/;
   }
-  return wantarray ? @array : \@array;
+  return wantarray ? @array : scalar @array;
 }
 
 ### allow for validation on multiple form keys at once
@@ -960,7 +961,7 @@ __END__
 
 O::Form - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.4 2003-11-11 22:54:32 pauls Exp $
+$Id: Validate.pm,v 1.5 2003-11-11 23:26:19 pauls Exp $
 
 =head1 SYNOPSIS
 
