@@ -109,7 +109,8 @@ sub nav_loop {
            $self->{path_i} <= $#$path;
            $self->{path_i} ++) {
     my $step = $path->[$self->{path_i}];
-    next if $step !~ /^[a-zA-Z_]\w*$/; # don't process the step if it contains odd characters
+    next if $step !~ /^([a-zA-Z_]\w*)$/; # don't process the step if it contains odd characters
+    $step = $1; # untaint
 
     ### check if this is an allowed step
     if ($valid_steps) {
