@@ -359,6 +359,8 @@ sub unmorph {
     }
     bless $self, delete $self->{'_parent_pckg'};
   }
+
+  return $self;
 }
 
 ###----------------------------------------------------------------###
@@ -745,7 +747,10 @@ More examples will come with time.  Here are the basics for now.
 
   #!/usr/bin/perl -w
 
-  MyApp->navigate->cleanup;
+  MyApp->navigate;
+  # OR you could do the following which cleans
+  # circular references - useful for a mod_perl situation
+  # MyApp->navigate->cleanup;
   exit;
 
   package MyApp;
@@ -834,11 +839,17 @@ $self->{form}.  Defaults to CGI::Ex::get_form.
 
 =item Method C<-E<gt>navigate>
 
-This is the main loop runner.  Figures out path and runs all of the
-appropriate hooks.  Once all steps in the path run successfully, it
-will call it self with a path set to ['main'] to allow for a default
-main path to run.  The basic outline of navigation is as follows
-(default hooks are shown):
+Takes a class name or a CGI::Ex::App object as arguments.  If a class
+name is given it will instantiate an object by that class.  All returns
+from navigate will return the object.
+
+The method navigate is the main loop runner.  It figures out the path
+and runs all of the appropriate hooks for each step of the path.  Once
+all steps in the path run successfully, it will call it self with a path
+set to [$self->default_step] to allow for a default main path to run.
+
+The basic outline of navigation is as follows (the default actions for hooks
+are shown):
 
   navigate {
 
@@ -1015,6 +1026,41 @@ has a "fixup_after_morph" method, it is called.  The navigate loop
 then continues for the current step.  At any exit point of the loop,
 the unmorph call is made which reblesses the object into the original
 package.
+
+It is possible to call morph earlier on in the program.  An example of
+a useful early use of morph would be as in the following code:
+
+  sub init {
+    my $self = shift;
+    $self->SUPER::init;
+
+    return if ! $ENV{'PATH_INFO'};
+    my $info = ($ENV{'PATH_INFO'} =~ s|^/(\w+)||) ? $1 : return;
+    $self->morph($info);
+  }
+
+If this code was in a module Base.pm and the cgi running was cgi/base
+and called:
+
+  Base->navigate->unmorph;
+  # OR - for mod_perl resident programs
+  Base->navigate->unmorph->cleanup;
+
+and you created a sub module that inherited Base.pm called
+Base/Ball.pm -- you could then access it using cgi/base/ball.  You
+would be able to pass it steps using either cgi/base/ball/step_name or
+cgi/base/ball?step=step_name - Or Base/Ball.pm could implement its
+own path.  It should be noted that if you do an early morph, it is
+suggested to provide a call to unmorph. And if you want to let your
+early morphed object morph again - you will need to provide
+
+  sub allow_nested_morph { 1 }
+
+With allow_nested_morph enabled you could create the file
+Base/Ball/StepName.pm which inherits Base/Ball.pm.  The Base.pm, with
+the custom init and default path method, would automatically morph us
+first into a Base::Ball object (during init) and then into a
+Base::Ball::StepName object (during the navigation loop).
 
 =item Method C<-E<gt>unmorph>
 
