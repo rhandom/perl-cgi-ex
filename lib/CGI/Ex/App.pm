@@ -239,6 +239,19 @@ sub morph {}
 
 sub unmorph {}
 
+sub add_property {
+  my $self = shift;
+  my $prop = shift;
+  no strict 'refs';
+  my $name = __PACKAGE__ ."::". $prop;
+  *$name = sub : lvalue {
+    my $self = shift;
+    $self->{$prop} = shift() if $#_ != -1;
+    $self->{$prop};
+  } if ! defined &$name;
+  $self->$prop() = shift() if $#_ != -1;
+}
+
 ###----------------------------------------------------------------###
 ### implementation specific subs
 
