@@ -66,6 +66,9 @@ sub navigate {
   my $args = ref($_[0]) ? shift : {@_};
   $self = $self->new($args) if ! ref $self;
 
+  ### a chance to do things at the very beginning
+  return $self if $self->pre_navigate;
+
   ### run the step loop
   eval { $self->nav_loop };
 
@@ -143,23 +146,9 @@ sub nav_loop {
     if (   ! $self->run_hook($step, 'prepare', 1)
         || ! $self->run_hook($step, 'info_complete')
         || ! $self->run_hook($step, 'finalize', 1)) {
-      my $hash_form = $self->run_hook($step, 'hash_form');
-      my $hash_fill = $self->run_hook($step, 'hash_fill');
-      my $hash_errs = $self->run_hook($step, 'hash_errors');
-      my $hash_comm = $self->run_hook($step, 'hash_common');
 
-      ### fix up errors
-      $hash_errs->{$_} = $self->format_error($hash_errs->{$_})
-        foreach keys %$hash_errs;
-      $hash_errs->{has_errors} = 1 if scalar keys %$hash_errs;
-
-      ### layer hashes together (micro-optimized)
-      my $form = {%$hash_comm, %$hash_errs, %$hash_form};
-      my $fill = {%$hash_comm, %$hash_form, %$hash_fill};
-
-      ### run the print hook - passing it the form and fill info
-      $self->run_hook($step, 'print', undef,
-                      $form, $fill);
+      ### show the page requesting the information
+      $self->run_hook($step, 'prepared_print');
 
       ### a hook after the printing process
       $self->run_hook($step, 'post_print');
@@ -189,9 +178,35 @@ sub nav_loop {
   return;
 }
 
+sub pre_navigate {}
+
 sub post_navigate {}
 
 sub recurse_limit { shift->{'recurse_limit'} || $RECURSE_LIMIT || 15 }
+
+### standard functions for printing - gather information
+sub prepared_print {
+  my $self = shift;
+  my $step = shift;
+
+  my $hash_form = $self->run_hook($step, 'hash_form');
+  my $hash_fill = $self->run_hook($step, 'hash_fill');
+  my $hash_errs = $self->run_hook($step, 'hash_errors');
+  my $hash_comm = $self->run_hook($step, 'hash_common');
+
+  ### fix up errors
+  $hash_errs->{$_} = $self->format_error($hash_errs->{$_})
+    foreach keys %$hash_errs;
+  $hash_errs->{has_errors} = 1 if scalar keys %$hash_errs;
+
+  ### layer hashes together (micro-optimized)
+  my $form = {%$hash_comm, %$hash_errs, %$hash_form};
+  my $fill = {%$hash_comm, %$hash_form, %$hash_fill};
+
+  ### run the print hook - passing it the form and fill info
+  $self->run_hook($step, 'print', undef,
+                  $form, $fill);
+}
 
 sub exit_nav_loop {
   my $self = shift;
@@ -443,12 +458,11 @@ sub morph {
   return if ! (my $allow = $self->allow_morph); # not true
   return if ref($allow) && ! $allow->{$step};   # hash - but no step
 
-  ### which package we are blessing into
-  my $new = $self->run_hook($step, 'morph_package');
-  my $cur = ref $self;
-
-  ### store the lineage
+  ### place to store the lineage
   my $ref = $self->{'_morph_lineage'} ||= [];
+
+  ### which package we are blessing into
+  my $cur = ref $self;
 
   ### make sure we haven't already been reblessed
   if ($#$ref != -1                               # is this the second morph call
@@ -456,19 +470,14 @@ sub morph {
           || (ref($allow) && ! $allow->{$step})  # hash - but no step
           )) {
     push @$ref, $cur; # needed so unmorph does the right thing
-    return;
-    # This is also possible if we want to die but it
-    # is much nicer to allow us to morph early
-    #my @old = @$ref;
-    #my $err = "morph calls may not be nested: orig (@old), current ($cur), new ($new)";
-    #debug $err;
-    #die $err;
+    return; # just return - allow us to morph early
   }
 
   ### store our lineage
   push @$ref, $cur;
 
   ### if we are not already that package - bless us there
+  my $new = $self->run_hook($step, 'morph_package');
   if ($cur ne $new) {
     my $file = $new .'.pm';
     $file =~ s|::|/|g;
@@ -860,7 +869,7 @@ sub set_ready_validate {
 sub validate {
   my $self = shift;
   my $step = shift;
-  my $form = $self->form;
+  my $form = shift || $self->form;
   my $hash = $self->run_hook($step, 'hash_validation', {});
   my $what_was_validated = [];
 
@@ -1103,6 +1112,7 @@ The basic outline of navigation is as follows (the default actions for hooks
 are shown):
 
   navigate {
+    ->pre_navigate
     eval { ->nav_loop }
     # dying errors will run the ->handle_error method
     ->post_navigate
@@ -1152,21 +1162,21 @@ are shown):
       ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
 
       if ! ->prepare || ! ->info_complete || ! ->finalize {
-        ->hash_form (hook)
-        ->hash_fill (hook)
-        ->hash_errors (hook)
-        ->hash_common (hook)
-
-        # merge common, errors, and form into merged form
-        # merge common, form, and fill into merged fill
-
-        ->print (hook - passed current step, merged form hash, and merged fill)
+        ->prepared_print
           # DEFAULT ACTION
-          # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
-          # ->template_args
-          # Processes the file with Template Toolkit
-          # Fills the any forms with CGI::Ex::Fill
-          # Prints headers and the content
+          # ->hash_form (hook)
+          # ->hash_fill (hook)
+          # ->hash_errors (hook)
+          # ->hash_common (hook)
+          # merge common, errors, and form into merged form
+          # merge common, form, and fill into merged fill
+          # ->print (hook - passed current step, merged form hash, and merged fill)
+            # DEFAULT ACTION
+            # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
+            # ->template_args
+            # Processes the file with Template Toolkit
+            # Fills the any forms with CGI::Ex::Fill
+            # Prints headers and the content
 
         ->post_print (hook - used for anything after the print process)
 
@@ -1188,6 +1198,12 @@ are shown):
     ->nav_loop (called again recursively)
 
   } end of nav_loop
+
+=item Method C<-E<gt>pre_navigate>
+
+Called from within navigate.  Called before the nav_loop method is started.
+If a true value is returned then navigation is skipped (the nav_loop is never
+started).
 
 =item Method C<-E<gt>post_navigate>
 
@@ -1609,8 +1625,16 @@ also be set).  Should be a file that can be handled by hook print.
 
 =item Hook C<-E<gt>print>
 
-Take the information and print it out.  Default incarnation uses
-Template.  Arguments are: step name, form hashref, and fill hashref.
+Take the information generated by prepared_print, format it, and print it out.
+Default incarnation uses Template::Toolkit.  Arguments are: step name, form hashref,
+and fill hashref.
+
+=item Hook C<-E<gt>prepared_print>
+
+Called when any of prepare, info_complete, or finalize fail.  Prepares
+a form hash and a fill hash to pass to print.  The form hash is primarily
+intended for use by the templating system.  The fill hash is intended
+to be used to fill in any html forms.
 
 =item Hook C<-E<gt>post_print>
 
@@ -1668,6 +1692,13 @@ Object types to exclude from the cleanup process.  Add any such global
 hashes (or objects with references to the global hashes) there.
 
 =back
+
+=head1 THANKS
+
+Bizhosting.com - giving a problem that fit basic design patterns.
+Earl Cahill    - pushing the idea of more generic frameworks.
+Adam Erickson  - design feedback, bugfixing, feature suggestions.
+James Lance    - design feedback, bugfixing, feature suggestions.
 
 =head1 AUTHOR
 
