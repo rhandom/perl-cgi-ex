@@ -98,48 +98,51 @@ sub validate {
     next if $validate_if && ! $self->check_conditional($form, $validate_if);
     push @USED_GROUPS, $group_val;
 
-    ### if the validation items were not passed as an arrayref
-    ### look for a group order and then fail back to the keys of the group
+    ### If the validation items were not passed as an arrayref.
+    ### Look for a group order and then fail back to the keys of the group.
+    ### We will keep track of what was added using %found - the keys will
+    ###   be the hash signatures of the field_val hashes (ignore the hash internals).
     my @order  = sort keys %$group_val;
     my $fields = $group_val->{'group fields'};
-    my %found = ();
-    if ($fields) {
+    my %found = (); # attempt to keep track of what field_vals have been added
+    if ($fields) { # if I passed group fields array - use it
       die "'group fields' must be an arrayref" if ! UNIVERSAL::isa($fields,'ARRAY');
-    } else {
+    } else { # other wise - create our own array
       my @fields = ();
       if (my $order = $group_val->{'group order'} || \@order) {
         die "Validation 'group order' must be an arrayref" if ! UNIVERSAL::isa($order,'ARRAY');
         foreach my $field (@$order) {
-          next if $field =~ /^(group|general)\s/; 
+          next if $field =~ /^(group|general)\s/;
           my $field_val = exists($group_val->{$field}) ? $group_val->{$field}
             : ($field eq 'OR') ? 'OR' : die "No element found in group for $field";
+          $found{"$field_val"} = 1; # do this before modifying on the next line
           if (ref $field_val && ! $field_val->{'field'}) {
             $field_val = { %$field_val, 'field' => $field }; # copy the values to add the key
           }
           push @fields, $field_val;
-          $found{$field} = 1; # the group name ($field) may be different than the 'field' name
         }
       }
       $fields = \@fields;
     }
 
-    ### double check which fields have been used
+    ### double check which field_vals have been used so far
     foreach my $field_val (@$fields) {
       my $field = $field_val->{'field'} || die "Missing field key in validation";
-      #die "Duplicate order found for $field in group order or fields" if $found{$field};
-      $found{$field} = 1;
+      $found{"$field_val"} = 1;
     }
 
-    ### add any remaining fields from the order
+    ### add any remaining field_vals from the order
+    ### this is necessary for items that weren't in group fields or group order
     foreach my $field (@order) {
-      next if $found{$field};
       next if $field =~ /^(group|general)\s/;
       my $field_val = $group_val->{$field};
       die "Found a nonhashref value on field $field" if ! UNIVERSAL::isa($field_val, 'HASH');
+      next if $found{"$field_val"}; # do before modifying ref on next line
       $field_val = { %$field_val, 'field' => $field } if ! $field_val->{'field'}; # copy the values
       push @$fields, $field_val;
     }
 
+    ### Finally we have our arrayref of hashrefs that each have their 'field' key
     ### now lets do the validation
     my $found  = 1;
     my @errors = ();
@@ -1079,7 +1082,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.72 2004-11-12 17:19:01 pauls Exp $
+$Id: Validate.pm,v 1.73 2004-11-12 17:47:00 pauls Exp $
 
 =head1 SYNOPSIS
 
