@@ -285,6 +285,13 @@ sub validate_buddy {
     return wantarray ? @errors : scalar @errors;
   }
 
+  ### allow for default value
+  foreach my $type ($self->filter_type('default', $types)) {
+    if (! defined($form->{$field}) || (! ref($form->{$field}) && ! length($form->{$field}))) {
+      $form->{$field} = $field_val->{$type};
+    }
+  }
+
   my $n_values = UNIVERSAL::isa($form->{$field},'ARRAY') ? $#{ $form->{$field} } + 1 : 1;
   my $values = ($n_values > 1) ? $form->{$field} : [$form->{$field}];
 
@@ -306,7 +313,7 @@ sub validate_buddy {
     }
   }
   # allow for inline specified modifications (ie s/foo/bar/)
-  foreach my $type ($self->filter_type('replace',$types)) { 
+  foreach my $type ($self->filter_type('replace',$types)) {
     my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
       : [split(/\s*\|\|\s*/,$field_val->{$type})];
     foreach my $rx (@$ref) {
@@ -1064,7 +1071,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.61 2004-04-09 22:14:09 pauls Exp $
+$Id: Validate.pm,v 1.62 2004-04-22 04:20:51 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1665,6 +1672,14 @@ Pass a swap pattern to change the actual value of the form.
 Any perl regex can be passed.
 
   {field => 'foo', replace => 's/(\d{3})(\d{3})(\d{3})/($1) $2-$3/'}
+
+=item C<default>
+
+Set item to default value if there is no existing value (undefined
+or zero length string).  Maybe someday well add default_if (but that
+would require some odd syntax for both the conditional and the default).
+
+  {field => 'country', default => 'EN'}
 
 =item C<to_upper_case> and C<to_lower_case>
 
