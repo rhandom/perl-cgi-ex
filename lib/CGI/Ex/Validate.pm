@@ -748,7 +748,7 @@ sub as_string {
   ### allow for formatting
   my $join = defined($extra2->{as_string_join}) ? $extra2->{as_string_join}
     : defined($extra->{as_string_join}) ? $extra->{as_string_join}
-    : "\n";
+    : "<br />";
   my $header = defined($extra2->{as_string_header}) ? $extra2->{as_string_header}
     : defined($extra->{as_string_header}) ? $extra->{as_string_header} : "";
   my $footer = defined($extra2->{as_string_footer}) ? $extra2->{as_string_footer}
@@ -962,7 +962,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.33 2003-11-21 03:37:36 pauls Exp $
+$Id: Validate.pm,v 1.34 2003-11-21 04:57:50 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1507,12 +1507,12 @@ postpended onto the error string.
   my $string = $err_obj->as_string({
     as_array_prefix  => '  - ',
     as_array_title   => 'Something went wrong:',
-    as_string_join   => '<br>',
+    as_string_join   => '<br />',
     as_string_header => '<span class="error">'
     as_string_footer => '</span>'
   });
   # $string looks like
-  # '<span class="error">Something went wrong:<br>  - error1<br>  - error2</span>'
+  # '<span class="error">Something went wrong:<br />  - error1<br />  - error2</span>'
 
 =item C<as_hash>
 
@@ -1538,12 +1538,12 @@ stringification is 'as_hash_join'.
   ### then this would return the following
   my $hash = $err_obj->as_hash({
     as_hash_suffix => '_foo',
-    as_hash_join   => '<br>',
+    as_hash_join   => '<br />',
     as_hash_header => '<span class="error">'
     as_hash_footer => '</span>'
   });
   # $hash looks like
-  # {key1_foo => '<span class="error">error1<br>error2</span>'}
+  # {key1_foo => '<span class="error">error1<br />error2</span>'}
 
 =back
 
@@ -1646,7 +1646,7 @@ Default is '  '.
 =item C<'general as_string_join'>
 
 When as_string is called, the values from as_array will be joined with
-as_string_join.  Default value is "\n".
+as_string_join.  Default value is "<br />".
 
 =item C<'general as_string_header'>
 
