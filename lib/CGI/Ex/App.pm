@@ -1072,7 +1072,7 @@ More examples will come with time.  Here are the basics for now.
     ";
   }
 
-  sub post_navigate {
+  sub post_print {
     debug shift->history;
   } # show what happened
 
