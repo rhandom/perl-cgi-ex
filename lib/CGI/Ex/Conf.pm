@@ -20,6 +20,7 @@ use vars qw($VERSION
             %CACHE
             $HTML_KEY
             );
+use CGI::Ex::Dump qw(debug);
 
 $VERSION = '0.2';
 
@@ -309,7 +310,19 @@ sub read_handler_html {
 
   return undef if ! $str;
   my $ref = eval {&yaml_load($str)};
-
+  if ($@) {
+    my $err = "$@";
+    if ($err =~ /line:\s+(\d+)/) {
+      my $line = $1;
+      while ($str =~ m/(.+)/gm) {
+        next if -- $line;
+        $err .= "LINE = \"$1\"\n";
+        last;
+      }
+    }
+    debug $err;
+    die $err;
+  }
   return $ref;
 }
 
