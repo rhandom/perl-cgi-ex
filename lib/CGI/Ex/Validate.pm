@@ -1019,7 +1019,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.50 2004-02-18 22:29:12 pauls Exp $
+$Id: Validate.pm,v 1.51 2004-03-05 18:36:36 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1459,7 +1459,7 @@ $self->{dbh} is a coderef - they will be called and should return a dbh.
 =item C<custom>
 
 Custom value - not available in JS.  Allows for extra programming types.
-May be either a boolean value predermined before calling validate, or may be
+May be either a boolean value predetermined before calling validate, or may be
 a coderef that will be called during validation.  If coderef is called, it will
 be passed the field name, the form value for that name, and a reference to the
 field validation hash.  If the custom type returns false the element fails
@@ -1472,6 +1472,32 @@ validation and an error is added.
       # do something here
       return 0;
     },
+  }
+
+=item C<custom_js>
+
+Custom value - only available in JS.  Allows for extra programming types.
+May be either a boolean value predermined before calling validate, or may be
+section of javascript that will be eval'ed.  The last value (return value) of
+the eval'ed javascript will determine if validation passed.  A false value indicates
+the value did not pass validation.  A true value indicates that it did.  See
+the t/samples/js_validate_3.html page for a sample of usage.
+
+  {
+    field => 'date',
+    required => 1,
+    match    => 'm|^\d\d\d\d/\d\d/\d\d$|',
+    match_error => 'Please enter date in YYYY/MM/DD format',
+    custom_js => "
+      var t=new Date();
+      var y=t.getYear()+1900;
+      var m=t.getMonth();
+      var d=t.getDate();
+      if (m<10) m = '0'+m;
+      if (d<10) d = '0'+d;
+      (value > ''+y+'/'+m+'/'+d) ? 1 : 0;
+    ",
+    custom_js_error => 'The date was not greater than today.',
   }
 
 =item C<type>
