@@ -741,7 +741,7 @@ sub template_args {
 sub print {
   my $self = shift;
   my $step = shift;
-  my $form = shift;
+  my $swap = shift;
   my $fill = shift;
 
   ### get a filename relative to base_dir_abs
@@ -752,7 +752,7 @@ sub print {
 
   ### process the document
   my $out = '';
-  my $status = $t->process($file, $form, \$out) || die $Template::ERROR;
+  my $status = $t->process($file, $swap, \$out) || die $Template::ERROR;
 
   ### fill in any forms
   $self->cgix->fill(\$out, $fill) if $fill && ! $self->{no_fill};
@@ -1239,7 +1239,7 @@ are shown):
         # ->hash_common (hook)
         # merge form, common, errors, and swap into merged swap
         # merge form, common, and fill into merged fill
-        # ->print (hook - passed current step, merged form hash, and merged fill)
+        # ->print (hook - passed current step, merged swap hash, and merged fill)
           # DEFAULT ACTION
           # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
           # ->template_args
