@@ -114,6 +114,12 @@ sub navigate {
         my $errhash  = $self->run_hook($step, 'hash_errors', {});
         my $commhash = $self->run_hook($step, 'hash_common', {});
 
+        ### layer basic form on top of fill
+        foreach my $key (keys %$formhash) {
+          next if exists $fillhash->{$key};
+          $fillhash->{$key} = $formhash->{$key};
+        }
+
         ### layer common elements on top of form
         foreach my $key (keys %$commhash) {
           next if exists $formhash->{$key};
@@ -661,8 +667,7 @@ sub hash_form {
 
 sub hash_fill {
   my $self = shift;
-  my $step = shift;
-  return $self->run_hook($step, 'hash_form', {});
+  return $self->{hash_fill} ||= {};
 }
 
 ###----------------------------------------------------------------###
@@ -1046,7 +1051,8 @@ print.
 
 Called in preparation for print after failed info_complete.  Should
 contain a hash of any items needed to be filled into the html form
-during print.
+during print.  Items from hash_form will be layered on top during a
+print cycle.
 
 =item Hook C<-E<gt>hash_errors>
 
