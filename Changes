@@ -1,5 +1,7 @@
         * Version 1.15 is done
         * Allow for step to be automatically untainted during loop
+        * Fix base_dir_rel to work with "" as the dir
+
 
 2005-02-28  Paul Seamons  <cgi_ex@seamons.com>
 
