@@ -340,6 +340,7 @@ sub preload_files {
       $CACHE{$path} = 1;
       &File::Find::find(sub {
         return if exists $CACHE{$File::Find::name};
+        return if $File::Find::name =~ m|/CVS/|;
         return if ! -f;
         my $ext = (/\.(\w+)$/) ? $1 : '';
         return if ! $EXT{$ext};
