@@ -165,9 +165,9 @@ sub run_step {
   ### see if we have complete valid information for this step
   ### if so, do the next step
   ### if not, get necessary info and print it out
-  if (   ! $self->run_hook('prepare', $step, 1)
+  if (   ! $self->run_hook('prepare', $step)
       || ! $self->run_hook('info_complete', $step)
-      || ! $self->run_hook('finalize', $step, 1)) {
+      || ! $self->run_hook('finalize', $step)) {
 
     ### show the page requesting the information
     $self->run_hook('prepared_print', $step);
@@ -798,6 +798,17 @@ sub format_error {
 ###----------------------------------------------------------------###
 ### default stub subs
 
+sub pre_step   { 0 } # success indicates we handled step
+sub skip       { 0 } # success indicates to skip the step
+sub prepare    { 1 } # failure means show step
+sub finalize   { 1 } # failure means show step
+sub post_print {}
+sub name_step {
+  my $self = shift;
+  my $step = shift;
+  return $step;
+}
+
 ### used for looking up a module to morph into
 sub morph_package {
   my $self = shift;
@@ -834,7 +845,7 @@ sub file_print {
 
   my $base_dir = $self->base_dir_rel;
   my $module   = $self->run_hook('name_module', $step);
-  my $_step    = $self->run_hook('name_step', $step, $step) || die "Missing name_step";
+  my $_step    = $self->run_hook('name_step', $step) || die "Missing name_step";
   $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
 
   foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
