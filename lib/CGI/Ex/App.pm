@@ -16,7 +16,7 @@ use vars qw($VERSION
             $RECURSE_LIMIT
             %CLEANUP_EXCLUDE);
 
-$VERSION = '1.13';
+$VERSION = '1.14';
 use CGI::Ex::Dump qw(debug);
 
 BEGIN {
@@ -72,7 +72,10 @@ sub navigate {
     return $self if $self->pre_navigate;
 
     ### run the step loop
-    eval { $self->nav_loop };
+    eval {
+      local $self->{'__morph_lineage_start_index'} = $#{$self->{'__morph_lineage'} || []};
+      $self->nav_loop;
+    };
     if ($@) {
       ### rethrow the error unless we long jumped out of recursive nav_loop calls
       die $@ if $@ ne "Long Jump\n";
@@ -220,8 +223,11 @@ sub exit_nav_loop {
   my $self = shift;
 
   ### undo morphs
-  if (my $ref = $self->{'_morph_lineage'}) {
-    $self->unmorph while $#$ref != -1;
+  if (my $ref = $self->{'__morph_lineage'}) {
+    ### use the saved index - this allows for early "morphers" to only get rolled back so far
+    my $index = $self->{'__morph_lineage_start_index'};
+    $index = -1 if ! defined $index;
+    $self->unmorph while $#$ref != $index;
   }
 
   ### long jump back
@@ -470,27 +476,32 @@ sub morph {
   my $self = shift;
   my $step = shift || return;
   return if ! (my $allow = $self->allow_morph); # not true
-  return if ref($allow) && ! $allow->{$step};   # hash - but no step
 
   ### place to store the lineage
-  my $lin = $self->{'_morph_lineage'} ||= [];
+  my $lin = $self->{'__morph_lineage'} ||= [];
   my $cur = ref $self; # what are we currently
   push @$lin, $cur;    # store so subsequent unmorph calls can do the right thing
+  my $hist = $self->history;
+  push @$hist, "$step - morph - morph";
+  my $sref = \$hist->[-1]; # get ref so we can add more info in a moment
+
+  if (ref($allow) && ! $allow->{$step}) { # hash - but no step - record for unbless
+    $$sref .= " - not allowed to morph to that step";
+    return;
+  }
 
   ### make sure we haven't already been reblessed
   if ($#$lin != 0                                # is this the second morph call
       && (! ($allow = $self->allow_nested_morph) # not true
           || (ref($allow) && ! $allow->{$step})  # hash - but no step
           )) {
+    $$sref .= " - not allowed to nested morph to that step";
     return; # just return - don't die so that we can morph early
   }
 
   ### if we are not already that package - bless us there
-  my $hist = $self->history;
-  push @$hist, "$step - morph - morph";
-  my $sref = \$hist->[-1]; # get ref so we can add more info in a moment
   my $new  = $self->run_hook($step, 'morph_package');
-  if ($new && $cur ne $new) {
+  if ($cur ne $new) {
     my $file = $new .'.pm';
     $file =~ s|::|/|g;
     if (UNIVERSAL::can($new, 'can')  # check if the package space exists
@@ -520,18 +531,20 @@ sub morph {
 sub unmorph {
   my $self = shift;
   my $step = shift || '__no_step';
-  my $lin  = $self->{'_morph_lineage'} || return;
+  my $lin  = $self->{'__morph_lineage'} || return;
   my $cur  = ref $self;
   my $prev = pop(@$lin) || die "unmorph called more times than morph - current ($cur)";
 
   ### if we are not already that package - bless us there
+  my $hist = $self->history;
   if ($cur ne $prev) {
     if (my $method = $self->can('fixup_before_unmorph')) {
       $self->$method($step);
     }
     bless $self, $prev;
-    my $hist = $self->history;
     push @$hist, "$step - unmorph - unmorph - changed from $cur to $prev";
+  } else {
+    push @$hist, "$step - unmorph - unmorph - already isa $cur";
   }
 
   return $self;
@@ -1110,6 +1123,11 @@ Object creator.  Takes a hash or hashref.
 Called by the default new method.  Allows for any object
 initilizations.
 
+=item Method C<-E<gt>form>
+
+Returns a hashref of the items passed to the CGI.  Returns
+$self->{form}.  Defaults to CGI::Ex::get_form.
+
 =item Method C<-E<gt>navigate>
 
 Takes a class name or a CGI::Ex::App object as arguments.  If a class
@@ -1257,40 +1275,6 @@ Returns an arrayref of which hooks of which steps of the path were ran.
 Useful for seeing what happened.  In general - each line of the history
 will show the current step, the hook requested, and which hook was
 actually called. (hooks that don't find a method don't add to history)
-
-=item Method C<-E<gt>cgix>
-
-Returns a CGI::Ex object.  The CGI::Ex object is essentially a wrapper
-around CGI.pm and other modules to ease the gateway layer.  Normally
-the CGI::Ex object is used for sending headers and setting cookies
-and also for location bouncing (see the CGI::Ex perldoc for more
-information).  Any object that supports the CGI::Ex interface can
-be returned (primary methods used are get_form and print_content_type).
-
-=item Method C<-E<gt>form>
-
-Returns a hashref of the items passed to the CGI.  Returns
-$self->{'form'}.  Defaults to ->cgix->get_form - which in turn
-defaults to input returned from a standard CGI.pm object.
-Direct access to a CGI.pm object can be found by calling:
-
-  my $cgi = $self->cgix->object;
-
-Common usage is to normally just deal with the hashref returned
-by ->form.
-
-=item Method C<-E<gt>cookies>
-
-Returns a hashref composed of the cookies passed to the server.
-Returns $self->{'cookies'} which defaults to ->cgix->get_cookies which
-defaults to cookies returned from a standard CGI.pm object.  If cookies
-need to be set - they should be done with the CGI::Ex object (which
-uses CGI.pm to set the cookie) as follows:
-
-  $self->cgix->set_cookie({
-    name  => $cookie_name,
-    value => $cookie_value,
-  }); # will correctly call CGI->cookie
 
 =item Method C<-E<gt>path>
 
@@ -1812,9 +1796,9 @@ hashes (or objects with references to the global hashes) there.
 
 The concepts used in CGI::Ex::App are not novel or unique.  However, they
 are all commonly used and very useful.  All application builders were
-built because somebody observed that there are common runtime phases
-in CGI building.  CGI::Ex::App differs in that it has found more phases
-of building CGIs.
+built because somebody observed that there are common design patterns
+in CGI building.  CGI::Ex::App differs in that it has found more common design
+patterns of CGI's.
 
 CGI::Ex::App is intended to be sub classed, and sub sub classed, and each step
 can choose to be sub classed or not.  CGI::Ex::App tries to remain simple
@@ -1906,11 +1890,6 @@ There are a lot of hooks.  Actually this is not a bug.  Some may
 prefer not calling as many hooks - they just need to override
 methods high in the chain and subsequent hooks will not be called.
 
-There is a lot of code.  If the code base for CGI::Ex::App seems large,
-consider that what it does for you would normally be repeated in the
-individual runmodes of other applications - so CGI::Ex::App is a little
-bigger so your application doesn't have to be.
-
 =head1 THANKS
 
 Bizhosting.com - giving a problem that fit basic design patterns.
@@ -1920,6 +1899,6 @@ James Lance    - design feedback, bugfixing, feature suggestions.
 
 =head1 AUTHOR
 
-Paul Seamons <cgi_ex@seamons.com>
+Paul Seamons
 
 =cut
