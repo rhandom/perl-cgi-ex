@@ -6,16 +6,17 @@ use vars qw($VERSION
             @DEFAULT_EXT %EXT_HANDLERS);
 
 use Data::DumpEx;
-use YAML ();
 
-$VERSION = (qw$Revision: 1.22 $ )[1];
+$VERSION = (qw$Revision: 1.23 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
 @DEFAULT_EXT = ('val');
 
-%EXT_HANDLERS = ('val' => \&conf_handler_val,
-                 'pl'  => \&conf_handler_pl,
+%EXT_HANDLERS = ('val'      => \&conf_handler_yaml,
+                 'yaml'     => \&conf_handler_yaml,
+                 'pl'       => \&conf_handler_pl,
+                 'storable' => \&conf_handler_storable,
                  );
 
 ###----------------------------------------------------------------###
@@ -24,58 +25,6 @@ sub new {
   my $class = shift || __PACKAGE__;
   my $self  = (@_ && ref($_[0])) ? shift : {@_}; 
   return bless $self, $class;
-}
-
-###----------------------------------------------------------------###
-
-sub conf_handler_val {
-  my $file = shift;
-  local $/ = undef;
-  local *IN;
-  open (IN,$file) || die "Couldn't open $file: $!";
-  my $text = <IN>;
-  close IN;
-  return &yaml_load($text);
-}
-
-sub conf_handler_pl {
-  my $file = shift;
-  return do $file;
-}
-
-sub yaml_load {
-  my $text = shift;
-  my @ret = eval { &YAML::Load($text) };
-  if ($@) {
-    die "$@";
-  }
-  return ($#ret == 0) ? $ret[0] : \@ret;
-}
-
-sub get_validation {
-  my $self = shift;
-  my $file = shift;
-  my $ext;
-
-  ### if contains a newline - treat it as a YAML file
-  if ($file =~ /\n/) {
-    return &yaml_load($file);
-
-  ### otherwise base it off of the file extension
-  } elsif ($file =~ /\.(\w+)$/) {
-    $ext = $1;
-  } else {
-    foreach my $_ext (@DEFAULT_EXT) {
-      next if ! -e "$file.$_ext";
-      $ext = $_ext;
-    }
-  }
-
-  ### now get the file
-  die "Missing validation file for $file (no extension found)" if ! $ext;
-  my $handler = $EXT_HANDLERS{$ext} || die "Unknown file extension: $ext";
-
-  return &$handler($file);
 }
 
 ###----------------------------------------------------------------###
@@ -620,6 +569,66 @@ sub check_type {
 }
 
 ###----------------------------------------------------------------###
+
+sub get_validation {
+  my $self = shift;
+  my $file = shift;
+  my $ext;
+
+  ### if contains a newline - treat it as a YAML file
+  if ($file =~ /\n/) {
+    return &yaml_load($file);
+
+  ### otherwise base it off of the file extension
+  } elsif ($file =~ /\.(\w+)$/) {
+    $ext = $1;
+  } else {
+    foreach my $_ext (@DEFAULT_EXT) {
+      next if ! -e "$file.$_ext";
+      $ext  = $_ext;
+      $file = "$file.$_ext";
+    }
+  }
+
+  ### now get the file
+  die "Missing validation file for $file (no extension found)" if ! $ext;
+  my $handler = $EXT_HANDLERS{$ext} || die "Unknown file extension: $ext";
+
+  return &$handler($file);
+}
+
+sub conf_handler_yaml {
+  my $file = shift;
+  local $/ = undef;
+  local *IN;
+  open (IN,$file) || die "Couldn't open $file: $!";
+  my $text = <IN>;
+  close IN;
+  return &yaml_load($text);
+}
+
+sub yaml_load {
+  my $text = shift;
+  require YAML;
+  my @ret = eval { &YAML::Load($text) };
+  if ($@) {
+    die "$@";
+  }
+  return ($#ret == 0) ? $ret[0] : \@ret;
+}
+
+sub conf_handler_pl {
+  my $file = shift;
+  return do $file;
+}
+
+sub conf_handler_storable {
+  my $file = shift;
+  require Storable;
+  return &Storable::retrieve($file);
+}
+
+###----------------------------------------------------------------###
 ### How to handle errors
 
 package CGI::Ex::Validate::Error;
@@ -829,7 +838,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.22 2003-11-13 04:12:46 pauls Exp $
+$Id: Validate.pm,v 1.23 2003-11-13 05:10:40 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -996,8 +1005,8 @@ element.
 The validation hash may be passed as a perl a hashref or 
 as a filename, or as a YAML document string.  If it is a filename,
 it will be translated into a hash using the %EXT_HANDLER for the
-extension on the file.  If there is no extension, it will default
-to $DEFAULT_EXT.
+extension on the file.  If there is no extension, it will look through the
+extensions in @DEFAULT_EXT until it finds an existing file.
 
 The validation hash may also be an arrayref of hashrefs.  In this
 case, each arrayref is treated as a group and is validated separately.
