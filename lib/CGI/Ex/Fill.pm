@@ -165,7 +165,7 @@ sub form_fill {
             || $type eq 'FILE'
             || ($type eq 'PASSWORD' && $fill_password)) {
           
-          my $value = &$get_form_value($name, 'next') || '';
+          my $value = &$get_form_value($name, 'next');
           if (defined $value) {
             &swap_tagval_by_key(\$tag, 'value', $value);
           }          
@@ -236,9 +236,10 @@ sub form_fill {
       (.*?)              # the options
       (</textarea>)      # closing
     }{
-      my ($tag, $opts, $close) = ($1, $2, $3);
+      my ($tag, $oldval, $close) = ($1, $2, $3);
       my $name  = &get_tagval_by_key(\$tag, 'name');
-      my $value = $ignore->{$name} ? "" : &$get_form_value($name, 'next') || '';
+      my $value = $ignore->{$name} ? "" : &$get_form_value($name, 'next');
+      $value = $oldval if ! defined $value;
       "$tag$value$close"; # return of swap
     }sigex;
 
@@ -382,33 +383,33 @@ form filler against these two.
 
 =head1 HTML COMMENT / JAVASCRIPT
 
-Because there are too many problems that could occur with html comments
-and javascript, form_fill temporarily removes them during the fill.  You
-may disable this behavior by setting $REMOVE_COMMENT and $REMOVE_SCRIPT
-to 0 before calling form_fill.  The main reason for doing this would be if
-you wanted to have form elments inside the javascript and comments get filled.
-Disabling the removal only results in a speed increase of 5%. The function
-uses \0COMMENT\0 and \0SCRIPT\0 as placeholders so i'd avoid these in your
-text (Actually they may be reset to whatever you'd like via $MARKER_COMMENT
-and $MARKER_SCRIPT).
+Because there are too many problems that could occur with html
+comments and javascript, form_fill temporarily removes them during the
+fill.  You may disable this behavior by setting $REMOVE_COMMENT and
+$REMOVE_SCRIPT to 0 before calling form_fill.  The main reason for
+doing this would be if you wanted to have form elments inside the
+javascript and comments get filled.  Disabling the removal only
+results in a speed increase of 5%. The function uses \0COMMENT\0 and
+\0SCRIPT\0 as placeholders so i'd avoid these in your text (Actually
+they may be reset to whatever you'd like via $MARKER_COMMENT and
+$MARKER_SCRIPT).
 
 =head1 BUGS / LIMITATIONS
 
-The only known limitations is that if you have a <select>, <textarea>,
-or <option> tag that have nested HTML attributes that occur before
-the name, form_fill won't be able to determine the name.
+The only known limitations is that if you have a <input>, <select>,
+<textarea>, or <option> tag that have nested HTML attributes that
+occur before the name, form_fill won't be able to determine the name.
+(Shouldn't these be escaped anyway?)
 
-  <!-- WORKS -->
-  <select name=foo onchange=alert('<b>Wow</b>')>
+  <!-- WORKS --> <select name=foo onchange=alert('<b>Wow</b>')>
   </select>
 
-  <!-- WILL NOT WORK -->
-  <select onchange=alert('<b>Wow</b>') name=foo>
-  </select>
+  <!-- WILL NOT WORK --> <select onchange=alert('<b>Wow</b>')
+  name=foo> </select>
 
 This limitation could be overcome with a more complex regex - but why.
-You won't have this problem (or shouldn't) with HTML::FillInForm because
-of the lengthy process used for descending the structure.
+You won't have this problem (or shouldn't) with HTML::FillInForm
+because of the lengthy process used for descending the structure.
 
 =head1 AUTHOR
 
