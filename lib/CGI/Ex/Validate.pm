@@ -20,7 +20,7 @@ use vars qw($VERSION
             $QR_EXTRA
             );
 
-$VERSION = '0.96';
+$VERSION = '0.97';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 $DEFAULT_EXT   = 'val';
@@ -1019,7 +1019,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.51 2004-03-05 18:36:36 pauls Exp $
+$Id: Validate.pm,v 1.52 2004-03-05 18:37:05 pauls Exp $
 
 =head1 SYNOPSIS
 
