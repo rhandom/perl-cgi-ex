@@ -369,12 +369,12 @@ sub cleanup_cross_references {
   my $class = shift;
   my $self  = shift;
   my $seen  = shift || {};
+  return if $seen->{$self}; # prevent recursive checking
+  $seen->{$self} = 1;
   if (UNIVERSAL::isa($self, 'HASH')) {
     require Scalar::Util; # first self will always be hash
     foreach my $key (keys %$self) {
       next if ! $self->{$key};
-      next if $seen->{ $self->{$key} }; # prevent recursive checking
-      $seen->{ $self->{$key} } = 1;
       $class->cleanup_cross_references($self->{$key}, $seen);
       # weaken and remove blessed objects
       # this will clober objects in global caches that are referenced in the structure
@@ -382,16 +382,14 @@ sub cleanup_cross_references {
       if (Scalar::Util::blessed($self->{$key})
           && ! Scalar::Util::isweak($self->{$key})) {
         Scalar::Util::weaken($self->{$key});
-        delete $self->{$key};
+        $self->{$key} = undef;
       } elsif (UNIVERSAL::isa($self->{$key}, 'CODE')) {
-        delete $self->{$key};
+        $self->{$key} = undef;
       }
     }
   } elsif (UNIVERSAL::isa($self, 'ARRAY')) {
     for my $key (0 .. $#$self) {
       next if ! $self->[$key];
-      next if $seen->{ $self->[$key] };
-      $seen->{ $self->[$key] } = 1;
       $class->cleanup_cross_references($self->[$key], $seen);
       if (Scalar::Util::blessed($self->[$key])
           && ! Scalar::Util::isweak($self->[$key])) {
