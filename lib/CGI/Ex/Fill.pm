@@ -180,10 +180,12 @@ sub form_fill {
               $tag =~ s|(/?>)| checked$1|;
             } else {
               my $fvalue = &get_tagval_by_key(\$tag, 'value');
-              foreach (@$values) {
-                next if $_ ne $fvalue;
-                $tag =~ s|(\s*/?>)| checked$1|;
-                last;
+              if (defined $fvalue) {
+                foreach (@$values) {
+                  next if $_ ne $fvalue;
+                  $tag =~ s|(\s*/?>)| checked$1|;
+                  last;
+                }
               }
             }
           }
