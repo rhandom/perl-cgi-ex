@@ -1,0 +1,9 @@
+[% shell_header %]
+[% shell_start %]
+
+This is some text.
+
+[% pass_in_something %]
+
+[% shell_end %]
+[% shell_footer %]

@@ -1,0 +1,981 @@
+<style>
+.notes{
+  font-family: verdana, sans-serif;
+  font-size: 8pt;
+}
+</style>
+
+[var anc.text "Key-Val/If Blocks/Loops
+  [alt]Math
+  [alt]Alts and alt parameters
+  [alt]Conditional Statements
+  [alt]Upper/Lower Casify
+  [alt]Pass In Variables
+  [alt]Complex Examples
+  [alt]Dynamic Variable Setting
+  [alt]References
+  [alt]Recursive Protection Test
+  [alt]Form Element passing / Hidden values / Error values
+  [alt]Wrap/Content Loading and Overriding
+  [alt]Site Properties
+  [alt]Cookies
+  [alt]Literals
+  [alt]Short Usernames
+  [alt]Subroutine Calls
+  [alt]Variable Lookup
+  [alt]Encoding
+  [alt]Regex
+  [alt]Sprintf
+  [alt]NoWrap
+  [alt]ISML
+  [alt]Graph
+"]
+
+[loop n [.. 1 anc.text.length] "[push anc.name [sprintf 'a%02d' pass.n]]"]
+[loop n [.. 1 anc.text.length] "<b><a href='#[anc.name]'>[pass.n]. [anc.text]</a></b><br>[env.nl]"]
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Key-Val/If Blocks/Loops</h1>
+[var o.iter [.. 0 10 3]]
+[var o.str  "([pass._] , [o.iter])"]
+[var o.a "A"]
+[var o.b "B"]
+<pre>
+&#91;var o.iter &#91;.. 0 10 3&#93;&#93;
+&#91;var o.str "(&#91;pass._&#93; , &#91;o.iter&#93;)"&#93;
+&#91;var o.a "A"&#93;
+&#91;var o.b "B"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;join "~" &#91;keys o&#93;&#93;</td>
+     <td>[join "~" [keys o]]</td>
+     <td>iter~a~b~str</td></tr>
+ <tr><td>&#91;join "~" &#91;values o&#93;&#93;</td>
+     <td>[join "~" [values o]]</td>
+     <td>ARRAY(0xSOMETHINGRANDOM)~A~B~(&#91;pass._&#93;)</td></tr>
+ <tr><td>&#91;join "~" &#91;sort keys o&#93;&#93;</td>
+     <td>[join "~" [sort keys o]]</td>
+     <td>a~b~iter~str</td></tr>
+ <tr><td>&#91;join "~" &#91;keys o.iter&#93;</td>
+     <td>[join "~" [keys o.iter]]</td>
+     <td>1~2~3~4</td></tr>
+ <tr><td>&#91;join "~" &#91;values o.iter&#93;&#93;</td>
+     <td>[join "~" [values o.iter]]</td>
+     <td>0~3~6~9</td></tr>
+ <tr><td>&#91;join "~" &#91;keys o.a&#93;&#93;</td>
+     <td>[join "~" [keys o.a]]</td>
+     <td>1</td></tr>
+ <tr><td>&#91;join "~" &#91;values o.a&#93;&#93;</td>
+     <td>[join "~" [values o.a]]</td>
+     <td>A</td></tr>
+
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;if o.a.length &#91;loop o.a.length o.a&#93; "No Length"&#93;</td>
+     <td>[if o.a.length [loop o.a.length o.a] "No Length"]</td><td>A</td></tr>
+ <tr><td>&#91;if o.c.length &#91;loop o.c.length o.c&#93; "No Length"&#93;</td>
+     <td>[if o.c.length [loop o.c.length o.c] "No Length"]</td><td>No Length</td></tr>
+ <tr><td>&#91;if o.c.length &#91;loop o.c.length o.c&#93;<br>
+         elsif o.d.length &#91;loop o.d.length o.d&#93;<br>
+         elsif o.b.length &#91;loop o.b.length o.b&#93;<br>
+         else "No Length"&#93;</td>
+     <td>[if o.c.length [loop o.c.length o.c]
+          elsif o.d.length [loop o.d.length o.d]
+          elsif o.b.length [loop o.b.length o.b]
+          else "No Length"]</td><td>B</td></tr>
+ <tr><td>&#91;if o.c.length &#91;loop o.c.length o.c&#93;<br>
+         else "No Length"&#93;</td>
+     <td>[if o.c.length [loop o.c.length o.c]
+          else "No Length"]</td><td>No Length</td></tr>
+ <tr><td>&#91;if ! o.a "o.a is not set"&#93;</td>
+     <td>[if ! o.a "o.a is not set"]</td><td></td></tr>
+ <tr><td>&#91;if ! o.c "o.c is not set"&#93;</td>
+     <td>[if ! o.c "o.c is not set"]</td><td>o.c is not set</td></tr>
+
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;var o.strn "(&#91;pass.n&#93;)"&#93;</td><td>[var o.strn "([pass.n])"]</td><td></td></tr>
+ <tr><td>&#91;var o.strm "(&#91;pass.n&#93;,&#91;pass.m&#93;)"&#93;</td><td>[var o.strm "([pass.n],[pass.m])"]</td><td></td></tr>
+ <tr><td>&#91;var o.iter.alt 2&#93;</td><td>[var o.iter.alt 2]</td><td></td></tr>
+
+ <tr><td>&#91;loop &#91;.. 1 10 2&#93; o.str&#93;</td>
+     <td>[loop [.. 1 10 2] o.str]</td><td>(1 , 3)(3 , 6)(5 , 9)(7 , 0)(9 , 3)</td></tr>
+ <tr><td>&#91;loop foo &#91;.. 1 10 2&#93; "(&#91;pass.foo&#93;-&#91;pass.foo&#93;)"&#93;</td>
+     <td>[loop foo [.. 1 10 2] "([pass.foo]-[pass.foo])"]</td>
+     <td>(1-1)(3-3)(5-5)(7-7)(9-9)</td></tr>
+ <tr><td>&#91;var o.iter.alt 1&#93;</td><td>[var o.iter.alt 2]</td><td></td></tr>
+ <tr><td>&#91;loop &#91;values o.iter&#93; o.str&#93;</td>
+     <td>[loop [values o.iter] o.str]</td><td>(0 , 3)(3 , 6)(6 , 9)(9 , 0)</td></tr>
+ <tr><td>&#91;loop n &#91;values o.iter&#93; "&#91;if &#91;== pass.n 6&#93; &#91;next&#93;&#93;&#91;o.strn&#93;"&#93;</td>
+     <td>[loop n [values o.iter] "[if [== pass.n 6] [next]][o.strn]"]</td><td>(0)(3)(9)</td></tr>
+ <tr><td>&#91;loop n &#91;values o.iter&#93; "&#91;if &#91;== pass.n 6&#93; &#91;last&#93;&#93;&#91;o.strn&#93;"&#93;</td>
+     <td>[loop n [values o.iter] "[if [== pass.n 6] [last]][o.strn]"]</td><td>(0)(3)</td></tr>
+ <tr><td>&#91;loop n &#91;values o.iter&#93; "&#91;if &#91;== pass.n 6&#93; &#91;last 1&#93;&#93;&#91;o.strn&#93;"&#93;</td>
+     <td>[loop n [values o.iter] "[if [== pass.n 6] [last 1]][o.strn]"]</td><td>(0)(3)(6)</td></tr>
+ <tr><td>&#91;loop n &#91;values o.iter&#93; '<br>
+         &nbsp;&#91;loop m &#91;values o.iter&#93; "<br>
+         &nbsp;&nbsp;&#91;if &#91;== pass.m 3&#93; &#91;last m 1&#93;<br>
+         &nbsp;&nbsp;&nbsp;elsif &#91;== pass.n 3&#93; &#91;last n 1&#93;<br>
+         &nbsp;&nbsp;&#93;&#91;o.strm&#93;"&#93;&lt;br&gt;'&#93;</td>
+     <td>[loop n [values o.iter] '[
+           loop m [values o.iter] "[
+            if [== pass.m 3] [last m 1]
+            elsif [== pass.n 3] [last n 1]
+           ][o.strm]"]<br>']</td><td>(0,0)(0,3)<br>(3,0)(3,3)<br></td></tr>
+ <tr><td>&#91;loop n &#91;values o.iter&#93; '<br>
+         &nbsp;&#91;loop m &#91;values o.iter&#93; "<br>
+         &nbsp;&nbsp;&#91;if &#91;== pass.m 3&#93; &#91;last n 1&#93;&#93;<br>
+         &nbsp;&nbsp;&#91;o.strm&#93;"&#93;&lt;br&gt;'&#93;</td>
+     <td>[loop n [values o.iter] '[
+           loop m [values o.iter] "[
+           if [== pass.m 3] [last n 1]
+           ][o.strm]"]<br>']</td><td>(0,0)(0,3)(0,6)(0,9)<br></td></tr>
+ <tr><td>&#91;loop n &#91;values o.iter&#93; '<br>
+         &nbsp;&#91;loop m &#91;values o.iter&#93; "<br>
+         &nbsp;&nbsp;&#91;if &#91;< pass.m 6&#93; &#91;next m&#93;<br>
+         &nbsp;&nbsp;&nbsp;elsif &#91;< pass.n 6&#93; &#91;next n&#93;&#93;<br>
+         &nbsp;&nbsp;&#91;o.strm&#93;"&#93;&lt;br&gt;'&#93;</td>
+     <td>[loop n [values o.iter] '[
+           loop m [values o.iter] "[
+            if [< pass.m 6] [next m]
+            elsif [< pass.n 6] [next n]
+           ][o.strm]"]<br>']</td><td>(6,6)(6,9)<br>(9,6)(9,9)<br></td></tr>
+</table>
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Math</h1>
+[var n.bar0 0]
+[var n.bar2 2]
+[var n.bar3 3]
+[var n.str "Hello"]
+[var n.true 1]
+[var n.false ""]
+[var n.a 3]
+<pre>
+&#91;var n.bar0 0&#93;
+&#91;var n.bar2 2&#93;
+&#91;var n.bar3 3&#93;
+&#91;var n.str "Hello"&#93;
+&#91;var n.true 1&#93;
+&#91;var n.false ""&#93;
+&#91;var n.a 3&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;+ 1 2 &#91;n.bar2&#93;&#93;</td><td>[+ 1 2 [n.bar2]]</td><td>5</td></tr>
+ <tr><td>&#91;var n.bar9 &#91;* n.bar3 n.bar3&#93;&#93;</td><td>[var n.bar9 [* n.bar3 n.bar3]]</td><td></td></tr>
+ <tr><td>&#91;n.bar9&#93;</td><td>[n.bar9]</td><td>9</td></tr>
+ <tr><td>&#91;- n.bar9 2&#93;</td><td>[- n.bar9 2]</td><td>7</td></tr>
+ <tr><td>&#91;- n.bar9 2 1&#93;</td><td>[- n.bar9 2 1]</td><td>6</td></tr>
+ <tr><td>&#91;* 1 2 &#91;n.bar2&#93;&#93;</td><td>[* 1 2 [n.bar2]]</td><td>4</td></tr>
+ <tr><td>&#91;/ n.bar9 2&#93;</td><td>[/ n.bar9 2]</td><td>4.5</td></tr>
+ <tr><td>&#91;% n.bar9 5&#93;</td><td>[% n.bar9 5]</td><td>4</td></tr>
+ <tr><td>&#91;** n.bar2 n.bar3&#93;</td><td>[** n.bar2 n.bar3]</td><td>8</td></tr>
+ <tr><td>&#91;&& n.bar0 n.str&#93;</td><td>[&& n.bar0 n.str]</td><td>0</td></tr>
+ <tr><td>&#91;&& n.str n.bar2&#93;</td><td>[&& n.str n.bar2]</td><td>1</td></tr>
+ <tr><td>&#91;&& ! n.bar0 n.str&#93;</td><td>[&& ! n.bar0 n.str]</td><td>1</td></tr>
+ <tr><td>&#91;&& ! n.bar0 ! n.str&#93;</td><td>[&& ! n.bar0 ! n.str]</td><td>0</td></tr>
+ <tr><td>&#91;&& n.bar2 n.bar3 n.str&#93;</td><td>[&& n.bar2 n.bar3 n.str]</td><td>1</td></tr>
+ <tr><td>&#91;|| n.bar0 n.str&#93;</td><td>[|| n.bar0 n.str]</td><td>Hello</td></tr>
+ <tr><td>&#91;|| n.barz n.str&#93;</td><td>[|| n.barz n.str]</td><td>Hello</td></tr>
+
+ <tr><td>&#91;== 1 n.true&#93;</td><td>[== 1 n.true]</td><td>1</td></tr>
+ <tr><td>&#91;!= 1 n.true&#93;</td><td>[!= 1 n.true]</td><td>0</td></tr>
+ <tr><td>&#91;!= 0 n.true&#93;</td><td>[!= 0 n.true]</td><td>1</td></tr>
+ <tr><td>&#91;< 0 n.a&#93;</td><td>[< 0 n.a]</td><td>1</td></tr>
+ <tr><td>&#91;> 0 n.a&#93;</td><td>[> 0 n.a]</td><td>0</td></tr>
+ <tr><td>&#91;> 0 n.false&#93;</td><td>[> 0 n.false]</td><td>0</td></tr>
+ <tr><td>&#91;> "boo" "bad"&#93;</td><td>[> "boo" "bad"]</td><td>0</td></tr>
+ <tr><td>&#91;== "" n.true&#93;</td><td>[== "" n.true]</td><td>0</td></tr>
+ <tr><td>&#91;== 0 n.true&#93;</td><td>[== 0 n.true]</td><td>0</td></tr>
+ <tr><td>&#91;== 0 n.false&#93;</td><td>[== 0 n.false]</td><td>1</td></tr>
+ 
+ <tr><td>&#91;&& &#91;< 0 n.a&#93; &#91;<= n.a n.bar3&#93;&#93;</td><td>[&& [< 0 n.a] [<= n.a n.bar3]]</td><td>1</td></tr>
+
+ <tr><td>&#91;join env.nbsp &#91;.. 1 20 3&#93;&#93;</td>
+     <td>[join env.nbsp [.. 1 20 3]]</td>
+     <td>1 4 7 10 13 16 19</td></tr>
+ <tr><td>&#91;join env.nbsp &#91;.. -3 -5 .34&#93;&#93;</td>
+     <td>[join env.nbsp [.. -3 -5 .34]]</td>
+     <td>-3 -3.34 -3.68 -4.02 -4.36 -4.7</td></tr>
+ <tr><td>&#91;random 4 6&#93;</td><td>[random 4 6]</td><td>N/A (an integer between 4 and 6)</td></tr>
+</table>
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Alts and alt parameters</h1>
+(In wrap files multiple values should be separated by &#91;alt&#93; tags)
+[var a.A ""]
+[var a.B "0"]
+[var a.a "String"]
+[var a.b "A[alt]B[alt]C[alt]D[alt]E"]
+[var a.c "5"]
+[var a.d "1[alt]2[alt]3[alt]4[alt]5"]
+<pre>
+&#91;var a.A ""&#93;
+&#91;var a.B "0"&#93;
+&#91;var a.a "String"&#93;
+&#91;var a.b "A&#91;alt&#93;B&#91;alt&#93;C&#91;alt&#93;D&#91;alt&#93;E"&#93;
+&#91;var a.c "5"&#93;
+&#91;var a.d "1&#91;alt&#93;2&#91;alt&#93;3&#91;alt&#93;4&#91;alt&#93;5"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;a.A.length&#93;</td><td>[a.A.length]</td><td>0</td></tr>
+ <tr><td>&#91;a.B.length&#93;</td><td>[a.B.length]</td><td>1</td></tr>
+ <tr><td>&#91;a.C.length&#93;</td><td>[a.C.length]</td><td>0</td></tr>
+ <tr><td>&#91;a.a.length&#93;</td><td>[a.a.length]</td><td>1</td></tr>
+ <tr><td>&#91;a.b.length&#93;</td><td>[a.b.length]</td><td>5</td></tr>
+ <tr><td>&#91;a.b&#93;</td><td>[a.b]</td><td>A</td></tr>
+ <tr><td>&#91;a.b.alt&#93;</td><td>[a.b.alt]</td><td>2</td></tr>
+ <tr><td>&#91;var a.b.alt 3&#93;</td><td>[var a.b.alt 3]</td><td></td></tr>
+ <tr><td>&#91;a.b.alt&#93;</td><td>[a.b.alt]</td><td>3</td></tr>
+ <tr><td>&#91;a.b&#93; &#91;a.b.2&#93; &#91;a.b&#93;</td><td>[a.b] [a.b.2] [a.b]</td><td>C B D</td></tr>
+ <tr><td>&#91; var a.b.alt 1 &#93;</td><td>[ var a.b.alt 1 ]</td><td></td></tr>
+ <tr><td>&#91;join "~~" &#91;values a.b&#93;&#93;</td><td>[join "~~" [values a.b]]</td><td>A~~B~~C~~D~~E</td></tr>
+ <tr><td>&#91;join "&#91;a.d&#93;" &#91;values a.b&#93;&#93;</td><td>[join "[a.d]" [values a.b]]</td><td>A1B2C3D4E</td></tr>
+ <tr><td>&#91;join a.d &#91;values a.b&#93;&#93;</td><td>[join a.d [values a.b]]</td><td>A5B5C5D5E</td></tr>
+ <tr><td>&#91; var a.b.alt 5 &#93;</td><td>[ var a.b.alt 5 ]</td><td></td></tr>
+ <tr><td>&#91;a.b.alt&#93;</td><td>[a.b.alt]</td><td>5</td></tr>
+ <tr><td>&#91;a.b.0&#93; &#91;a.b.0&#93;</td><td>[a.b.0] [a.b.0]</td><td>D D</td></tr>
+ <tr><td>&#91; var a.b.alt 1 &#93;</td><td>[ var a.b.alt 1 ]</td><td></td></tr>
+ <tr><td>&#91;a.b.0&#93; &#91;a.b.0&#93;</td><td>[a.b.0] [a.b.0]</td><td>E E</td></tr>
+ <tr><td>&#91;loop &#91;/ a.b.length 2&#93; a.b&#93;</td><td>[loop [/ a.b.length 2] a.b]</td><td>AB</td></tr>
+ <tr><td>&#91;loop &#91;* 1 3&#93; a.b&#93;</td><td>[loop [* 1 3] a.b]</td><td>CDE</td></tr>
+ <tr><td>&#91;loop a.b.length a.b&#93;</td><td>[loop a.b.length a.b]</td><td>ABCDE</td></tr>
+ <tr><td>&#91;loop a.c a.b&#93;</td><td>[loop a.c a.b]</td><td>ABCDE</td></tr>
+ <tr><td>&#91;loop 3 a.b &#93;</td><td>[loop 3 a.b]</td><td>ABC</td></tr>
+ <tr><td>&#91;loop &#91;- &#91;+ 3 2&#93; 1&#93; a.b&#93;</td><td>[loop [- [+ 3 2] 1] a.b]</td><td>DEAB</td></tr>
+ <tr><td>&#91;loop &#91; 5 3&#93; a.b&#93;</td><td>[loop [% 5 3] a.b]</td><td>CD</td></tr>
+ <tr><td>&#91;loop &#91;.. 3 1&#93; "&#93;pass._&#93;&#91;a.b&#93;"&#93;</td><td>[loop [.. 3 1] "[pass._][a.b]"]</td><td>3E2A1B</td></tr>
+
+ <tr><td>&#91;loop &#91;- a.b.length 2&#93; "wow (&#91;a.b&#93;)&lt;br>&#91;env.nl&#93;"&#93;</td>
+     <td>[loop [- a.b.length 2] "wow ([a.b])<br>[env.nl]"]</td><td>wow (C)<br>
+wow (D)<br>
+wow (E)<br>
+</td></tr>
+ <tr><td>&#91; a.a.random &#93;</td><td>[ a.a.random ]</td><td>String</td></tr>
+ <tr><td>&#91; a.b.random &#93;</td><td>[ a.b.random ]</td><td>N/A</td></tr>
+ <tr><td>&#91;push a.b "F[alt]G"&#93;</td><td>[push a.b "F[alt]G"]</td><td></td></tr>
+ <tr><td>&#91; var a.b.alt 1 &#93;</td><td>[ var a.b.alt 1 ]</td><td></td></tr>
+ <tr><td>&#91;join "~~" &#91;values a.b&#93;&#93;</td><td>[join "~~" [values a.b]]</td><td>A~~B~~C~~D~~E~~F~~G</td></tr>
+</table>
+
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Conditional Statements</h1>
+[var b.true  "1"]
+[var b.false ""]
+[var b.a  3]
+<pre>
+&#91;var b.true  "1"&#93;
+&#91;var b.false ""&#93;
+&#91;var b.a  3&#93;
+</pre>
+
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;b.b?"TRUE":"FALSE"&#93;</td><td>[b.b?"TRUE":"FALSE"]</td><td>FALSE</td></tr>
+ <tr><td>&#91;b.true?"TRUE":"FALSE"&#93;</td><td>[b.true?"TRUE":"FALSE"]</td><td>TRUE</td></tr>
+ <tr><td>&#91; ! b.true ? "TRUE" : "FALSE" &#93;</td><td>[ ! b.true ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; b.false ? "TRUE" : "FALSE" &#93;</td><td>[ b.false ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; b.true ? : "FALSE" &#93;</td><td>[ b.true ? : "FALSE" ]</td><td></td></tr>
+ <tr><td>&#91; b.false ? "TRUE" : &#93;</td><td>[ b.false ? "TRUE" : ]</td><td></td></tr>
+ <tr><td>&#91; b.true ? b.true ? 'A' : b.true ? 'B' : 'C' : 'D' &#93;</td><td>[ b.true ? b.true ? 'A' : b.true ? 'B' : 'C' : 'D' ]</td><td>A</td></tr>
+ <tr><td>&#91;b.true?b.true?'A':b.true?'B':'C':'D'&#93;</td><td>[b.true?b.true?'A':b.true?'B':'C':'D']</td><td>A</td></tr>
+ <tr><td>&#91;b.true?b.false?'A':b.true?'B':'C':'D'&#93;</td><td>[b.true?b.false?'A':b.true?'B':'C':'D']</td><td>B</td></tr>
+ <tr><td>&#91;b.true?b.false?'A':b.false?'B':'C':'D'&#93;</td><td>[b.true?b.false?'A':b.false?'B':'C':'D']</td><td>C</td></tr>
+ <tr><td>&#91;b.false?b.true?'A':b.true?'B':'C':'D'&#93;</td><td>[b.false ?b.true?'A':b.true?'B':'C':'D']</td><td>D</td></tr>
+ <tr><td>&#91; &#91;>= browser.ie 5&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [>= browser.ie 5] ? "TRUE" : "FALSE" ]</td><td>N/A</td></tr>
+ <tr><td>&#91; &#91;>= browser.ie 6&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [>= browser.ie 6] ? "TRUE" : "FALSE" ]</td><td>N/A</td></tr>
+ <tr><td>&#91; &#91;>= browser.nn 1&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [>= browser.nn 1] ? "TRUE" : "FALSE" ]</td><td>N/A</td></tr>
+ <tr><td>&#91; browser.ie &#93;</td><td>[ browser.ie ]</td><td>N/A</td></tr>
+ <tr><td>&#91; browser.nn &#93;</td><td>[ browser.nn ]</td><td>N/A</td></tr>
+ <tr><td>&#91; browser.ua &#93;</td><td>[ browser.ua ]</td><td>N/A</td></tr>
+ <tr><td>&#91;if &#91;eq "1" b.true&#93; "TRUE"  "FALSE" &#93;</td><td>[if [eq "1" b.true] "TRUE" "FALSE" ]</td><td>TRUE</td></tr>
+ <tr><td>&#91;if &#91;eq 1 b.true&#93; "TRUE" "FALSE"&#93;</td><td>[if [eq 1 b.true] "TRUE" "FALSE" ]</td><td>TRUE</td></tr>
+ <tr><td>&#91; &#91;== 1 b.true&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [== 1 b.true] ? "TRUE" : "FALSE" ]</td><td>TRUE</td></tr>
+ <tr><td>&#91; &#91;ne 1 b.true&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [ne 1 b.true] ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; &#91;!= 1 b.true&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [!= 1 b.true] ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; &#91;ne 0 b.false&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [ne 0 b.false] ? "TRUE" : "FALSE" ]</td><td>TRUE</td></tr>
+ <tr><td>&#91; &#91;!= 0 b.false&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [!= 0 b.false] ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+
+ <tr><td>&#91; &#91;< 0 b.a&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [< 0 b.a] ? "TRUE" : "FALSE" ]</td><td>TRUE</td></tr>
+ <tr><td>&#91; &#91;> 0 b.a&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [> 0 b.a] ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; &#91;> 0 b.false&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [> 0 b.false] ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; &#91;gt 0 b.a&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [gt 0 b.a] ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; &#91;lt 0 b.a&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [lt 0 b.a] ? "TRUE" : "FALSE" ]</td><td>TRUE</td></tr>
+ <tr><td>&#91; &#91;> "boo" "bad"&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [> "boo" "bad"] ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; &#91;gt "boo" "bad"&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [gt "boo" "bad"] ? "TRUE" : "FALSE" ]</td><td>TRUE</td></tr>
+
+ <tr><td>&#91;if &#91;eq "" b.true&#93; "TRUE" "FALSE" &#93;</td>  <td>[if [eq "" b.true] "TRUE" "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91;if &#91;eq 0 b.true&#93; "TRUE" "FALSE" &#93;</td>   <td>[if [eq 0 b.true] "TRUE" "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; &#91;== "" b.true&#93; ? "TRUE" : "FALSE" &#93;</td><td>[ [== "" b.true] ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91; &#91;== 0 b.true&#93; ? "TRUE" : "FALSE" &#93;</td> <td>[ [== 0 b.true] ? "TRUE" : "FALSE" ]</td><td>FALSE</td></tr>
+ <tr><td>&#91;if &#91;ne "1" b.true&#93; "TRUE" "FALSE" &#93;</td> <td>[if [ne "1" b.true] "TRUE" "FALSE" ]</td><td>FALSE</td></tr>
+</table>
+
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Upper/Lower Casify</h1>
+
+[var c.txt "THIS is SOME text"]
+<pre>
+&#91;var c.txt "THIS is SOME text"&#93;
+</pre>
+
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;uc c.txt&#93;</td><td>[uc c.txt]</td><td>THIS IS SOME TEXT</td></tr>
+ <tr><td>&#91; uc c.txt &#93;</td><td>[ uc c.txt ]</td><td>THIS IS SOME TEXT</td></tr>
+ <tr><td>&#91; lc c.txt &#93;</td><td>[ lc c.txt ]</td><td>this is some text</td></tr>
+ <tr><td>&#91; ic c.txt &#93;</td><td>[ ic c.txt ]</td><td>This Is Some Text</td></tr>
+ <tr><td>&#91; uc "my BIT o TEXT" &#93;</td><td>[ uc "my BIT o TEXT" ]</td><td>MY BIT O TEXT</td></tr>
+ <tr><td>&#91; lc "my BIT o TEXT" &#93;</td><td>[ lc "my BIT o TEXT" ]</td><td>my bit o text</td></tr>
+ <tr><td>&#91; ic "my BIT o TEXT" &#93;</td><td>[ ic "my BIT o TEXT" ]</td><td>My Bit O Text</td></tr>
+</table>
+
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Pass In Variables</h1>
+
+[var d.txt "spot1([pass.spot1]) spot2([pass.spot2])"]
+[var d.a "AAAA"]
+[var d.b "BBBB"]
+[var d.c "1111[alt]2222[alt]3333"]
+<pre>
+&#91;var d.txt "spot1(&#91;pass.spot1&#93;) spot2(&#91;pass.spot2&#93;)"&#93;
+&#91;var d.a "AAAA"&#93;
+&#91;var d.b "BBBB"&#93;
+&#91;var d.c "1111&#91;alt&#93;2222&#91;alt&#93;3333"&#93;
+</pre>
+<table border=1>
+  <tr> 
+    <th>Code</th>
+    <th>Produces</th>
+    <th>Should Look Like</th>
+  </tr>
+  <tr> 
+    <td>&#91;d.txt;spot1=d.a;spot2=d.b&#93;</td>
+    <td>[d.txt;spot1=d.a;spot2=d.b]</td>
+    <td>spot1(AAAA) spot2(BBBB)</td>
+  </tr>
+  <tr> 
+    <td>&#91; d.txt ; spot1 = d.a ; spot2 = d.b &#93;</td>
+    <td>[ d.txt ; spot1 = d.a ; spot2 = d.b ]</td>
+    <td>spot1(AAAA) spot2(BBBB)</td>
+  </tr>
+  <tr> 
+    <td>&#91; d.txt ; spot1 = "My Text" ; spot2 = "My Text2" ; &#93;</td>
+    <td>[ d.txt ; spot1 = "My Text" ; spot2 = "My Text2" ; ]</td>
+    <td>spot1(My Text) spot2(My Text2)</td>
+  </tr>
+  <tr> 
+    <td>&#91; d.txt ; spot1 = d.c ; spot2 = d.c &#93;</td>
+    <td>[ d.txt ; spot1 = d.c ; spot2 = d.c ]</td>
+    <td>spot1(1111) spot2(2222)</td>
+  </tr>
+  <tr> 
+    <td HEIGHT="24">&#91; d.txt ; spot1 = d.c ; spot2 = d.c.0 &#93;</td>
+    <td HEIGHT="24">[ d.txt ; spot1 = d.c ; spot2 = d.c.0 ]</td>
+    <td HEIGHT="24">spot1(3333) spot2(3333)</td>
+  </tr>
+  <TR> 
+    <TD>&#91; d.txt ;; spot1 = "Some text; including semicolons (;)" ;; spot2 
+      = "Notice that a double semicolon is the delimiter" ;; &#93;</TD>
+    <TD>[d.txt ;; spot1 = "Some text; including semicolons (;)" ;; spot2 = "Notice 
+      that a double semicolon is the delimiter" ;; ]</TD>
+    <TD>spot1(Some text; including semicolons (;)) spot2(Notice that a double 
+      semicolon is the delimiter)</TD>
+  </TR>
+</table>
+
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Complex Examples</h1>
+
+[var e.txt "spot1([pass.spot1])"]
+[var e.a "AAAA"]
+[var e.href "<a href='[pass.h_url]'>[pass.h_text]</a>"]
+[var e.link "%5B pass.url ? e.href;h_url=pass.url;h_text=pass.text; : 'No link passed' %5D"]
+
+<pre>
+&#91;var e.txt "spot1(&#91;pass.spot1&#93;)"&#93;
+&#91;var e.a "AAAA"&#93;
+&#91;var e.href "&lt;a href='&#91;pass.h_url&#93;'>&#91;pass.h_text&#93;&lt;/a>"&#93;
+&#91;var e.link "%5B pass.url ? e.href;h_url=pass.url;h_text=pass.text; : 'No link passed' %5D"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91; e.a ? e.txt;spot1='Passed'; : 'e.a is not set' &#93;</td><td>[ e.a ? e.txt;spot1='Passed'; : 'e.a is not set' ]</td><td>spot1(Passed]</td></tr>
+ <tr><td>&#91; e.b ? e.txt;spot1='Passed'; : 'e.b is not set' &#93;</td><td>[ e.b ? e.txt;spot1='Passed'; : 'e.b is not set' ]</td><td>e.b is not set</td></tr>
+ <tr><td>&#91; e.a ? 'e.a is set' : e.txt;spot1='Passed'; &#93;</td><td>[ e.a ? 'e.a is set' : e.txt;spot1=e.a ]</td><td>e.a is set</td></tr>
+ <tr><td>&#91; e.b ? 'e.b is set' : e.txt;spot1='Passed'; &#93;</td><td>[ e.b ? 'e.b is set' : e.txt;spot1='Passed'; ]</td><td>spot1(Passed)</td></tr>
+ <tr><td>&#91;&nbsp;e.link;url="http://somewhere.com/";text="Somewhere.com";&nbsp;&#93;</td><td>[ e.link;url="http://somewhere.com/";text="Somewhere.com"; ]</td><td><a href='http://somewhere.com/'>Somewhere.com</a></td></tr>
+ <tr><td>&#91;&nbsp;e.link;url="";text="Somewhere.com";&nbsp;&#93;</td><td>[ e.link;url="";text="Somewhere.com"; ]</td><td>No link passed</td></tr>
+</table>
+
+
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Dynamic Variable Setting</h1>
+
+[var f.a "Some Text of Mine"]
+[var f.c "aa[alt]bb[alt]cc"]
+<pre>
+&#91;var f.a "Some Text of Mine"&#93;
+&#91;var f.c "aa&#91;alt&#93;bb&#91;alt&#93;cc"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91; var f.b = "" &#93;</td><td>[ var f.b = "" ]</td><td></td></tr>
+ <tr><td>&#91;f.b&#93;</td><td>[f.b]</td><td></td></tr>
+ <tr><td>&#91; var f.b = uc f.a&#93;</td><td>[ var f.b = uc f.a]</td><td></td></tr>
+ <tr><td>&#91;f.b&#93;</td><td>[f.b]</td><td>SOME TEXT OF MINE</td></tr>
+ <tr><td>&#91; var f.b = "Some Other Text" &#93;</td><td>[ var f.b = "Some Other Text" ]</td><td></td></tr>
+ <tr><td>&#91;f.b&#93;</td><td>[f.b]</td><td>Some Other Text</td></tr>
+ <tr><td>&#91; var f.b = loop f.c.length f.c &#93;</td><td>[ var f.b = loop f.c.length f.c ]</td><td></td></tr>
+ <tr><td>&#91;f.b&#93;</td><td>[f.b]</td><td>aabbcc</td></tr>
+ <tr><td>&#91; var f.b = uc f.b &#93;</td><td>[ var f.b = uc f.b ]</td><td></td></tr>
+ <tr><td>&#91;f.b&#93;</td><td>[f.b]</td><td>AABBCC</td></tr>
+</table>
+
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>References</h1>
+
+[var f.a "Some Text of Mine"]
+[var f.c "aa[alt]bb[alt]cc"]
+<pre>
+&#91;var f.a "Some Text of Mine"&#93;
+&#91;var f.c "aa&#91;alt&#93;bb&#91;alt&#93;cc"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91; var ff references F &#93;</td><td>[ var ff references F ]</td><td>[Area "F" is not defined]</td></tr>
+ <tr><td>&#91; var ff references f &#93;</td><td>[ var ff references f ]</td><td></td></tr>
+ <tr><td>&#91; var f.d references f.c &#93;</td><td>[ var f.d references f.c ]</td><td></td></tr>
+ <tr><td>&#91; loop f.c.lengthf.c  &#93;</td><td>[ loop f.c.length f.c  ]</td><td>aabbcc</td></tr>
+ <tr><td>&#91; loop f.c.lengthf.d  &#93;</td><td>[ loop f.c.length f.d  ]</td><td>aabbcc</td></tr>
+ <tr><td>&#91; loop f.c.lengthff.d &#93;</td><td>[ loop f.c.length ff.d ]</td><td>aabbcc</td></tr>
+ <tr><td>&#91; var f.c.alt 1 &#93;</td><td>[ var f.c.alt 1 ]</td><td></td></tr>
+ <tr><td>&#91; var f.d.alt 2 &#93;</td><td>[ var f.d.alt 2 ]</td><td></td></tr>
+ <tr><td>&#91; var ff.d.alt 3 &#93;</td><td>[ var ff.d.alt 3 ]</td><td></td></tr>
+ <tr><td>&#91; loop f.c.length  f.c  &#93;</td><td>[ loop f.c.length  f.c  ]</td><td>aabbcc</td></tr>
+ <tr><td>&#91; loop f.d.length  f.d  &#93;</td><td>[ loop f.d.length  f.d  ]</td><td>bbccaa</td></tr>
+ <tr><td>&#91; loop ff.d.length ff.d &#93;</td><td>[ loop ff.d.length ff.d ]</td><td>ccaabb</td></tr>
+ <tr><td>&#91; var f.e references f.f &#93;</td><td>[ var f.e references f.f ]</td><td>&#91;&#91;f.f&#93; is not defined&#93;</td></tr>
+ <tr><td>&#91; f.e &#93;</td><td>[ f.e ]</td><td>&#91; f.e &#93;</td></tr>
+</table>
+
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Recursive Protection Test</h1>
+[var g.a  "([g.b])"]
+[var g.b  "([g.c])"]
+[var g.c  "([g.d])"]
+[var g.d  "([g.e])"]
+[var g.e  "([g.f])"]
+[var g.f  "([g.g])"]
+[var g.g  "([g.h])"]
+[var g.h  "([g.i])"]
+[var g.i  "([g.j])"]
+[var g.j  "([g.k])"]
+[var g.k  "([g.l])"]
+[var g.l  "([g.m])"]
+[var g.m  "([g.n])"]
+[var g.n  "([g.o])"]
+[var g.o  "([g.p])"]
+[var g.aa "([g.aa])"]
+<pre>
+&#91;var g.a  "(&#91;g.b&#93;)"&#93;
+&#91;var g.b  "(&#91;g.c&#93;)"&#93;
+&#91;var g.c  "(&#91;g.d&#93;)"&#93;
+&#91;var g.d  "(&#91;g.e&#93;)"&#93;
+&#91;var g.e  "(&#91;g.f&#93;)"&#93;
+&#91;var g.f  "(&#91;g.g&#93;)"&#93;
+&#91;var g.g  "(&#91;g.h&#93;)"&#93;
+&#91;var g.h  "(&#91;g.i&#93;)"&#93;
+&#91;var g.i  "(&#91;g.j&#93;)"&#93;
+&#91;var g.j  "(&#91;g.k&#93;)"&#93;
+&#91;var g.k  "(&#91;g.l&#93;)"&#93;
+&#91;var g.l  "(&#91;g.m&#93;)"&#93;
+&#91;var g.m  "(&#91;g.n&#93;)"&#93;
+&#91;var g.n  "(&#91;g.o&#93;)"&#93;
+&#91;var g.o  "(&#91;g.p&#93;)"&#93;
+&#91;var g.aa "(&#91;g.aa&#93;)"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;g.a&#93;</td><td>[g.a]</td><td>((((((((((((((((Recursive limit (15) reached "&#91;g.p&#93;"))))))))))))))))</td></tr>
+ <tr><td>&#91;var g.c "Hi"&#93;</td><td>[var g.c "Hi"]</td><td></td></tr>
+ <tr><td>&#91;g.a&#93;</td><td>[g.a]</td><td>((Hi))</td></tr>
+ <tr><td>&#91;g.aa&#93;</td><td>[g.aa]</td><td>((((((((((((((((Recursive limit (15) reached "&#91;g.aa&#93;"))))))))))))))))</td></tr>
+</table>
+[var limit.recursive 16 ]
+[var g.c  "([g.d])"]
+<pre>
+&#91;var limit.recursive 16&#93;
+&#91;var g.c  "(&#91;g.d&#93;)"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;g.a&#93;</td><td>[g.a]</td><td>(((((((((((((((&#91;g.p&#93;)))))))))))))))</td></tr>
+ <tr><td>&#91;var g.c "Hi"&#93;</td><td>[var g.c "Hi"]</td><td></td></tr>
+ <tr><td>&#91;g.a&#93;</td><td>[g.a]</td><td>((Hi))</td></tr>
+ <tr><td>&#91;g.aa&#93;</td><td>[g.aa]</td><td>((((((((((((((((Recursive limit (16) reached "&#91;g.aa&#93;"))))))))))))))))</td></tr>
+</table>
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Form Element passing / Hidden values / Error values</h1>
+The show me cgi is has the following set up
+<pre>
+  $FORM{test_one} = "This is \"test\" one!\n";
+  $FORM{test_two} = "test_two_A[alt]test_two_B[alt]test_two_C[alt]test_two_D";
+  $FORM{something_error} = "Something had an error";#
+  my %FORM2 = qw(test_three test_three);
+  $partner->print($FORM{page},\%FORM,\%FORM2);
+
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;form.test_one&#93;</td><td>[form.test_one]</td><td>This is "test" one!
+</td></tr>
+ <tr><td>&#91;form.test_two&#93;</td><td>[form.test_two]</td><td>test_two_A</td></tr>
+ <tr><td>&#91;form.test_two&#93;</td><td>[form.test_two]</td><td>test_two_B</td></tr>
+ <tr><td>&#91;form.test_three&#93;</td><td>[form.test_three]</td><td>test_three</td></tr>
+ <tr><td>&#91;henc form_hidden.test_one&#93;</td><td>[henc form_hidden.test_one]</xmp></td><td>&lt;input type=hidden name="test_one" value="This is &amp;quot;test&amp;quot; one!
+"&gt;</td></tr>
+ <tr><td>&#91;henc form_hidden.test_three&#93;</td><td>[henc form_hidden.test_three]</td><td>&lt;input type=hidden name="test_three" value="test_three"&gt;</td></tr>
+ <tr><td>&#91;henc form_hidden.test_four&#93;</td><td>[henc form_hidden.test_four]</td><td></td></tr>
+ <tr><td>&#91;form.something_error&#93;</td><td>[form.something_error]</td><td>Something had an error</td></tr>
+ <tr><td>&#91;form_error.something_error&#93;</td><td>[form_error.something_error]</td><td>[form_error.something_error]</td></tr>
+ <tr><td>&#91;form_error.test_one&#93;</td><td>[form_error.test_one]</td><td>[form_error.test_one]</td></tr>
+</table>
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Wrap/Content Loading and Overriding</h1>
+There are two files used in this example:<br>
+my.default.partner/public/content/show_me/wrap_test.chunk<br>
+and<br>
+my.default.partner/public/wrap/show_me/wrap_test.wrap<br>
+[var all "wrap:show_me/wrap_test"]
+[var h.a "content:show_me/bogus.chunk"]
+[var h.b "content:show_me/wrap_test.chunk"]
+[var h.c "content:wrap_test.chunk"]
+[var h   "content:wrap_test.chunk"]
+[var i   "wrap:show_me/somestep/wrap_test.wrap"]
+[var j   "wrap:show_me/wrap_test.wrap"]
+[var k   "wrap:wrap_test.wrap"]
+
+<pre>
+&#91;var all "wrap:show_me/wrap_test"&#93;
+&#91;var h.a "content:show_me/bogus.chunk"&#93;
+&#91;var h.b "content:show_me/wrap_test.chunk"&#93;
+&#91;var h.c "content:wrap_test.chunk"&#93;
+&#91;var h   "content:wrap_test.chunk"&#93;
+&#91;var i   "wrap:show_me/somestep/wrap_test.wrap"&#93;
+&#91;var j   "wrap:show_me/wrap_test.wrap"&#93;
+&#91;var k   "wrap:wrap_test.wrap"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;h.a&#93;</td><td>[h.a]</td><td>Error: (Verbose) File "public/content/show_me/bogus.chunk" does not exist.</td></tr>
+ <tr><td>&#91;h.b&#93;</td><td>[h.b]</td><td><b>Begin&nbsp;my.default.partner/public/content/show_me/wrap_test.chunk</b><br>
+key1 value1 from wrap_test.chunk<br>
+key2 value2 from wrap_test.chunk<br>
+key3 value3 from wrap_test.chunk<br>
+<b>Begin my.default.partner/public/content/show_me/wrap_test.chunk</b><br></td></tr>
+ <tr><td>&#91;h.c&#93;</td><td>[h.c]</td><td><b>Begin&nbsp;my.default.partner/public/content/show_me/wrap_test.chunk</b><br>
+key1 value1 from wrap_test.chunk<br>
+key2 value2 from wrap_test.chunk<br>
+key3 value3 from wrap_test.chunk<br>
+<b>Begin my.default.partner/public/content/show_me/wrap_test.chunk</b><br></td></tr>
+ <tr><td>&#91;h.key1&#93;</td><td>[h.key1]</td><td>value1 from wrap_test.chunk<br></td></tr>
+ <tr><td>&#91;wrap_test.key1&#93;</td><td>[wrap_test.key2]</td><td>value2 from wrap_test.wrap<br></td></tr>
+ <tr><td>&#91;i.key2&#93;</td><td>[i.key2]</td><td>value2 from wrap_test.wrap<br></td></tr>
+ <tr><td>&#91;j.key2&#93;</td><td>[j.key2]</td><td>value2 from wrap_test.wrap<br></td></tr>
+ <tr><td>&#91;k.key2&#93;</td><td>[k.key2]</td><td>&#91;k.key2&#93; (the file public/wrap/wrap_test.wrap doesn't exist)</td></tr>
+ <tr><td></td><td></td><td></td></tr>
+ <tr><td></td><td></td><td></td></tr>
+</table>
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Site Properties</h1>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;site.banners&#93;</td><td>[site.banners]</td><td>N/A</td></tr>
+ <tr><td>&#91;site.email&#93;</td><td>[site.email]</td><td>N/A</td></tr>
+ <tr><td>&#91;site.name&#93;</td><td>[site.name]</td><td>N/A</td></tr>
+ <tr><td>&#91;site.quota&#93;</td><td>[site.quota]</td><td>N/A</td></tr>
+ <tr><td>&#91;site.file_size&#93;</td><td>[site.file_size]</td><td>N/A</td></tr>
+ <tr><td>&#91;site.site&#93;</td><td>[site.site]</td><td>N/A</td></tr>
+ <tr><td>&#91;site.webmaster_gender&#93;</td><td>[site.webmaster_gender]</td><td>N/A</td></tr>
+</table>
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Cookies</h1>
+<script><!--
+var t=new Date();
+t.setTime(t.getTime()+30*86400*1000);
+document.cookie = 'blah=some+long+value;path=/;expires='+t.toGMTString();
+//--></script>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;cookie.blah&#93;</td><td>[cookie.blah]</td><td>some long value</td></tr>
+</table>
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Literals</h1>
+<pre>
+&#91;var big.thing literal "'"'''"'"this's weird text' &#93;
+</pre>
+[var big.thing literal "'"'''"'"this's weird text' ]
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;big.thing&#93;</td><td>[big.thing]</td><td>"'"'''"'"this's weird text'</td></tr>
+</table>
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Short Usernames</h1>
+<pre>
+&#91;var preferences.allow_short_username 'foo.com'&#93;
+&#91;var site.site 'subsubdomain.subdomain.foo.com'&#93;
+</pre>
+[var preferences.allow_short_username 'foo.com']
+[var site.site 'subsubdomain.subdomain.foo.com']
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;site.username&#93;</td><td>[site.username]</td><td>subsubdomain.subdomain</td></tr>
+</table>
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Subroutine Calls</h1>
+The wrap test has the following set up inside:
+<pre>
+$FORM{print_whatever} = sub { "You gave me...<br>". &O::Is::is_dump(\@_) };
+
+&#91;var a.a "Something"&#93;
+</pre>
+[var a.a "Something"]
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;sub print_whatever "foo" a.a "bar"&#93;</td><td>[sub print_whatever "foo" a.a "bar"]</td><td>You gave me...<br>&nbsp;&nbsp;&nbsp;<b>VAR</b>&nbsp;=&nbsp;&#91;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"foo",<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"Something",<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"bar"<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#93;;<br>
+</td></tr>
+ <tr><td>&#91;sub print_whatever&#93;</td><td>[sub print_whatever]</td><td>You gave me...<br>&nbsp;&nbsp;&nbsp;<b>VAR</b>&nbsp;=&nbsp;&#91;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;""<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#93;;<br>
+</td></tr>
+ <tr><td>&#91;sub print_bogus "foo"&#93;</td><td>[sub print_bogus "foo"]</td><td>[Item "print_bogus" is not a subroutine]</td></tr>
+ <tr><td>&#91;sub isun b&#93;</td><td>[sub isun b]</td><td>(doesn't show anything here, but the isun will appear at the top)</td></tr>
+</table>
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Variable Lookup</h1>
+[var j.a "elite"]
+[var j.elite "HURRAH"]
+[var j.b [j.[j.a]]]
+[var j.c "ONE[alt]TWO[alt]THREE"]
+[var j.d "c"]
+[var j.e "2"]
+<pre>
+&#91;var j.a "elite"&#93;
+&#91;var j.elite "HURRAH"&#93;
+&#91;var j.b &#91;j.&#91;j.a&#93;&#93;&#93;
+&#91;var j.c "ONE&#91;alt&#93;TWO&#91;alt&#93;THREE"&#93;
+&#91;var j.d "c"&#93;
+&#91;var j.e "2"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;j.b&#93;</td><td>[j.b]</td><td>HURRAH</td></tr>
+ <tr><td>&#91;j.&#91;j.a&#93;&#93;</td><td>[j.[j.a]]</td><td>HURRAH</td></tr>
+ <tr><td>&#91;j.c.&#91j.e&#93;&#93;</td><td>[j.c.[j.e]]</td><td>TWO</td></tr>
+ <tr><td>&#91;j.&#91;j.d&#93;.&#91+2 1&#93;&#93;</td><td>[j.[j.d].[+ 2 1]]</td><td>THREE</td></tr>
+</table>
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Encoding</h1>
+[var k.thing literal <tag>"hi'
+  %4#@
+"]
+<pre>
+&#91;var k.thing literal &lt;tag&gt;"hi'
+  %4#@
+"&#93;
+</pre>
+
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;henc k.thing&#93;</td><td>[henc k.thing]</td><td>&lt;tag&gt;&quot;hi'
+  %4#@
+&quot;</td></tr>
+ <tr><td>&#91;uenc k.thing&#93;</td><td>[uenc k.thing]</td><td>%3Ctag%3E%22hi%27%0A++%254%23%40%0A%22</td></tr>
+</table>
+
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Regex</h1>
+
+[var m.a "ABc DeF GHIabC"]
+[var m.A "foo[alt]bar[alt]baz"]
+[var m.str "Error"]
+<pre>
+&#91;var m.a "ABc DeF GHIabC"&#93;
+&#91;var m.A "foo[alt]bar[alt]baz"&#93;
+&#91;var m.str "Error"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;var m.c regex "m%a(..)%" m.a&#93; &#91;join "-" &#91;values m.c&#93;&#93;</td>
+     <td>[var m.c regex "m%a(..)%" m.a][join "-" [values m.c]]</td>
+     <td>bC</td></tr>
+ <tr><td>&#91;var m.c regex "m%(.a.)%" &#91;values m.A&#93;&#93; &#91;join "-" &#91;values m.c&#93;&#93;</td>
+     <td>[var m.c regex "m%(.a.)%" [values m.A]] [join "-" [values m.c]]</td>
+     <td>bar-baz</td></tr>
+ <tr><td>&#91;var m.c regex "m/a(..)/ig" m.a&#93; &#91;join "-" &#91;values m.c&#93;&#93;</td>
+     <td>[var m.c regex "m/a(..)/ig" m.a] [join "-" [values m.c]]</td>
+     <td>Bc-bC</td></tr>
+ <tr><td>&#91;loop &#91;values regex._&#93; "(&#91;pass._&#93;)"&#93;</td>
+     <td>[    loop [values regex._] "([pass._])"]</td>
+     <td>(Bc)(bC)</td></tr>
+ <tr><td>&#91;regex._.1&#93;</td>
+     <td>[    regex._.1]</td>
+     <td>Bc</td></tr>
+ <tr><td>&#91;regex._.2&#93;</td>
+     <td>[    regex._.2]</td>
+     <td>bC</td></tr>
+ <tr><td>&#91;var m.c regex "m/a../ig" m.a&#93; &#91;join "-" &#91;values m.c&#93;&#93;</td>
+     <td>[var m.c regex "m/a../ig" m.a] [join "-" [values m.c]]</td>
+     <td>ABc-abC</td></tr>
+ <tr><td>&#91;regex "m/(a.+?h)/i" m.a&#93;</td>
+     <td>[regex "m/(a.+?h)/i" m.a]</td>
+     <td>ABc DeF GH</td></tr>
+ <tr><td>&#91;regex "m/(a)/ig" m.a&#93;</td>
+     <td>[regex "m/(a)/ig" m.a]</td>
+     <td>(Don't do this - unless setting, only match one var)</td></tr>
+ <tr><td>&#91;&#91;regex "m/a/" m.a&#93; ? "YES" : "NO"&#93;</td>
+     <td>[[regex "m/a/" m.a] ? "YES" : "NO"]</td>
+     <td>YES</td></tr>
+ <tr><td>&#91;&#91;regex m.a m/p/&#93; ? "YES" : "NO"&#93;</td>
+     <td>[[regex "m/p/" m.a] ? "YES" : "NO"]</td>
+     <td>NO</td></tr>
+ <tr><td>&#91;var m.c regex "s/a(..)/($1)/ig" m.a&#93;  &#91;join "-" &#91;values m.c&#93;&#93;</td>
+     <td>[var m.c regex "s/a(..)/($1)/ig" m.a] [join "-" [values m.c]]</td>
+     <td>(Bc) DeF GHI(bC)</td></tr>
+ <tr><td>&#91;var m.c regex "s/(.)a(.)/($1)a($2)/ig" &#91;values m.A&#93;&#93; &#91;join "-" &#91;values m.c&#93;&#93;</td>
+     <td>[var m.c regex "s/(.)a(.)/($1)a($2)/ig" [values m.A]] [join "-" [values m.c]]</td>
+     <td>foo-(b)a(r)-(b)a(z)</td></tr>
+ <tr><td>&#91;regex "s/a../MM/ig" m.a&#93;</td>
+     <td>[regex "s/a../MM/ig" m.a]</td>
+     <td>MM Def GHIMM</td></tr>
+ <tr><td>&#91;loop &#91;split "m/ +/" m.a&#93; '(&#91;pass._&#93;)'&#93;</td>
+     <td>[loop [split "m/ +/" m.a] '([pass._])']</td>
+     <td>(ABc)(DeF)(GHIabC)</td></tr>
+ <tr><td>&#91;loop &#91;split "m/ +/" m.a 2&#93; '(&#91;pass._&#93;)'&#93;</td>
+     <td>[loop [split "m/ +/" m.a 2] '([pass._])']</td>
+     <td>(ABc)(DeF GHIabC)</td></tr>
+ <tr><td>&#91;if &#91;regex "m/error/i" m.str&#93; 1 0&#93;</td>
+     <td>[if [regex "m/error/i" m.str] 1 0]</td>
+     <td>1</td></tr>
+ <tr><td>&#91;if ! &#91;regex "m/error/i" m.str&#93; 1 0&#93;</td>
+     <td>[if ! [regex "m/error/i" m.str] 1 0]</td>
+     <td>0</td></tr>
+ <tr><td colspan=3>
+        <br>
+        <div class=notes>
+          Note:  "!" is only evaluated in the context of conditionals  
+          (ie. &#91;! some.value&#93; will not evaluate, but &#91;if ! &#91;some.value&#93;&#93; will.)
+        </div>
+     </td></tr>
+</table>
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Sprintf</h1>
+[var p.a "1223.3434"]
+[var p.b "0.0054"]
+[var p.format "[p.s] Hi (%.3f)"]
+[var p.s "Hello"]
+<pre>
+&#91;var p.a "1223.3434"&#93;
+&#91;var p.b "0.0054"&#93;
+&#91;var p.format "&#91;p.s&#93; Hi (%.3f)"&#93;
+</pre>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;sprintf "%02d %02d" p.a p.b&#93;</td><td>[sprintf "%02d %02d" p.a p.b]</td><td>1223 00</td></tr>
+ <tr><td>&#91;sprintf "&#91;p.s&#93; %.2f %.2f" p.a p.b&#93;</td><td>[sprintf "[p.s] %.2f %.2f" p.a p.b]</td><td>Hello 1223.34 0.01</td></tr>
+ <tr><td>&#91;sprintf p.format p.a p.b&#93;</td><td>[sprintf p.format p.a p.b]</td><td>Hello Hi (1223.343)</td></tr>
+</table>
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>NoWrap</h1>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;nowrap Any amount &#91;of matched &#91;nested&#93; braces&#93; period &#93;</td>
+     <td>[nowrap Any amount [of matched [nested] braces] period ]</td>
+     <td>Any amount &#91;of matched &#91;nested&#93; braces&#93; period</td></tr>
+ <tr><td>&#91;nowrap var regex = /&#91;a-z&#93;/; &#93;</td>
+     <td>[nowrap var regex = /[a-z]/; ]</td>
+     <td>var regex = /&#91;a-z&#93;/;</td></tr>
+</table>
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>ISML</h1>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;isml.date;format='(%YDAY %YYYY %YY %Y) (%MONTH %MON %MM %M) (%DAY %DTH %DD %D) (%HH24 %HH12 %HH %H12) (%MI) (%SS) (%AM %PM) (%WEEKDAY %WDAY %WW %W)';timezone='US/Mountain'&#93;</td>
+     <td>[isml.date;format='(%YDAY %YYYY %YY %Y) (%MONTH %MON %MM %M) (%DAY %DTH %DD %D) (%HH24 %HH12 %HH %H12) (%MI) (%SS) (%AM %PM) (%WEEKDAY %WDAY %WW %W)';timezone='US/Mountain']</td>
+     <td>N/A</td></tr>
+ <tr><td>&#91;isml.file;src="/ISML_include/isml_test.htm"&#93;</td>
+     <td>[isml.file;src="/ISML_include/isml_test.htm"]</td>
+     <td>N/A</td></tr>
+ <tr><td colspan="3" class="notes">
+    Note:  All ISML types are available in wrap.
+  </td></tr>
+</table>
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1>Graph</h1>
+<table border=1>
+ <tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+ <tr><td>&#91;push graph.data 34&#93;<br>
+&#91;push graph.data 25&#93;<br>
+&#91;push graph.data 90&#93;<br>
+&#91;push graph.labels "Thirty-four"&#93;<br>
+&#91;push graph.labels "Twenty-five"&#93;<br>
+&#91;push graph.labels "Ninety"&#93;<br>
+&#91;var graph.title "Hello"&#93;<br>
+&#91;var graph.type "pie"&#93;<br>
+&#91;graph.draw&#93;
+</td>
+</td><td>[push graph.data 34]
+[push graph.data 25]
+[push graph.data 90]
+[push graph.labels "Thirty-four"]
+[push graph.labels "Twenty-five"]
+[push graph.labels "Ninety"]
+[var graph.title "Hello"]
+[var graph.type "pie"]
+[graph.draw]
+</td><td>N/A</td></tr>
+ <tr><td>&#91;var graph.labelRotate 45&#93;<br>
+&#91;var graph.labelHeight 40&#93;<br>
+&#91;var graph.type "bar"&#93;<br>
+&#91;graph.draw&#93;
+</td><td>[var graph.labelRotate 45]
+[var graph.labelHeight 40]
+[var graph.type "bar"]
+[graph.draw]
+</td><td>N/A</td></tr>
+<tr><td>&#91;delete graph&#93;</td><td>[delete graph]</td><td></td></tr>
+<tr><td>&#91;graph.text;text="How About That";bgcolor='blue';color='red';pt=20;trim_h=8&#93;</td>
+    <td>[    graph.text;text="How About That";bgcolor='blue';color='red';pt=20;trim_h=8]</td><td></td></tr>
+<tr><td>&#91;var a.t "Some Rotation"&#93;</td>
+    <td>[    var a.t "Some Rotation"]</td><td></td></tr>
+<tr><td>&#91;var graph.trim_h 5&#93;</td>
+    <td>[    var graph.trim_h 5]</td><td></td></tr>
+<tr><td>&#91;loop &#91;.. -90 90 10&#93; q{&#91;graph.text;text=a.t;rotate=pass._&#93;}&#93;</td>
+    <td>[loop [.. -90 90 10] q{[graph.text;text=a.t;rotate=pass._]}]</td><td></td></tr>
+<tr><td>&#91;var a.c "blue&#91;alt&#93;white"&#93;</td>
+    <td>[    var a.c "blue[alt]white"]</td><td></td></tr>
+<tr><td>&#91;var graph.rotate -80&#93;</td>
+    <td>[    var graph.rotate -80]</td><td></td></tr>
+<tr><td>&#91;var graph.width   40&#93;</td>
+    <td>[    var graph.width   40]</td><td></td></tr>
+<tr><td>&#91;var graph.height 145&#93;</td>
+    <td>[    var graph.height 145]</td><td></td></tr>
+<tr><td>&#91;loop 15 q{<br>  &#91;graph.text;text=anc.text;color=a.c;bgcolor=a.c&#93;<br>  &#91;if a.c&#93;<br>}]</td>
+    <td>[loop 15 q{[graph.text;text=anc.text;color=a.c;bgcolor=a.c][if a.c]}]</td><td></td></tr>
+<tr><td>&#91;var a.words q{This is a really long section of text that I want to encode as images}&#93;</td>
+    <td>[    var a.words q{This is a really long section of text that I want to encode as images}]</td>
+    <td></td></tr>
+ <tr><td>&#91;delete graph&#93;</td>
+     <td>[    delete graph]</td>
+     <td></td></tr>
+ <tr><td>&#91;var graph.no_alt 1&#93;</td>
+     <td>[    var graph.no_alt 1]</td>
+     <td></td></tr>
+ <tr><td>&#91;var graph.shift_y -4&#93;</td>
+     <td>[    var graph.shift_y -4]</td>
+     <td></td></tr>
+ <tr><td>&#91;loop text &#91;split "m/\b/" a.words&#93; graph.text&#93;</td>
+     <td>[    loop text [split "m/\b/" a.words] graph.text]</td>
+     <td></td></tr>
+
+</table>
+
+
+[var graph.rotate -90]
+[var graph.trim_h 5]
+[var graph.bgcolor prefs.table_heading_bgcolor]
+[var graph.color 'midnightblue']
+
+
+<hr>
+<a name="[anc.name]"></a>
+<h1></h1>
+<table border=1>
+<tr><th>Code</th><th>Produces</th><th>Should Look Like</th></tr>
+<tr><td>&#91;&#93;</td><td>[]</td><td></td></tr>
+<tr><td>&#91;&#93;</td>
+    <td>[    ]</td>
+    <td></td></tr>
+</table>
+
+
+This paragraph is simply a set of words containing [ symbol.
+This is a [test] to see if it will leave things like "!@!@$]#" alone.
+
