@@ -59,7 +59,7 @@ sub paths {
   return $self->{paths} ||= \@DEFAULT_PATHS;
 }
 
-sub get_ref {
+sub read_ref {
   my $self = shift;
   my $file  = shift;
   my $ext;
@@ -69,7 +69,7 @@ sub get_ref {
     return $file;
 
   ### if contains a newline - treat it as a YAML string
-  } elsif ($file =~ /\n/) {
+  } elsif (index($file,"\n") != -1) {
     return &yaml_load($file);
 
   ### otherwise base it off of the file extension
@@ -107,20 +107,34 @@ sub read {
   my $IMMUTABLE = shift || {}; # can pass existing immutable types
 
   $self = $self->new() if ! ref $self;
-  $namespace =~ s|::|/|g;      # allow perlish style namespace
 
-  my $direct = uc($self->{directive} || $DIRECTIVE);
+  ### allow for fast short ciruit on path lookup for several cases
+  my $directive;
+  my @paths = ();
+  if (ref($namespace)                 # already a ref
+      || index($namespace,"\n") != -1 # yaml string to read in
+      || $namespace =~ m|^\.{0,2}/.+$|  # absolute or relative file
+      ) {
+    push @paths, $namespace;
+    $directive = 'FIRST';
 
-  ### allow for fast short ciruit
-  my $paths  = $self->paths;
-  if ($direct eq 'LAST') {
-    $direct = 'FIRST';
-    $paths = [reverse @$paths] if ref $paths;
+  ### use the default directories
+  } else {
+    $directive = uc($self->{directive} || $DIRECTIVE);
+    $namespace =~ s|::|/|g;  # allow perlish style namespace
+    my $paths = $self->paths || die "No paths found during read on $namespace";
+    $paths = [$paths] if ! ref $paths;
+    if ($directive eq 'LAST') { # LAST shall be FIRST
+      $directive = 'FIRST';
+      $paths = [reverse @$paths] if $#$paths != 0;
+    }
+    @paths = map {"$_/$namespace"} @$paths;
   }
 
+
   ### now loop looking for a ref
-  foreach my $path (ref($paths) ? @$paths : $paths) {
-    my $ref = $self->get_ref("$path/$namespace") || next;
+  foreach my $path (@paths) {
+    my $ref = $self->read_ref($path) || next;
     if (! $REF) {
       if (UNIVERSAL::isa($ref, 'ARRAY')) {
         $REF = [];
@@ -134,7 +148,7 @@ sub read {
         . " - wanted a type ".ref($REF);
     }
     if (ref($REF) eq 'ARRAY') {
-      if ($direct eq 'MERGE') {
+      if ($directive eq 'MERGE') {
         push @$REF, @$ref;
         next;
       }
@@ -143,7 +157,7 @@ sub read {
     } else {
       my $immutable = delete $ref->{$IMMUTABLE_KEY};
       my ($key,$val);
-      if ($direct eq 'MERGE') {
+      if ($directive eq 'MERGE') {
         while (($key,$val) = each %$ref) {
           next if $IMMUTABLE->{$key};
           my $immute = $key =~ s/$IMMUTABLE_QR//o;
