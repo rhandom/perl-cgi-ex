@@ -158,13 +158,13 @@ sub set_cookie {
     $args->{"-$_"} = delete $args->{$_};
   }
 
-  ### default path and allow for 1hour instead of 1h
+  ### default path to / and allow for 1hour instead of 1h
   ### (if your gonna make expires useful - make it useful)
   $args->{-path} ||= '/';
-  if ($args->{-expires}) {
-    $args->{-expires} =~ s/(?<=\d[a-z])[a-z]+$//;
-    $args->{-expires} =~ s/(?<=\d) (?=[a=z])//;
-    $args->{-expires} =~ s/^(?=\d)/+/;
+  if ($args->{-expires} && $args->{-expires} =~ /[a-z]/) {
+    $args->{-expires} =~ s/(?<=\d[a-z])[a-z]+$//; # trim hour to h
+    $args->{-expires} =~ s/(?<=\d) +(?=[a=z])//; # optional space
+    $args->{-expires} =~ s/^(?=\d)/+/; # required leading +
   }
 
   my $cookie = "" . $self->object->cookie(%$args);
