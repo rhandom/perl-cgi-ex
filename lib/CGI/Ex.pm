@@ -23,7 +23,8 @@ use Data::DumpEx;
 $VERSION               = '1.0';
 $PREFERRED_FILL_MODULE = '';
 $PREFERRED_CGI_MODULE  = 'CGI';
-%EXPORT = %EXPORT_OK = qw(get_form get_cookies);
+%EXPORT = ();
+%EXPORT_OK = qw(get_form get_cookies);
 
 ###----------------------------------------------------------------###
 
@@ -82,7 +83,6 @@ sub get_cookies {
   my %hash = ();
   foreach my $key ($obj->cookie()) {
     my @val = $obj->cookie($key);
-    dex \@val;
     $hash{$key} = ($#val == -1) ? die : ($#val == 0) ? $val[0] : \@val;
   }
   return \%hash;
