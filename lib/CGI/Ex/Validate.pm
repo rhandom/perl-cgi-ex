@@ -236,7 +236,11 @@ sub check_conditional {
         $found = 1; # reset
         next;
       } else {
-        $ref = {field => $ref, required => 1};
+        if ($ref =~ s/^\s*!//) {
+          $ref = {field => $ref, max_in_set => "0 of $ref"};
+        } else {
+          $ref = {field => $ref, required => 1};
+        }
       }
     }
     last if ! $found;
@@ -1060,7 +1064,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.58 2004-04-09 20:47:11 pauls Exp $
+$Id: Validate.pm,v 1.59 2004-04-09 21:04:18 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1372,6 +1376,10 @@ if the conditions are met.  Works in JS.
   # SAME as
   validate_if => {field => 'name', required => 1},
 
+  validate_if => '! name',
+  # SAME as
+  validate_if => {field => 'name', max_in_set => '0 of name'},
+
   validate_if => {field => 'country', compare => "eq US"},
   # only if country's value is equal to US
 
@@ -1427,6 +1435,23 @@ no other checks will be run.
 Allows for specifying the maximum number of form elements passed.
 max_values defaults to 1 (You must explicitly set it higher
 to allow more than one item by any given name).
+
+=item C<min_in_set> and C<max_in_set>
+
+Somewhat like min_values and max_values except that you specify the
+fields that participate in the count.  Also - entries that are not
+defined or do not have length are not counted.  An optional "of" can
+be placed after the number for human readibility.
+
+  min_in_set => "2 of foo bar baz",
+    # two of the fields foo, bar or baz must be set
+    # same as
+  min_in_set => "2 foo bar baz",
+    # same as 
+  min_in_set => "2 OF foo bar baz",
+
+  validate_if => {field => 'whatever', max_in_set => '0 of whatever'},
+    # only run validation if there were zero occurances of whatever
 
 =item C<enum>
 
