@@ -1,6 +1,9 @@
-Revision history for CGI::Ex
+2003-11-26  Paul Seamons  <cgi_ex@seamons.com>
 
-0.0  Nov 01 12:00 2003
-        - Initial release with basic functionality
+	* Version 0.94 is done
+	* Javascript functionality is in.
 
+2003-11-01  Paul Seamons  <cgi_ex@seamons.com>
 
+	* Version 0.0 checked in
+	
