@@ -357,6 +357,47 @@ sub unmorph {
 }
 
 ###----------------------------------------------------------------###
+### allow for cleanup including deep nested objects
+
+sub cleanup {
+  my $self = shift;
+  ref($self)->cleanup_cross_references($self);
+}
+
+sub cleanup_cross_references {
+  my $class = shift;
+  my $self  = shift;
+  my $seen  = shift || {};
+  if (UNIVERSAL::isa($self, 'HASH')) {
+    require Scalar::Util; # first self will always be hash
+    foreach my $key (keys %$self) {
+      next if $seen->{ $self->{$key} }; # prevent recursive checking
+      $seen->{ $self->{$key} } = 1;
+      $class->cleanup_cross_references($self->{$key}, $seen);
+      # weaken and remove blessed objects
+      # this will clober objects in global caches that are referenced in the structure
+      # so beware (that means weaken your cached references)
+      if (Scalar::Util::blessed($self->{$key})
+          && ! Scalar::Util::isweak($self->{$key})) {
+        Scalar::Util::weaken($self->{$key});
+        delete $self->{$key};
+      }
+    }
+  } elsif (UNIVERSAL::isa($self, 'ARRAY')) {
+    for my $key (0 .. $#$self) {
+      next if $seen->{ $self->[$key] };
+      $seen->{ $self->[$key] } = 1;
+      $class->cleanup_cross_references($self->[$key], $seen);
+      if (Scalar::Util::blessed($self->[$key])
+          && ! Scalar::Util::isweak($self->[$key])) {
+        Scalar::Util::weaken($self->[$key]);
+        $self->[$key] = undef;
+      }
+    }
+  }
+}
+
+###----------------------------------------------------------------###
 ### a few standard base accessors
 
 sub form {
@@ -1125,6 +1166,19 @@ be used to access a new property.  Calling the new accessor with an
 argument will set the property.  Using the accessor in an assignment
 will also set the property (it is an lvalue).  Calling the accessor in
 any other way will return the value.
+
+=item Method C<-E<gt>cleanup>
+
+Can be used at the end of execution to tear down the structure.
+Default method starts a cleanup_cross_references call.
+
+=item Method C<-E<gt>cleanup_cross_references>
+
+Used to destroy links in nested structures.  Will spider through the
+data structure of the passed object and remove any blessed objects
+that are no weakly referenced.  This means if you have a reference to
+an object in a global cache, that object should have its reference
+weakened in the global cache.  Requires Scalar::Util to function.
 
 =back
 
