@@ -21,7 +21,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '1.11';
+$VERSION = '1.12';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 $DEFAULT_EXT   = 'val';
@@ -34,7 +34,7 @@ use CGI::Ex::Conf ();
 
 sub new {
   my $class = shift || __PACKAGE__;
-  my $self  = (@_ && ref($_[0])) ? shift : {@_}; 
+  my $self  = (@_ && ref($_[0])) ? shift : {@_};
 
   ### allow for global defaults
   foreach (keys %DEFAULT_OPTIONS) {
@@ -132,7 +132,7 @@ sub validate {
     ### add any remaining fields from the order
     foreach my $field (@order) {
       next if $found{$field};
-      next if $field =~ /^(group|general)\s/; 
+      next if $field =~ /^(group|general)\s/;
       my $field_val = $group_val->{$field};
       die "Found a nonhashref value on field $field" if ! UNIVERSAL::isa($field_val, 'HASH');
       $field_val = { %$field_val, 'field' => $field } if ! $field_val->{'field'}; # copy the values
@@ -374,7 +374,7 @@ sub validate_buddy {
   if (! $needs_val && $n_vif) {
     return wantarray ? @errors : scalar @errors;
   }
-  
+
   ### check for simple existence
   ### optionally check only if another condition is met
   my $is_required = '';
@@ -449,7 +449,7 @@ sub validate_buddy {
 
   ### loop on values of field
   foreach my $value (@$values) {
-    
+
     ### allow for enum types
     foreach my $type ($self->filter_type('enum',$types)) {
       my $ref = ref($field_val->{$type}) ? $field_val->{$type} : [split(/\s*\|\|\s*/,$field_val->{$type})];
@@ -462,7 +462,7 @@ sub validate_buddy {
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
     }
-  
+
     ### field equality test
     foreach my $type ($self->filter_type('equals',$types)) {
       my $field2  = $field_val->{$type};
@@ -480,7 +480,7 @@ sub validate_buddy {
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
     }
-  
+
     ### length min check
     foreach my $type ($self->filter_type('min_len',$types)) {
       my $n = $field_val->{$type};
@@ -489,7 +489,7 @@ sub validate_buddy {
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
     }
-  
+
     ### length max check
     foreach my $type ($self->filter_type('max_len',$types)) {
       my $n = $field_val->{$type};
@@ -498,7 +498,7 @@ sub validate_buddy {
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
     }
-  
+
     ### now do match types
     foreach my $type ($self->filter_type('match',$types)) {
       my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
@@ -525,7 +525,7 @@ sub validate_buddy {
         }
       }
     }
-  
+
     ### allow for comparison checks
     foreach my $type ($self->filter_type('compare',$types)) {
       my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
@@ -542,7 +542,7 @@ sub validate_buddy {
           elsif ($1 eq '<=') { $test = ($val <= $2) }
           elsif ($1 eq '!=') { $test = ($val != $2) }
           elsif ($1 eq '==') { $test = ($val == $2) }
-          
+
         } elsif ($comp =~ /^\s*(eq|ne|gt|ge|lt|le)\s+(.+?)\s*$/) {
           my $val = defined($value) ? $value : '';
           my ($op, $value2) = ($1, $2);
@@ -553,7 +553,7 @@ sub validate_buddy {
           elsif ($op eq 'le') { $test = ($val le $value2) }
           elsif ($op eq 'ne') { $test = ($val ne $value2) }
           elsif ($op eq 'eq') { $test = ($val eq $value2) }
-          
+
         } else {
           die "Not sure how to compare \"$comp\"";
         }
@@ -563,7 +563,7 @@ sub validate_buddy {
         }
       }
     }
-  
+
     ### server side sql type
     foreach my $type ($self->filter_type('sql',$types)) {
       my $db_type = $field_val->{"${type}_db_type"};
@@ -583,7 +583,7 @@ sub validate_buddy {
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
     }
-  
+
     ### server side custom type
     foreach my $type ($self->filter_type('custom',$types)) {
       my $check = $field_val->{$type};
@@ -591,16 +591,16 @@ sub validate_buddy {
       return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
-  
+
     ### do specific type checks
     foreach my $type ($self->filter_type('type',$types)) {
       if (! $self->check_type($value,$field_val->{'type'},$field,$form)){
         return 1 if ! wantarray;
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
-    }            
+    }
   }
-  
+
   ### all done - time to return
   return wantarray ? @errors : scalar @errors;
 }
@@ -671,7 +671,7 @@ sub check_type {
     } else {              # any other domains
       return 0 if $value !~ /^([a-z0-9][a-z0-9\-]{0,62} \.)* [a-z0-9][a-z0-9\-]{0,62}$/x;
     }
-    
+
   ### validate a url
   } elsif ($type eq 'URL') {
     return 0 if ! $value;
@@ -679,7 +679,7 @@ sub check_type {
     my $dom = $1;
     return 0 if ! $self->check_type($dom,'DOMAIN') && ! $self->check_type($dom,'IP');
     return 0 if $value && ! $self->check_type($value,'URI');
-    
+
   ### validate a uri - the path portion of a request
   } elsif ($type eq 'URI') {
     return 0 if ! $value;
@@ -704,7 +704,6 @@ sub check_type {
     }
     return 0 if $sum % 10;
 
-    
   }
 
   return 1;
@@ -759,7 +758,7 @@ sub get_validation_keys {
       foreach my $key (@{ $group_val->{"group order"} }) {
         my $field_val = $group_val->{$key};
         next if ! $field_val && $key eq 'OR';
-        die "Field_val for $key must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');        
+        die "Field_val for $key must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');
         $key = $field_val->{'field'} if $field_val->{'field'};
         $keys{$key} = 1;
       }
@@ -905,7 +904,7 @@ sub as_array {
       push @array, "$prefix$text";
     }
   }
-    
+
   return \@array;
 }
 
@@ -944,7 +943,7 @@ sub as_hash {
     push @{ $return{$field} }, $text;
   }
 
-  ### allow for elements returned as 
+  ### allow for elements returned as
   if ($join) {
     my $header = defined($extra2->{as_hash_header}) ? $extra2->{as_hash_header}
       : defined($extra->{as_hash_header}) ? $extra->{as_hash_header} : "";
@@ -981,7 +980,7 @@ sub get_error_text {
   ### allow for fallback from required100023_error through required_error
   my @possible_error_keys = ("${type}_error");
   unshift @possible_error_keys, "${type}${dig}_error" if length($dig);
-  
+
   ### look in the passed hash or self first
   my $return;
   foreach my $key (@possible_error_keys){
@@ -999,26 +998,26 @@ sub get_error_text {
   if (! $return) {
     if ($type eq 'required' || $type eq 'required_if') {
       $return = "$name is required.";
-  
+
     } elsif ($type eq 'min_values') {
       my $n = $field_val->{"min_values${dig}"};
       my $values = ($n == 1) ? 'value' : 'values';
       $return = "$name had less than $n $values.";
-  
+
     } elsif ($type eq 'max_values') {
       my $n = $field_val->{"max_values${dig}"};
       my $values = ($n == 1) ? 'value' : 'values';
       $return = "$name had more than $n $values.";
-      
+
     } elsif ($type eq 'enum') {
       $return = "$name is not in the given list.";
-  
+
     } elsif ($type eq 'equals') {
       my $field2 = $field_val->{"equals${dig}"};
       my $name2  = $field_val->{"equals${dig}_name"} || "the field $field2";
       $name2 =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
       $return = "$name did not equal $name2.";
-  
+
     } elsif ($type eq 'min_len') {
       my $n = $field_val->{"min_len${dig}"};
       my $char = ($n == 1) ? 'character' : 'characters';
@@ -1042,13 +1041,13 @@ sub get_error_text {
 
     } elsif ($type eq 'compare') {
       $return = "$name did not fit comparison.";
-  
+
     } elsif ($type eq 'sql') {
       $return = "$name did not match sql test.";
-      
+
     } elsif ($type eq 'custom') {
       $return = "$name did not match custom test.";
-      
+
     } elsif ($type eq 'type') {
       my $_type = $field_val->{"type${dig}"};
       $return = "$name did not match type $_type.";
@@ -1074,7 +1073,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.69 2004-11-08 16:54:28 pauls Exp $
+$Id: Validate.pm,v 1.70 2004-11-10 20:50:39 pauls Exp $
 
 =head1 SYNOPSIS
 
