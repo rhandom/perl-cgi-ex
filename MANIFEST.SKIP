@@ -1,0 +1,6 @@
+CVS/
+^tgz/
+\.~$
+\.#
+\.bak$
+Makefile$
