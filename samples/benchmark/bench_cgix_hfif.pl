@@ -2,14 +2,13 @@
 
 # [pauls@localhost lib]$ perl ../t/samples/bench_cgix_hfif.pl
 # Benchmark: timing 1000 iterations of cgix_func, cgix_meth, hfif...
-#  cgix_func:  1 wallclock secs ( 1.05 usr +  0.00 sys =  1.05 CPU) @ 952.38/s (n=1000)
-#  cgix_meth:  2 wallclock secs ( 1.09 usr +  0.01 sys =  1.10 CPU) @ 909.09/s (n=1000)
-#  hfif:  8 wallclock secs ( 7.96 usr +  0.02 sys =  7.98 CPU) @ 125.31/s (n=1000)
+#  cgix_func:  1 wallclock secs ( 1.41 usr +  0.01 sys =  1.42 CPU) @ 704.23/s (n=1000)
+#  cgix_meth:  2 wallclock secs ( 1.47 usr +  0.00 sys =  1.47 CPU) @ 680.27/s (n=1000)
+#  hfif:  8 wallclock secs ( 8.34 usr +  0.04 sys =  8.38 CPU) @ 119.33/s (n=1000)
 #            Rate      hfif cgix_meth cgix_func
-# hfif      125/s        --      -86%      -87%
-# cgix_meth 909/s      625%        --       -5%
-# cgix_func 952/s      660%        5%        --
-# [pauls@localhost lib]$
+# hfif      119/s        --      -82%      -83%
+# cgix_meth 680/s      470%        --       -3%
+# cgix_func 704/s      490%        4%        --
 
 use strict;
 
