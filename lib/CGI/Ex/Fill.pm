@@ -27,9 +27,9 @@ $REMOVE_SCRIPT   = 1;
 ### arguments are positional
 ### pos1 - text or textref - if textref it is modified in place
 ### pos2 - hash or cgi obj ref, or array ref of hash and cgi obj refs
-### pos3 - target - to be used for specifying a specific form - default undef
-### pos4 - don't fill in password fields
-### pos5 - hashref of fields to ignore
+### pos3 - target - to be used for choosing a specific form - default undef
+### pos4 - boolean fill in password fields - default is true
+### pos5 - hashref or arrayref of fields to ignore
 sub form_fill {
   my $text          = shift;
   my $ref           = ref($text) ? $text : \$text;
