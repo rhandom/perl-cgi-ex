@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.15 $ )[1];
+$VERSION = (qw$Revision: 1.16 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -392,12 +392,11 @@ sub validate_buddy {
     my $success = 0;
     if ($field2 =~ m/^([\"\'])(.*)\1$/) {
       my $test = $2;
-      $test = '' if $test eq '|'; # copy behavior from FORMS
-      if (exists($form->{$field}) || ! defined($form->{$field})) {
+      if (exists($form->{$field}) && defined($form->{$field})) {
         $success = ($form->{$field} eq $test);
       }
-    } elsif (exists($form->{$field2}) && defined($field2)) {
-      if (exists($form->{$field}) || ! defined($form->{$field})) {
+    } elsif (exists($form->{$field2}) && defined($form->{$field2})) {
+      if (exists($form->{$field}) && defined($form->{$field})) {
         $success = ($form->{$field} eq $form->{$field2});
       }
     } elsif (! exists($form->{$field}) || ! defined($form->{$field})) {
@@ -828,7 +827,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.15 2003-11-12 22:03:48 pauls Exp $
+$Id: Validate.pm,v 1.16 2003-11-12 22:43:07 pauls Exp $
 
 =head1 SYNOPSIS
 
