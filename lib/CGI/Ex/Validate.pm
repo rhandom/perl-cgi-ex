@@ -15,7 +15,7 @@ use vars qw($VERSION
             @DEFAULT_EXT %EXT_HANDLERS
             %DEFAULT_OPTIONS);
 
-$VERSION = '0.92';
+$VERSION = '0.93';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -48,8 +48,8 @@ sub validate {
   my $self = (! ref($_[0])) ? shift->new                    # $class->validate
               : UNIVERSAL::isa($_[0], __PACKAGE__) ? shift  # $self->validate
               : __PACKAGE__->new;                           # &validate
-  my $form = shift || die "Missing form hash";
-  my $val  = shift || die "Missing validation hash";
+  my $form     = shift || die "Missing form hash";
+  my $val_hash = shift || die "Missing validation hash";
 
   ### turn the form into a form if it is really a CGI object
   if (! ref($form)) {
@@ -59,18 +59,16 @@ sub validate {
     $form = CGI::Ex->new->get_form($form);
   }
 
+  ### get the validation - let get_validation deal with types
   ### if a ref is not passed - assume it is a filename
-  if (! ref $val) {
-    $val = $self->get_validation($val);
-    die "Trouble getting validation" if ! ref $val;
-  }
-
+  $val_hash = $self->get_validation($val_hash);
 
   ### allow for validation passed as single group hash, single group array,
   ### or array of group hashes or group arrays
   my @ERRORS = ();
   my %EXTRA  = ();
-  my $group_order = (UNIVERSAL::isa($val,'HASH')) ? [$val] : $val;
+  my @USED_GROUPS = ();
+  my $group_order = (UNIVERSAL::isa($val_hash,'HASH')) ? [$val_hash] : $val_hash;
   foreach my $group_val (@$group_order) {
     die "Validation groups must be a hashref" if ! UNIVERSAL::isa($group_val,'HASH');
     my $title       = $group_val->{'group title'};
@@ -78,10 +76,11 @@ sub validate {
 
     ### only validate this group if it is supposed to be checked
     next if $validate_if && ! $self->check_conditional($form, $validate_if);
+    push @USED_GROUPS, $group_val;
 
     ### if the validation items were not passed as an arrayref
     ### look for a group order and then fail back to the keys of the group
-    my @order  = sort grep {! /^(group|general)\s/} keys %$group_val;
+    my @order  = sort keys %$group_val;
     my $fields = $group_val->{'group fields'};
     if ($fields) {
       die "'group fields' must be an arrayref" if ! UNIVERSAL::isa($fields,'ARRAY');
@@ -90,6 +89,7 @@ sub validate {
       if (my $order = $group_val->{'group order'} || \@order) {
         die "Validation 'group order' must be an arrayref" if ! UNIVERSAL::isa($order,'ARRAY');
         foreach my $field (@$order) {
+          next if $field =~ /^(group|general)\s/; 
           my $field_val = exists($group_val->{$field}) ? $group_val->{$field}
             : ($field eq 'OR') ? 'OR' : die "No element found in group for $field";
           if (ref $field_val && ! $field_val->{'field'}) {
@@ -112,6 +112,7 @@ sub validate {
     ### add any remaining fields from the order
     foreach my $field (@order) {
       next if $found{$field};
+      next if $field =~ /^(group|general)\s/; 
       my $field_val = $group_val->{$field};
       die "Found a nonhashref value on field $field" if ! UNIVERSAL::isa($field_val, 'HASH');
       $field_val = { %$field_val, 'field' => $field } if ! $field_val->{'field'}; # copy the values
@@ -152,15 +153,13 @@ sub validate {
       push @ERRORS, @errors;
     }
 
-    ### if errors occurred - or no fields were tested - add on general items
-    if ($#errors != -1 || $#$fields == -1) {
-      ### store general extra items
-      foreach my $key (keys %$group_val) {
-        next if $key !~ /^general\s+(\w+)$/;
-        $EXTRA{$1} = $group_val->{$key};
-      }
+    ### add on general options, and group options if errors in group occurred
+    foreach my $field (@order) {
+      next if $field !~ /^(general|group)\s+(\w+)$/;
+      my $key = $2;
+      next if $1 eq 'group' && ($#errors == -1 || $key =~ /^(field|order|title)$/);
+      $EXTRA{$key} = $group_val->{$field};
     }
-
   }
 
   ### store any extra items from self
@@ -168,6 +167,17 @@ sub validate {
     next if $key !~ /_error$/
       && $key !~ /^(raise_error|as_hash_\w+|as_array_\w+|as_string_\w+)$/;
     $EXTRA{$key} = $self->{$key};
+  }
+
+  ### allow for checking for unused keys
+  if ($EXTRA{no_extra_fields}) {
+    my $which = ($EXTRA{no_extra_fields} =~ /used/i) ? 'used' : 'all';
+    my $ref   = ($which eq 'all') ? $val_hash : \@USED_GROUPS;
+    my $keys  = $self->get_validation_keys($ref);
+    foreach my $key (sort keys %$form) {
+      next if $keys->{$key};
+      $self->add_error(\@ERRORS, $key, 'no_extra_fields', {}, undef);
+    }
   }
 
   ### return what they want
@@ -598,29 +608,74 @@ sub check_type {
 
 sub get_validation {
   my $self = shift;
-  my $file = shift;
+  my $val  = shift;
   my $ext;
 
-  ### if contains a newline - treat it as a YAML file
-  if ($file =~ /\n/) {
-    return &yaml_load($file);
+  ### they passed the right stuff already
+  if (ref $val) {
+    return $val;
+
+  ### if contains a newline - treat it as a YAML string
+  } elsif ($val =~ /\n/) {
+    return &yaml_load($val);
 
   ### otherwise base it off of the file extension
-  } elsif ($file =~ /\.(\w+)$/) {
+  } elsif ($val =~ /\.(\w+)$/) {
     $ext = $1;
   } else {
     foreach my $_ext (@DEFAULT_EXT) {
-      next if ! -e "$file.$_ext";
-      $ext  = $_ext;
-      $file = "$file.$_ext";
+      next if ! -e "$val.$_ext";
+      $ext = $_ext;
+      $val = "$val.$_ext";
     }
   }
 
   ### now get the file
-  die "Missing validation file for $file (no extension found)" if ! $ext;
+  die "Missing validation file for $val (no extension found)" if ! $ext;
   my $handler = $EXT_HANDLERS{$ext} || die "Unknown file extension: $ext";
 
-  return &$handler($file);
+  return &$handler($val);
+}
+
+### returns all keys from all groups - even if group has validate_if
+sub get_validation_keys {
+  my $self = shift;
+  my $refs = $self->get_validation(@_);
+  $refs = [$refs] if ! UNIVERSAL::isa($refs,'ARRAY');
+  my %keys = ();
+  foreach my $ref (@$refs) {
+    die "Group found that was not a hashref" if ! UNIVERSAL::isa($ref, 'HASH');
+
+    ### could optionally allow a pass in form
+    ### that we could run against the validate_if
+
+    if ($ref->{"group fields"}) {
+      die "Group fields must be an arrayref" if ! UNIVERSAL::isa($ref->{"group fields"}, 'ARRAY');
+      foreach my $field_val (@{ $ref->{"group fields"} }) {
+        next if ! ref($field_val) && $field_val eq 'OR';
+        die "Field_val must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');
+        my $key = $field_val->{'field'} || die "Missing field key in field_val hashref";
+        $keys{$key} = 1;
+      }
+    } elsif ($ref->{"group order"}) {
+      die "Group order must be an arrayref" if ! UNIVERSAL::isa($ref->{"group order"}, 'ARRAY');
+      foreach my $key (@{ $ref->{"group order"} }) {
+        my $field_val = $ref->{$key};
+        next if ! $field_val && $key eq 'OR';
+        die "Field_val for $key must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');        
+        $key = $field_val->{'field'} if $field_val->{'field'};
+        $keys{$key} = 1;
+      }
+    }
+
+    ### get all others
+    foreach my $key (keys %$ref) {
+      next if $key =~ /^(general|group)\s/;
+      $keys{$key} = 1;
+    }
+  }
+
+  return \%keys;
 }
 
 sub conf_handler_yaml {
@@ -872,6 +927,8 @@ sub get_error_text {
       my $_type = $field_val->{"type${dig}"};
       $return = "$name did not match type $_type.";
 
+    } elsif ($type eq 'no_extra_fields') {
+      $return = "$name should not be passed to validate.";
     }
   }
 
@@ -891,7 +948,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.30 2003-11-14 18:42:05 pauls Exp $
+$Id: Validate.pm,v 1.31 2003-11-14 21:40:20 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -970,6 +1027,10 @@ $Id: Validate.pm,v 1.30 2003-11-14 18:42:05 pauls Exp $
     # form passed validation
   }
 
+  ### will add an error for any form key not found in $val_hash
+  my $vob = CGI::Ex::Validate->new({no_extra_keys => 1});
+  my $errobj = $vob->validate($form, $val_hash);  
+
 =head1 DESCRIPTION
 
 CGI::Ex::Validate is yet another module used for validating input.  It
@@ -992,9 +1053,18 @@ or nothing at all.  Keys of the hash become the keys of the object.
 
 =item C<get_validation>
 
-Given a filename or YAML string will return perl hash.
+Given a filename or YAML string will return perl hash.  If more than one
+group is contained in the file, it will return an arrayref of hashrefs.
 
-  my $hash = $self->get_validation($file);
+  my $ref = $self->get_validation($file);
+
+=item C<get_validation_keys>
+
+Given a filename or YAML string or a validation hashref, will return all
+of the possible keys found in the validation hash.  This can be used to
+check to see if extra items have been passed to validate.
+
+  my $key_hashref = $self->get_validation_keys($val_hash);
 
 =item C<validate>
 
@@ -1496,11 +1566,20 @@ for in the Validate object ($self) and can be set when instantiating
 the object ($self->{raise_error} is equivalent to
 $valhash->{'general raise_error'}).  The current know options are:
 
-General options may be set in any group.  If a group fails validation
-or does not have a validate_if block, the group options will be used.
+General options may be set in any group using the syntax:
+
+  'general general_option_name' => 'general_option_value'
+
+They will only be set if the group's validate_if is successful or
+if the group does not have a validate_if.  It is also possible to set
+a "group general" option using the following syntax:
+
+  'group general_option_name' => 'general_option_value'
+
+These items will only be set if the group fails validation.
 If a group has a validate_if block and passes validation, the group
 items will not be used.  This is so that a failed section can have
-its own settings.  Note though that the first option found will be
+its own settings.  Note though that the last option found will be
 used and that items set in $self override those set in the validation
 hash.
 
@@ -1513,6 +1592,17 @@ populating the %DEFAULT_OPTIONS global hash.
 
 If raise_error is true, any call to validate that fails validation
 will die with an error object as the value.
+
+=item C<'general no_extra_fields'>
+
+If no_extra_fields is true, validate will add errors for any field found
+in form that does not have a field_val hashref in the validation hash.
+Default is false.  If no_extra_fields is set to 'used', it will check for
+any keys that were not in a group that was validated.
+
+An important exception to this is that field_val hashrefs or field names listed
+in a validate_if or required_if statement will not be included.  You must
+have an explicit entry for each key.
 
 =item C<'general \w+_error'>
 
