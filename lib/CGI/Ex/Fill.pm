@@ -4,7 +4,10 @@ use strict;
 use vars qw($VERSION
             @ISA @EXPORT @EXPORT_OK
             $REMOVE_SCRIPT
-            $REMOVE_COMMENTS
+            $REMOVE_COMMENT
+            $MARKER_SCRIPT
+            $MARKER_COMMENT
+            $OBJECT_METHOD
             );
 use Exporter;
 
@@ -18,8 +21,11 @@ $VERSION   = '1.0';
 ### a form.  Default is on.  This may give some trouble if you
 ### have a javascript section with form elements that you would
 ### like filled in.
-$REMOVE_COMMENTS = 1;
-$REMOVE_SCRIPT   = 1;
+$REMOVE_SCRIPT  = 1;
+$REMOVE_COMMENT = 1;
+$MARKER_SCRIPT  = "\0SCRIPT\0";
+$MARKER_COMMENT = "\0COMMENT\0";
+$OBJECT_METHOD  = "param";
 
 ###----------------------------------------------------------------###
 
@@ -46,10 +52,10 @@ sub form_fill {
   my @comment;
   my @script;
   if ($REMOVE_SCRIPT) {
-    $$ref =~ s|(<script\b.+?</script>)|push(@script, $1);"\0SCRIPT\0"|egi;
+    $$ref =~ s|(<script\b.+?</script>)|push(@script, $1);$MARKER_SCRIPT|egi;
   }
-  if ($REMOVE_COMMENTS) {
-    $$ref =~ s/(<!--.*?-->)/push(@comment, $1);"\0COMMENT\0"/eg;
+  if ($REMOVE_COMMENT) {
+    $$ref =~ s|(<!--.*?-->)|push(@comment, $1);$MARKER_COMMENT|eg;
   }
 
   ### if there is a target - focus in on it
@@ -62,16 +68,17 @@ sub form_fill {
                 .+?              # as much as there is
                 </form>)         # then end
               }{
-                local $REMOVE_SCRIPT   = undef;
-                local $REMOVE_COMMENTS = undef;
+                local $REMOVE_SCRIPT  = undef;
+                local $REMOVE_COMMENT = undef;
                 &form_fill($1, $form, undef, $fill_password, $ignore);
               }sigex;
 
     ### put scripts and comments back and return
-    $$ref =~ s/\0SCRIPT\0/ shift(@script) /eg if $#script  != -1;
-    $$ref =~ s/\0COMMENT\0/shift(@comment)/eg if $#comment != -1;
+    $$ref =~ s/$MARKER_COMMENT/shift(@comment)/eg if $#comment != -1;
+    $$ref =~ s/$MARKER_SCRIPT/ shift(@script) /eg if $#script  != -1;
     return ref($text) ? 1 : $$ref;
   }
+
 
   ### build a sub to get a value
   my %indexes = (); # store indexes for multivalued elements
@@ -88,8 +95,8 @@ sub form_fill {
       if (UNIVERSAL::isa($form, 'HASH') && defined $form->{$key}) {
         $val = $form->{$key};
         last;
-      } elsif (UNIVERSAL::can($form, 'param')) {
-        $val = $form->param($key);
+      } elsif (UNIVERSAL::can($form, $OBJECT_METHOD)) {
+        $val = $form->$OBJECT_METHOD($key);
         last if defined $val;
       } elsif (UNIVERSAL::isa($form, 'CODE')) {
         $val = &{ $form }($key);
@@ -110,7 +117,7 @@ sub form_fill {
       # die "Value for $key is not an array or a scalar";
       $val = "$val";  # stringify anything else
     }
-    
+
     ### html escape them all
     &html_escape(\$_) foreach (ref($val) ? @$val : $val);
 
@@ -128,7 +135,9 @@ sub form_fill {
     }
   };
 
+
   ###--------------------------------------------------------------###
+
   
   ### First pass
   ### swap <input > form elements if they have a name
@@ -174,6 +183,7 @@ sub form_fill {
       $tag; # return of swap
     }sigex;
 
+
   ### Second pass
   ### swap select boxes
   $$ref =~ s{
@@ -207,8 +217,9 @@ sub form_fill {
       "$tag$opts$close"; # return of swap
     }sigex;
 
+
   ### Third pass
-  ### swap text areas
+  ### swap textareas
   $$ref =~ s{
     (<textarea\s[^>]+>)  # opening tag - doesn't allow for > embedded in tag
       (.*?)              # the options
@@ -222,8 +233,8 @@ sub form_fill {
 
 
   ### put scripts and comments back and return
-  $$ref =~ s/\0SCRIPT\0/ shift(@script) /eg if $#script  != -1;
-  $$ref =~ s/\0COMMENT\0/shift(@comment)/eg if $#comment != -1;
+  $$ref =~ s/$MARKER_COMMENT/shift(@comment)/eg if $#comment != -1;
+  $$ref =~ s/$MARKER_SCRIPT/ shift(@script) /eg if $#script  != -1;
   return ref($text) ? 1 : $$ref;
 }
 
@@ -358,16 +369,17 @@ The problem is that HTML::Parser has to fire events for
 every tag it finds.  I would be interested to test a Recursive Descent
 form filler against these two.
 
-=head1 HTML COMMENTS / JAVASCRIPT
+=head1 HTML COMMENT / JAVASCRIPT
 
 Because there are too many problems that could occur with html comments
 and javascript, form_fill temporarily removes them during the fill.  You
-may disable this behavior by setting $REMOVE_COMMENTS and $REMOVE_SCRIPT
+may disable this behavior by setting $REMOVE_COMMENT and $REMOVE_SCRIPT
 to 0 before calling form_fill.  The main reason for doing this would be if
 you wanted to have form elments inside the javascript and comments get filled.
 Disabling the removal only results in a speed increase of 5%. The function
 uses \0COMMENT\0 and \0SCRIPT\0 as placeholders so i'd avoid these in your
-text.
+text (Actually they may be reset to whatever you'd like via $MARKER_COMMENT
+and $MARKER_SCRIPT).
 
 =head1 BUGS / LIMITATIONS
 
