@@ -168,7 +168,9 @@ sub form_fill {
           my $value = &$get_form_value($name, 'next');
           if (defined $value) {
             &swap_tagval_by_key(\$tag, 'value', $value);
-          }          
+          } elsif (! defined &get_tagval_by_key(\$tag, 'value')) {
+            &swap_tagval_by_key(\$tag, 'value', '');
+          }
 
         } elsif ($type eq 'CHECKBOX'
                  || $type eq 'RADIO') {
