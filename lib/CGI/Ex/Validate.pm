@@ -676,7 +676,7 @@ sub check_type {
 sub get_validation {
   my $self = shift;
   my $val  = shift;
-  return $self->conf->read($val);
+  return $self->conf->read($val, {html_key => 'validation'});
 }
 
 ### returns all keys from all groups - even if group has validate_if
@@ -1010,7 +1010,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.44 2003-11-26 22:01:16 pauls Exp $
+$Id: Validate.pm,v 1.45 2003-11-26 22:03:37 pauls Exp $
 
 =head1 SYNOPSIS
 
