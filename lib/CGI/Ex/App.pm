@@ -720,7 +720,7 @@ sub js_run_step {
   $file = ($file =~  m!^(?:/js/|/)?(\w+(?:/\w+)*\.js)$!) ? $1 : '';
 
   $self->cgix->print_js($file);
-  return 1; # intercepted
+  $self->exit_nav_loop;
 }
 
 ###----------------------------------------------------------------###
