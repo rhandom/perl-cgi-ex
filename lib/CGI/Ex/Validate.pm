@@ -236,7 +236,7 @@ sub check_conditional {
         $found = 1; # reset
         next;
       } else {
-        if ($ref =~ s/^\s*!//) {
+        if ($ref =~ s/^\s*!\s*//) {
           $ref = {field => $ref, max_in_set => "0 of $ref"};
         } else {
           $ref = {field => $ref, required => 1};
@@ -1064,7 +1064,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.60 2004-04-09 21:26:21 pauls Exp $
+$Id: Validate.pm,v 1.61 2004-04-09 22:14:09 pauls Exp $
 
 =head1 SYNOPSIS
 
