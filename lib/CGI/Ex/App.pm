@@ -13,9 +13,10 @@ package CGI::Ex::App;
 use strict;
 use vars qw($VERSION
             $EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS $BASE_NAME_MODULE
+            $RECURSE_LIMIT
             %CLEANUP_EXCLUDE);
 
-$VERSION = '1.12';
+$VERSION = '1.13';
 use CGI::Ex::Dump qw(debug);
 
 BEGIN {
@@ -43,7 +44,6 @@ BEGIN {
   ### a nested structure of rules - which are somehow
   ### referenced in other places
   $CLEANUP_EXCLUDE{'Template::Parser'} = 1;
-
 }
 
 
@@ -66,128 +66,164 @@ sub navigate {
   my $args = ref($_[0]) ? shift : {@_};
   $self = $self->new($args) if ! ref $self;
 
-  eval {
+  ### run the step loop
+  eval { $self->nav_loop };
 
-    ### keep from an infinate nesting
-    local $self->{recurse} = $self->{recurse} || 0;
-    die "Too much recursion ($self->{recurse})" if $self->{recurse} ++ >= 5;
-
-    ### allow for passing a path to navigate
-    if ($args->{path}) {
-      $self->insert_path(@{ $args->{path} });
-    }
-
-    ### get the path (simple array based thing)
-    my $path = $self->path;
-
-    ### allow for a hook
-    if ($self->pre_loop($path)) {
-      ### a true value means to abort the navigate
-      return $self;
-    }
-
-    ### get a hash of valid paths (if any)
-    my $valid_steps = $self->valid_steps;
-
-    ### iterate on each step of the path
-    foreach ($self->{path_i} ||= 0;
-             $self->{path_i} <= $#$path;
-             $self->{path_i} ++) {
-      my $step = $path->[$self->{path_i}];
-      next if $step !~ /^\w+$/; # don't process the step if it contains odd characters
-
-      ### check if this is an allowed step
-      if ($valid_steps) {
-        if (! $valid_steps->{$step}
-            && $step ne $self->default_step
-            && $step ne 'forbidden') {
-          $self->stash->{'forbidden_step'} = $step;
-          $self->replace_path('forbidden');
-          next;
-        }
-      }
-
-      ### allow for putting some steps in external files
-      $self->morph($step);
-
-      ### if the pre_step exists and returns true, return from navigate
-      if ($self->run_hook($step, 'pre_step')) {
-        $self->unmorph($step);
-        return $self;
-      }
-
-      ### see if we have complete valid information for this step
-      ### if so, do the next step
-      ### if not, get necessary info and print it out
-      if (   ! $self->run_hook($step, 'prepare', 1)
-          || ! $self->run_hook($step, 'info_complete')
-          || ! $self->run_hook($step, 'finalize', 1)) {
-        my $hash_form = $self->run_hook($step, 'hash_form');
-        my $hash_fill = $self->run_hook($step, 'hash_fill');
-        my $hash_errs = $self->run_hook($step, 'hash_errors');
-        my $hash_comm = $self->run_hook($step, 'hash_common');
-
-        ### fix up errors
-        $hash_errs->{$_} = $self->format_error($hash_errs->{$_})
-          foreach keys %$hash_errs;
-        $hash_errs->{has_errors} = 1 if scalar keys %$hash_errs;
-
-        ### layer hashes together (micro-optimized)
-        my $form = {%$hash_comm, %$hash_errs, %$hash_form};
-        my $fill = {%$hash_comm, %$hash_form, %$hash_fill};
-
-        ### run the print hook - passing it the form and fill info
-        $self->run_hook($step, 'print', undef,
-                        $form, $fill);
-
-        ### a hook after the printing process
-        $self->run_hook($step, 'post_print');
-
-        $self->unmorph($step);
-
-        return $self;
-      }
-
-      ### a hook before end of loop
-      ### if the post_step exists and returns true, return from navigate
-      if ($self->run_hook($step, 'post_step')) {
-        $self->unmorph($step);
-        return $self;
-      }
-
-      $self->unmorph($step);
-    }
-
-    ### allow for one more hook after the loop
-    if ($self->post_loop($path)) {
-      ### a true value means to abort the navigate
-      return $self;
-    }
-
-    ### run the main step as a last resort
-    $self->navigate({path => [$self->default_step]});
-    return $self;
-
-  }; # end of eval
-
-  ### catch errors if any
+  ### catch errors - if any
   if ($@) {
-    if ($self->{recurse} == 1) {
-      if (my $meth = $self->can('handle_error')) {
-        $self->$meth("$@");
-        return $self;
-      }
+    if ($@ eq "Long Jump\n") {
+      # do nothing - we had to long jump out of recursive navigate_loop calls
+    } else {
+      $self->handle_error($@);
     }
-    die $@;
   }
 
   return $self;
+}
+
+sub nav_loop {
+  my $self = shift;
+
+  ### keep from an infinate nesting
+  local $self->{recurse} = $self->{recurse} || 0;
+  if ($self->{recurse} ++ >= $self->recurse_limit) {
+    die "Too much recursion ($self->{recurse})";
+  }
+
+  ### get the path (simple array based thing)
+  my $path = $self->path;
+
+  ### allow for an early return
+  return if $self->pre_loop($path); # a true value means to abort the navigate
+
+  ### get a hash of valid paths (if any)
+  my $valid_steps = $self->valid_steps;
+
+  ### iterate on each step of the path
+  foreach ($self->{path_i} ||= 0;
+           $self->{path_i} <= $#$path;
+           $self->{path_i} ++) {
+    my $step = $path->[$self->{path_i}];
+    next if $step !~ /^\w+$/; # don't process the step if it contains odd characters
+
+    ### check if this is an allowed step
+    if ($valid_steps) {
+      if (! $valid_steps->{$step}
+          && $step ne $self->default_step
+          && $step ne 'forbidden') {
+        $self->stash->{'forbidden_step'} = $step;
+        $self->replace_path('forbidden');
+        next;
+      }
+    }
+
+    ### allow for putting some steps in external files
+    $self->morph($step);
+
+    ### if the pre_step exists and returns true, return from navigate
+    if ($self->run_hook($step, 'pre_step')) {
+      $self->unmorph($step);
+      return;
+    }
+
+    ### see if we have complete valid information for this step
+    ### if so, do the next step
+    ### if not, get necessary info and print it out
+    if (   ! $self->run_hook($step, 'prepare', 1)
+        || ! $self->run_hook($step, 'info_complete')
+        || ! $self->run_hook($step, 'finalize', 1)) {
+      my $hash_form = $self->run_hook($step, 'hash_form');
+      my $hash_fill = $self->run_hook($step, 'hash_fill');
+      my $hash_errs = $self->run_hook($step, 'hash_errors');
+      my $hash_comm = $self->run_hook($step, 'hash_common');
+
+      ### fix up errors
+      $hash_errs->{$_} = $self->format_error($hash_errs->{$_})
+        foreach keys %$hash_errs;
+      $hash_errs->{has_errors} = 1 if scalar keys %$hash_errs;
+
+      ### layer hashes together (micro-optimized)
+      my $form = {%$hash_comm, %$hash_errs, %$hash_form};
+      my $fill = {%$hash_comm, %$hash_form, %$hash_fill};
+
+      ### run the print hook - passing it the form and fill info
+      $self->run_hook($step, 'print', undef,
+                      $form, $fill);
+
+      ### a hook after the printing process
+      $self->run_hook($step, 'post_print');
+
+      $self->unmorph($step);
+
+      return;
+    }
+
+    ### a hook before end of loop
+    ### if the post_step exists and returns true, return from navigate
+    if ($self->run_hook($step, 'post_step')) {
+      $self->unmorph($step);
+      return;
+    }
+
+    $self->unmorph($step);
+  }
+
+  ### allow for one exit point after the loop
+  return if $self->post_loop($path); # a true value means to abort the navigate
+
+  ### run the default step as a last resort
+  $self->insert_path($self->default_step);
+  $self->nav_loop; # go recursive
+
+  return;
+}
+
+sub recurse_limit { shift->{'recurse_limit'} || $RECURSE_LIMIT || 10 }
+
+sub exit_nav_loop {
+  ### long jump back
+  die "Long Jump\n";
+}
+
+sub jump {
+  my $self   = shift;
+  my $i      = ($#_ == -1) ? 1 : shift;
+  my $path   = $self->path;
+  my $path_i = $self->{path_i};
+  die "Can't jump if nav_loop not started" if ! defined $path_i;
+
+  ### validate where we are jumping to
+  if ($i) {
+    $i = - $path_i - 1     if $i =~ /first/i;
+    $i = $#$path - $path_i if $i =~ /last/i;
+  }
+  die "Invalid jump index ($i)" if $i !~ /^-?\d+$/;
+
+  ### manipulate the path to contain the new jump location
+  my @replace;
+  my $cut_i  = $path_i + $i;
+  if ($cut_i > $#$path) {
+    push @replace, $self->default_step;
+  } elsif ($cut_i < 0) {
+    push @replace, @$path;
+  } else {
+    push @replace, @$path[$cut_i .. $#$path];
+  }
+  $self->replace_path(@replace);
+
+  ### run the newly fixed up path (recursively)
+  $self->{path_i} ++; # move along now that the path is updated
+  $self->nav_loop;
+
+  $self->exit_nav_loop;
 }
 
 sub default_step {
   my $self = shift;
   return $self->{'default_step'} || 'main';
 }
+
+###----------------------------------------------------------------###
 
 sub step_key {
   my $self = shift;
@@ -295,7 +331,7 @@ sub hook {
   my $step    = shift || '';
   my $hook    = shift || die "Missing hook name";
   my $default = shift;
-  my $hist    = $self->{history} ||= [];
+  my $hist    = $self->history;
   my $code;
   if ($step && ($code = $self->can("${step}_${hook}"))) {
     push @$hist, "$step - $hook - ${step}_${hook}";
@@ -324,11 +360,16 @@ sub run_hook {
   return $self->$code($step, @_);
 }
 
-### default error - just show what happened
+sub history {
+  return shift->{'history'} ||= [];
+}
+
+### default die handler - show what happened and die (so its in the error logs)
 sub handle_error {
   my $self = shift;
   my $err  = shift;
-  debug $err, $self->{history};
+  debug $err, $self->path, $self->history;
+  die $err;
 }
 
 ###----------------------------------------------------------------###
@@ -906,7 +947,7 @@ More examples will come with time.  Here are the basics for now.
     ";
   }
 
-  sub post_print { debug shift->{history} } # show what happened
+  sub post_print { debug shift->history } # show what happened
 
   sub main_file_val {
     # reference to string means ref to yaml document
@@ -982,15 +1023,29 @@ Takes a class name or a CGI::Ex::App object as arguments.  If a class
 name is given it will instantiate an object by that class.  All returns
 from navigate will return the object.
 
-The method navigate is the main loop runner.  It figures out the path
-and runs all of the appropriate hooks for each step of the path.  Once
-all steps in the path run successfully, it will call it self with a path
-set to [$self->default_step] to allow for a default main path to run.
+The method navigate is essentially a safe wrapper around the ->nav_loop
+method.  It will catch any dies and pass them to ->handle_error.
+
+=item Method C<-E<gt>nav_loop>
+
+This is the main loop runner.  It figures out the current path
+and runs all of the appropriate hooks for each step of the path.  If
+nav_loop runs out of steps to run (which happens if no path is set, or if
+all other steps run successfully), it will insert the ->default_step into
+the path and run nav_loop again (recursively).  This way a step is always
+assured to run.  There is a method ->recurse_limit (default 10) that
+will catch logic errors (such as inadvertently running the same
+step over and over and over).
 
 The basic outline of navigation is as follows (the default actions for hooks
 are shown):
 
   navigate {
+    eval { ->nav_loop }
+    # dying errors will run the ->handle_error method
+  }
+
+  nav_loop {
 
     ->path (get the path steps)
        # DEFAULT ACTION
@@ -1063,27 +1118,30 @@ are shown):
     ->post_loop
       # navigation stops if true
 
-    ->default_step
-    ->navigate (passed the new default step)
+    ->default_step (inserted into path at current location)
+    ->nav_loop (called again recursively)
 
-  } end of navigation
+  } end of nav_loop
 
-  # dying errors will run the ->handle_error method
+=item Method C<-E<gt>history>
+
+Returns an arrayref of which hooks of which steps of the path were ran.
+Useful for seeing what happened.
 
 =item Method C<-E<gt>path>
 
 Return an arrayref (modifyable) of the steps in the path.  For each
 step the remaining hooks can be run.  Hook methods are looked up and
 ran using the method "run_hook" which uses the method "hook" to lookup
-the hook.  A history of ran hooks is stored in $self->{history}.
-Default will be a single step path looked up in $form->{path} or in
-$ENV{PATH_INFO}.  By default, path will look for $ENV{'PATH_INFO'} or
-the value of the form by the key step_key.  For the best
-functionality, the arrayref returned should be the same reference
-returned for every call to path - this ensures that other methods can
-add to the path (and will most likely break if the arrayref is not the
-same).  If navigation runs out of steps to run, the default step found
-in default_step will be run.
+the hook.  A history of ran hooks is stored in the array ref returned
+by $self->history.  Default will be a single step path looked up in
+$form->{path} or in $ENV{PATH_INFO}.  By default, path will look for
+$ENV{'PATH_INFO'} or the value of the form by the key step_key.  For
+the best functionality, the arrayref returned should be the same
+reference returned for every call to path - this ensures that other
+methods can add to the path (and will most likely break if the
+arrayref is not the same).  If navigation runs out of steps to run,
+the default step found in default_step will be run.
 
 =item Method C<-E<gt>default_step>
 
@@ -1114,6 +1172,36 @@ Replaces the remaining steps (if any) of the current path.
 
 Arguments are the steps to insert.  Can be called any time.  Inserts
 the new steps at the current path location.
+
+=item Method C<-E<gt>jump>
+
+This method should not normally be used.  It provides for moving to the
+next step at any point during the nav_loop.  It effectively short circuits
+the remaining hooks for the current step.  It does increment the recursion
+counter (which has a limit of ->recurse_limit - default 10).  It is normally
+better to allow the other hooks in the loop to carry on their normal functions
+and avoid jumping.
+
+Jump takes a single argument which is the location in the path to jump to.
+The default value, 1, indicates that we should jump to the next step (the
+default action for jump).  A value of 0 would repeat the current step (watch
+out for recursion).  A value of -1 would jump to the previous step.  The
+special value of "last" will jump to the last step.  The special value of
+"first" will jump back to the first step.  In each of these cases, the
+path array retured by ->path is modified to allow for the jumping.
+
+=item Method C<-E<gt>exit_nav_loop>
+
+This method should not normally used.  It allows for a long jump to the
+end of all nav_loops (even if they are recursively nested).  This
+effectively short circuits all remaining hooks for the current and
+remaining steps.  It is used to allow the ->jump functionality.
+
+=item Method C<-E<gt>recurse_limit>
+
+Default 10.  Maximum number of times to allow nav_loop to call itself.
+If ->jump is used alot - the recurse_limit will be reached more quickly.
+It is safe to raise this as high as is necessary - so long as it is intentional.
 
 =item Method C<-E<gt>valid_steps>
 
@@ -1431,9 +1519,9 @@ processed.
 Ran after all of the steps in the loop have been processed (if
 prepare, info_complete, and finalize were true for each of the steps).
 If it returns a true value the navigation loop will be aborted.  If it
-does not return true, navigation continues by then running
-$self->navigate({path => [$self->default_step]}) to fall back to the
-default step.
+does not return true, navigation continues by then inserting the step
+$self->default_step and running $self->nav_loop again (recurses) to
+fall back to the default step.
 
 =item Method C<-E<gt>stash>
 
