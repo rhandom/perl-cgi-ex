@@ -678,8 +678,8 @@ sub js_validation {
   my $step = shift;
   return '' if $self->ext_val eq 'htm'; # let htm validation do it itself
 
-  my $form_name = $self->run_hook($step, 'form_name');
-  my $hash_val  = $self->run_hook($step, 'hash_validation', {});
+  my $form_name = shift || $self->run_hook($step, 'form_name');
+  my $hash_val  = shift || $self->run_hook($step, 'hash_validation', {});
   my $js_uri    = $self->js_uri_path;
   return '' if UNIVERSAL::isa($hash_val, 'HASH')  && ! scalar keys %$hash_val
             || UNIVERSAL::isa($hash_val, 'ARRAY') && $#$hash_val == -1;
