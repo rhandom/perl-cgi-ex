@@ -132,7 +132,7 @@ sub fill_plain {
                 [^>]+            # some space
                 \bname=([\"\']?) # the name tag
                 $target          # with the correct name (allows for regex)
-                \1[\s\>]         # closing quote
+                \2               # closing quote
                 .+?              # as much as there is
                 </form>)         # then end
               }{
