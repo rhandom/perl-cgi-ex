@@ -69,7 +69,7 @@ sub validate {
               : __PACKAGE__->new;                           # &validate
   my $form     = shift || die "Missing form hash";
   my $val_hash = shift || die "Missing validation hash";
-  my $what_was_validated = shift; # allow for extra hashref that stores what was validated
+  my $what_was_validated = shift; # allow for extra arrayref that stores what was validated
 
   ### turn the form into a form if it is really a CGI object
   if (! ref($form)) {
@@ -165,10 +165,7 @@ sub validate {
       } else {
         $hold_error = undef;
       }
-      if ($what_was_validated) {
-        my $arrayref = $what_was_validated->{$ref->{'field'}} ||= [];
-        push @$arrayref, $ref;
-      }
+      push(@$what_was_validated, $ref) if $what_was_validated;
     }
     push(@errors, @$hold_error) if $hold_error; # allow for final OR to work
 
@@ -1077,7 +1074,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.65 2004-11-04 22:31:11 pauls Exp $
+$Id: Validate.pm,v 1.66 2004-11-04 22:33:02 pauls Exp $
 
 =head1 SYNOPSIS
 
