@@ -1,3 +1,12 @@
+2004-03-19  Paul Seamons  <cgi_ex@seamons.com>
+
+        * Verion 0.98 is done
+        * Multiple fixes in Fill module
+        * Updates on perldocs (thanks to Simon Bellwood for bug reports)
+        * Addition of Dump (debug) module
+        * Addition of Die module
+        * Addition of App module
+
 2004-03-05  Paul Seamons  <cgi_ex@seamons.com>
         
         * Allow for custom_js type
