@@ -280,7 +280,7 @@ sub validate_buddy {
   ### allow for not running some tests in the cgi
   if (scalar $self->filter_type('exclude_cgi',$types)) {
     delete $field_val->{'was_validated'};
-    return wantarray ? @errors : scalar @errors;
+    return wantarray ? @errors : $#errors + 1;
   }
 
   ### allow for field names that contain regular expressions
@@ -293,7 +293,7 @@ sub validate_buddy {
       my @match = (undef,$1,$2,$3,$4,$5); # limit to the matches
       push @errors, $self->validate_buddy($form, $_field, $field_val, $N_level, \@match);
     }
-    return wantarray ? @errors : scalar @errors;
+    return wantarray ? @errors : $#errors + 1;
   }
 
   ### allow for default value
@@ -362,9 +362,10 @@ sub validate_buddy {
   if ($modified) {
     if ($n_values == 1) {
       $form->{$field} = $values->[0];
-        $self->{cgi_object}->param(-name => $field, -value => $values->[0])
-          if $self->{cgi_object};
+      $self->{cgi_object}->param(-name => $field, -value => $values->[0])
+        if $self->{cgi_object};
     } else {
+      ### values in @{ $form->{$field} } were modified directly
       $self->{cgi_object}->param(-name => $field, -value => $values)
         if $self->{cgi_object};
     }
@@ -381,7 +382,7 @@ sub validate_buddy {
   }
   if (! $needs_val && $n_vif) {
     delete $field_val->{'was_validated'};
-    return wantarray ? @errors : scalar @errors;
+    return wantarray ? @errors : $#errors + 1;
   }
 
   ### check for simple existence
@@ -455,6 +456,8 @@ sub validate_buddy {
     }
   }
 
+  ### at this point @errors should still be empty
+  my $content_checked; # allow later for possible untainting (only happens if content was checked)
 
   ### loop on values of field
   foreach my $value (@$values) {
@@ -470,6 +473,7 @@ sub validate_buddy {
         return 1 if ! wantarray;
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
+      $content_checked = 1;
     }
 
     ### field equality test
@@ -489,6 +493,7 @@ sub validate_buddy {
         return 1 if ! wantarray;
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
+      $content_checked = 1;
     }
 
     ### length min check
@@ -534,6 +539,7 @@ sub validate_buddy {
           }
         }
       }
+      $content_checked = 1;
     }
 
     ### allow for comparison checks
@@ -572,6 +578,7 @@ sub validate_buddy {
           $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
         }
       }
+      $content_checked = 1;
     }
 
     ### server side sql type
@@ -592,6 +599,7 @@ sub validate_buddy {
         return 1 if ! wantarray;
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
+      $content_checked = 1;
     }
 
     ### server side custom type
@@ -600,6 +608,7 @@ sub validate_buddy {
       next if UNIVERSAL::isa($check, 'CODE') ? &$check($field, $value, $field_val, $type) : $check;
       return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+      $content_checked = 1;
     }
 
     ### do specific type checks
@@ -608,11 +617,33 @@ sub validate_buddy {
         return 1 if ! wantarray;
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
+      $content_checked = 1;
+    }
+  }
+
+  ### allow for the data to be "untainted"
+  ### this is only allowable if the user ran some other check for the datatype
+  foreach my $type ($self->filter_type('untaint',$types)) {
+    last if $#errors != -1;
+    if (! $content_checked) {
+      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+    } else {
+      ### generic untainter - assuming the other required content_checks did good validation
+      $_ = /(.*)/ ? $1 : die "Couldn't match?" foreach @$values;
+      if ($n_values == 1) {
+        $form->{$field} = $values->[0];
+        $self->{cgi_object}->param(-name => $field, -value => $values->[0])
+          if $self->{cgi_object};
+      } else {
+        ### values in @{ $form->{$field} } were modified directly
+        $self->{cgi_object}->param(-name => $field, -value => $values)
+          if $self->{cgi_object};
+      }
     }
   }
 
   ### all done - time to return
-  return wantarray ? @errors : scalar @errors;
+  return wantarray ? @errors : $#errors + 1;
 }
 
 ### simple error adder abstraction
@@ -632,7 +663,7 @@ sub filter_type {
   foreach (@$order) {
     push @array, $_ if /^\Q$type\E_?\d*$/;
   }
-  return wantarray ? @array : scalar @array;
+  return wantarray ? @array : $#array + 1;
 }
 
 ###----------------------------------------------------------------###
@@ -1062,6 +1093,9 @@ sub get_error_text {
       my $_type = $field_val->{"type${dig}"};
       $return = "$name did not match type $_type.";
 
+    } elsif ($type eq 'untaint') {
+      $return = "$name cannot be untainted without one of the following checks: enum, equals, match, compare, sql, type, custom";
+
     } elsif ($type eq 'no_extra_fields') {
       $return = "$name should not be passed to validate.";
     }
@@ -1083,7 +1117,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.77 2005-01-11 19:50:30 pauls Exp $
+$Id: Validate.pm,v 1.78 2005-02-23 21:16:09 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1703,6 +1737,14 @@ would require some odd syntax for both the conditional and the default).
 =item C<to_upper_case> and C<to_lower_case>
 
 Do what they say they do.
+
+=item C<untaint>
+
+Requires that the validated field has been also checked with
+an enum, equals, match, compare, custom, or type check.  If the
+field has been checked and there are no errors - the field is "untainted."
+
+This is for use in conjunction with the -T switch.
 
 =back
 
