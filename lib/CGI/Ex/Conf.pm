@@ -1,4 +1,4 @@
-package CGI::Ex::Config;
+package CGI::Ex::Conf;
 
 ### CGI Extended Conf Reader
 
@@ -17,6 +17,7 @@ use vars qw($VERSION
             $ARRAY_DIRECTIVE
             $HASH_DIRECTIVE
             $HASH_IMMUTABLE_QR
+            $HASH_IMMUTABLE_KEY
             );
 
 $VERSION = '0.1';
@@ -38,7 +39,9 @@ $ARRAY_DIRECTIVE = 'FIRST'; # FIRST, LAST, JOIN
 
 $HASH_DIRECTIVE = 'MERGE'; # FIRST, LAST, MERGE
 
-$HASH_IMMUTABLE_QR = qr/_immu(?:ne|table|)$/i;
+$HASH_IMMUTABLE_QR = qr/_immu(?:table)?$/i;
+
+$HASH_IMMUTABLE_KEY = 'immutable';
 
 ###----------------------------------------------------------------###
 
@@ -101,6 +104,7 @@ sub load {
   my $dirs      = $self->dirs;
   my $REF       = shift; # can pass in existing set of options
   my $found;
+  my %IMMUTABLE = ();
 
   $namespace =~ s|::|/|g; # allow perlish style
 
@@ -123,27 +127,31 @@ sub load {
         push @$REF, @$ref;
       } else {
         $REF = [@$ref];
-        return $REF if $direct eq 'FIRST';
+        last if $direct eq 'FIRST';
       }
     } else {
       my $direct = $self->{hash_directive} || $HASH_DIRECTIVE;
+      my $immutable = delete $ref->{$HASH_IMMUTABLE_KEY};
       my ($key,$val);
       if ($direct eq 'MERGE') {
         while (($key,$val) = each %$ref) {
+          next if $IMMUTABLE{$key};
           my $immute = $key =~ s/$HASH_IMMUTABLE_QR//o;
-          next if $immute && exists $REF->{$key};
+          $IMMUTALBE{$key} = 1 if $immute || $immutable;
           $REF->{$key} = $val;
         }
       } else {
         $REF = {};
         while (($key,$val) = each %$ref) {
           my $immute = $key =~ s/$HASH_IMMUTABLE_QR//o;
+          $IMMUTALBE{$key} = 1 if $immute || $immutable;
           $REF->{$key} = $val;
         }
-        return $REF if $direct eq 'FIRST';
+        last if $direct eq 'FIRST';
       }
     }
   }
+  $REF->{"Immutable Keys"} = \%IMMUTABLE if scalar keys %IMMUTABLE;
   return $REF;
 }
 
@@ -200,7 +208,7 @@ __END__
 
 =head1 NAME
 
-CGI::Ex::Config - CGI Extended Conf Reader
+CGI::Ex::Conf - CGI Extended Conf Reader
 
 =head1 DESCRIPTION
 
