@@ -18,11 +18,12 @@ my $str = "[% this.is.nested.0 %]";
 $cgix->swap_template(\$str, $form);
 ok('wow' eq $str);
 
-$cgix = CGI::Ex->new({form => {
+$cgix = CGI::Ex->new;
+$cgix->set_form({
   foo => 'bar',
   baz => 'wow',
   this => 'wee',
-}});
+});
 $str = "<html>([% foo %]) <br>
 ([% baz %]) <br>
 ([% this %]) </html>";
