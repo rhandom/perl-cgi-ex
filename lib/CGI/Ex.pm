@@ -492,7 +492,17 @@ CGI::Ex - Yet Another Form Utility
     # SAME AS #
   my $err_obj = $cgix->validate($form, $val_hash);
   die $err_obj if $err_obj;
- 
+
+  ### Settings functionality
+
+  ### read file via yaml
+  my $ref = $cgix->conf_read('/full/path/to/conf.yaml');
+
+  ### merge all found settings.pl files together
+  @CGI::Ex::Conf::DEFAULT_PATHS = qw(/tmp /my/data/dir /home/foo);
+  @CGI::Ex::Conf::DIRECTIVE     = 'MERGE';
+  @CGI::Ex::Conf::DEFAULT_EXT   = 'pl';
+  my $ref = $cgix->conf_read('settings');
 
 =head1 DESCRIPTION
 
@@ -739,9 +749,9 @@ at the time of this writing (I'm sure this probably isn't exaustive).
 
 =head1 TODO
 
-Add an integrated debug module.
-
 Add an integrated template toolkit interface.
+
+Add an integrated debug module.
 
 =head1 MODULES
 
