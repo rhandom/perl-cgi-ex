@@ -681,7 +681,8 @@ sub js_validation {
   my $form_name = $self->run_hook($step, 'form_name');
   my $hash_val  = $self->run_hook($step, 'hash_validation', {});
   my $js_uri    = $self->js_uri_path;
-  return '' if ! scalar keys %$hash_val;
+  return '' if UNIVERSAL::isa($hash_val, 'HASH')  && ! scalar keys %$hash_val
+            || UNIVERSAL::isa($hash_val, 'ARRAY') && $#$hash_val == -1;
 
   return $self->vob->generate_js($hash_val, $form_name, $js_uri);
 }
