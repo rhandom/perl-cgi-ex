@@ -152,7 +152,11 @@ sub validate {
       }
       $found = 1;
       die "Missing field key during normal validation" if ! $ref->{'field'};
+      local $ref->{'was_validated'} = 1;
       my @err = $self->validate_buddy($form, $ref->{'field'}, $ref);
+      if (delete($ref->{'was_validated'}) && $what_was_validated) {
+        push @$what_was_validated, $ref;
+      }
 
       ### test the error - if errors occur allow for OR - if OR fails use errors from first fail
       if (scalar @err) {
@@ -165,7 +169,6 @@ sub validate {
       } else {
         $hold_error = undef;
       }
-      push(@$what_was_validated, $ref) if $what_was_validated;
     }
     push(@errors, @$hold_error) if $hold_error; # allow for final OR to work
 
@@ -272,6 +275,7 @@ sub validate_buddy {
 
   ### allow for not running some tests in the cgi
   if (scalar $self->filter_type('exclude_cgi',$types)) {
+    delete $field_val->{'was_validated'};
     return wantarray ? @errors : scalar @errors;
   }
 
@@ -372,6 +376,7 @@ sub validate_buddy {
     $needs_val ++ if $ret;
   }
   if (! $needs_val && $n_vif) {
+    delete $field_val->{'was_validated'};
     return wantarray ? @errors : scalar @errors;
   }
 
@@ -1073,7 +1078,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.70 2004-11-10 20:50:39 pauls Exp $
+$Id: Validate.pm,v 1.71 2004-11-10 21:44:20 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1200,7 +1205,8 @@ an optional what_was_validated arrayref.
 If a CGI object is passed, CGI::Ex::get_form will be called on that object
 to turn it into a hashref.  If a filename is given for the validation, get_validation
 will be called on that filename.  If the what_was_validated_arrayref is passed - it
-will be populated (pushed) with the field hashes that were actually validated.
+will be populated (pushed) with the field hashes that were actually validated (anything
+that was skipped because of validate_if will not be in the array).
 
 If the form passes validation, validate will return undef.  If it fails validation, it
 will return a CGI::Ex::Validate::Error object.  If the 'raise_error' general option
