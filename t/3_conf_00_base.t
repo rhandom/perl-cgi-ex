@@ -45,19 +45,19 @@ ok($hash->{quantity} == 30);
 ok($hash->{foo} eq 'file1'); # has immutable value
 
 
-local $CGI::Ex::Conf::DIRECTIVE = 'FIRST';
+local $obj->{directive} = 'FIRST';
 $hash = $obj->read('oranges.pl');
 ok($hash);
 ok($hash->{quantity} == 20);
 ok($hash->{foo} eq 'file1');
 
-local $CGI::Ex::Conf::DIRECTIVE = 'LAST';
+local $obj->{directive} = 'LAST';
 $hash = $obj->read('oranges.pl');
 ok($hash);
 ok($hash->{quantity} == 30);
 ok($hash->{foo} eq 'file2');
 
-local $CGI::Ex::Conf::DIRECTIVE = 'MERGE';
+local $obj->{directive} = 'MERGE';
 $hash = $obj->read('oranges.pl');
 ok($hash);
 ok($hash->{quantity} == 20); # has immutable key so all values are immutable
