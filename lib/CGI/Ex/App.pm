@@ -240,7 +240,11 @@ sub replace_path {
   my $self = shift;
   my $ref  = $self->path;
   my $i    = $self->{path_i} || 0;
-  splice(@$ref, $i + 1, $#$ref - $i, @_); # replace remaining entries
+  if ($i + 1 > $#$ref) {
+    push @$ref, @_;
+  } else {
+    splice(@$ref, $i + 1, $#$ref - $i, @_); # replace remaining entries
+  }
 }
 
 ### insert more steps into the current path
@@ -248,11 +252,43 @@ sub insert_path {
   my $self = shift;
   my $ref  = $self->path;
   my $i    = $self->{path_i} || 0;
-  splice(@$ref, $i + 1, 0, @_); # insert a path at the current location
+  if ($i + 1 > $#$ref) {
+    push @$ref, @_;
+  } else {
+    splice(@$ref, $i + 1, 0, @_); # insert a path at the current location
+  }
 }
 
 ### a hash of paths that are allowed, default undef is all
 sub valid_paths {}
+
+###----------------------------------------------------------------###
+
+sub step_by_path_index {
+  my $self = shift;
+  my $i    = shift || 0;
+  my $ref  = $self->path;
+  return '' if $i < 0;
+  return $self->default_step if $i > $#$ref;
+  return $ref->[$i];
+}
+
+sub previous_step {
+  my $self = shift;
+  return $self->step_by_path_index( ($self->{path_i} || 0) - 1 );
+}
+
+sub current_step {
+  my $self = shift;
+  return $self->step_by_path_index( ($self->{path_i} || 0) );
+}
+
+sub next_step {
+  my $self = shift;
+  return $self->step_by_path_index( ($self->{path_i} || 0) + 1 );
+}
+
+###----------------------------------------------------------------###
 
 sub pre_loop {}
 sub post_loop {}
@@ -988,6 +1024,11 @@ default method path is not in the hash, the method path will return a
 single step "forbidden" and run its hooks.  If no hash or undef is
 returned, all paths are allowed (default).  A key "forbidden_step"
 containing the step that was not valid will be placed in the stash.
+
+=item Method C<-E<gt>previous_step, -E<gt>current_step, -E<gt>next_step>
+
+Return the previous, current, and next step name - useful for figuring
+out where you are in the path.
 
 =item Method C<-E<gt>pre_loop>
 
