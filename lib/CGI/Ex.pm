@@ -21,9 +21,8 @@ use vars qw($VERSION
             @EXPORT @EXPORT_OK
             );
 use base qw(Exporter);
-use Data::DumpEx;
 
-$VERSION               = '0.94';
+$VERSION               = '0.95';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
 $PREFERRED_VAL_MODULE  ||= '';
