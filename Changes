@@ -11,6 +11,7 @@
         * Allow for !field in equals of CGI::Ex::Validate
         * Allow for return of names in CGI::Ex::Validate
         * All CGI::Ex to work better with CGI/mod_perl1/mod_perl2
+        * Fix required => 0 in javascript
 
 2004-12-02  Paul Seamons  <cgi_ex@seamons.com>
 
