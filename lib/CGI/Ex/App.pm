@@ -750,7 +750,7 @@ sub print {
   my $status = $t->process($file, $swap, \$out) || die $Template::ERROR;
 
   ### fill in any forms
-  $self->cgix->fill(\$out, $fill) if $fill && ! $self->{no_fill};
+  $self->cgix->fill(\$out, $fill) if $fill && ! $self->no_fill($step);
 
   ### now print
   $self->cgix->print_content_type();
