@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.21 $ )[1];
+$VERSION = (qw$Revision: 1.22 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -21,17 +21,9 @@ $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 ###----------------------------------------------------------------###
 
 sub new {
-  my $class = shift() || __PACKAGE__;
-  my $self  = (@_ && ref($_[0])) ? shift() : {@_}; 
+  my $class = shift || __PACKAGE__;
+  my $self  = (@_ && ref($_[0])) ? shift : {@_}; 
   return bless $self, $class;
-}
-
-### what are we validating
-sub form {
-  return shift()->{form} ||= do {
-    require CGI::Ex;
-    CGI::Ex->get_form; # return of the do
-  };
 }
 
 ###----------------------------------------------------------------###
@@ -39,9 +31,10 @@ sub form {
 sub conf_handler_val {
   my $file = shift;
   local $/ = undef;
-  open (_IN,$file) || die "Couldn't open $file: $!";
-  my $text = <_IN>;
-  close _IN;
+  local *IN;
+  open (IN,$file) || die "Couldn't open $file: $!";
+  my $text = <IN>;
+  close IN;
   return &yaml_load($text);
 }
 
@@ -108,7 +101,6 @@ sub validate {
     $val = $self->get_validation($val);
     die "Trouble getting validation" if ! ref $val;
   }
-#  dex $val;
 
 
   ### allow for validation passed as single group hash, single group array,
@@ -120,47 +112,48 @@ sub validate {
     die "Validation groups must be a hashref" if ! UNIVERSAL::isa($group_val,'HASH');
     my $title       = $group_val->{'group title'};
     my $validate_if = $group_val->{'group validate_if'};
-    my $fields      = $group_val->{'group fields'};
 
-    
     ### only validate this group if it is supposed to be checked
     next if $validate_if && ! $self->check_conditional($form, $validate_if);
 
-
     ### if the validation items were not passed as an arrayref
     ### look for a group order and then fail back to the keys of the group
-    if (! $fields) {
-      my @order  = sort grep {! /^(group|general)\s/} keys %$group_val;
+    my @order  = sort grep {! /^(group|general)\s/} keys %$group_val;
+    my $fields = $group_val->{'group fields'};
+    if ($fields) {
+      die "'group fields' must be an arrayref" if ! UNIVERSAL::isa($fields,'ARRAY');
+    } else {
       my @fields = ();
-      my %found  = ();
-      if (my $_order = $group_val->{'group order'}) {
-        die "Validation group order must be an arrayref" if ! UNIVERSAL::isa($_order,'ARRAY');
-        foreach my $field (@$_order) {
-          die "Duplicate order found for $field in group order" if $found{$field};
-          $found{$field} = 1;
-          my $value = exists($group_val->{$field}) ? $group_val->{$field}
+      if (my $order = $group_val->{'group order'} || \@order) {
+        die "Validation 'group order' must be an arrayref" if ! UNIVERSAL::isa($order,'ARRAY');
+        foreach my $field (@$order) {
+          my $field_val = exists($group_val->{$field}) ? $group_val->{$field}
             : ($field eq 'OR') ? 'OR' : die "No element found in group for $field";
-          push @fields, $value;
+          if (ref $field_val && ! $field_val->{'field'}) {
+            $field_val = { %$field_val, 'field' => $field }; # copy the values to add the key
+          }
+          push @fields, $field_val;
         }
-      }
-
-      ### on each hashref - make sure we have a field key - default set to group key name
-      foreach my $field (@order) {
-        next if $found{$field};
-        $found{$field} = 1;
-        my $ref = $group_val->{$field};
-        if (! exists $ref->{'field'}) {
-          my $_field = $field;
-          $_field =~ s/_?\d+$//;
-          $ref->{'field'} = $_field;
-        }
-        push @fields, $ref;
       }
       $fields = \@fields;
-    } else {
-      die "group fields must be passed as an arrayref" if ! UNIVERSAL::isa($fields,'ARRAY');
     }
-    #dex $fields;
+
+    ### check which fields have been used
+    my %found = ();
+    foreach my $field_val (@$fields) {
+      my $field = $field_val->{'field'} || die "Missing field key in validation";
+      die "Duplicate order found for $field in group order or fields" if $found{$field};
+      $found{$field} = 1;
+    }
+
+    ### add any remaining fields from the order
+    foreach my $field (@order) {
+      next if $found{$field};
+      my $field_val = $group_val->{$field};
+      die "Found a nonhashref value on field $field" if ! UNIVERSAL::isa($field_val, 'HASH');
+      $field_val = { %$field_val, 'field' => $field } if ! $field_val->{'field'}; # copy the values
+      push @$fields, $field_val;
+    }
 
     ### now lets do the validation
     my $found  = 1;
@@ -206,7 +199,6 @@ sub validate {
     }
 
   }
-#  dex \@ERRORS;
 
   ### store any extra items from self
   foreach my $key (keys %$self) {
@@ -344,7 +336,6 @@ sub validate_buddy {
     }
   }
   if ($is_required && (! defined($form->{$field}) || ! length($form->{$field}))) {
-#    dex $field_val,$field, $field;
     $self->add_error(\@errors, $field, $is_required, $field_val, $ifs_match);
     return wantarray ? @errors : scalar @errors;
   }
@@ -485,7 +476,7 @@ sub validate_buddy {
     }
   }
 
-  ### program side sql type
+  ### server side sql type
   foreach my $type ($self->filter_type('sql',$types)) {
     my $db_type = $field_val->{"${type}_db_type"};
     my $dbh = ($db_type) ? $self->{dbhs}->{$db_type} : $self->{dbh};
@@ -504,9 +495,11 @@ sub validate_buddy {
     }
   }
 
-  ### server side boolean type
-  foreach my $type ($self->filter_type('boolean',$types)) {
-    next if $field_val->{$type};
+  ### server side custom type
+  foreach my $type ($self->filter_type('custom',$types)) {
+    my $value = $field_val->{$type};
+    $value = &$value($field, $form->{$field}, $field_val, $type) if UNIVERSAL::isa($value, 'CODE');
+    next if $value;
     $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
   }
 
@@ -810,8 +803,8 @@ sub get_error_text {
     } elsif ($type eq 'sql') {
       $return = "$name did not match sql test.";
       
-    } elsif ($type eq 'boolean') {
-      $return = "$name did not match boolean test.";
+    } elsif ($type eq 'custom') {
+      $return = "$name did not match custom test.";
       
     } elsif ($type eq 'type') {
       my $_type = $field_val->{"type${dig}"};
@@ -836,7 +829,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.21 2003-11-12 23:39:31 pauls Exp $
+$Id: Validate.pm,v 1.22 2003-11-13 04:12:46 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1021,40 +1014,46 @@ If the GROUP OPTION 'group validate_if' is set, the group will only
 be validated if the conditions are met.  Any group with out a validate_if
 fill be automatically validated.
 
-Validation order is determined in three ways:
+Each of the items listed in the group will be validated.  The
+validation order is determined in one of three ways:
 
 =over 4
 
 =item Specify 'group fields' arrayref.
 
-{
-  'group title' => "User Information",
-  'group fields' => [
-    {field => 'username', required => 1},
-    {field => 'email',    required => 1},
-    {field => 'password', required => 1},
-  ],
-}
+  # order will be (username, password, 'm/\w+_foo/', somethingelse)
+  {
+    'group title' => "User Information",
+    'group fields' => [
+      {field => 'username',   required => 1},
+      {field => 'password',   required => 1},
+      {field => 'm/\w+_foo/', required => 1},
+    ],
+    somethingelse => {required => 1},
+  }
 
 =item Specify 'group order' arrayref.
 
-{
-  'group title' => "User Information",
-  'group order' => [qw(username email password)],
-  username => {required => 1},
-  email    => {required => 1},
-  password => {required => 1},
-}
+  # order will be (username, password, 'm/\w+_foo/', somethingelse)
+  {
+    'group title' => "User Information",
+    'group order' => [qw(username password), 'm/\w+_foo/'],
+    username      => {required => 1},
+    password      => {required => 1},
+    'm/\w+_foo/'  => {required => 1},
+    somethingelse => {required => 1},
+  }
 
 =item Do nothing - use sorted order.
 
-{
-  'group title' => "User Information",
-  # will use the order email, password, username
-  username => {required => 1},
-  email    => {required => 1},
-  password => {required => 1},
-}
+  # order will be ('m/\w+_foo/', password, somethingelse, username)
+  {
+    'group title' => "User Information",
+    username      => {required => 1},
+    password      => {required => 1},
+    'm/\w+_foo/'  => {required => 1},
+    somethingelse => {required => 1},
+  }
 
 =back
 
@@ -1067,6 +1066,11 @@ the item after 'OR' will be tested instead.  If the item preceding 'OR'
 passes validation the item after 'OR' will not be tested.
 
   'group order' => [qw(zip OR postalcode state OR region)],
+
+Each individual validation hashref will operate on the field contained
+in the 'field' key.  This key may also be a regular expression in the
+form of 'm/somepattern/'.  If a regular expression is used, all keys
+matching that pattern will be validated.
 
 =head1 VALIDATION TYPES
 
@@ -1213,9 +1217,23 @@ $self->{dbh} is a coderef - they will be called and should return a dbh.
     # sql_db_type  => 'foo', # will look for a dbh under $self->{dbhs}->{foo}
   }
 
-=item C<boolean>
+=item C<custom>
 
-Boolean value - not available in JS.  Allows for extra programming types.
+Custom value - not available in JS.  Allows for extra programming types.
+May be either a boolean value predermined before calling validate, or may be
+a coderef that will be called during validation.  If coderef is called, it will
+be passed the field name, the form value for that name, and a reference to the
+field validation hash.  If the custom type returns false the element fails
+validation and an error is added.
+
+  {
+    field => 'username',
+    custom => sub {
+      my ($key, $val, $type, $field_val_hash) = @_;
+      # do something here
+      return 0;
+    },
+  }
 
 =item C<type>
  
@@ -1241,6 +1259,10 @@ This key is required if 'group fields' is used or if validate_if or required_if
 are used.  It can optionally be used with other types to specify a different form
 element to operate on.  On errors, if a non-default error is found, $field
 will be swapped with the value found in field.
+
+The field name may also be a regular expression in the
+form of 'm/somepattern/'.  If a regular expression is used, all keys
+matching that pattern will be validated.
 
 =item C<name>
 
