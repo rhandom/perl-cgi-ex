@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.18 $ )[1];
+$VERSION = (qw$Revision: 1.19 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -425,21 +425,29 @@ sub validate_buddy {
 
   ### now do match types
   foreach my $type ($self->filter_type('match',$types)) {
-    my $ref = ref($field_val->{$type}) ? $field_val->{$type} : [split(/\s*\|\|\s*/,$field_val->{$type})];
+    my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
+       : UNIVERSAL::isa($field_val->{$type}, 'Regexp') ? [$field_val->{$type}]
+       : [split(/\s*\|\|\s*/,$field_val->{$type})];
     foreach my $rx (@$ref) {
-      my $not = ($rx =~ s/^\s*!~?\s*//) ? 1 : 0;
-      if ($rx !~ /^\s*m?([^\w\s])(.*[^\\])\1([eisgmx]*)\s*$/s
-          && $rx !~ /^\s*m?([^\w\s])()\1([eisgmx]*)\s*$/s) {
-        die "Not sure how to parse that match ($rx)";
-      }
-      my ($pat,$opt) = ($2,$3);
-      $opt =~ tr/g//d;
-      die "The e option cannot be used on validation match's" if $opt =~ /e/;
-      if (defined($form->{$field}) && length($form->{$field})) {
-        if ( ($not && $form->{$field} =~ m/(?$opt:$pat)/)
-             || (! $not && $form->{$field} !~ m/(?$opt:$pat)/)
-             ) {
+      if (UNIVERSAL::isa($rx,'Regexp')) {
+        if (! defined($form->{$field}) || $form->{$field} !~ $rx) {
           $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+        }
+      } else {
+        my $not = ($rx =~ s/^\s*!~?\s*//) ? 1 : 0;
+        if ($rx !~ /^\s*m?([^\w\s])(.*[^\\])\1([eisgmx]*)\s*$/s
+            && $rx !~ /^\s*m?([^\w\s])()\1([eisgmx]*)\s*$/s) {
+          die "Not sure how to parse that match ($rx)";
+        }
+        my ($pat,$opt) = ($2,$3);
+        $opt =~ tr/g//d;
+        die "The e option cannot be used on validation match's" if $opt =~ /e/;
+        if (defined($form->{$field}) && length($form->{$field})) {
+          if ( ($not && $form->{$field} =~ m/(?$opt:$pat)/)
+               || (! $not && $form->{$field} !~ m/(?$opt:$pat)/)
+               ) {
+            $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+          }
         }
       }
     }
@@ -827,7 +835,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.18 2003-11-12 22:49:05 pauls Exp $
+$Id: Validate.pm,v 1.19 2003-11-12 23:03:18 pauls Exp $
 
 =head1 SYNOPSIS
 
