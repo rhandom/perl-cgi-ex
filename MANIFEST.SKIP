@@ -8,3 +8,4 @@ Makefile$
 Makefile.old$
 blib
 \.gz$
+.cvsignore
