@@ -58,5 +58,5 @@ rm -rf $HERE
 %{_prefix}
 
 %changelog
-* Sat Oct 22 2003 Paul Seamons <>
+* Sat Nov 11 2003 Paul Seamons <>
 - first try
