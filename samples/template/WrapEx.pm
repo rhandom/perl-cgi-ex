@@ -2,7 +2,7 @@ package WrapEx;
 
 use strict;
 use vars qw($REVISION $VERSION);
-$REVISION  = q$Revision: 1.2 $; # set the revision number into a variable
+$REVISION  = q$Revision: 1.3 $; # set the revision number into a variable
 $VERSION   = ($REVISION =~ /([\d\.]+)/) ? $1 : "None";
 
 use vars qw(@ISA @EXPORT_OK $sph $sph_qr $UNIQUE_KEY $AUTOLOAD
@@ -98,15 +98,14 @@ $PLACEHOLDER = "$sph~$sph";
 ###----------------------------------------------------------------###
 
 sub new {
-  my $type  = shift;
-  my $class = ref($type) || $type || __PACKAGE__;
-  my $self  = ref($_[0]) ? $_[0] : !(@_ % 2) ? {@_} : die 'Usage: WrapEx->new';
+  my $class = shift || __PACKAGE__;
+  my $self  = ref($_[0]) ? shift : {@_};
   bless $self, $class;
-  $self->{form}    ||= [];           # array ref of form hashrefs
-  $self->{step}    ||= 'NOSTEPNAME'; # step of the cgi
-  $self->{N}       ||= 0;            # current level of recursion
-  $self->{W}       ||= {};           # wrap cache location
-  $self->{dirs}    ||= [];           # what are my lookup dirs
+  $self->{form} ||= [];           # array ref of form hashrefs
+  $self->{step} ||= 'NOSTEPNAME'; # step of the cgi
+  $self->{N}    ||= 0;            # current level of recursion
+  $self->{W}    ||= {};           # wrap cache location
+  $self->{dirs} ||= [];           # what are my lookup dirs
 
   $ENV{SCRIPT_NAME} ||= $0;
 
@@ -143,27 +142,9 @@ sub wrap {
     die "not implemented";
   }
 
-#  ### allow for logging variables
-#  if( $ENV{QUERY_STRING} && $ENV{QUERY_STRING} =~ /wrapvars/ ){
-#    $self->{VAR} = {};
-#  }
-
   ### do the main swap
   my $n = $self->wrap_swap($self->{text});
 
-#  ### allow for logging variables
-#  if( $self->{VAR} ){
-#    my $qr = join("|",($ENV{QUERY_STRING} =~ /wrapvars=([a-z]\w*)/g));
-#    $qr = $qr ? qr/^($qr)\./i : qr/./;
-#    &CGI::Ex::content_type();
-#    print "<b>Wrap Vars...</b><br>\n";
-#    foreach (sort keys %{ $self->{VAR} }){
-#      next if $_ !~ $qr;
-#      print "&nbsp;&nbsp;$_<br>\n";
-#    }
-#    delete $self->{VAR};
-#  }
-#
   return $n;
 }
 
@@ -1090,7 +1071,6 @@ sub func_md5 {
   my $str = $self->next_val_from_str(\$tag,$SWAP);
   $self->wrap_swap(\$str);
 
-  require Digest::MD5;
   return &Digest::MD5::md5_hex($str);
 }
 
