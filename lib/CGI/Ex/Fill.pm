@@ -21,7 +21,7 @@ use vars qw($VERSION
             );
 use Exporter;
 
-$VERSION   = '1.2';
+$VERSION   = '1.3';
 @ISA       = qw(Exporter);
 @EXPORT    = qw(form_fill);
 @EXPORT_OK = qw(form_fill html_escape get_tagval_by_key swap_tagval_by_key);
