@@ -98,6 +98,25 @@ sub get_cookies {
   return \%hash;
 }
 
+### allow for creating a query_string
+sub make_form {
+  my $self = shift;
+  my $form = shift;
+  my $str = '';
+  foreach my $key (sort keys %$form) {
+    $key =~ s/([^\w.\- ])/sprintf('%%%02X',ord($1))/eg;
+    $key =~ y/ /+/;
+    foreach (ref($form->{$key}) ? @{ $form->{$key} } : $form->{$key}) {
+      my $val = $_; # make a copy
+      $val =~ s/([^\w.\- ])/sprintf('%%%02X',ord($1))/eg;
+      $val =~ y/ /+/;
+      $str .= "$key=$val&";
+    }
+  }
+  chop($str);
+  return $str;
+}
+
 ###----------------------------------------------------------------###
 
 sub content_type {
