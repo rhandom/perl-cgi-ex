@@ -837,7 +837,9 @@ sub file_print {
   my $_step    = $self->run_hook('name_step', $step, $step);
   my $ext      = $self->ext_print;
 
-  return length($base_dir) ? "$base_dir/$module/$_step.$ext" : "$module/$_step.$ext";
+  foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
+
+  return $base_dir . $module . $_step .'.'. $ext;
 }
 
 ### which file is used for validation
@@ -849,10 +851,11 @@ sub file_val {
   my $module   = $self->run_hook('name_module', $step);
   my $_step    = $self->run_hook('name_step', $step, $step);
   my $ext      = $self->ext_val;
+  my $abs      = $self->base_dir_abs;
 
-  $base_dir = length($base_dir) ? $self->base_dir_abs . "/$base_dir" : $self->base_dir_abs;
+  foreach ($base_dir, $module, $abs) { $_ .= '/' if length($_) && ! m|/$| }
 
-  return "$base_dir/$module/$_step.$ext";
+  return $abs . $base_dir . $module . $_step .'.'. $ext;
 }
 
 
