@@ -212,8 +212,9 @@ sub hook {
 sub run_hook {
   my $self    = shift;
   my $step    = shift;
+  my $hook    = shift;
   my $default = shift;
-  my $code = $self->hook($step, $default);
+  my $code = $self->hook($step, $hook, $default);
   return $self->$code($step, @_);
 }
 
@@ -247,6 +248,13 @@ sub form {
     return $self->{form} = shift;
   }
   return $self->{form} ||= $self->cgix->get_form;
+}
+
+sub vob {
+  return shift()->{vob} ||= do {
+    require CGI::Ex::Validate;
+    CGI::Ex::Validate->new; # return of the do
+  };
 }
 
 sub print {
@@ -365,9 +373,7 @@ sub validate {
   my $form = $self->form;
   my $hash = $self->run_hook($step, 'hash_validation', {});
 
-  require CGI::Ex::Validate;
-  my $vob = CGI::Ex::Validate->new;
-  my $eob = eval { $vob->validate($form, $hash) };
+  my $eob = eval { $self->vob->validate($form, $hash) };
   if (! $eob && $@) {
     die "Step $step: $@";
   }
