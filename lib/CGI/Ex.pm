@@ -14,8 +14,6 @@ use vars qw($VERSION
             $PREFERRED_FILL_MODULE
             $PREFERRED_CGI_MODULE
             $PREFERRED_CGI_REQUIRED
-            $OBJECT_PARAM_METHOD
-            $OBJECT_COOKIE_METHOD
             $TEMPLATE_OPEN
             $TEMPLATE_CLOSE
             $AUTOLOAD
@@ -27,8 +25,6 @@ use base qw(Exporter);
 $VERSION               = '1.12';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
-$OBJECT_PARAM_METHOD   ||= 'param';
-$OBJECT_COOKIE_METHOD  ||= 'cookie';
 $TEMPLATE_OPEN         ||= qr/\[%\s*/;
 $TEMPLATE_CLOSE        ||= qr/\s*%\]/;
 @EXPORT = ();
@@ -101,10 +97,9 @@ sub get_form {
 
   ### get the info out of the object
   my $obj  = shift || $self->object;
-  my $meth = $obj->can($self->{'object_param_method'} || $OBJECT_PARAM_METHOD);
   my %hash = ();
-  foreach my $key ($obj->$meth()) {
-    my @val = $obj->$meth($key);
+  foreach my $key ($obj->param) {
+    my @val = $obj->param($key);
     $hash{$key} = ($#val == -1) ? die : ($#val == 0) ? $val[0] : \@val;
   }
   return $self->{'form'} = \%hash;
@@ -175,10 +170,10 @@ sub get_cookies {
   return $self->{'cookies'} if $self->{'cookies'};
 
   my $obj  = shift || $self->object;
-  my $meth = $obj->can($self->{'object_cookie_method'} || $OBJECT_COOKIE_METHOD);
+  use CGI::Ex::Dump qw(debug);
   my %hash = ();
-  foreach my $key ($obj->$meth()) {
-    my @val = $obj->$meth($key);
+  foreach my $key ($obj->cookie) {
+    my @val = $obj->cookie($key);
     $hash{$key} = ($#val == -1) ? next : ($#val == 0) ? $val[0] : \@val;
   }
   return $self->{'cookies'} = \%hash;
@@ -350,8 +345,7 @@ sub set_cookie {
   $args->{-expires} = time_calc($args->{-expires}) if $args->{-expires};
 
   my $obj    = $self->object;
-  my $meth   = $obj->can($self->{'object_cookie_method'} || $OBJECT_COOKIE_METHOD);
-  my $cookie = "" . $obj->$meth(%$args);
+  my $cookie = "" . $obj->cookie(%$args);
 
   if ($self->content_typed) {
     print "<meta http-equiv=\"Set-Cookie\" content=\"$cookie\" />\n";
@@ -460,6 +454,7 @@ sub send_status {
       $r->send_http_header;
       $r->print($mesg);
     } else {
+      # not sure of best way to send the message in MP2
     }
   } else {
     print "Status: $code\r\n";
@@ -680,15 +675,14 @@ sub swap_template {
   my $form = shift;
   $form = $self if ! $form && ref($self);
   $form = $self->get_form() if UNIVERSAL::isa($form, __PACKAGE__);
-  
+
   my $get_form_value;
   if (UNIVERSAL::isa($form, 'HASH')) {
     $get_form_value = sub {
       my $key = shift;
       return defined($form->{$key}) ? $form->{$key} : '';
     };
-  } elsif (my $meth = UNIVERSAL::can($form,
-                                     $self->{'object_param_method'} || $OBJECT_PARAM_METHOD)) {
+  } elsif (my $meth = UNIVERSAL::can($form, 'param')) {
     $get_form_value = sub {
       my $key = shift;
       my $val = $form->$meth($key);
@@ -751,7 +745,7 @@ __END__
 
 =head1 NAME
 
-CGI::Ex - Yet Another Form Utility
+CGI::Ex - CGI utility suite (form getter/filler/validator/app builder)
 
 =head1 SYNOPSIS
 
@@ -759,7 +753,7 @@ CGI::Ex - Yet Another Form Utility
 
   my $cgix = CGI::Ex->new;
   my $hashref = $cgix->get_form; # uses CGI by default
-  
+
   ### send the Content-type header - whether or not we are mod_perl
   $cgix->print_content_type;
 
@@ -835,6 +829,14 @@ CGI::Ex - Yet Another Form Utility
   my $ref = $cgix->conf_read('settings');
 
 =head1 DESCRIPTION
+
+CGI::Ex provides a suite of utilities to make writing CGI scripts
+more enjoyable.  Although they can all be used separately, the
+main functionality of each of the modules is best represented in
+the CGI::Ex::App module.  CGI::Ex::App takes CGI application building
+to the next step.  CGI::Ex::App is not a framework (which normally
+includes prebuilt html) instead CGI::Ex::App is an extended application
+flow that normally dramatically reduces CGI build time.  See L<CGI::Ex::App>.
 
 CGI::Ex is another form filler / validator / conf reader / template
 interface.  Its goal is to take the wide scope of validators and other
@@ -957,7 +959,8 @@ A hashref of key value pairs.
 =item C<fobject>
 
 A cgi style object or arrayref of cgi style objects used for getting
-the key value pairs.
+the key value pairs.  Should be capable of the ->param method and
+->cookie method as document in L<CGI>.
 
 =back
 
