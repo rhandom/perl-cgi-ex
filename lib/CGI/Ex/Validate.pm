@@ -1021,11 +1021,11 @@ sub get_error_text {
 
     } elsif ($type eq 'max_in_set') {
       my $set = $field_val->{"max_in_set${dig}"};
-      $return = "Not enough fields were chosen from the set ($set)";
+      $return = "Too many fields were chosen from the set ($set)";
 
     } elsif ($type eq 'min_in_set') {
       my $set = $field_val->{"min_in_set${dig}"};
-      $return = "Too many fields were chosen from the set ($set)";
+      $return = "Not enough fields were chosen from the set ($set)";
 
     } elsif ($type eq 'match') {
       $return = "$name contains invalid characters.";
@@ -1064,7 +1064,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.59 2004-04-09 21:04:18 pauls Exp $
+$Id: Validate.pm,v 1.60 2004-04-09 21:26:21 pauls Exp $
 
 =head1 SYNOPSIS
 
