@@ -11,7 +11,7 @@ package CGI::Ex::App;
 
 
 use strict;
-use vars qw($EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS);
+use vars qw($EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS $BASE_NAME_MODULE);
 
 use CGI::Ex::Dump qw(debug);
 
@@ -23,6 +23,7 @@ BEGIN {
   $EXT_VAL   ||= 'val';
   $BASE_DIR_REL ||= ''; # relative path - stub methods will look in $BASE_DIR_REL/dir/of/content.html
   $BASE_DIR_ABS ||= ''; # content should be found at "$BASE_DIR_ABS/$BASE_DIR_REL/dir/of/content.html"
+  $BASE_NAME_MODULE ||= ''; # the cgi name
 
   ### the base stub functions use Template Toolkit and CGI::Ex::Validate
   ### If you are mod_perl and are using the stub functions - you may want
@@ -406,11 +407,22 @@ sub format_error {
 ###----------------------------------------------------------------###
 ### default stub subs
 
+sub base_name_module {
+  my $self = shift;
+  $self->{base_name_module} = shift if $#_ != -1;
+  return $self->{base_name_module} ||= $BASE_NAME_MODULE;
+}
+
 sub name_module {
   my $self = shift;
   my $step = shift || '';
-  return ($0 =~ m|(\w+)$|) ? $1
-    : die "Couldn't determine module name from \"name_module\" lookup ($step)";
+  my $name;
+  if ($name = $self->base_name_module) {
+    return $name;
+  } else {
+    return ($0 =~ m|(\w+)$|) ? $1
+      : die "Couldn't determine module name from \"name_module\" lookup ($step)";
+  }
 }
 
 sub file_print {
