@@ -21,7 +21,7 @@ use vars qw($VERSION
             $HTML_KEY
             );
 
-$VERSION = '0.1';
+$VERSION = '0.2';
 
 $DEFAULT_EXT = 'conf';
 
