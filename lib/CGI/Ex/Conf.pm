@@ -73,7 +73,11 @@ sub read_ref {
 
   ### they passed the right stuff already
   if (ref $file) {
-    return $file;
+    if (UNIVERSAL::isa($file, 'SCALAR')) {
+      return &yaml_load($$file); # allow for ref to a YAML string
+    } else {
+      return $file;
+    }
 
   ### if contains a newline - treat it as a YAML string
   } elsif (index($file,"\n") != -1) {
