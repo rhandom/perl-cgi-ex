@@ -490,10 +490,11 @@ sub morph {
   push @$hist, "$step - morph - morph";
   my $sref = \$hist->[-1]; # get ref so we can add more info in a moment
   my $new  = $self->run_hook($step, 'morph_package');
-  if ($cur ne $new) {
+  if ($new && $cur ne $new) {
     my $file = $new .'.pm';
     $file =~ s|::|/|g;
-    if (eval { require $file }) { # check for the file that holds this package
+    if (UNIVERSAL::can($new, 'can')  # check if the package space exists
+        || eval { require $file }) { # check for a file that holds this package
       ### become that package
       bless $self, $new;
       $$sref .= " - changed $cur to $new";
