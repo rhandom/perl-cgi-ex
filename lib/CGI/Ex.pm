@@ -15,6 +15,7 @@ use vars qw($VERSION
             $PREFERRED_CGI_MODULE
             $OBJECT_METHOD
             $AUTOLOAD
+            $DEBUG_LOCATION_BOUNCE
             @EXPORT @EXPORT_OK
             );
 use base qw(Exporter);
@@ -62,7 +63,7 @@ sub AUTOLOAD {
 ###----------------------------------------------------------------###
 
 ### form getter that will act like ->Vars only it will be intelligent
-### thus directly infering that a majority of CGI.pm is unintelligent
+### thus infering that portions of CGI.pm are unintelligent
 sub get_form {
   my $self = shift || __PACKAGE__;
   $self = $self->new(@_) if ! ref $self;
@@ -76,7 +77,8 @@ sub get_form {
   return \%hash;
 }
 
-## like get_form - but a hashref of cookies
+### like get_form - but a hashref of cookies
+### cookies are parsed depending upon the functionality of ->cookie
 sub get_cookies {
   my $self = shift || __PACKAGE__;
   $self = $self->new(@_) if ! ref $self;
@@ -115,7 +117,66 @@ sub content_typed {
     return $r->bytes_sent;
   } else {
     my $ref = $ENV{CONTENT_TYPED} ||= [];
-    return $#$ref != 1;
+    return $#$ref != -1;
+  }
+}
+
+###----------------------------------------------------------------###
+
+### location bounce nicely - even if we have already sent content
+sub location_bounce {
+  my $self = ref($_[0]) ? shift : undef;
+  my $loc  = shift || '';
+  if (&content_typed()) {
+    if ($DEBUG_LOCATION_BOUNCE) {
+      print "<a class=debug href=\"$loc\">Location: $loc</a><br />\n";
+    } else {
+      print "<meta http-equiv=\"refresh\" content=\"0;url=$loc\" />\n";
+    }
+  } else {
+    if ($ENV{MOD_PERL} && (my $r = Apache->request)) {
+      $r->header_out("Location", $loc);
+      $r->status(302);
+      $r->content_type('text/html');
+      $r->send_http_header;
+      $r->print("Bounced to $loc\n");
+    } else { 
+      print "Location: $loc\r\n",
+            "Status: 302 Bounce\r\n",
+            "Content-type: text/html\r\n\r\n",
+            "Bounced to $loc\r\n";
+    }
+  }
+}
+
+### set a cookie nicely - even if we have already sent content
+sub set_cookie {
+  my $self = UNIVERSAL::isa($_[0], __PACKAGE__) ? shift : undef;
+  my $args = ref($_[0]) ? shift : {@_};
+  foreach (keys %$args) {
+    next if /^-/;
+    $args->{"-$_"} = delete $args->{$_};
+  }
+
+  ### default path and allow for 1hour instead of 1h
+  ### (if your gonna make expires useful - make it useful)
+  $args->{-path} ||= '/';
+  if ($args->{-expires}) {
+    $args->{-expires} =~ s/(?<=\d[a-z])[a-z]+$//;
+    $args->{-expires} =~ s/(?<=\d) (?=[a=z])//;
+    $args->{-expires} =~ s/^(?=\d)/+/;
+  }
+
+  my $cookie = "" . $self->object->cookie(%$args);
+
+  if (&content_typed()) {
+    print "<meta http-equiv=\"Set-cookie\" content=\"$cookie\" />\n";
+  } else {
+    if ($ENV{MOD_PERL} && (my $r = Apache->request)) {
+      $r->header_out("Set-cookie", $cookie);
+    } else {
+      print "Set-cookie: $cookie\r\n"
+    }
   }
 }
 
