@@ -1,10 +1,10 @@
 package CGI::Ex::Die;
 
 use strict;
-use vars qw($no_recurse $EXTENDED_ERRORS $SHOW_TRACE $IGNORE_EVAL);
+use vars qw($no_recurse $EXTENDED_ERRORS $SHOW_TRACE $IGNORE_EVAL $ERROR_TEMPLATE);
 
 use CGI::Ex;
-use CGI::Ex::Dump qw(debug ctrace);
+use CGI::Ex::Dump qw(debug ctrace dex_html);
 
 BEGIN {
   $SHOW_TRACE = 0      if ! defined $SHOW_TRACE;
@@ -32,6 +32,7 @@ sub import {
     $SHOW_TRACE      = $args{'show_trace'}      if exists $args{'show_trace'};
     $IGNORE_EVAL     = $args{'ignore_eval'}     if exists $args{'ignore_eval'};
     $EXTENDED_ERRORS = $args{'extended_errors'} if exists $args{'extended_errors'};
+    $ERROR_TEMPLATE  = $args{'error_template'}  if exists $args{'error_template'};
   }
   return 1;
 }
@@ -84,26 +85,53 @@ sub die_handler {
     } elsif ($copy =~ m|^syntax error at ([/\w.\-]+) line \d+, near|mi) {
     }
   }
-  my $msg = &CGI::Ex::Dump::_html_quote("$err");
-  $msg = "<pre style='background:red;color:white;border:2px solid black;font-size:120%;padding:3px'>Error: $msg</pre>\n";
 
+  ### web based - give more options
   if ($ENV{REQUEST_METHOD}) {
+    my $cgix = CGI::Ex->new;
+
+    my $msg = &CGI::Ex::Dump::_html_quote("$err");
+    $msg = "<pre style='background:red;color:white;border:2px solid black;font-size:120%;padding:3px'>Error: $msg</pre>\n";
+
+    my $ctrace = ! $SHOW_TRACE ? ""
+      : "<pre style='background:white;color:black;border:2px solid black;padding:3px'>"
+      . dex_html(ctrace)."</pre>";
+
+    ### get the template and swap it in
+    # allow for a sub that returns the template
+    # or a string
+    # or a filename (string starting with /)
+    my $out;
+    my $args;
+    if ($ERROR_TEMPLATE) {
+      $args = {err => "$err", msg => $msg, ctrace => $ctrace};
+      $out = UNIVERSAL::isa($ERROR_TEMPLATE, 'CODE') ? &$ERROR_TEMPLATE($args) # coderef
+        : (substr($ERROR_TEMPLATE,0,1) ne '/') ? $ERROR_TEMPLATE # html string
+        : do { # filename
+          if (open my $fh, $ERROR_TEMPLATE) {
+            read($fh, my $str, -s $ERROR_TEMPLATE);
+            $str; # return of the do
+          } };
+    }
+    if ($out) {
+      $cgix->swap_template(\$out, $args);
+    } else {
+      $out = $msg.$ctrace;
+    }
+
     ### similar to CGI::Carp
-    if (my $r = CGI::Ex->apache_request) {
+    if (my $r = $cgix->apache_request) {
       if ($r->bytes_sent) {
-        $r->print($msg);
+        $r->print($out);
         $r->exit;
       } else {
         $r->status(500);
-        $r->custom_response(500,$msg);
+        $r->custom_response(500, $out);
       }
     } else {
-      CGI::Ex->print_content_type;
-      print $msg;
+      $cgix->print_content_type;
+      print $out;
     }
-    ### show the trace
-    debug ctrace
-      if $SHOW_TRACE;
   } else {
     ### command line execution
   }
