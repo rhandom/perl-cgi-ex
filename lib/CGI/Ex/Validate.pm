@@ -13,9 +13,13 @@ use strict;
 use vars qw($VERSION
             $ERROR_PACKAGE
             $DEFAULT_EXT
-            %DEFAULT_OPTIONS);
+            %DEFAULT_OPTIONS
+            $JS_URI_PATH
+            $JS_URI_PATH_YAML
+            $JS_URI_PATH_VALIDATE
+            );
 
-$VERSION = '0.93';
+$VERSION = '0.94';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -39,6 +43,22 @@ sub new {
 
 ###----------------------------------------------------------------###
 
+sub cgix {
+  my $self = shift;
+  return $self->{cgix} ||= do {
+    require CGI::Ex;
+    CGI::Ex->new;
+  };
+}
+
+sub conf {
+  my $self = shift;
+  return $self->{conf_obj} ||= CGI::Ex::Conf->new({
+    default_ext => $DEFAULT_EXT,
+    directive   => 'LAST',
+  });
+}
+
 ### the main validation routine
 sub validate {
   my $self = (! ref($_[0])) ? shift->new                    # $class->validate
@@ -51,9 +71,8 @@ sub validate {
   if (! ref($form)) {
     die "Invalid form hash or cgi object";
   } elsif(! UNIVERSAL::isa($form,'HASH')) {
-    require CGI::Ex;
     local $self->{cgi_object} = $form;
-    $form = CGI::Ex->new->get_form($form);
+    $form = $self->cgix->get_form($form);
   }
 
   ### get the validation - let get_validation deal with types
@@ -657,13 +676,7 @@ sub check_type {
 sub get_validation {
   my $self = shift;
   my $val  = shift;
-
-  my $cob = $self->{conf} ||= CGI::Ex::Conf->new({
-    default_ext => $DEFAULT_EXT,
-    directive   => 'LAST',
-  });
-
-  return $cob->read($val);
+  return $self->conf->read($val);
 }
 
 ### returns all keys from all groups - even if group has validate_if
@@ -721,6 +734,41 @@ sub get_validation_keys {
   }
 
   return \%keys;
+}
+
+###----------------------------------------------------------------###
+
+### spit out a chunk that will do the validation
+sub generate_js {
+  my $self        = shift;
+  my $val_hash    = shift || die "Missing validation";
+  my $form_name   = shift || die "Missing form name";
+  my $js_uri_path = shift || $JS_URI_PATH;
+  $val_hash = $self->get_validation($val_hash);
+  require YAML;
+  my $str = &YAML::Dump($val_hash);
+  $str =~ s/(?<!\\)\\(?=[sSdDwWbB0-9?.*+|\-\^\${}()\[\]])/\\\\/g;
+  $str =~ s/\n/\\n\\\n/g; # allow for one big string
+
+  ### get the paths
+  my $js_uri_path_yaml = $JS_URI_PATH_YAML || do {
+    die "Missing \$js_uri_path" if ! $js_uri_path;
+    "$js_uri_path/CGI/Ex/yaml_load.js";
+  };
+  my $js_uri_path_validate = $JS_URI_PATH_VALIDATE || do {
+    die "Missing \$js_uri_path" if ! $js_uri_path;
+    "$js_uri_path/CGI/Ex/validate.js";
+  };
+
+  ### return the string
+  return qq{<script src="$js_uri_path_yaml"></script>
+<script src="$js_uri_path_validate"></script>
+<script><!--
+document.validation = "$str";
+if (document.check_form) document.check_form("$form_name");
+//--></script>
+};
+
 }
 
 ###----------------------------------------------------------------###
@@ -962,7 +1010,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.43 2003-11-25 21:45:33 pauls Exp $
+$Id: Validate.pm,v 1.44 2003-11-26 22:01:16 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1102,6 +1150,74 @@ has been set, validate will die with a CGI::Ex::validate::Error object as the va
   if ($@) {
     my $err_obj = $@;
   }
+
+=item C<generate_js>
+
+Requires YAML to work properly (see L<YAML>).
+
+Takes a validation hash, a form name, and an optional javascript uri
+path and returns Javascript that can be embedded on a page and will
+perform identical validations as the server side.  The validation can
+be any validation hash (or arrayref of hashes.  The form name must be
+the name of the form that the validation will act upon - the name is
+used to register an onsubmit function.  The javascript uri path is
+used to embed the locations two external javascript source files.
+
+
+The javascript uri path is highly dependent upon the server
+implementation and therefore must be configured manually.  It may be
+passed to generate_js, or it may be specified in $JS_URI_PATH.  There
+are two files included with this module that are needed -
+CGI/Ex/yaml_load.js and CGI/Ex/validate.js.  When generating the js
+code, generate_js will look in $JS_URI_PATH_YAML and
+$JS_URI_PATH_VALIDATE.  If either of these are not set, generate_js
+will default to "$JS_URI_PATH/CGI/Ex/yaml_load.js" and
+"$JS_URI_PATH/CGI/Ex/validate.js".
+
+  $self->generate_js($val_hash, 'my_form', "/cgi-bin/js")
+  # would generate something like the following...
+  # <script src="/cgi-bin/js/CGI/Ex/yaml_load.js"></script>
+  # <script src="/cgi-bin/js/CGI/Ex/validate.js"></script>
+  # ... more js follows ...
+
+  $CGI::Ex::Validate::JS_URI_PATH      = "/stock/js";
+  $CGI::Ex::Validate::JS_URI_PATH_YAML = "/js/yaml_load.js";
+  $self->generate_js($val_hash, 'my_form')  
+  # would generate something like the following...
+  # <script src="/js/yaml_load.js"></script>
+  # <script src="/stock/js/CGI/Ex/validate.js"></script>
+  # ... more js follows ...
+
+Referencing yaml_load.js and validate.js can be done in any of
+several ways.  They can be copied to or symlinked to a fixed location
+in the servers html directory.  They can also be printed out by a cgi.
+The method C<-E<gt>print_js> has been provided in CGI::Ex for printing
+js files found in the perl heirchy.  See L<CGI::Ex> for more details.
+The $JS_URI_PATH of "/cgi-bin/js" could contain the following:
+
+  #!/usr/bin/perl -w
+
+  use strict;
+  use CGI::Ex;
+
+  ### path_info should contain something like /CGI/Ex/yaml_load.js
+  my $info = $ENV{PATH_INFO} || '';
+  die "Invalid path" if $info !~ m|^(/\w+)+.js$|;
+  $info =~ s|^/+||;
+
+  CGI::Ex->new->print_js($info);
+  exit;
+
+The print_js method in CGI::Ex is designed to cache the javascript in
+the browser (caching is suggested as they are medium sized files).
+
+=item C<-E<gt>cgix>
+
+Returns a CGI::Ex object.  Used internally.
+
+=item C<-E<gt>conf>
+
+Returns a CGI::Ex::Conf object.  Used internally.
 
 =back
 
@@ -1677,6 +1793,27 @@ a string that will be prepended on to the error string.
 If as_hash_join has been set to a true value, as_hash_footer may be set to
 a string that will be postpended on to the error string.
 
+=item C<'general no_inline'>
+
+If set to true, the javascript validation will not attempt to generate inline
+errors.  Default is true.  Inline errors are independent of confirm and alert
+errors.
+
+=item C<'general no_confirm'>
+
+If set to true, the javascript validation will try to use an alert instead
+of a confirm to inform the user of errors.  Alert and confirm are independent
+or inline errors.  Default is false.
+
+=item C<'general no_alert'>
+
+If set to true, the javascript validation will not show an alert box
+when errors occur.  Default is false.  This option only comes into
+play if no_confirm is also set.  This option is independent of inline
+errors.  Although it is possible to turn off all errors by setting
+no_inline, no_confirm, and no_alert all to 1, it is suggested that at
+least one of the error reporting facilities is left on.
+
 =back
 
 It is possible to have a group that contains nothing but general options.
@@ -1695,9 +1832,93 @@ It is possible to have a group that contains nothing but general options.
     },
   ];
 
-=head1 TODO
+=head1 JAVASCRIPT
 
-Finish javascript.
+CGI::Ex::Validate provides for having duplicate validation on the
+client side as on the server side.  Errors can be shown in any
+combination of inline and confirm, inline and alert, inline only,
+confirm only, alert only, and none.  These combinations are controlled
+by the general options no_inline, no_confirm, and no_alert.
+Javascript validation can be generated for a page using the
+C<-E<gt>generate_js> Method of CGI::Ex::Validate.  It is also possible
+to store the validation inline with the html.  This can be done by
+giving each of the elements to be validated an attribute called
+"validation", or by setting a global javascript variable called
+"document.validation" or "var validation".  An html file containing this
+validation will be read in using CGI::Ex::Conf::read_handler_html.
+
+All inline html validation must be written in yaml.
+
+It is anticipated that the html will contain something like either of the
+following examples:
+
+  <script src="/cgi-bin/js/CGI/Ex/yaml_load.js"></script>
+  <script src="/cgi-bin/js/CGI/Ex/validate.js"></script>
+  <script>
+  // \n\ allows all browsers to view this as a single string
+  document.validation = "\n\
+  general no_confirm: 1\n\
+  general no_alert: 1\n\
+  group order: [username, password]\n\
+  username:\n\
+    required: 1\n\
+    max_len: 20\n\
+  password:\n\
+    required: 1\n\
+    max_len: 30\n\
+  ";
+  if (document.check_form) document.check_form('my_form_name');
+  </script>
+
+Alternately we can use element attributes:
+
+  <form name="my_form_name">
+
+  Username: <input type=text size=20 name=username validation="
+    required: 1
+    max_len: 20
+  "><br>
+  <span class=error id=username_error>[% username_error %]</span><br>
+
+  Password: <input type=text size=20 name=password validation="
+    required: 1
+    max_len: 30
+  "><br>
+  <span class=error id=password_error>[% password_error %]</span><br>
+
+  <input type=submit>
+
+  </form>
+
+  <script src="/cgi-bin/js/CGI/Ex/yaml_load.js"></script>
+  <script src="/cgi-bin/js/CGI/Ex/validate.js"></script>
+  <script>
+  if (document.check_form) document.check_form('my_form_name');
+  </script>
+
+The read_handler_html from CGI::Ex::Conf will find either of these
+types of validation.
+
+If inline errors are asked for, each error that occurs will attempt
+to find an html element with its name as the id.  For example, if
+the field "username" failed validation and created a "username_error",
+the javascript would set the html of <span id="username_error"></span>
+to the error message.
+
+It is suggested to use something like the following so that you can
+have inline javascript validation as well as report validation errors
+from the server side as well.
+
+   <span class=error id=password_error>[% password_error %]</span><br>
+
+If the javascript fails for some reason, the form should still be able
+to submit as normal (fail gracefully).
+
+If the confirm option is used, the errors will be displayed to the user.
+If they choose OK they will be able to try and fix the errors.  If they
+choose cancel, the form will submit anyway and will rely on the server
+to do the validation.  This is for fail safety to make sure that if the
+javascript didn't validate correctly, the user can still submit the data.
 
 =head1 AUTHOR
 
