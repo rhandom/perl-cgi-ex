@@ -11,8 +11,9 @@ package CGI::Ex;
 
 use strict;
 use vars qw($VERSION
-            $PREFERRED_FILL_MODULE
-            $PREFERRED_CGI_MODULE
+            $PREFERRED_FILL_PACKAGE
+            $PREFERRED_CGI_PACKAGE
+            $PREFERRED_CGI_FILE
             $OBJECT_METHOD
             $AUTOLOAD
             $DEBUG_LOCATION_BOUNCE
@@ -22,8 +23,8 @@ use base qw(Exporter);
 use Data::DumpEx;
 
 $VERSION               = '1.0';
-$PREFERRED_FILL_MODULE = '';
-$PREFERRED_CGI_MODULE  = 'CGI';
+$PREFERRED_FILL_MODULE ||= '';
+$PREFERRED_CGI_MODULE  ||= 'CGI';
 @EXPORT = ();
 @EXPORT_OK = qw(get_form get_cookies
                 content_type content_typed
@@ -40,13 +41,16 @@ sub new {
 ### allow for holding another classed CGI style object
 sub object {
   return shift()->{object} ||= do {
-    my $file = $PREFERRED_CGI_MODULE;
-    $file .= ".pm" if $file !~ /\.\w+$/;
-    $file =~ s|::|/|g;
-    eval {require $file};
-    if ($@) {
-      die "Couldn't require $PREFERRED_CGI_MODULE: $@";
-    }
+    $PREFERRED_CGI_FILE ||= do {
+      my $file = $PREFERRED_CGI_MODULE;
+      $file .= ".pm" if $file !~ /\.\w+$/;
+      $file =~ s|::|/|g;
+      eval {require $file};
+      if ($@) {
+        die "Couldn't require $PREFERRED_CGI_MODULE: $@";
+      }
+      $file; # return of inner do
+    };
     $PREFERRED_CGI_MODULE->new(); # return of the do
   };
 }
