@@ -299,7 +299,7 @@ sub validate {
   if ($@) {
     die "Couldn't require CGI::Ex::Validate: $@";
   }
-  return CGI::Ex::Validate->new({raise_error => 1})->validate($form, $file);
+  return CGI::Ex::Validate->new->validate($form, $file);
 }
 
 ###----------------------------------------------------------------###
