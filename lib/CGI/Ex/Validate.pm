@@ -2,17 +2,13 @@ package CGI::Ex::Validate;
 
 use strict;
 use vars qw($VERSION
-            $QR_FIELD_NAME
             $DEFAULT_RAISE_ERROR
             @DEFAULT_EXT %EXT_HANDLERS);
 
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.7 $ )[1];
-
-### what is allowed in a field name
-#$QR_FIELD_NAME = qr/[\w!\@\#\$%\^&*()\-+=:;\'\",.?]+/;
+$VERSION = (qw$Revision: 1.8 $ )[1];
 
 @DEFAULT_EXT = ('val');
 
@@ -267,42 +263,15 @@ sub check_conditional {
 sub validate_buddy {
   my $self = shift;
   my ($form, $field, $field_val, $N_level, $ifs_match) = @_;
-
-  my @errors  = ();
-
-#  ### only do once (RequiredIf may nest calls)
-#  my $is_done = {};
-#  return @errors if $is_done->{$field};
-#  $is_done->{$field} = 1;
-
   $N_level ||= 0;
   $N_level ++; # prevent too many recursive checks
-  if ($N_level > 5) {
-#    dex dtrace;
-    die "Max dependency level reached $N_level";
-  }
+  die "Max dependency level reached $N_level" if $N_level > 10;
 
-  my $types = [sort keys %$field_val];
-
-  ### supported validation types are as follows
-  ##  validate_if
-  ##  required_if
-  ##  required
-  ##  min_values
-  ##  max_values (defaults to 1)
-  ##  enum      (programming side if choices > 10)
-  ##  equals
-  ##  min_len
-  ##  max_len
-  ##  regex
-  ##  compare
-  ##  sql       (programming side)
-  ##  boolean   (programming side)
-  ##  type
+  my @errors = ();
+  my $types  = [sort keys %$field_val];
 
   ### allow for not running some tests in the cgi
   return @errors if scalar $self->filter_type('exclude_cgi',$types);
-
 
   ### allow for field names that contain regular expressions
   if ($field =~ m|^(!?)m(\W)(.*)\2([eigsmx]*)$|s) {
@@ -316,7 +285,6 @@ sub validate_buddy {
     }
     return wantarray ? @errors : scalar @errors;
   }
-
 
   ### allow for a few form modifiers
   if (defined $form->{$field}) {
@@ -333,7 +301,6 @@ sub validate_buddy {
       $form->{$field} = lc($form->{$field});
     }
   }
-
 
   ### only continue if a validate_if is not present or passes test
   my $needs_val = 0;
@@ -366,7 +333,7 @@ sub validate_buddy {
     }
   }
   if ($is_required && (! defined($form->{$field}) || ! length($form->{$field}))) {
-#    isun $field_val,$field, $field;
+#    dex $field_val,$field, $field;
     $self->add_error(\@errors, $field, $is_required, $field_val, $ifs_match);
     return @errors;
   }
@@ -573,21 +540,6 @@ sub check_type {
     return 0 if ! $self->check_type($dom,'DOMAIN') && ! $self->check_type($dom,'IP');
     return 0 if ! $self->check_type($local_p,'LOCAL_PART');
 
-# this works but probably wont be needed
-#  ### do general email address that follow rfc
-#  } elsif ($type eq 'EMAIL_GENERAL') {
-#    return 0 if ! $value;
-#    my($local_p,$dom) = ($value =~ /^(\.+)\@(\.+?)$/) ? ($1,$2) : return 0;
-#
-#    return 0 if ! $self->check_type($dom,'DOMAIN') && ! $self->check_type($dom,'IP');
-#
-#    if ($local_p =~ /^\"(.+)\"$/) { # allow for quoted string emails
-#      my $str = $1;
-#      return 0 if $str =~ /[\"\n\t]/;
-#    } else {
-#      return 0 if $str !~ /^ [\w\!\&\-\=\*]+ ( \. [\w\!\&\-\=\*]+ )* $/x;
-#    }
-
   ### the "username" portion of an email address
   } elsif ($type eq 'LOCAL_PART') {
     return 0 if ! defined($value) || ! length($value);
@@ -653,188 +605,6 @@ sub check_type {
   }
 
   return 1;
-}
-
-###----------------------------------------------------------------###
-
-sub onsubmit_js {
-  return "ONSUBMIT=\"if(document.validate_form){if(document.validate_form(this,arguments)) return true; else return false;}\"";
-}
-
-sub generate_js {
-  my $self = shift;
-  my $val         = shift || $self->{validation} || die "Error:missing_val_hash - Missing validation hash";
-  my $val_order   = shift || [];
-  
-  ### allow for validation to be passed multiple ways
-  if (! ref $val) {
-    ($val,$val_order) = $self->get_val_hash($val);
-  }
-
-  ### determin the prefix to wrap errors with
-  my $prefix = $val->{error_prefix} || $self->{error_prefix} || 'text';
-  my $order  = $self->filter_order($val,$val_order);
-
-  ### loop through the keys to setup the javascript hashes
-  my $info = "\nvar VT;\nvar VF;\n";
-  foreach my $field (@$order) {
-    if ($val->{$field}->{'ExcludeJS'}) {
-      next; # allow no validation for fields that request it
-    }
-
-    ### prepare a javascript array (hash) by the same name -- allowing for regex names
-    my $copy = $field;
-    if ($copy =~ m|^(!?)m(\W)(.*)\2([eigsmx]*)$|s) {
-      my ($not,$pat,$opt) = ($1,$3,$4);
-      $copy = $self->touchup_regex($not,$pat,$opt);
-    }
-    $copy = $self->js_escape($copy);
-    $info .= "VF = \"$copy\";\nVT = VALIDATE[VF] = new Array();\n";
-    
-    ### populate the array with key value pairs
-    foreach my $check (sort keys %{ $val->{$field} }) {
-      next if $check !~ /^(ValidateIf|Required|RequiredIf|MinLength|MaxLength|Equals|RegEx|Type|Enum|Compare|Proxy|DoNotTrim)\d*$/;
-      my $value = $val->{$field}->{$check};
-      $value = '' if ! defined $value;
-
-      ### if an enum has more than 20 values - skip it
-      if ($check =~ /^Enum\d*$/) {
-        my $ref = ref($value) ? $value : [split(/\s*\|\|\s*/,$value)];
-        next if @$ref > 20;
-        $value = join("||",@$ref);
-
-      ### clean up regex checks
-      } elsif ($check =~ /^RegEx\d*$/) {
-        my $ref = ref($value) ? $value : [split(/\s*\|\|\s*/,$value)];
-        foreach my $rx (@$ref) {
-          $rx =~ s/^\s*=~\s*//;
-          my $not = ($rx =~ s/^\s*!~?\s*//) ? '!' : '';
-          if ($rx =~ /^\s*m?([^\w\s])(.*[^\\])\1([eisgmx]*)\s*$/s || $rx =~ /^\s*m?([^\w\s])()\1([eisgmx]*)\s*$/s) {
-            my ($pat,$opt) = ($2,$3);
-            $rx = $self->touchup_regex($not,$pat,$opt);
-            
-          } else {
-            die "Error:parse_regex - Not sure how to parse that regex ($rx)";
-          }
-        }
-        $value = join("||",@$ref);
-
-      ### clean up Compare checks
-      } elsif ($check =~ /^Compare\d*$/) {
-        if ($value =~ /^\s*(>|<|[><!=]=)\s*([\d\.\-]+)\s*$/) {
-          $value = "$1 $2";
-        } elsif ($value =~ /^\s*(eq|ne|gt|ge|lt|le)\s+(.+?)\s*$/) {
-          $value = "$1 $2";
-        } else {
-          die "Error:parse_compare - Not sure how to compare \"$value\"";
-        }
-
-      ### clean up some values to make the javascript easier - just remove whitespace
-      } elsif ($check =~ /If$/) {
-        $value =~ s/^\s*(!?)\s*/$1/;
-        $value =~ s/\s+$//;
-        $value =~ s/(LENGTH|VALIDATED)\s*\(\s*($QR_FIELD_NAME)\s*/$1\($2/x;
-        $value =~ s/(I?EQUALS|REGEX)  \s*\(\s*($QR_FIELD_NAME)\s*,\s*/$1\($2,/x;
-        $value =~ s/\s*\)/\)/;
-        if ($value =~ m/^(!?REGEX\($QR_FIELD_NAME,)[\"\'](.*)[\'\"]\)$/s) {
-          my ($begin,$match) = ($1,$2);
-          $match =~ m/^(!?)m(\W)(.*)\2([eigsmx]*)$/ || die "Error:parse_regex - Don't know how to parse regex ($match)"; 
-          my ($not,$pat,$opt) = ($1,$3,$4);
-          $value = "$begin'" .$self->touchup_regex($not,$pat,$opt) ."')";
-        }
-      }
-
-      ### javascript escape some stuff
-      $value = $self->js_escape($value);
-      $info .= "VT.${check} = \"$value\"\n";
-
-      ### add the error
-      next if $check =~ /^(ValidateIf|Proxy|DoNotTrim)$/;
-      my $err = $self->js_escape($self->get_error_text($field,$check,$val->{$field},$prefix) || '');
-      $info .= "VT.${check}Error = \"- $err\"\n";
-    }
-  }
-
-  ### add on group info
-  $info .= "VT = VALIDATE_GROUPS = new Array();\n";
-  my $n = 0;
-  foreach my $ref (@{ $self->get_groups($val,$val_order) }) {
-    $info .= "VT[$n] = new Array(\n";
-    my @copy = @$ref;
-    foreach my $copy (@copy) {
-      if ($copy =~ m|^(!?)m(\W)(.*)\2([eigsmx]*)$|s) {
-        my ($not,$pat,$opt) = ($1,$3,$4);
-        $copy = $self->touchup_regex($not,$pat,$opt);
-      }
-      $copy = $self->js_escape($copy);
-      $info .= "\"$copy\",\n";
-    }
-    $info =~ s/\s*,\s*$/\n);\n/;
-    $n ++;
-  }
-
-  ### get the validation order ready
-  my $order_tx = "\n";
-  foreach (@$order) {
-    my $copy = $_;
-    if ($copy =~ m|^(!?)m(\W)(.*)\2([eigsmx]*)$|s) {
-      my ($not,$pat,$opt) = ($1,$3,$4);
-      $copy = $self->touchup_regex($not,$pat,$opt);
-    }
-    $copy = $self->js_escape($copy);
-    $order_tx .= "\"$copy\",\n";
-  }
-  $order_tx =~ s/\s*,\s*$/\n/;
-
-
-  ### return the js chunk
-  return qq{
-    <SCRIPT language=\"JavaScript\">
-    <!--
-    var VALIDATE_HEADING = "[|| $prefix.js_error_heading 'Please correct the following:']";
-    var VALIDATE_ORDER = new Array($order_tx);
-    var VALIDATE = new Array();
-    $info
-    //-->
-    </SCRIPT>      
-    <SCRIPT language=\"JavaScript\" src=/fs_img/js/validation.js></SCRIPT>
-  };
-}
-
-sub touchup_regex {
-  my $self = shift;
-  my($not,$pat,$opt) = @_;
-
-  $opt =~ tr/g//d;
-  die "Error:invalid_regex_option - The e option cannot be used on validation keys" if $opt =~ /e/;
-  $pat =~ s{   # make sure sets inside of brackets are expanded properly
-    (?<!\\)\[  # unescaped [
-      (.+?)      # stuff in the middle
-      (?<!\\)\]  # unescaped ]
-    }{
-      my $set = $1;
-      $set =~ s/\\w/a-zA-Z0-9_/g;
-      $set =~ s/\\d/0-9/g;
-      "[$set]"; # return of the swap
-    }exg;
-  $pat =~ s/\\w/[a-zA-Z0-9_]/g;
-  $pat =~ s/\\d/[0-9]/g;
-  $pat =~ s/(?<!\\)\\(\W)/\\\\$1/g;
-  return "${not}m/$pat/$opt";
-}
-
-sub js_escape {
-  my $self = shift;
-  my $copy = shift;
-  $copy =~ s/\"/\\\"/g;
-  $copy =~ s{(</?scr|</?htm|<!-|->)}{$1"+"}ig;
-  $copy =~ s/\n/\"\n+\"/g;
-  return $copy;
-}
-
-
-sub AUTOLOAD {
-
 }
 
 ###----------------------------------------------------------------###
@@ -1018,7 +788,7 @@ __END__
 
 O::Form - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.7 2003-11-12 09:07:06 pauls Exp $
+$Id: Validate.pm,v 1.8 2003-11-12 09:12:10 pauls Exp $
 
 =head1 SYNOPSIS
 
