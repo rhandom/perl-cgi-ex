@@ -23,7 +23,6 @@ $cgix->fill(text => \$string,
             form => \%fdat,
             );
 
-die $string ." ";
 if ($string =~ m/ value="bar1"/) {
   print "ok 2\n";
 } else {
