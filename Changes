@@ -1,5 +1,12 @@
 2003-11-26  Paul Seamons  <cgi_ex@seamons.com>
 
+	* Version 0.96 is done
+	* Fix for pos not resetting in CGI::Ex::Fill
+        * Fix for general items set in self not being passed to generate_js
+        * Workaround for yaml_load.js |- not properly trimming whitespace
+
+2003-11-26  Paul Seamons  <cgi_ex@seamons.com>
+
 	* Version 0.94 is done
 	* Javascript functionality is in.
 
