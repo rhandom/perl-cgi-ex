@@ -1,3 +1,12 @@
+2004-11-010  Paul Seamons  <cgi_ex@seamons.com>
+
+        * Version 1.12 is done
+        * Show more App perldoc examples
+        * Fix some App path bugs
+        * Change some App method names
+        * Allow for App js_validation
+        * Allow for App validation redirection
+
 2004-11-08  Paul Seamons  <cgi_ex@seamons.com>
 
         * Version 1.11 is done
