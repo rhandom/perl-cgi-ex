@@ -170,7 +170,14 @@ sub path {
     ### if no step don't do anything
     $step ? [$step] : []; # return of the do
   };
-  }
+}
+
+### really should only be used during initialization
+sub set_path {
+  my $self = shift;
+  my $path = $self->{path} ||= [];
+  splice @$path, 0, $#$path + 1, @_; # change entries in the ref
+}
 
 sub add_to_path {
   my $self = shift;
