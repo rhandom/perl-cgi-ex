@@ -156,12 +156,12 @@ sub set_apache_request {
 
 ###----------------------------------------------------------------###
 
-sub print_content_type {
-  &content_type;
+sub content_type {
+  &print_content_type;
 }
 
 ### will send the Content-type header
-sub content_type {
+sub print_content_type {
   my $self = ref($_[0]) ? shift : __PACKAGE__; # may be called as function or method
   my $type = shift || 'text/html';
 
@@ -194,7 +194,7 @@ sub content_typed {
 sub location_bounce {
   my $self = ref($_[0]) ? shift : __PACKAGE__; # may be called as function or method
   my $loc  = shift || '';
-  if (&content_typed()) {
+  if ($self->content_typed) {
     if ($DEBUG_LOCATION_BOUNCE) {
       print "<a class=debug href=\"$loc\">Location: $loc</a><br />\n";
     } else {
@@ -255,7 +255,7 @@ sub last_modified {
   ### valid RFC (although not prefered)
   $time = scalar(gmtime(&time_calc($time)));
 
-  if (&content_typed()) {
+  if ($self->content_typed) {
     print "<meta http-equiv=\"$key\" content=\"$time\" />\n";
   } else {
     if (my $r = $self->apache_request) {
@@ -307,7 +307,7 @@ sub send_status {
   my $self = ref($_[0]) ? shift : __PACKAGE__; # may be called as function or method
   my $code = shift || die "Missing status";
   my $mesg = shift || "HTTP Status of $code received\n";
-  if (&content_typed()) {
+  if ($self->content_typed) {
     die "Cannot send a status ($code - $mesg) after content has been sent";
   }
   if (my $r = $self->apache_request) {
@@ -316,9 +316,6 @@ sub send_status {
     $r->send_http_header;
     $r->print($mesg);
   } else {
-    if ($self->content_typed) {
-      die "Cannot send a status ($code - $mesg) after content has been sent";
-    }
     print "Status: $code\r\n";
     $self->print_content_type;
     print $mesg;
@@ -330,16 +327,12 @@ sub send_header {
   my $self = ref($_[0]) ? shift : __PACKAGE__; # may be called as function or method
   my $key  = shift;
   my $value = shift;
-  if (&content_typed()) {
+  if ($self->content_typed) {
     die "Cannot send a header ($key - $value) after content has been sent";
   }
-
   if (my $r = $self->apache_request) {
     $r->header_out($key, $value);
   } else {
-    if ($self->content_typed) {
-      die "Cannot send a header ($key - $value) after content has been sent";
-    }
     print "$key: $value\r\n";
   }
 }
@@ -387,7 +380,7 @@ sub print_js {
   if (! $self->content_typed) {
     $self->last_modified($stat->[9]);
     $self->expires('+ 1 year');
-    &content_type('application/x-javascript');
+    $self->print_content_type('application/x-javascript');
   }
 
   return if $ENV{REQUEST_METHOD} && $ENV{REQUEST_METHOD} eq 'HEAD';
@@ -614,7 +607,7 @@ CGI::Ex - Yet Another Form Utility
   my $hashref = $cgix->get_form; # uses CGI by default
   
   ### send the Content-type header - whether or not we are mod_perl
-  $cgix->content_type;
+  $cgix->print_content_type;
 
   my $val_hash = $cgix->conf_read($pathtovalidation);
 
