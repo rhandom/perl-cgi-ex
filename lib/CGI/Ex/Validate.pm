@@ -56,6 +56,7 @@ sub validate {
     die "Invalid form hash or cgi object";
   } elsif(! UNIVERSAL::isa($form,'HASH')) {
     require CGI::Ex;
+    local $self->{cgi_object} = $form;
     $form = CGI::Ex->new->get_form($form);
   }
 
@@ -263,19 +264,67 @@ sub validate_buddy {
     return wantarray ? @errors : scalar @errors;
   }
 
+  my $n_values = UNIVERSAL::isa($form->{$field},'ARRAY') ? $#{ $form->{$field} } + 1 : 1;
+  my $values = ($n_values > 1) ? $form->{$field} : [$form->{$field}];
+
   ### allow for a few form modifiers
-  if (defined $form->{$field}) {
+  my $modified = 0;
+  foreach my $value (@$values) {
+    next if ! defined $value;
     if (! scalar $self->filter_type('do_not_trim',$types)) { # whitespace
-      $form->{$field} =~ s/^\s+//;
-      $form->{$field} =~ s/\s+$//;
-    }
-    foreach my $pat ($self->filter_type('strip_characters',$types)) { # strip characters
-      $form->{$field} =~ s/$pat//;
+      $value =~ s/^\s+//;
+      $value =~ s/\s+$//;
+      $modified = 1;
     }
     if (scalar $self->filter_type('to_upper_case',$types)) { # uppercase
-      $form->{$field} = uc($form->{$field});
+      $value = uc($value);
+      $modified = 1;
     } elsif (scalar $self->filter_type('to_lower_case',$types)) { # lowercase
-      $form->{$field} = lc($form->{$field});
+      $value = lc($value);
+      $modified = 1;
+    }
+  }
+  # allow for inline specified modifications (ie s/foo/bar/)
+  foreach my $type ($self->filter_type('replace',$types)) { 
+    my $rx = $field_val->{$type} || next;
+    if ($rx !~ m/^\s*s([^\s\w])(.+)\1(.*)\1([eigsmx]*)$/s) {
+      die "Not sure how to parse that match ($rx)";
+    }
+    my ($pat,$swap,$opt) = ($2,$3,$4);
+    die "The e option cannot be used in swap on field $field" if $opt =~ /e/;
+    my $global = $opt =~ s/g//g;
+    $swap =~ s/\\n/\n/g;
+    if ($global) {
+      foreach my $value (@$values) {
+        $value =~ s{(?$opt:$pat)}{
+          my @match = (undef,$1,$2,$3,$4,$5,$6); # limit on the number of matches
+          my $copy = $swap;
+          $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
+          $modified = 1;
+          $copy; # return of the swap
+        }eg;
+      }
+    }else{
+      foreach my $value (@$values) {
+        $value =~ s{(?$opt:$pat)}{
+          my @match = (undef,$1,$2,$3,$4,$5,$6); # limit on the number of matches
+          my $copy = $swap;
+          $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
+          $modified = 1;
+          $copy; # return of the swap
+        }e;
+      }
+    }
+  }
+  ### put them back into the form if we have modified it
+  if ($modified) {
+    if ($n_values == 1) {
+      $form->{$field} = $values->[0];
+        $self->{cgi_object}->param(-name => $field, -value => $values->[0])
+          if $self->{cgi_object};
+    } else {
+      $self->{cgi_object}->param(-name => $field, -value => $values)
+        if $self->{cgi_object};
     }
   }
 
@@ -308,7 +357,9 @@ sub validate_buddy {
       last;
     }
   }
-  if ($is_required && (! defined($form->{$field}) || ! length($form->{$field}))) {
+  if ($is_required && (! defined($form->{$field})
+                       || ((UNIVERSAL::isa($form->{$field},'ARRAY') && $#{ $form->{$field} } == -1)
+                           || ! length($form->{$field})))) {
     return 1 if ! wantarray;
     $self->add_error(\@errors, $field, $is_required, $field_val, $ifs_match);
     return @errors;
@@ -316,10 +367,8 @@ sub validate_buddy {
 
   ### min values check
   foreach my $type ($self->filter_type('min_values',$types)) {
-    my $n   = $field_val->{$type};
-    my $val = exists($form->{$field}) ? $form->{$field} : [];
-    my $m   = UNIVERSAL::isa($val, 'ARRAY') ? $#$val + 1 : 1;
-    if ($m < $n) {
+    my $n = $field_val->{$type} || 0;
+    if ($n_values < $n) {
       return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       return @errors;
@@ -333,166 +382,164 @@ sub validate_buddy {
     $field_val->{'max_values'} = 1;
   }
   foreach my $type (@keys) {
-    my $n   = $field_val->{$type};
-    my $val = exists($form->{$field}) ? $form->{$field} : [];
-    my $m   = (UNIVERSAL::isa($val, 'ARRAY')) ? $#$val + 1 : 1;
-    if ($m > $n) {
+    my $n = $field_val->{$type} || 0;
+    if ($n_values > $n) {
       return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       return @errors;
     }
   }
+
+  ### loop on values of field
+  foreach my $value (@$values) {
+    
+    ### allow for enum types
+    foreach my $type ($self->filter_type('enum',$types)) {
+      my $ref = ref($field_val->{$type}) ? $field_val->{$type} : [split(/\s*\|\|\s*/,$field_val->{$type})];
+      my $found = 0;
+      foreach (@$ref) {
+        $found = 1 if defined($value) && $_ eq $value;
+      }
+      if (! $found) {
+        return 1 if ! wantarray;
+        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+      }
+    }
   
-  ### allow for enum types
-  foreach my $type ($self->filter_type('enum',$types)) {
-    my $ref = ref($field_val->{$type}) ? $field_val->{$type} : [split(/\s*\|\|\s*/,$field_val->{$type})];
-    my $value = $form->{$field};
-    $value = '' if ! defined $value;
-    if (! grep {$_ eq $value} @$ref) {
-      return 1 if ! wantarray;
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-    }
-  }
-
-  ### field equality test
-  foreach my $type ($self->filter_type('equals',$types)) {
-    my $field2  = $field_val->{$type};
-    my $success = 0;
-    if ($field2 =~ m/^([\"\'])(.*)\1$/) {
-      my $test = $2;
-      if (exists($form->{$field}) && defined($form->{$field})) {
-        $success = ($form->{$field} eq $test);
+    ### field equality test
+    foreach my $type ($self->filter_type('equals',$types)) {
+      my $field2  = $field_val->{$type};
+      my $success = 0;
+      if ($field2 =~ m/^([\"\'])(.*)\1$/) {
+        my $test = $2;
+        $success = (defined($value) && $value eq $test);
+      } elsif (exists($form->{$field2}) && defined($form->{$field2})) {
+        $success = (defined($value) && $value eq $form->{$field2});
+      } elsif (! defined($value)) {
+        $success = 1; # occurs if they are both undefined
       }
-    } elsif (exists($form->{$field2}) && defined($form->{$field2})) {
-      if (exists($form->{$field}) && defined($form->{$field})) {
-        $success = ($form->{$field} eq $form->{$field2});
+      if (! $success) {
+        return 1 if ! wantarray;
+        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
-    } elsif (! exists($form->{$field}) || ! defined($form->{$field})) {
-      $success = 1; # occurs if they are both undefined
     }
-    if (! $success) {
-      return 1 if ! wantarray;
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+  
+    ### length min check
+    foreach my $type ($self->filter_type('min_len',$types)) {
+      my $n = $field_val->{$type};
+      if (! defined($value) || length($value) < $n) {
+        return 1 if ! wantarray;
+        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+      }
     }
-  }
-
-  ### length min check
-  foreach my $type ($self->filter_type('min_len',$types)) {
-    my $n = $field_val->{$type};
-    if (! exists($form->{$field}) || ! defined($form->{$field}) || length($form->{$field}) < $n) {
-      return 1 if ! wantarray;
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+  
+    ### length max check
+    foreach my $type ($self->filter_type('max_len',$types)) {
+      my $n = $field_val->{$type};
+      if (defined($value) && length($value) > $n) {
+        return 1 if ! wantarray;
+        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+      }
     }
-  }
-
-  ### length max check
-  foreach my $type ($self->filter_type('max_len',$types)) {
-    my $n = $field_val->{$type};
-    if (exists($form->{$field}) && defined($form->{$field}) && length($form->{$field}) > $n) {
-      return 1 if ! wantarray;
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-    }
-  }
-
-  ### now do match types
-  foreach my $type ($self->filter_type('match',$types)) {
-    my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
-       : UNIVERSAL::isa($field_val->{$type}, 'Regexp') ? [$field_val->{$type}]
-       : [split(/\s*\|\|\s*/,$field_val->{$type})];
-    foreach my $rx (@$ref) {
-      if (UNIVERSAL::isa($rx,'Regexp')) {
-        if (! defined($form->{$field}) || $form->{$field} !~ $rx) {
-          $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+  
+    ### now do match types
+    foreach my $type ($self->filter_type('match',$types)) {
+      my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
+         : UNIVERSAL::isa($field_val->{$type}, 'Regexp') ? [$field_val->{$type}]
+         : [split(/\s*\|\|\s*/,$field_val->{$type})];
+      foreach my $rx (@$ref) {
+        if (UNIVERSAL::isa($rx,'Regexp')) {
+          if (! defined($value) || $value !~ $rx) {
+            $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+          }
+        } else {
+          if ($rx !~ m/^(!\s*|)m([^\s\w])(.*)\2([eigsmx]*)$/s) {
+            die "Not sure how to parse that match ($rx)";
+          }
+          my ($not,$pat,$opt) = ($1,$3,$4);
+          $opt =~ tr/g//d;
+          die "The e option cannot be used on validation keys on field $field" if $opt =~ /e/;
+          if ( (     $not && (  defined($value) && $value =~ m/(?$opt:$pat)/))
+               || (! $not && (! defined($value) || $value !~ m/(?$opt:$pat)/))
+               ) {
+            return 1 if ! wantarray;
+            $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+          }
         }
+      }
+    }
+  
+    ### allow for comparison checks
+    foreach my $type ($self->filter_type('compare',$types)) {
+      my $comp  = $field_val->{$type} || next;
+      my $test  = 0;
+      if ($comp =~ /^\s*(>|<|[><!=]=)\s*([\d\.\-]+)\s*$/) {
+        my $val = $value || 0;
+        $val *= 1;
+        if    ($1 eq '>' ) { $test = ($val >  $2) }
+        elsif ($1 eq '<' ) { $test = ($val <  $2) }
+        elsif ($1 eq '>=') { $test = ($val >= $2) }
+        elsif ($1 eq '<=') { $test = ($val <= $2) }
+        elsif ($1 eq '!=') { $test = ($val != $2) }
+        elsif ($1 eq '==') { $test = ($val == $2) }
+  
+      } elsif ($comp =~ /^\s*(eq|ne|gt|ge|lt|le)\s+(.+?)\s*$/) {
+        my $val = defined($value) ? $value : '';
+        my ($op, $value2) = ($1, $2);
+        $value2 =~ s/^([\"\'])(.*)\1$/$2/;
+        if    ($op eq 'gt') { $test = ($val gt $value2) }
+        elsif ($op eq 'lt') { $test = ($val lt $value2) }
+        elsif ($op eq 'ge') { $test = ($val ge $value2) }
+        elsif ($op eq 'le') { $test = ($val le $value2) }
+        elsif ($op eq 'ne') { $test = ($val ne $value2) }
+        elsif ($op eq 'eq') { $test = ($val eq $value2) }
+  
       } else {
-        if ($rx !~ m/^(!\s*|)m([^\s\w])(.*)\2([eigsmx]*)$/s) {
-          die "Not sure how to parse that match ($rx)";
-        }
-        my ($not,$pat,$opt) = ($1,$3,$4);
-        $opt =~ tr/g//d;
-        die "The e option cannot be used on validation keys on field $field" if $opt =~ /e/;
-        if ( (     $not && (  defined($form->{$field}) && $form->{$field} =~ m/(?$opt:$pat)/))
-             || (! $not && (! defined($form->{$field}) || $form->{$field} !~ m/(?$opt:$pat)/))
-             ) {
-          return 1 if ! wantarray;
-          $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-        }
+        die "Not sure how to compare \"$comp\"";
+      }
+      if (! $test) {
+        return 1 if ! wantarray;
+        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
       }
     }
-  }
-
-  ### allow for comparison checks
-  foreach my $type ($self->filter_type('compare',$types)) {
-    my $comp  = $field_val->{$type} || next;
-    my $value = $form->{$field};
-    my $test  = 0;
-    if ($comp =~ /^\s*(>|<|[><!=]=)\s*([\d\.\-]+)\s*$/) {
-      $value = 0 if ! $value;
-      $value *= 1;
-      if    ($1 eq '>' ) { $test = ($value >  $2) }
-      elsif ($1 eq '<' ) { $test = ($value <  $2) }
-      elsif ($1 eq '>=') { $test = ($value >= $2) }
-      elsif ($1 eq '<=') { $test = ($value <= $2) }
-      elsif ($1 eq '!=') { $test = ($value != $2) }
-      elsif ($1 eq '==') { $test = ($value == $2) }
-
-    } elsif ($comp =~ /^\s*(eq|ne|gt|ge|lt|le)\s+(.+?)\s*$/) {
-      $value = '' if ! defined($value);
-      my ($op, $value2) = ($1, $2);
-      $value2 =~ s/^([\"\'])(.*)\1$/$2/;
-      if    ($op eq 'gt') { $test = ($value gt $value2) }
-      elsif ($op eq 'lt') { $test = ($value lt $value2) }
-      elsif ($op eq 'ge') { $test = ($value ge $value2) }
-      elsif ($op eq 'le') { $test = ($value le $value2) }
-      elsif ($op eq 'ne') { $test = ($value ne $value2) }
-      elsif ($op eq 'eq') { $test = ($value eq $value2) }
-
-    } else {
-      die "Not sure how to compare \"$comp\"";
+  
+    ### server side sql type
+    foreach my $type ($self->filter_type('sql',$types)) {
+      my $db_type = $field_val->{"${type}_db_type"};
+      my $dbh = ($db_type) ? $self->{dbhs}->{$db_type} : $self->{dbh};
+      if (! $dbh) {
+        die "Missing dbh for $type type on field $field" . ($db_type ? " and db_type $db_type" : "");
+      } elsif (UNIVERSAL::isa($dbh,'CODE')) {
+        $dbh = &$dbh($field, $self) || die "SQL Coderef did not return a dbh";
+      }
+      my $sql  = $field_val->{$type};
+      my @args = ($value) x $sql =~ tr/?//;
+      my $return = $dbh->selectrow_array($sql, {}, @args); # is this right - copied from O::FORMS
+      $field_val->{"${type}_error_if"} = 1 if ! defined $field_val->{"${type}_error_if"};
+      if ( (! $return && $field_val->{"${type}_error_if"})
+           || ($return && ! $field_val->{"${type}_error_if"}) ) {
+        return 1 if ! wantarray;
+        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+      }
     }
-    if (! $test) {
+  
+    ### server side custom type
+    foreach my $type ($self->filter_type('custom',$types)) {
+      my $check = $field_val->{$type};
+      next if UNIVERSAL::isa($check, 'CODE') ? &$check($field, $value, $field_val, $type) : $check;
       return 1 if ! wantarray;
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
+  
+    ### do specific type checks
+    foreach my $type ($self->filter_type('type',$types)) {
+      if (! $self->check_type($value,$field_val->{'type'},$field,$form)){
+        return 1 if ! wantarray;
+        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+      }
+    }            
   }
-
-  ### server side sql type
-  foreach my $type ($self->filter_type('sql',$types)) {
-    my $db_type = $field_val->{"${type}_db_type"};
-    my $dbh = ($db_type) ? $self->{dbhs}->{$db_type} : $self->{dbh};
-    if (! $dbh) {
-      die "Missing dbh for $type type on field $field" . ($db_type ? " and db_type $db_type" : "");
-    } elsif (UNIVERSAL::isa($dbh,'CODE')) {
-      $dbh = &$dbh($field, $self) || die "SQL Coderef did not return a dbh";
-    }
-    my $sql  = $field_val->{$type};
-    my @args = ($field_val) x $sql =~ tr/?//;
-    my $return = $dbh->selectrow_array($sql, {}, @args); # is this right - copied from O::FORMS
-    $field_val->{"${type}_error_if"} = 1 if ! defined $field_val->{"${type}_error_if"};
-    if ( (! $return && $field_val->{"${type}_error_if"})
-         || ($return && ! $field_val->{"${type}_error_if"}) ) {
-      return 1 if ! wantarray;
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-    }
-  }
-
-  ### server side custom type
-  foreach my $type ($self->filter_type('custom',$types)) {
-    my $value = $field_val->{$type};
-    $value = &$value($field, $form->{$field}, $field_val, $type) if UNIVERSAL::isa($value, 'CODE');
-    next if $value;
-    return 1 if ! wantarray;
-    $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-  }
-
-  ### do specific type checks
-  foreach my $type ($self->filter_type('type',$types)) {
-    if (! $self->check_type($form->{$field},$field_val->{'type'},$field,$form)){
-      return 1 if ! wantarray;
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-    }
-  }            
-
+  
   ### all done - time to return
   return wantarray ? @errors : scalar @errors;
 }
@@ -962,7 +1009,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.37 2003-11-21 19:38:49 pauls Exp $
+$Id: Validate.pm,v 1.38 2003-11-24 22:20:20 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1445,12 +1492,12 @@ not trim.
 
   {field => 'foo', do_not_trim => 1}
 
-=item C<strip_characters>
+=item C<replace>
 
-Pass a pattern of characters that will be removed from the field.
+Pass a swap pattern to change the actual value of the form.
 Any perl regex can be passed.
 
-  {field => 'foo', strip_characters => '\D'}
+  {field => 'foo', replace => 's/(\d{3})(\d{3})(\d{3})/($1) $2-$3/'}
 
 =item C<to_upper_case> and C<to_lower_case>
 
