@@ -161,7 +161,7 @@ sub validate {
   ### store any extra items from self
   foreach my $key (keys %$self) {
     next if $key !~ /_error$/
-      && $key !~ /^(error_title|error_prefix|name_suffix|raise_error)$/;
+      && $key !~ /^(raise_error|as_hash_\w+|as_array_\w+|as_string_\w+)$/;
     $EXTRA{$key} = $self->{$key};
   }
 
@@ -656,7 +656,19 @@ sub new {
 
 sub as_string {
   my $self = shift;
-  return join "\n", @{ $self->as_array };
+  my $extra  = $self->{extra} || {};
+  my $extra2 = shift || {};
+
+  ### allow for formatting
+  my $join = defined($extra2->{as_string_join}) ? $extra2->{as_string_join}
+    : defined($extra->{as_string_join}) ? $extra->{as_string_join}
+    : "\n";
+  my $header = defined($extra2->{as_string_header}) ? $extra2->{as_string_header}
+    : defined($extra->{as_string_header}) ? $extra->{as_string_header} : "";
+  my $footer = defined($extra2->{as_string_footer}) ? $extra2->{as_string_footer}
+    : defined($extra->{as_string_footer}) ? $extra->{as_string_footer} : "";
+
+  return $header . join($join, @{ $self->as_array($extra2) }) . $footer;
 }
 
 ### return an array of applicable errors
@@ -664,8 +676,11 @@ sub as_array {
   my $self = shift;
   my $errors = $self->{errors} || die "Missing errors";
   my $extra  = $self->{extra}  || {};
+  my $extra2 = shift || {};
 
-  my $title = defined($extra->{error_title}) ? $extra->{error_title} : "Please correct the following items:";
+  my $title = defined($extra2->{as_array_title}) ? $extra2->{as_array_title}
+    : defined($extra->{as_array_title}) ? $extra->{as_array_title}
+    : "Please correct the following items:";
 
   ### if there are heading items then we may end up needing a prefix
   my $has_headings;
@@ -679,14 +694,13 @@ sub as_array {
     }
   }
 
+  my $prefix = defined($extra2->{as_array_prefix}) ? $extra2->{as_array_prefix}
+    : defined($extra->{as_array_prefix}) ? $extra->{as_array_prefix}
+    : $has_headings ? '  ' : '';
+
   ### get the array ready
   my @array = ();
   push @array, $title if length $title;
-
-  ### add on extra text ?
-  my $prefix  = defined($_[0]) ? shift()
-    : defined($extra->{error_prefix}) ? $extra->{error_prefix}
-    : $has_headings ? '  ' : '';
 
   ### add the errors
   my %found = ();
@@ -710,14 +724,16 @@ sub as_hash {
   my $self = shift;
   my $errors = $self->{errors} || die "Missing errors";
   my $extra  = $self->{extra}  || {};
+  my $extra2 = shift || {};
 
-  my $form = ref($_[0]) ? shift : {};
-  my $suffix = defined($_[0]) ? shift()
-    : defined($extra->{name_suffix}) ? $extra->{name_suffix}
-    : '_error';
+  my $suffix = defined($extra2->{as_hash_suffix}) ? $extra2->{as_hash_suffix}
+    : defined($extra->{as_hash_suffix}) ? $extra->{as_hash_suffix} : '_error';
+  my $join   = exists($extra2->{as_hash_join}) ? $extra2->{as_hash_join}
+    : exists($extra->{as_hash_join}) ? $extra->{as_hash_join} : undef;
 
   ### now add to the hash
-  my %found = ();
+  my %found  = ();
+  my %return = ();
   foreach my $err (@$errors) {
     next if ! ref $err;
 
@@ -733,12 +749,23 @@ sub as_hash {
     $found{$field}->{$text} = 1;
 
     $field .= $suffix;
-    $form->{$field} ||= [];
-    $form->{$field} = [$form->{$field}] if ! ref($form->{$field});
-    push @{ $form->{$field} }, $text;
+    $return{$field} ||= [];
+    $return{$field} = [$return{$field}] if ! ref($return{$field});
+    push @{ $return{$field} }, $text;
   }
-    
-  return wantarray ? %$form : $form;
+
+  ### allow for elements returned as 
+  if ($join) {
+    my $header = defined($extra2->{as_hash_header}) ? $extra2->{as_hash_header}
+      : defined($extra->{as_hash_header}) ? $extra->{as_hash_header} : "";
+    my $footer = defined($extra2->{as_hash_footer}) ? $extra2->{as_hash_footer}
+      : defined($extra->{as_hash_footer}) ? $extra->{as_hash_footer} : "";
+    foreach my $key (keys %return) {
+      $return{$key} = $header . join($join,@{ $return{$key} }) . $footer;
+    }
+  }
+
+  return wantarray ? %return : \%return;
 }
 
 ### return a user friendly error message
@@ -847,7 +874,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.25 2003-11-13 16:45:12 pauls Exp $
+$Id: Validate.pm,v 1.26 2003-11-13 20:53:40 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -972,40 +999,6 @@ has been set, validate will die with a CGI::Ex::validate::Error object as the va
   if ($@) {
     my $err_obj = $@;
   }
-
-=back
-
-=head1 ERROR OBJECT
-
-Failed validation results in an error object blessed into the class found in
-$CGI::Ex::Validate::ERROR_PACKAGE - which defaults to CGI::Ex::Validate::Error.
-
-The error object has several methods for determining what the errors were.
-
-=over 4
-
-=item C<as_array>
-
-Returns an array or arrayref (depending on scalar context) of errors that
-occurred in the order that they occured.  Individual groups may have a heading
-and the entire validation will have a heading (the default heading can be changed
-via the 'error_title' general option).  Each error that occured is a separate
-item and are prepended with 'error_prefix' (which is a general option - default
-is '  ').  The error_prefix may also be passed as the only argument to as_array.
-
-=item C<as_string>
-
-Returns values of as_array joined with a newline.  This method is used as
-the stringification for the error object.
-
-=item C<as_hash>
-
-Returns a hash or hashref (depending on scalar context) of errors that
-occurred.   Each key is the field name of the form that failed validation with
-'name_suffix' added on as a suffix.  name_suffix is available as a general option
-and may also be passed as the only argument to as_hash.  The default value is
-'_error'.  The values of the hash are arrayrefs of errors that occured to that form
-element.
 
 =back
 
@@ -1362,6 +1355,95 @@ Do what they say they do.
 
 =back
 
+=head1 ERROR OBJECT
+
+Failed validation results in an error object blessed into the class found in
+$ERROR_PACKAGE - which defaults to CGI::Ex::Validate::Error.
+
+The error object has several methods for determining what the errors were.
+
+=over 4
+
+=item C<as_array>
+
+Returns an array or arrayref (depending on scalar context) of errors that
+occurred in the order that they occured.  Individual groups may have a heading
+and the entire validation will have a heading (the default heading can be changed
+via the 'as_array_title' general option).  Each error that occured is a separate
+item and are prepended with 'as_array_prefix' (which is a general option - default
+is '  ').  The as_array_ options may also be set via a hashref passed to as_array.
+as_array_title defaults to 'Please correct the following items:'.
+
+  ### if this returns the following
+  my $array = $err_obj->as_array;
+  # $array looks like
+  # ['Please correct the following items:', '  error1', '  error2']
+
+  ### then this would return the following
+  my $array = $err_obj->as_array({
+    as_array_prefix => '  - ',
+    as_array_title  => 'Something went wrong:',
+  });
+  # $array looks like
+  # ['Something went wrong:', '  - error1', '  - error2']
+
+=item C<as_string>
+
+Returns values of as_array joined with a newline.  This method is used as
+the stringification for the error object.  Values of as_array are joined with
+'as_string_join' which defaults to "\n".  If 'as_string_header' is set, it will
+be prepended onto the error string.  If 'as_string_footer' is set, it will be
+postpended onto the error string.
+
+  ### if this returns the following
+  my $string = $err_obj->as_string;
+  # $string looks like
+  # "Please correct the following items:\n  error1\n  error2"
+
+  ### then this would return the following
+  my $string = $err_obj->as_string({
+    as_array_prefix  => '  - ',
+    as_array_title   => 'Something went wrong:',
+    as_string_join   => '<br>',
+    as_string_header => '<span class="error">'
+    as_string_footer => '</span>'
+  });
+  # $string looks like
+  # '<span class="error">Something went wrong:<br>  - error1<br>  - error2</span>'
+
+=item C<as_hash>
+
+Returns a hash or hashref (depending on scalar context) of errors that
+occurred.   Each key is the field name of the form that failed validation with
+'as_hash_suffix' added on as a suffix.  as_hash_suffix is available as a general option
+and may also be passed in via a hashref as the only argument to as_hash.
+The default value is '_error'.  The values of the hash are arrayrefs of errors
+that occured to that form element.
+
+By default as_hash will return the values of the hash as arrayrefs (a list of the errors
+that occured to that key).  It is possible to also return the values as strings.
+Three options are available for formatting: 'as_hash_header' which will be prepended
+onto the error string, 'as_hash_footer' which will be postpended, and 'as_hash_join' which
+will be used to join the arrayref.  The only argument required to force the
+stringification is 'as_hash_join'.
+
+  ### if this returns the following
+  my $hash = $err_obj->as_hash;
+  # $hash looks like
+  # {key1_error => ['error1', 'error2']}
+
+  ### then this would return the following
+  my $hash = $err_obj->as_hash({
+    as_hash_suffix => '_foo',
+    as_hash_join   => '<br>',
+    as_hash_header => '<span class="error">'
+    as_hash_footer => '</span>'
+  });
+  # $hash looks like
+  # {key1_foo => '<span class="error">error1<br>error2</span>'}
+
+=back
+
 =head1 GROUP OPTIONS
 
 Any key in a validation hash matching the pattern m/^group\s+(\w+)$/
@@ -1407,22 +1489,6 @@ hash.
 
 =over 4
 
-=item C<'general error_title'>
-
-Used as the section title for all errors that occur, when as_array
-or as_string is called by the error object.
-
-=item C<'general error_prefix'>
-
-Used as prefix to individual errors that occur, when as_array
-or as_string is called by the error object.  Each individual error
-will be prefixed with this string.  Headings will not be prefixed.
-Default is '  '.
-
-=item C<'general name_suffix'>
-
-Added on to key names during the call to as_hash.  Default is '_error'.
-
 =item C<'general raise_error'>
 
 If raise_error is true, any call to validate that fails validation
@@ -1438,6 +1504,51 @@ These items allow for an override of the default errors.
   my $self = CGI::Ex::Validate->new({
     max_len_error => '$name must be shorter than $value characters',
   });
+
+=item C<'general as_array_title'>
+
+Used as the section title for all errors that occur, when as_array
+or as_string is called by the error object.
+
+=item C<'general as_array_prefix'>
+
+Used as prefix to individual errors that occur, when as_array
+or as_string is called by the error object.  Each individual error
+will be prefixed with this string.  Headings will not be prefixed.
+Default is '  '.
+
+=item C<'general as_string_join'>
+
+When as_string is called, the values from as_array will be joined with
+as_string_join.  Default value is "\n".
+
+=item C<'general as_string_header'>
+
+If set, will be prepended onto the string when as_string is called.
+
+=item C<'general as_string_footer'>
+
+If set, will be prepended onto the string when as_string is called.
+
+=item C<'general as_hash_suffix'>
+
+Added on to key names during the call to as_hash.  Default is '_error'.
+
+=item C<'general as_hash_join'>
+
+By default, as_hash will return hashref values that are lists.  It can
+return strings instead by setting as_hash_join.  'as_hash_join' must be
+set to a true value to enable this behavior (' ' is a true value, '' is not).
+
+=item C<'general as_hash_header'>
+
+If as_hash_join has been set to a true value, as_hash_header may be set to
+a string that will be prepended on to the error string.
+
+=item C<'general as_hash_footer'>
+
+If as_hash_join has been set to a true value, as_hash_footer may be set to
+a string that will be postpended on to the error string.
 
 =back
 
