@@ -1,4 +1,4 @@
-%define name HTMLForm
+%define name CGI-Ex
 %define version @VERSION@
 %define release @RELEASE@
 
