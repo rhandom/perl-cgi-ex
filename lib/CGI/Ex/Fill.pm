@@ -69,6 +69,9 @@ sub form_fill {
   }
 
   ### if there is a target - focus in on it
+  ### possible bug here - name won't be found if
+  ### there is nested html inside the form tag that comes before
+  ### the name field - if no close form tag - don't swap in anything
   if ($target) {
     local $TEMP_TARGET = $target;
     $$ref =~ s{(<form            # open form
@@ -77,7 +80,7 @@ sub form_fill {
                 $target          # with the correct name (allows for regex)
                 \2               # closing quote
                 .+?              # as much as there is
-                </form>)         # then end
+                (?=</form>))     # then end
               }{
                 local $REMOVE_SCRIPT  = undef;
                 local $REMOVE_COMMENT = undef;
@@ -176,7 +179,7 @@ sub form_fill {
                  || $type eq 'RADIO') {
           my $values = &$get_form_value($name, 'all');          
           if (@$values) {
-            $tag =~ s{\s+\bCHECKED\b(?=\s|>|/>)}{}ig;
+            $tag =~ s{\s+\bCHECKED\b(?:=([\"\']?)checked\1)?(?=\s|>|/>)}{}ig;
             
             if ($type eq 'CHECKBOX' && @$values == 1 && $values->[0] eq 'on') {
               $tag =~ s|(/?>\s*)$| checked="checked"$1|;
@@ -198,53 +201,87 @@ sub form_fill {
 
 
   ### Second pass
-  ### swap select boxes
-  $$ref =~ s{
-    (<select \s (?: ([\"\'])(?:|.*?[^\\])\2 | [^>] )* >) # nested html ok
-      (.*?)            # the options
-      (</select>)      # closing
-    }{
-      my ($tag, $opts, $close) = ($1, $3, $4);
-      my $name   = &get_tagval_by_key(\$tag, 'name');
-      my $values = $ignore->{$name} ? [] : &$get_form_value($name, 'all');
-      if (@$values) {
-        $opts =~ s{
-          (<option[^>]*>)           # opening tag - no embedded > allowed
-            (.*?)                   # the text value
-            (?=<option|$|</option>) # the next tag
-          }{
-            my ($tag2, $opt) = ($1, $2);
-            $tag2 =~ s%\s+\bSELECTED\b(?=\s|>|/>)%%ig;
-            
-            my $fvalues = &get_tagval_by_key(\$tag2, 'value', 'all');
-            my $fvalue  = @$fvalues ? $fvalues->[0]
-              : $opt =~ /^\s*(.*?)\s*$/ ? $1 : "";
-            foreach (@$values) {
-              next if $_ ne $fvalue;
-              $tag2 =~ s|(\s*/?>\s*)$| selected="selected"$1|;
-              last;
-            }
-            "$tag2$opt"; # return of inner swap
-          }sigex;
+  ### swap select boxes (must be done in such a way as to allow no closing tag)
+  my @start = ();
+  my @close = ();
+  push @start, pos($$ref) - length($1) while $$ref =~ m|(<\s*select\b)|ig;
+  push @close, pos($$ref) - length($1) while $$ref =~ m|(</\s*select\b)|ig;
+  for (my $i = 0; $i <= $#start; $i ++) {
+    while (defined($close[$i]) && $close[$i] < $start[$i]) {
+      splice (@close,$i,1,());
+    }
+    if ($i == $#start) {
+      $close[$i] = length($$ref) if ! defined $close[$i]; # set to end of string if no closing
+    } elsif (! defined($close[$i]) || $close[$i] > $start[$i + 1]) {
+      $close[$i] = $start[$i + 1]; # set to start of next select if no closing or > next select
+    }
+  }
+  for (my $i = $#start; $i >= 0; $i --) {
+    my $opts = substr($$ref, $start[$i], $close[$i] - $start[$i]);
+    $opts =~ s{
+      (<select \s                                 # opening
+       (?: "" | '' | ([\"\']).*?[^\\]\2 | [^>] )* # nested html ok
+       >)                                         # end of tag
+      }{}sxi || next;
+    next if ! $opts;
+    my $tag    = $1;
+    my $name   = &get_tagval_by_key(\$tag, 'name');
+    my $values = $ignore->{$name} ? [] : &$get_form_value($name, 'all');
+    if ($#$values != -1) {
+      my $n = $opts =~ s{
+        (<option[^>]*>)           # opening tag - no embedded > allowed
+          (.*?)                   # the text value
+          (?=<option|$|</option>) # the next tag
+        }{
+          my ($tag2, $opt) = ($1, $2);
+          $tag2 =~ s%\s+\bSELECTED\b(?:=([\"\']?)selected\1)?(?=\s|>|/>)%%ig;
+          
+          my $fvalues = &get_tagval_by_key(\$tag2, 'value', 'all');
+          my $fvalue  = @$fvalues ? $fvalues->[0]
+            : $opt =~ /^\s*(.*?)\s*$/ ? $1 : "";
+          foreach (@$values) {
+            next if $_ ne $fvalue;
+            $tag2 =~ s|(\s*/?>\s*)$| selected="selected"$1|;
+            last;
+          }
+          "$tag2$opt"; # return of the swap
+        }sigex;
+      if ($n) {
+        substr($$ref, $start[$i], $close[$i] - $start[$i], "$tag$opts");
       }
-      "$tag$opts$close"; # return of swap
-    }sigex;
+    }
+  }
 
 
   ### Third pass
-  ### swap textareas
-  $$ref =~ s{
-    (<textarea \s (?: ([\"\'])(?:|.*?[^\\])\2 | [^>] )* >) # nested html ok
-      (.*?)
-      (</textarea>)
-    }{
-      my ($tag, $oldval, $close) = ($1, $3, $4);
-      my $name  = &get_tagval_by_key(\$tag, 'name');
-      my $value = $ignore->{$name} ? "" : &$get_form_value($name, 'next');
-      $value = $oldval if ! defined $value;
-      "$tag$value$close"; # return of swap
-    }sigex;
-
+  ### swap textareas (must be done in such a way as to allow no closing tag)
+  @start = ();
+  @close = ();
+  push @start, pos($$ref) - length($1) while $$ref =~ m|(<\s*textarea\b)|ig;
+  push @close, pos($$ref) - length($1) while $$ref =~ m|(</\s*textarea\b)|ig;
+  for (my $i = 0; $i <= $#start; $i ++) {
+    while (defined($close[$i]) && $close[$i] < $start[$i]) {
+      splice (@close,$i,1,());
+    }
+    if ($i == $#start) {
+      $close[$i] = length($$ref) if ! defined $close[$i]; # set to end of string if no closing
+    } elsif (! defined($close[$i]) || $close[$i] > $start[$i + 1]) {
+      $close[$i] = $start[$i + 1]; # set to start of next select if no closing or > next select
+    }
+  }
+  for (my $i = $#start; $i >= 0; $i --) {
+    my $oldval = substr($$ref, $start[$i], $close[$i] - $start[$i]);
+    $oldval =~ s{
+      (<textarea \s                               # opening
+       (?: "" | '' | ([\"\']).*?[^\\]\2 | [^>] )* # nested html ok
+       >)                                         # end of tag
+      }{}sxi || next;
+    my $tag   = $1;
+    my $name  = &get_tagval_by_key(\$tag, 'name');
+    my $value = $ignore->{$name} ? [] : &$get_form_value($name, 'next');
+    next if ! defined $value;
+    substr($$ref, $start[$i], $close[$i] - $start[$i], "$tag$value");
+  }
 
   ### put scripts and comments back and return
   $$ref =~ s/$MARKER_COMMENT/shift(@comment)/eg if $#comment != -1;
