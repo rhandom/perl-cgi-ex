@@ -958,6 +958,13 @@ More examples will come with time.  Here are the basics for now.
 
   __END__
 
+Note: This example would be considerably shorter if the html file
+(file_print) and the validation file (file_val) had been placed in
+separate files.  Though CGI::Ex::App will work "out of the box" as
+shown it is more probable that any platform using it will customize
+the various hooks to their own tastes (for example, switching print to
+use a system other than Template::Toolkit).
+
 =head1 HOOKS / METHODS
 
 Hooks are basically methods calls that look for a variety of method
@@ -1125,6 +1132,8 @@ default method path is not in the hash, the method path will return a
 single step "forbidden" and run its hooks.  If no hash or undef is
 returned, all paths are allowed (default).  A key "forbidden_step"
 containing the step that was not valid will be placed in the stash.
+Often the valid_steps method does not need to be defined as arbitrary
+method calls are not possible with CGI::Ex::App.
 
 =item Method C<-E<gt>previous_step, -E<gt>current_step, -E<gt>next_step>
 
