@@ -256,7 +256,7 @@ sub check_conditional {
     last if ! $found;
 
     ### get the field - allow for custom variables based upon a match
-    my $field = $ref->{'field'} || die "Missing field key during validate_if";
+    my $field = $ref->{'field'} || die "Missing field key during validate_if (possibly used a reference to a main hash *foo -> &foo)";
     $field =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
 
     my @err = $self->validate_buddy($form, $field, $ref, $N_level);
@@ -1082,7 +1082,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.74 2004-11-12 19:58:57 pauls Exp $
+$Id: Validate.pm,v 1.75 2004-12-07 20:59:56 pauls Exp $
 
 =head1 SYNOPSIS
 
