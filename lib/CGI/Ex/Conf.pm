@@ -78,6 +78,8 @@ sub read_ref {
     return &yaml_load($file);
 
   ### otherwise base it off of the file extension
+  } elsif ($args->{file_type}) {
+    $ext = $args->{file_type};
   } elsif ($file =~ /\.(\w+)$/) {
     $ext = $1;
   } else {
