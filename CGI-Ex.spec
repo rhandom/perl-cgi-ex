@@ -1,5 +1,5 @@
 %define name CGI-Ex
-%define version 0.94
+%define version 0.95
 
 %define __find_provides %( echo -n /usr/lib/rpm/find-provides && [ -x /usr/lib/rpm/find-provides.perl ] && echo .perl )
 %define __find_requires %( echo -n /usr/lib/rpm/find-requires && [ -x /usr/lib/rpm/find-requires.perl ] && echo .perl )
