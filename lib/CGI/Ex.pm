@@ -23,7 +23,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 use Data::DumpEx;
 
-$VERSION               = '0.90';
+$VERSION               = '0.91';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
 $PREFERRED_VAL_MODULE  ||= '';

@@ -16,7 +16,7 @@ use vars qw($VERSION
 
 use Data::DumpEx;
 
-$VERSION = '0.90';
+$VERSION = '0.91';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -874,7 +874,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.26 2003-11-13 20:53:40 pauls Exp $
+$Id: Validate.pm,v 1.27 2003-11-13 20:55:28 pauls Exp $
 
 =head1 SYNOPSIS
 
