@@ -4,3 +4,5 @@ CVS/
 \.#
 \.bak$
 Makefile$
+Makefile.old$
+blib
