@@ -484,6 +484,11 @@ sub hash_validation {
   return CGI::Ex::Validate->new->get_validation($file);
 }
 
+sub hash_common {
+  my $self = shift;
+  return $self->{hash_common} ||= {};
+}
+
 sub hash_errors {
   my $self = shift;
   return $self->{hash_errors} ||= {};
