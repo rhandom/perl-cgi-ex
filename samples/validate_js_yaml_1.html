@@ -1,0 +1,113 @@
+<html>
+<style>
+.error {
+  color: red;
+  font-size: 75%;
+}
+</style>
+
+<script src="../../lib/CGI/Ex/yaml_load.js"></script>
+<script src="../../lib/CGI/Ex/validate.js"></script>
+<script>
+if (! document.yaml_load) {
+  document.writeln('<span style="color:red"><h1>Missing document.yaml_load</h1>Path to ../../lib/CGI/Ex/yaml_load.js may be invalid.</span>');
+} else {
+  document.writeln('<span style="color:green"><h1>Found document.yaml_load</h1></span>');
+}
+
+if (! document.validate) {
+  document.writeln('<span style="color:red"><h1>Missing document.validate</h1>Path to ../../lib/CGI/Ex/validate.js may be invalid.</span>');
+} else {
+  document.writeln('<span style="color:green"><h1>Found document.validate</h1></span>');
+}
+
+</script>
+
+
+<form name=a>
+<table>
+<tr>
+  <td valign=top>Username:</td>
+  <td>
+    <input type=text size=20 name=username><br>
+    <span id=username_error class=error></span>
+  </td>
+</tr>
+<tr>
+  <td valign=top>Password:</td>
+  <td>
+    <input type=password size=20 name=password><br>
+    <span id=password_error class=error></span>
+  </td>
+</tr>
+<tr>
+  <td valign=top>Verify Password:</td>
+  <td>
+    <input type=password size=20 name=password2><br>
+    <span id=password2_error class=error></span>
+  </td>
+</tr>
+<tr>
+  <td valign=top>Email:</td>
+  <td>
+    <input type=text size=40 name=email><br>
+    <span id=email_error class=error></span>
+  </td>
+</tr>
+<tr>
+  <td valign=top>Verify Email:</td>
+  <td>
+    <input type=text size=40 name=email2><br>
+    <span id=email2_error class=error></span>
+  </td>
+</tr>
+<tr>
+  <td colspan=2 align=right>
+    <input type=submit>
+  </td>
+</tr>
+</table>
+</form>
+
+<script>
+var val_yaml = "\n\
+general do_inline: 1\n\
+general no_confirm: 1\n\
+general no_alert: 1\n\
+general as_array_prefix: ' -- '\n\
+general as_hash_header: '<ul><li>'\n\
+general as_hash_join:   '</li><li>'\n\
+general as_hash_footer: '</li></ul>'\n\
+group order: [username, password, password2, email, email2]\n\
+username:\n\
+ name: Username\n\
+ required: 1\n\
+ min_len: 3\n\
+ max_len: 30\n\
+password: &pa\n\
+ name: Password\n\
+ required: 1\n\
+ min_len: 6\n\
+ max_len: 30\n\
+ match: [m/\\d/, 'm/[a-z]/']\n\
+ match_error: '$name must contain both a letter and a number.'\n\
+password2:\n\
+ name: Verify password\n\
+ validate_if: *pa\n\
+ equals: password\n\
+ equals_name: password\n\
+email: &em\n\
+ name: Email\n\
+ required: 1\n\
+ min_len: 6\n\
+ max_len: 100\n\
+email2:\n\
+ name: Verify email\n\
+ validate_if: *em\n\
+ equals: email\n\
+ equals_name: email\n\
+";
+if (document.check_form) document.check_form('a',val_yaml);
+</script>
+
+</html>
