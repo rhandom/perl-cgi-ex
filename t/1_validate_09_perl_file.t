@@ -31,6 +31,7 @@ sub print_ok {
 ### where are my samples
 my $dir = __FILE__;
 $dir =~ s|[^/]+$|samples| || die "Couldn't determine dir";
+$dir =~ s|^t/|./t/|; # to satisfy conf
 
 ### single group
 $v = "$dir/perl1.pl";
