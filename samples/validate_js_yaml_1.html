@@ -62,6 +62,14 @@ if (! document.validate) {
   </td>
 </tr>
 <tr>
+  <td valign=top>State/Region:</td>
+  <td>
+    Specify State <input type=text size=2 name=state><br>
+    OR Region <input type=text size=20 name=region>
+    <span id=state_error class=error></span>
+  </td>
+</tr>
+<tr>
   <td valign=top>Enum Check:</td>
   <td>
     <input type=text size=10 name=enum><br>
@@ -93,6 +101,16 @@ if (! document.validate) {
     <span id=checktwo_error class=error></span>
   </td>
 </tr>
+<tr><td colspan=2><hr></td></tr>
+<tr>
+  <td valign=top>Fill In two:</td>
+  <td>
+    <span id=foo_error class=error></span><br>
+    <input type=text name=foo value="" size=30> Foo<br>
+    <input type=text name=bar value="" size=30> Bar<br>
+    <input type=text name=baz value="" size=30> Baz<br>
+  </td>
+</tr>
 <tr>
   <td colspan=2 align=right>
     <input type=submit>
@@ -112,7 +130,7 @@ general as_array_prefix: ' -- '\n\
 #general as_hash_header: '<ul><li>'\n\
 #general as_hash_join:   '</li><li>'\n\
 #general as_hash_footer: '</li></ul>'\n\
-group order: [username, password, password2, email, email2, enum, compare, checkone, checktwo]\n\
+group order: [username, password, password2, email, email2, state, region, s_r_combo, enum, compare, checkone, checktwo, foo]\n\
 username:\n\
  name: Username\n\
  required: 1\n\
@@ -141,6 +159,22 @@ email2:\n\
  validate_if: *em\n\
  equals: email\n\
  equals_name: email\n\
+state:\n\
+ validate_if: [state, '! region']\n\
+ match: 'm/^\\w{2}$/'\n\
+ match_error: Please type a two letter state code.\n\
+region:\n\
+ validate_if: [region, '! state']\n\
+ delegate_error: state\n\
+ compare: 'eq Manitoba'\n\
+ compare_error: For this test - the region should be Manitoba.\n\
+s_r_combo:\n\
+ field: state\n\
+ delegate_error: state\n\
+ max_in_set: 1 of state region\n\
+ max_in_set_error: Specify only one of state and region.\n\
+ min_in_set: 1 of state region\n\
+ min_in_set_error: Specify one of state and region.\n\
 enum:\n\
  name: Enum check\n\
  enum: [one, two, three, four]\n\
@@ -159,6 +193,9 @@ checktwo:\n\
  name: Check two\n\
  min_values: 2\n\
  max_values: 2\n\
+foo:\n\
+ min_in_set: 2 of foo bar baz\n\
+ max_in_set: 2 of foo bar baz\n\
 ";
 if (document.check_form) document.check_form('a');
 </script>
