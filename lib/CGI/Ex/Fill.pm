@@ -90,7 +90,6 @@ sub form_fill {
     return ref($text) ? 1 : $$ref;
   }
 
-
   ### build a sub to get a value
   my %indexes = (); # store indexes for multivalued elements
   my $get_form_value = sub {
@@ -149,11 +148,10 @@ sub form_fill {
 
   ###--------------------------------------------------------------###
 
-  
   ### First pass
   ### swap <input > form elements if they have a name
   $$ref =~ s{
-    (<input\s.+?>)
+    (<input \s (?: ([\"\'])(?:|.*?[^\\])\2 | [^>] )* >) # nested html ok
     }{
       ### get the type and name - intentionally exlude names with nested "'
       my $tag   = $1;
@@ -181,13 +179,13 @@ sub form_fill {
             $tag =~ s{\s+\bCHECKED\b(?=\s|>|/>)}{}ig;
             
             if ($type eq 'CHECKBOX' && @$values == 1 && $values->[0] eq 'on') {
-              $tag =~ s|(/?>)| checked$1|;
+              $tag =~ s|(/?>\s*)$| checked$1|;
             } else {
               my $fvalue = &get_tagval_by_key(\$tag, 'value');
               if (defined $fvalue) {
                 foreach (@$values) {
                   next if $_ ne $fvalue;
-                  $tag =~ s|(\s*/?>)| checked$1|;
+                  $tag =~ s|(\s*/?>\s*)$| checked$1|;
                   last;
                 }
               }
@@ -202,17 +200,17 @@ sub form_fill {
   ### Second pass
   ### swap select boxes
   $$ref =~ s{
-    (<select\s[^>]+>)  # opening tag - doesn't allow for > embedded in tag
+    (<select \s (?: ([\"\'])(?:|.*?[^\\])\2 | [^>] )* >) # nested html ok
       (.*?)            # the options
       (</select>)      # closing
     }{
-      my ($tag, $opts, $close) = ($1, $2, $3);
+      my ($tag, $opts, $close) = ($1, $3, $4);
       my $name   = &get_tagval_by_key(\$tag, 'name');
       my $values = $ignore->{$name} ? [] : &$get_form_value($name, 'all');
       if (@$values) {
         $opts =~ s{
-          (<option[^>]*>)            # opening tag - no embedded > allowed
-            (.*?)                    # the text value
+          (<option[^>]*>)           # opening tag - no embedded > allowed
+            (.*?)                   # the text value
             (?=<option|$|</option>) # the next tag
           }{
             my ($tag2, $opt) = ($1, $2);
@@ -223,7 +221,7 @@ sub form_fill {
               : $opt =~ /^\s*(.*?)\s*$/ ? $1 : "";
             foreach (@$values) {
               next if $_ ne $fvalue;
-              $tag2 =~ s|(\s*/?>)| selected$1|;
+              $tag2 =~ s|(\s*/?>\s*)$| selected$1|;
               last;
             }
             "$tag2$opt"; # return of inner swap
@@ -236,11 +234,11 @@ sub form_fill {
   ### Third pass
   ### swap textareas
   $$ref =~ s{
-    (<textarea\s[^>]+>)  # opening tag - doesn't allow for > embedded in tag
-      (.*?)              # the options
-      (</textarea>)      # closing
+    (<textarea \s (?: ([\"\'])(?:|.*?[^\\])\2 | [^>] )* >) # nested html ok
+      (.*?)
+      (</textarea>)
     }{
-      my ($tag, $oldval, $close) = ($1, $2, $3);
+      my ($tag, $oldval, $close) = ($1, $3, $4);
       my $name  = &get_tagval_by_key(\$tag, 'name');
       my $value = $ignore->{$name} ? "" : &$get_form_value($name, 'next');
       $value = $oldval if ! defined $value;
@@ -279,16 +277,32 @@ sub get_tagval_by_key {
   my $key = shift;
   my $all = $_[0] && $_[0] eq 'all';
   my @all = ();
-  while ($$ref =~ m{(?<!\w|\.)    # isn't preceded by a word or dot
-                      \Q$key\E    # the key
-                      \s*=\s*     # equals
-                      ([\"\']?)   # possible opening quote
-                      (|.*?[^\\]) # nothing or anything not ending in \
-                      \1          # close quote
-                      (?=\s|>|/>) # a space or closing >
-                    }sigx) {
-    my ($quot, $val) = ($1, $2);
-    $val =~ s/\\$quot/$quot/g if $quot; # unescape escaped quotes
+  ### this is the old way and is actually slower
+  #while ($$ref =~ m{(?<!\w|\.)    # isn't preceded by a word or dot
+  #                    \Q$key\E    # the key
+  #                    \s*=\s*     # equals
+  #                    ([\"\']?)   # possible opening quote
+  #                    (|.*?[^\\]) # nothing or anything not ending in \
+  #                    \1          # close quote
+  #                    (?=\s|>|/>) # a space or closing >
+  #                  }sigx) {
+  #  my ($quot, $val) = ($1, $2);
+  #  $val =~ s/\\$quot/$quot/g if $quot; # unescape escaped quotes
+  #  return $val if ! $all;
+  #  push @all, $val;
+  #}
+  $key = lc($key);
+  while ($$ref =~ m{
+    (?<!\w|\.)
+      (\S+)                     # 1 - the key
+      \s*=\s*                   # equals
+      (?: ([\"\'])(|.*?[^\\])\2 # 2 - a quote, 3 - the quoted
+       |  (.*?(?=\s|>|/>))      # 4 - a non-quoted string
+       )
+    }sigx) {
+    next if lc($1) ne $key;
+    my ($val,$quot) = ($2) ? ($3,$2) : ($4,undef);
+    $val =~ s/\\$quot/$quot/ if $quot;
     return $val if ! $all;
     push @all, $val;
   }
@@ -305,20 +319,46 @@ sub swap_tagval_by_key {
   my $key = shift;
   my $val = shift;
   my $n   = 0;
-  $$ref =~ s{(?<!\w|\.)    # isn't preceded by a word or dot
-               (\Q$key\E   # the key
-               \s*=\s*)    # equals
-               ([\"\']?)   # possible opening quote
-               (|.*?[^\\]) # nothing or anything not ending in \
-               \2          # close quote
-               (?=\s|>|/>) # a space or closing >
+
+  ### this commented method is faster but doesn't handle nested
+  ### html or javascript at all
+  #  $$ref =~ s{(?<!\w|\.)    # isn't preceded by a word or dot
+  #               (\Q$key\E   # the key
+  #               \s*=\s*)    # equals
+  #               ([\"\']?)   # possible opening quote
+  #               (|.*?[^\\]) # nothing or anything not ending in \
+  #               \2          # close quote
+  #               (?=\s|>|/>) # a space or closing >
+  #             }{
+  #               ($n++) ? "" : "$1$2$val$2";
+  #             }sigex;
+  $$ref =~ s{(^\s*<\s*\w+\s+|\G\s+)         # 1 - open tag or previous position
+               ( (\w+)                      # 2 - group, 3 - the key
+                 (\s*=\s*)                  # 4 - equals
+                  (?: ([\"\'])(|.*?[^\\])\5 # 5 - a quote, 6 - the quoted
+                   |  (.*?(?=\s|>|/>))      # 7 - a non-quoted string
+                  )
+                | (?: .+?(?=\s|>|/>))       # a non keyvalue chunk (CHECKED)
+               )
              }{
-               ($n++) ? "" : "$1$2$val$2";
+               if (defined($3) && $3 eq $key) { # has matching key
+                 if (! $n ++) {  # only put value back on first match
+                   if ($5) {     # quoted
+                     "$1$3$4$5$val$5";
+                   } else {      # non-quoted
+                     "$1$3$4$val";
+                   }
+                 } else {
+                   $1; # second match
+                 }
+               } else {
+                 "$1$2"; # non-keyval
+               }
              }sigex;
 
   ### append value on if none were swapped
   if (! $n) {
-    $$ref =~ s|(\s*/?>)| value="$val"$1|;
+    $$ref =~ s|(\s*/?>\s*)$| value="$val"$1|;
     $n = -1;
   }
 
