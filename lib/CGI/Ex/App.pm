@@ -16,7 +16,7 @@ use vars qw($VERSION
             $RECURSE_LIMIT
             %CLEANUP_EXCLUDE);
 
-$VERSION = '1.13';
+$VERSION = '1.15';
 use CGI::Ex::Dump qw(debug);
 
 BEGIN {
@@ -102,7 +102,7 @@ sub nav_loop {
     die $err;
   }
 
-  ### get the path (simple array based thing)
+  ### get the path (simple arrayref based thing)
   my $path = $self->path;
 
   ### allow for an early return
@@ -116,7 +116,7 @@ sub nav_loop {
            $self->{path_i} <= $#$path;
            $self->{path_i} ++) {
     my $step = $path->[$self->{path_i}];
-    next if $step !~ /^\w+$/; # don't process the step if it contains odd characters
+    next if $step !~ /^[a-zA-Z_]\w*$/; # don't process the step if it contains odd characters
 
     ### check if this is an allowed step
     if ($valid_steps) {
@@ -129,47 +129,17 @@ sub nav_loop {
       }
     }
 
-    ### allow for putting some steps in external files
+    ### allow for becoming another package (allows for some steps in external files)
     $self->morph($step);
 
-    ### if the pre_step exists and returns true, exit the nav_loop
-    if ($self->run_hook($step, 'pre_step')) {
-      $self->unmorph($step);
-      return;
-    }
-
-    ### allow for skipping this step (but stay in the nav_loop)
-    if ($self->run_hook($step, 'skip')) {
-      $self->unmorph($step);
-      next;
-    }
-
-    ### see if we have complete valid information for this step
-    ### if so, do the next step
-    ### if not, get necessary info and print it out
-    if (   ! $self->run_hook($step, 'prepare', 1)
-        || ! $self->run_hook($step, 'info_complete')
-        || ! $self->run_hook($step, 'finalize', 1)) {
-
-      ### show the page requesting the information
-      $self->run_hook($step, 'prepared_print');
-
-      ### a hook after the printing process
-      $self->run_hook($step, 'post_print');
-
-      $self->unmorph($step);
-
-      return;
-    }
-
-    ### a hook before end of loop
-    ### if the post_step exists and returns true, return from navigate
-    if ($self->run_hook($step, 'post_step')) {
-      $self->unmorph($step);
-      return;
-    }
+    ### run the guts of the step
+    my $status = $self->run_hook($step, 'run_step');
 
     $self->unmorph($step);
+
+    ### Allow for the run_step to intercept.
+    ### A true status means the run_step took over navigation.
+    return if $status;
   }
 
   ### allow for one exit point after the loop
@@ -187,6 +157,40 @@ sub pre_navigate {}
 sub post_navigate {}
 
 sub recurse_limit { shift->{'recurse_limit'} || $RECURSE_LIMIT || 15 }
+
+sub run_step {
+  my $self = shift;
+  my $step = shift;
+
+  ### if the pre_step exists and returns true, exit the nav_loop
+  return 1 if $self->run_hook($step, 'pre_step');
+
+  ### allow for skipping this step (but stay in the nav_loop)
+  return 0 if $self->run_hook($step, 'skip');
+
+  ### see if we have complete valid information for this step
+  ### if so, do the next step
+  ### if not, get necessary info and print it out
+  if (   ! $self->run_hook($step, 'prepare', 1)
+      || ! $self->run_hook($step, 'info_complete')
+      || ! $self->run_hook($step, 'finalize', 1)) {
+
+    ### show the page requesting the information
+    $self->run_hook($step, 'prepared_print');
+
+    ### a hook after the printing process
+    $self->run_hook($step, 'post_print');
+
+    return 2;
+  }
+
+  ### a hook before end of loop
+  ### if the post_step exists and returns true, exit the nav_loop
+  return 1 if $self->run_hook($step, 'post_step');
+
+  ### let the nav_loop continue searching the path
+  return 0;
+}
 
 ### standard functions for printing - gather information
 sub prepared_print {
@@ -237,6 +241,12 @@ sub jump {
       $i = - $path_i - 1;
     } elsif ($i eq 'LAST') {
       $i = $#$path - $path_i;
+    } elsif ($i eq 'NEXT') {
+      $i = 1;
+    } elsif ($i eq 'CURRENT') {
+      $i = 0;
+    } elsif ($i eq 'PREVIOUS') {
+      $i = -1;
     } else { # look for a step by that name
       for (my $j = $#$path; $j >= 0; $j --) {
         if ($path->[$j] eq $i) {
@@ -294,7 +304,7 @@ sub path {
 
     if (my $step = $self->form->{$step_key}) {
       push @path, $step;
-    } elsif ($ENV{PATH_INFO} && $ENV{PATH_INFO} =~ m|^/(\w+)|) {
+    } elsif ($ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ m|^/(\w+)|) {
       push @path, lc($1);
     }
 
@@ -476,20 +486,22 @@ sub morph {
   }
 
   ### if we are not already that package - bless us there
-  my $new  = $self->run_hook($step, 'morph_package');
   my $hist = $self->history;
+  push @$hist, "$step - morph - morph";
+  my $sref = \$hist->[-1]; # get ref so we can add more info in a moment
+  my $new  = $self->run_hook($step, 'morph_package');
   if ($cur ne $new) {
     my $file = $new .'.pm';
     $file =~ s|::|/|g;
     if (eval { require $file }) { # check for the file that holds this package
       ### become that package
       bless $self, $new;
-      push @$hist, "$step - morph - morph - changed from $cur to $new";
+      $$sref .= " - changed $cur to $new";
       if (my $method = $self->can('fixup_after_morph')) {
         $self->$method($step);
       }
     } else {
-      push @$hist, "$step - morph - morph - failed morph from $cur to $new: $@";
+      $$sref .= " - failed from $cur to $new: $@";
       if ($@ && $@ !~ /^\s*Can\'t locate/) { # let us know what happened
         my $err = "Trouble while morphing to $file: $@";
         debug $err;
@@ -502,7 +514,7 @@ sub morph {
 
 sub unmorph {
   my $self = shift;
-  my $step = shift;
+  my $step = shift || '__no_step';
   my $lin  = $self->{'_morph_lineage'} || return;
   my $cur  = ref $self;
   my $prev = pop(@$lin) || die "unmorph called more times than morph - current ($cur)";
@@ -684,7 +696,7 @@ sub form_name { 'theform' }
 
 ### provide some rudimentary javascript support
 ### if valid_steps is defined - it should include "js"
-sub js_pre_step {
+sub js_run_step {
   my $self = shift;
 
   ### make sure path info looks like /js/CGI/Ex/foo.js
@@ -692,7 +704,7 @@ sub js_pre_step {
   $file = ($file =~  m!^(?:/js/|/)?(\w+(?:/\w+)*\.js)$!) ? $1 : '';
 
   $self->cgix->print_js($file);
-  return 1;
+  return 1; # intercepted
 }
 
 ###----------------------------------------------------------------###
@@ -1002,7 +1014,7 @@ More examples will come with time.  Here are the basics for now.
 
   sub valid_steps { return {success => 1, js => 1} }
     # default_step (main) is a valid path
-    # note the inclusion of js step for js_validation
+    # note the inclusion of js step to allow js_validation
 
   # base_dir_abs is only needed if default print is used
   # template toolkit needs an INCLUDE_PATH
@@ -1012,17 +1024,19 @@ More examples will come with time.  Here are the basics for now.
     # reference to string means ref to content
     # non-reference means filename
     return \ "<h1>Main Step</h1>
-    <form method=post name=[% form_name %]>
-    <input type=text name=foo>
-    <span style='color:red' id=foo_error>[% foo_error %]</span><br>
-    <input type=submit>
-    </form>
-    [% js_validation %]
-    <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
+      <form method=post name=[% form_name %]>
+      <input type=text name=foo>
+      <span style='color:red' id=foo_error>[% foo_error %]</span><br>
+      <input type=submit>
+      </form>
+      [% js_validation %]
+      <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
     ";
   }
 
-  sub post_print { debug shift->history } # show what happened
+  sub post_navigate {
+    debug shift->history;
+  } # show what happened
 
   sub main_file_val {
     # reference to string means ref to yaml document
@@ -1072,9 +1086,12 @@ use a system other than Template::Toolkit).
 
 =head1 HOOKS / METHODS
 
-Hooks are basically methods calls that look for a variety of method
-names.  See the discussion under the method named "hook" for more
-details.  Hooks and methods are looked for in the following order:
+CGI::Ex::App works on the principles of hooks which are essentially
+glorified method lookups.  When a hook is called, CGI::Ex::App will
+look for a corresponding method call for that hook for the current
+step name.  See the discussion under the method named "hook" for more
+details.  The methods listed below are normal method calls.
+Hooks and methods are looked for in the following order:
 
 =over 4
 
@@ -1124,8 +1141,8 @@ are shown):
     # dying errors will run the ->handle_error method
   }
 
-  nav_loop {
 
+  nav_loop {
     ->path (get the path steps)
        # DEFAULT ACTION
        # look in $ENV{'PATH_INFO'}
@@ -1147,53 +1164,13 @@ are shown):
         # ->morph_package (hook - get the package to bless into)
         # ->fixup_after_morph if morph_package exists
 
-      ->pre_step (hook)
-        # exits nav_loop if true
+      ->run_step (hook)
 
-      ->skip (hook)
-        # skips this step if true (stays in nav_loop)
-
-      ->prepare (hook - defaults to true)
-
-      ->info_complete (hook - ran if prepare was true)
-        # DEFAULT ACTION
-        # ->ready_validate (hook)
-        # return false if ! ready_validate
-        # ->validate (hook)
-        #   ->hash_validation (hook)
-        #     ->file_val (hook - uses base_dir_rel, name_module, name_step, ext_val)
-        #   uses CGI::Ex::Validate to validate the hash
-        # returns true if validate is true
-
-      ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
-
-      if ! ->prepare || ! ->info_complete || ! ->finalize {
-        ->prepared_print
-          # DEFAULT ACTION
-          # ->hash_form (hook)
-          # ->hash_fill (hook)
-          # ->hash_errors (hook)
-          # ->hash_common (hook)
-          # merge common, errors, and form into merged form
-          # merge common, form, and fill into merged fill
-          # ->print (hook - passed current step, merged form hash, and merged fill)
-            # DEFAULT ACTION
-            # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
-            # ->template_args
-            # Processes the file with Template Toolkit
-            # Fills the any forms with CGI::Ex::Fill
-            # Prints headers and the content
-
-        ->post_print (hook - used for anything after the print process)
-
-        # return from navigation
-      }
-
-      ->post_step (hook)
-
-      ->unmorph (actually called any time the step exits the loop)
+      ->unmorph
         # DEFAULT ACTION
         # ->fixup_before_unmorph if blessed to previous package
+
+      # exit loop if ->run_step returned true (intercepted)
 
     } end of step foreach
 
@@ -1204,6 +1181,56 @@ are shown):
     ->nav_loop (called again recursively)
 
   } end of nav_loop
+
+
+  run_step {
+    ->pre_step (hook)
+      # exits nav_loop if true
+
+    ->skip (hook)
+      # skips this step if true (stays in nav_loop)
+
+    ->prepare (hook - defaults to true)
+
+    ->info_complete (hook - ran if prepare was true)
+      # DEFAULT ACTION
+      # ->ready_validate (hook)
+      # return false if ! ready_validate
+      # ->validate (hook)
+      #   ->hash_validation (hook)
+      #     ->file_val (hook - uses base_dir_rel, name_module, name_step, ext_val)
+      #   uses CGI::Ex::Validate to validate the hash
+      # returns true if validate is true
+
+    ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
+
+    if ! ->prepare || ! ->info_complete || ! ->finalize {
+      ->prepared_print
+        # DEFAULT ACTION
+        # ->hash_form (hook)
+        # ->hash_fill (hook)
+        # ->hash_errors (hook)
+        # ->hash_common (hook)
+        # merge common, errors, and form into merged form
+        # merge common, form, and fill into merged fill
+        # ->print (hook - passed current step, merged form hash, and merged fill)
+          # DEFAULT ACTION
+          # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
+          # ->template_args
+          # Processes the file with Template Toolkit
+          # Fills the any forms with CGI::Ex::Fill
+          # Prints headers and the content
+
+      ->post_print (hook - used for anything after the print process)
+
+      # return true to exit from nav_loop
+    }
+
+    ->post_step (hook)
+      # exits nav_loop if true
+
+  } end of run_step
+
 
 =item Method C<-E<gt>pre_navigate>
 
@@ -1217,10 +1244,18 @@ Called from within navigate.  Called after the nav_loop has finished running.
 Will only run if there were no errors which died during the nav_loop
 process.
 
+=item Method C<-E<gt>handle_error>
+
+If anything dies during execution, handle_error will be called with
+the error that had happened.  Default is to debug the error and path
+history.
+
 =item Method C<-E<gt>history>
 
 Returns an arrayref of which hooks of which steps of the path were ran.
-Useful for seeing what happened.
+Useful for seeing what happened.  In general - each line of the history
+will show the current step, the hook requested, and which hook was
+actually called. (hooks that don't find a method don't add to history)
 
 =item Method C<-E<gt>path>
 
@@ -1279,27 +1314,31 @@ bypass everything else and continue at a different location in the path - there
 are times when it is necessary or useful - but most of the time should be
 avoided)
 
-Jump takes a single argument which is the location in the path to jump to.
-This argument may be either a step name, the special words "FIRST" or "LAST",
-or the number of steps to jump forward (or backward) in the path.
-The default value, 1, indicates that we should jump to the next step (the
-default action for jump).  A value of 0 would repeat the current step (watch
-out for recursion).  A value of -1 would jump to the previous step.  The
-special value of "LAST" will jump to the last step.  The special value of
-"FIRST" will jump back to the first step.  In each of these cases, the
-path array retured by ->path is modified to allow for the jumping.
+Jump takes a single argument which is the location in the path to jump
+to.  This argument may be either a step name, the special words
+"FIRST, LAST, CURRENT, PREVIOUS, OR NEXT" or the number of steps to
+jump forward (or backward) in the path.  The default value, 1,
+indicates that CGI::Ex::App should jump to the next step (the default action for
+jump).  A value of 0 would repeat the current step (watch out for
+recursion).  A value of -1 would jump to the previous step.  The
+special value of "LAST" will jump to the last step.  The special value
+of "FIRST" will jump back to the first step.  In each of these cases,
+the path array retured by ->path is modified to allow for the jumping.
 
   ### goto previous step
   $self->jump($self->previous_step);
+  $self->jump('PREVIOUS');
   $self->jump(-1);
 
   ### goto next step
   $self->jump($self->next_step);
+  $self->jump('NEXT');
   $self->jump(1);
   $self->jump;
 
   ### goto current step (repeat)
   $self->jump($self->current_step);
+  $self->jump('CURRENT');
   $self->jump(0);
 
   ### goto last step
@@ -1363,11 +1402,15 @@ will be called as method of $self).
   ### will then look  for $self->info_complete;
   ### will then run       $self->$default_passed_sub; # sub {return 0}
 
-=item Method C<-E<gt>handle_error>
+This system is used to allow for multiple steps to be in the same
+file and still allow for moving some steps out to external sub classed
+packages.  If the application has successfully morphed then it is not
+necessary to add the step name to the beginning of the method name as
+the morphed packages method will override the base package (it is still
+OK to use the full method name "${step}_hookname").
 
-If anything dies during execution, handle_error will be called with
-the error that had happened.  Default is to debug the error and path
-history.
+If a hook is found (or a default value is found) then an entry is added
+to the arrayref contained in ->history.
 
 =item Method C<-E<gt>morph>
 
@@ -1463,6 +1506,15 @@ example, if the current object running is a Foo::Bar object and the
 step running is my_step, then morph_package will return
 Foo::Bar::MyStep.
 
+=item Hook C<-E<gt>run_step>
+
+Runs all of the hooks specific to each step, beginning with pre_step
+and ending with post_step.  Called after ->morph($step) has been
+run.  If this returns true, the nav_loop is exited (meaning the
+run_step hook displayed the information).  If it returns false,
+the nav_loop continues on to run the next step.  This is essentially
+the same thing as a method defined in CGI::Applications ->run_modes.
+
 =item Hook C<-E<gt>pre_step>
 
 Ran at the beginning of the loop before prepare, info_compelete, and
@@ -1507,7 +1559,18 @@ Sets that the validation is ready to validate.  Should set the value
 checked by the hook ready_validate.  The following would complement the
 processing flag above:
 
-  sub set_ready_validate { shift->form->{'processing'} = shift }
+  sub set_ready_validate {
+    my $self = shift;
+    if (shift) {
+      $self->form->{'processing'} = 1;
+    } else {
+      delete $self->form->{'processing'};
+    }
+  }
+
+Note thate for this example the form key "processing" was deleted.  This
+is so that the call to fill in any html forms won't swap in a value of
+zero for form elements named "processing."
 
 =item Hook C<-E<gt>validate>
 
@@ -1547,6 +1610,7 @@ should be readible by CGI::Ex::Validate::get_validation.
 
 =item Hook C<-E<gt>js_validation>
 
+Requires YAML.pm.
 Will return Javascript that is capable of validating the form.  This
 is done using the capabilities of CGI::Ex::Validate.  This will call
 the hook hash_validation which will then be encoded into yaml and
@@ -1571,10 +1635,10 @@ CGI/Ex/validate.js files can be found.  This will default to
 "$ENV{SCRIPT_NAME}/js" if the path method has not been overridden,
 otherwise it will default to "$ENV{SCRIPT_NAME}?step=js&js=" (the
 latter is more friendly with overridden paths).  A default handler for
-the "js" step has been provided in "js_pre_step" (this handler will
+the "js" step has been provided in "js_run_step" (this handler will
 nicely print out the javascript found in the js files which are
 included with this distribution - if valid_steps is defined, it must
-include the step "js" - js_pre_step will work properly with the
+include the step "js" - js_run_step will work properly with the
 default "path" handler.
 
 =item Hook C<-E<gt>hash_form>
@@ -1708,6 +1772,104 @@ Object types to exclude from the cleanup process.  Add any such global
 hashes (or objects with references to the global hashes) there.
 
 =back
+
+=head1 OTHER APPLICATION MODULES
+
+The concepts used in CGI::Ex::App are not novel or unique.  However, they
+are all commonly used and very useful.  All application builders were
+built because somebody observed that there are common design patterns
+in CGI building.  CGI::Ex::App differs in that it has found more common design
+patterns of CGI's.
+
+CGI::Ex::App is intended to be sub classed, and sub sub classed, and each step
+can choose to be sub classed or not.  CGI::Ex::App tries to remain simple
+while still providing "more than one way to do it."  It also tries to avoid
+making any sub classes have to call ->SUPER::.
+
+There are certainly other modules for building CGI applications.  The
+following is a short list of other modules and how CGI::Ex::App is
+different.
+
+=over 4
+
+=item C<CGI::Application>
+
+Seemingly the most well know of application builders.
+CGI::Ex::App is different in that it:
+
+  * Uses Template::Toolkit by default
+      CGI::Ex::App can easily use another toolkit by simply
+      overriding the ->print method.
+      CGI::Application uses HTML::Template.
+  * Offers integrated data validation.
+      CGI::Application has had custom addons created that
+      add some of this functionality.  CGI::Ex::App has the benefit
+      that once validation is created,
+  * Allows the user to print at any time (so long as proper headers
+      are sent.  CGI::Application requires data to be pipelined.
+  * Offers hooks into the various phases of each step ("mode" in
+      CGI::Application lingo).  CGI::Application essentially
+      provides ->runmode
+  * Support for easily jumping around in navigation steps.
+  * Support for storing some steps in another package.
+
+CGI::Ex::App and CGI::Application are similar in that they take care
+of handling headers and they allow for calling other "runmodes" from
+within any given runmode.  CGI::Ex::App's ->run_step is essentially
+equivalent to a method call defined in CGI::Application's ->run_modes.
+The ->run method of CGI::Application starts the application in the same
+manner as CGI::Ex::App's ->navigate call.  Many of the hooks around
+CGI::Ex::App's ->run_step call are similar in nature to those provided by
+CGI::Application.
+
+=item C<CGI::Prototype>
+
+There are actually many simularities.  One of the nicest things about
+CGI::Prototype is that it is extremely short (very very short).  The
+->activate starts the application in the same manner as CGI::Ex::App's
+=>navigate call.  Both use Template::Tookit as the default template system.
+CGI::Ex::App is differrent in that it:
+
+  * Offers integrated data validation.
+      CGI::Application has had custom addons created that
+      add some of this functionality.  CGI::Ex::App has the benefit
+      that once validation is created,
+  * Offers more hooks into the various phases of each step.
+  * Support for easily jumping around in navigation steps.
+  * Support for storing some steps in another package.
+
+=item C<CGI::Path>
+
+CGI::Path and CGI::Ex::App are fairly similar in may ways as they
+were created under similar lines of thought.  The primary difference
+in these two is that CGI::Ex::App:
+
+  * Does not provide "automated path following" based on
+      validated key information.  CGI::Path works well for
+      wizard based applications.  CGI::Ex::App assumes that
+      the application will chose it's own path (it works very
+      well in non-linear paths - it also works fine in
+      linear paths but it doesn't provide some of magic that
+      CGI::Path provides).
+  * Does not provide integrated session support.  CGI::Path
+      requires it for path navigation.  CGI::Ex::App assumes that
+      if session support or authentication is needed by an
+      application, a custom Application layer that inherits
+      from CGI::Ex::App will be written to provide this support.
+  * Offers more granularity in the navigation phase.  CGI::Path
+      has successfully been used as a sub class of CGI::Ex::App
+      with limited modifications.
+
+=back
+
+=head1 BUGS
+
+Uses CGI::Ex for header support by default - which means that support
+for mod_perl 2 is limited at this point.
+
+There are a lot of hooks.  Actually this is not a bug.  Some may
+prefer not calling as many hooks - they just need to override
+methods high in the chain and subsequent hooks will not be called.
 
 =head1 THANKS
 
