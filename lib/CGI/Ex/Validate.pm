@@ -17,13 +17,14 @@ use vars qw($VERSION
             $JS_URI_PATH
             $JS_URI_PATH_YAML
             $JS_URI_PATH_VALIDATE
+            $QR_EXTRA
             );
 
 $VERSION = '0.94';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
-
-$DEFAULT_EXT = 'val';
+$DEFAULT_EXT   = 'val';
+$QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
 
 use CGI::Ex::Conf ();
 
@@ -180,8 +181,7 @@ sub validate {
 
   ### store any extra items from self
   foreach my $key (keys %$self) {
-    next if $key !~ /_error$/
-      && $key !~ /^(raise_error|as_hash_\w+|as_array_\w+|as_string_\w+)$/;
+    next if $key !~ $QR_EXTRA;
     $EXTRA{$key} = $self->{$key};
   }
 
@@ -746,7 +746,15 @@ sub generate_js {
   my $js_uri_path = shift || $JS_URI_PATH;
   $val_hash = $self->get_validation($val_hash);
   require YAML;
-  my $str = &YAML::Dump($val_hash);
+
+  ### store any extra items from self
+  my %EXTRA = ();
+  foreach my $key (keys %$self) {
+    next if $key !~ $QR_EXTRA;
+    $EXTRA{"general $key"} = $self->{$key};
+  }
+
+  my $str = &YAML::Dump((scalar keys %EXTRA) ? (\%EXTRA) : () , $val_hash);
   $str =~ s/(?<!\\)\\(?=[sSdDwWbB0-9?.*+|\-\^\${}()\[\]])/\\\\/g;
   $str =~ s/\n/\\n\\\n/g; # allow for one big string
   $str =~ s/\"/\\\"/g; # quotify it
@@ -1011,7 +1019,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.47 2003-12-02 04:52:49 pauls Exp $
+$Id: Validate.pm,v 1.48 2004-01-20 19:27:55 pauls Exp $
 
 =head1 SYNOPSIS
 
