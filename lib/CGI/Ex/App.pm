@@ -1335,7 +1335,9 @@ to determine which html form to attach the validation to.  The method
 js_uri_path is called to determine the path to the appropriate
 yaml_load.js and validate.js files.  If the method ext_val is htm,
 then js_validation will return an empty string as it assumes the htm
-file will take care of the validation itself.
+file will take care of the validation itself.  In order to make use
+of js_validation, it must be added to either the hash_common or
+hash_form hook (see examples of hash_common used in this doc).
 
 =item Hook C<-E<gt>form_name>
 
@@ -1382,7 +1384,18 @@ default validate was not used.
 =item Hook C<-E<gt>hash_common>
 
 A hash of common items to be merged with hash_form - such as pulldown
-menues.
+menues.  By default it is empty, but it would be wise to add the
+following to allow for js_validation (if needed):
+
+  sub hash_common {
+    my $self = shift;
+    my $step = shift;
+    return $self->{hash_common} ||= {
+      script_name   => $ENV{SCRIPT_NAME},
+      js_validation => $self->run_hook($step, 'js_validation'),
+      form_name     => $self->run_hook($step, 'form_name'),
+    };
+  }
 
 =item Hook C<-E<gt>name_module>
 
