@@ -1,7 +1,6 @@
 package CGI::Ex::Validate;
 
 use strict;
-use overload '""' => \&stringify;
 use vars qw($VERSION
             $QR_FIELD_NAME
             $DEFAULT_RAISE_ERROR
@@ -10,7 +9,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.6 $ )[1];
+$VERSION = (qw$Revision: 1.7 $ )[1];
 
 ### what is allowed in a field name
 #$QR_FIELD_NAME = qr/[\w!\@\#\$%\^&*()\-+=:;\'\",.?]+/;
@@ -41,28 +40,6 @@ sub form {
 }
 
 ###----------------------------------------------------------------###
-### How to handle errors
-
-sub fatal {
-  my $self = shift;
-  return undef if ! $self->{raise_error};
-
-  ### allow for more grandios fatals
-  my ($i,$pkg,$file,$line,$sub) = (1);
-  ($pkg,$file,$line,$sub) = caller($i++) while ! $pkg || $pkg eq __PACKAGE__;
-  $self->{caller_info} = [$pkg,$file,$line,$sub];
-  die $self;
-}
-
-sub stringify {
-  my $self = shift;
-  return '' if ! $self->{errors} || ! @{ $self->{errors} };
-
-  my $ref = $self->{caller_info} || [];
-  return join "\n", "Some sort of validation error has occured (@$ref)", @{ $self->{errors} };
-}
-
-###----------------------------------------------------------------###
 
 sub val_conf_handler {
   my $file = shift;
@@ -70,9 +47,14 @@ sub val_conf_handler {
   open (_IN,$file) || die "Couldn't open $file: $!";
   my $text = <_IN>;
   close _IN;
+  return &yaml_load($text);
+}
+
+sub yaml_load {
+  my $text = shift;
   my @ret = eval { &YAML::Load($text) };
   if ($@) {
-    die "Error loading info for $file: $@";
+    die "$@";
   }
   return ($#ret == 0) ? $ret[0] : \@ret;
 }
@@ -82,7 +64,12 @@ sub get_validation {
   my $file = shift;
   my $ext;
 
-  if ($file =~ /\.(\w+)$/) {
+  ### if contains a newline - treat it as a YAML file
+  if ($file =~ /\n/) {
+    return &yaml_load($file);
+
+  ### otherwise base it off of the file extension
+  } elsif ($file =~ /\.(\w+)$/) {
     $ext = $1;
   } else {
     foreach my $_ext (@DEFAULT_EXT) {
@@ -92,18 +79,10 @@ sub get_validation {
   }
 
   ### now get the file
-  die "Missing validation file for $file" if ! $ext;
+  die "Missing validation file for $file (no extension found)" if ! $ext;
   my $handler = $EXT_HANDLERS{$ext} || die "Unknown file extension: $ext";
 
   return &$handler($file);
-}
-
-###----------------------------------------------------------------###
-
-sub are_errors {
-  my $self = shift;
-  my $errs = shift || {};
-  return scalar keys %$errs;
 }
 
 ###----------------------------------------------------------------###
@@ -113,8 +92,15 @@ sub validate {
   my $self = shift;
   my $form      = shift || die "Missing form hash";
   my $val       = shift || die "Missing validation hash";
-  my ($errors,$return) = (@_ && ref($_[0])) ? (shift(),0) : ({},1); # allow for passing an error hash to populate
   
+  ### turn the form into a form if it is really a CGI object
+  if (! ref($form)) {
+    die "Invalid form hash or cgi object";
+  } elsif(! UNIVERSAL::isa($form,'HASH')) {
+    require CGI::Ex;
+    $form = CGI::Ex->new->get_form($form);
+  }
+
   ### if a ref is not passed - assume it is a filename
   if (! ref $val) {
     $val = $self->get_validation($val);
@@ -122,35 +108,14 @@ sub validate {
   }
 #  dex $val;
 
-#  my $val1 = {
-#    'group title' => 'User Information',
-#    'group order' => [qw(username password)],
-#    'group validate_if' => [{'email', 'match', 'm//'}]
-#    username => {required => 1},
-#    password => {required => 1},
-#  };
-#  my $val2 = {
-#    'group title' => 'User Information',
-#    'group validate_if' => [{'email', 'match', 'm//'}]
-#    'group fields' => [
-#      {field    => 'username',
-#       required => 1},
-#      {field    => 'password',
-#       required => 1},
-#     ],
-#  };
-#  my $val3 = [$val1];
-#  my $val4 = [$val2];
-#  my $val5 = [$val1, $val2];
 
   ### allow for validation passed as single group hash, single group array,
   ### or array of group hashes or group arrays
-  my %DONE = ();
-  my %OPTIONAL = ();
+  my @ERRORS = ();
   my $group_order = (UNIVERSAL::isa($val,'HASH')) ? [$val] : $val;
-  GROUP: foreach my $group (@$group_order) {
+  foreach my $group (@$group_order) {
     die "Validation groups must be a hashref" if ! UNIVERSAL::isa($group,'HASH');
-    my $title       = $group->{'group title'} || '';
+    my $title       = $group->{'group title'};
     my $validate_if = $group->{'group validate_if'};
     my $fields      = $group->{'group fields'};
     my $defaults    = $group->{'group defaults'} || {};
@@ -158,7 +123,7 @@ sub validate {
 
     
     ### only validate this group if it is supposed to be checked
-    next if $validate_if && ! $self->check_conditional($form, $validate_if, $group);
+    next if $validate_if && ! $self->check_conditional($form, $validate_if);
 
 
     ### if the validation items were not passed as an arrayref
@@ -197,8 +162,8 @@ sub validate {
     #dex $fields;
 
     ### now lets do the validation
-    my $found = 1;
-    my @ERROR = ();
+    my $found  = 1;
+    my @errors = ();
     my $hold_error;
     foreach (my $i = 0; $i <= $#$fields; $i ++) {
       my $ref = $fields->[$i];
@@ -209,30 +174,60 @@ sub validate {
       }
       $found = 1;
       die "Missing field key during normal validation" if ! $ref->{'field'};
-      my @err = $self->validate_buddy($form, $ref->{'field'}, $ref, $group);
+      my @err = $self->validate_buddy($form, $ref->{'field'}, $ref);
 
       ### test the error - if errors occur allow for OR - if OR fails use errors from first fail
       if (scalar @err) {
         if ($i < $#$fields && ! ref($fields->[$i + 1]) && $fields->[$i + 1] eq 'OR') {
           $hold_error = \@err;
         } else {
-          push @ERROR, $hold_error ? @$hold_error : @err;
+          push @errors, $hold_error ? @$hold_error : @err;
           $hold_error = undef;
         }
       } else {
         $hold_error = undef;
       }
     }
-    dex \@ERROR;
+
+    ### add on errors as requested
+    if ($#errors != -1) {
+      push @ERRORS, $title if $title;
+      push @ERRORS, @errors;
+    }
   }
 
-  return (! $return ? undef : $errors);
+#  dex \@ERRORS;
+
+  ### add on the top level title
+  if ($#ERRORS != -1) {
+    my $title = exists($self->{general_title}) ? $self->{general_title} : "Please correct the following items:";
+    unshift(@ERRORS, $title) if $title;
+  }
+
+  ### return what they want
+  if ($#ERRORS != -1) {
+    push @ERRORS, $self; # save for posterity
+    my $pkg = __PACKAGE__."::Error"; # not overridable
+    if ($self->{raise_error}) {
+      die $pkg->new(\@ERRORS); # die with error object
+    } elsif (wantarray) {
+      return @ERRORS; # give back the bulk info
+    } else {
+      return $pkg->new(\@ERRORS); # return error object
+    }
+  } elsif (wantarray) {
+    return ();
+  } else {
+    return undef;
+  }
 }
+
+###----------------------------------------------------------------###
 
 
 ### allow for optional validation on groups and on individual items
 sub check_conditional {
-  my ($self, $form, $ifs, $group, $N_level, $ifs_match) = @_;
+  my ($self, $form, $ifs, $N_level, $ifs_match) = @_;
 
   $N_level ||= 0;
   $N_level ++; # prevent too many recursive checks
@@ -261,7 +256,7 @@ sub check_conditional {
     my $field = $ref->{'field'} || die "Missing field key during validate_if";
     $field =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
 
-    my @err = $self->validate_buddy($form, $field, $ref, $group, $N_level);
+    my @err = $self->validate_buddy($form, $field, $ref, $N_level);
     $found = 0 if scalar @err;
   }
   return $found;
@@ -271,7 +266,7 @@ sub check_conditional {
 ### this is where the main checking goes on
 sub validate_buddy {
   my $self = shift;
-  my ($form, $field, $field_val, $group_val, $N_level, $ifs_match) = @_;
+  my ($form, $field, $field_val, $N_level, $ifs_match) = @_;
 
   my @errors  = ();
 
@@ -282,7 +277,10 @@ sub validate_buddy {
 
   $N_level ||= 0;
   $N_level ++; # prevent too many recursive checks
-  die "Max dependency level reached $N_level" if $N_level > 5;
+  if ($N_level > 5) {
+#    dex dtrace;
+    die "Max dependency level reached $N_level";
+  }
 
   my $types = [sort keys %$field_val];
 
@@ -314,7 +312,7 @@ sub validate_buddy {
     foreach my $_field (sort keys %$form) {
       next if ($not && $_field =~ m/(?$opt:$pat)/) || (! $not && $_field !~ m/(?$opt:$pat)/);
       my @match = (undef,$1,$2,$3,$4,$5); # limit to the matches
-      push @errors, $self->validate_buddy($form, $_field, $field_val, $group_val, $N_level, \@match);
+      push @errors, $self->validate_buddy($form, $_field, $field_val, $N_level, \@match);
     }
     return wantarray ? @errors : scalar @errors;
   }
@@ -344,7 +342,7 @@ sub validate_buddy {
     $n_vif ++;
     my $ifs = $field_val->{$type};
     die "Conditions for $type on field $field must be a ref" if ! ref $ifs;
-    my $ret = $self->check_conditional($form, $ifs, $group_val, $N_level, $ifs_match);
+    my $ret = $self->check_conditional($form, $ifs, $N_level, $ifs_match);
     $needs_val ++ if $ret;
   }
   return 0 if ! $needs_val && $n_vif;
@@ -362,7 +360,7 @@ sub validate_buddy {
     foreach my $type ($self->filter_type('required_if',$types)) {
       my $ifs = $field_val->{$type};
       die "Conditions for $type on field $field must be a ref" if ! ref $ifs;
-      next if ! $self->check_conditional($form, $ifs, $group_val, $N_level, $ifs_match);
+      next if ! $self->check_conditional($form, $ifs, $N_level, $ifs_match);
       $is_required = $type;
       last;
     }
@@ -494,7 +492,7 @@ sub validate_buddy {
       elsif ($1 eq 'eq') { $test = ($value eq $2) }
 
     } else {
-      die "Error:parse_compare - Not sure how to compare \"$comp\"";
+      die "Not sure how to compare \"$comp\"";
     }
     if (! $test) {
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
@@ -528,7 +526,7 @@ sub validate_buddy {
 
   ### do specific type checks
   foreach my $type ($self->filter_type('type',$types)) {
-    if (! $self->check_type($form->{$field},$field_val->{'type'},$field,$form,$group_val)){
+    if (! $self->check_type($form->{$field},$field_val->{'type'},$field,$form)){
       $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
     }
   }            
@@ -840,6 +838,176 @@ sub AUTOLOAD {
 }
 
 ###----------------------------------------------------------------###
+### How to handle errors
+
+package CGI::Ex::Validate::Error;
+
+use strict;
+use overload '""' => \&as_string;
+use Data::DumpEx;
+
+sub new {
+  my $class = shift || __PACKAGE__;
+  my $self  = shift;
+  die "Missing or invalid arrayref" if ! UNIVERSAL::isa($self, 'ARRAY');
+  return bless $self, $class;
+}
+
+sub as_string {
+  my $self = shift;
+  return join "\n", @{ $self->as_array };
+}
+
+sub as_array {
+  my $err_obj = shift;
+  die "Invalid object" if ! UNIVERSAL::isa($err_obj, 'ARRAY');
+  my $self = UNIVERSAL::isa($err_obj->[$#$err_obj],'CGI::Ex::Validate') ? pop(@$err_obj) : {};
+
+  ### if there are heading items then we may end up needing a prefix
+  my $has_headings = 0;
+  foreach (@$err_obj) {
+    next if ref;
+    $has_headings = 1;
+    last;
+  }
+
+  ### now build the array
+  my @array = ();
+  my $prefix  = defined($_[0]) ? shift()
+    : defined($self->{error_prefix}) ? $self->{error_prefix}
+    : $has_headings ? '  ' : '';
+  my %found = ();
+  foreach my $err (@$err_obj) {
+    if (! ref $err) {
+      push @array, $err;
+      %found = ();
+    } else {
+      my $text = $err_obj->get_error_text($err);
+      next if $found{$text};
+      $found{$text} = 1;
+      push @array, "$prefix$text";
+    }
+  }
+    
+  return wantarray ? @array : \@array;
+}
+
+sub as_hash {
+  my $err_obj = shift;
+  die "Invalid object" if ! UNIVERSAL::isa($err_obj, 'ARRAY');
+  my $self = UNIVERSAL::isa($err_obj->[$#$err_obj],'CGI::Ex::Validate') ? pop(@$err_obj) : {};
+
+  my $form = ref($_[0]) ? shift : {};
+  my $suffix = defined($_[0]) ? shift()
+    : defined($self->{name_suffix}) ? $self->{name_suffix}
+    : '_error';
+
+  ### now add to the hash
+  my %found = ();
+  foreach my $err (@$err_obj) {
+    next if ! ref $err;
+
+    my $field = $err->[0] || die "Missing field name";
+
+    my $text = $err_obj->get_error_text($err);
+    next if $found{$field}->{$text};
+    $found{$field}->{$text} = 1;
+
+    $field .= $suffix;
+    $form->{$field} ||= [];
+    $form->{$field} = [$form->{$field}] if ! ref($form->{$field});
+    push @{ $form->{$field} }, $text;
+  }
+    
+  return wantarray ? %$form : $form;
+}
+
+sub get_error_text {
+  my $self  = shift;
+  my $err   = shift;
+  my ($field, $type, $field_val, $ifs_match) = @$err;
+  my $dig     = ($type =~ s/(_?\d+)$//) ? $1 : '';
+  my $type_lc = lc($type);
+  
+  ### type can look like "required" or "required2" or "required100023"
+  ### allow for fallback from Required100023 through Required
+    
+  ### setup where to look for the error message
+  my @error_keys = ("${type}_error");
+  unshift @error_keys, "${type}${dig}_error" if length($dig);
+  
+  ### look in the passed hash or self first
+  my $return;
+  foreach my $key (@error_keys){
+    $return = $field_val->{$key} || next;
+    $return =~ s/$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+    last;
+  }
+
+
+  ### set default messages
+  if (! $return) {
+    ### the the name of this thing
+    my $name = $field_val->{'name'} || "The field $field";
+    $name =~ s/$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+
+    if ($type eq 'required' || $type eq 'required_if') {
+      $return = "$name is required.";
+  
+    } elsif ($type eq 'min_values') {
+      my $n = $field_val->{"min_values${dig}"};
+      my $values = ($n == 1) ? 'value' : 'values';
+      $return = "$name had less than $n $values.";
+  
+    } elsif ($type eq 'max_values') {
+      my $n = $field_val->{"max_values${dig}"};
+      my $values = ($n == 1) ? 'value' : 'values';
+      $return = "$name had more than $n $values.";
+      
+    } elsif ($type eq 'enum') {
+      $return = "$name is not in the given list.";
+  
+    } elsif ($type eq 'equals') {
+      my $field2 = $field_val->{"equals${dig}"};
+      my $name2  = $field_val->{"equals${dig}_name"} || "the field $field2";
+      $name2 =~ s/$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+      $return = "$name did not equal $name2.";
+  
+    } elsif ($type eq 'min_len') {
+      my $n = $field_val->{"min_len${dig}"};
+      my $char = ($n == 1) ? 'character' : 'characters';
+      $return = "$name was less than $n $char.";
+
+    } elsif ($type eq 'max_len') {
+      my $n = $field_val->{"max_len${dig}"};
+      my $char = ($n == 1) ? 'character' : 'characters';
+      $return = "$name was more than $n $char.";
+
+    } elsif ($type eq 'match') {
+      $return = "$name did not match.";
+
+    } elsif ($type eq 'compare') {
+      $return = "$name did not fit comparison.";
+  
+    } elsif ($type eq 'sql') {
+      $return = "$name did not match sql test.";
+      
+    } elsif ($type eq 'boolean') {
+      $return = "$name did not match boolean test.";
+      
+    } elsif ($type eq 'type') {
+      my $_type = $field_val->{"type${dig}"};
+      $return = "$name did not match type $_type.";
+
+    }
+  }
+
+  die "Missing error on field $field for type $type$dig" if ! $return;
+  return $return;
+
+}
+
+###----------------------------------------------------------------###
 
 1;
 
@@ -850,7 +1018,7 @@ __END__
 
 O::Form - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.6 2003-11-12 06:30:29 pauls Exp $
+$Id: Validate.pm,v 1.7 2003-11-12 09:07:06 pauls Exp $
 
 =head1 SYNOPSIS
 
