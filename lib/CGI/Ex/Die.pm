@@ -1,7 +1,11 @@
 package CGI::Ex::Die;
 
 use strict;
-use vars qw($no_recurse $EXTENDED_ERRORS $SHOW_TRACE $IGNORE_EVAL $ERROR_TEMPLATE);
+use vars qw($no_recurse
+            $EXTENDED_ERRORS $SHOW_TRACE $IGNORE_EVAL
+            $ERROR_TEMPLATE
+            $LOG_HANDLER $FINAL_HANDLER
+            );
 
 use CGI::Ex;
 use CGI::Ex::Dump qw(debug ctrace dex_html);
@@ -86,25 +90,26 @@ sub die_handler {
     }
   }
 
+  ### prepare common args
+  my $msg = &CGI::Ex::Dump::_html_quote("$err");
+  $msg = "<pre style='background:red;color:white;border:2px solid black;font-size:120%;padding:3px'>Error: $msg</pre>\n";
+  my $ctrace = ! $SHOW_TRACE ? ""
+    : "<pre style='background:white;color:black;border:2px solid black;padding:3px'>"
+    . dex_html(ctrace)."</pre>";
+  my $args = {err => "$err", msg => $msg, ctrace => $ctrace};
+
+  &$LOG_HANDLER($args) if $LOG_HANDLER;
+
   ### web based - give more options
   if ($ENV{REQUEST_METHOD}) {
     my $cgix = CGI::Ex->new;
-
-    my $msg = &CGI::Ex::Dump::_html_quote("$err");
-    $msg = "<pre style='background:red;color:white;border:2px solid black;font-size:120%;padding:3px'>Error: $msg</pre>\n";
-
-    my $ctrace = ! $SHOW_TRACE ? ""
-      : "<pre style='background:white;color:black;border:2px solid black;padding:3px'>"
-      . dex_html(ctrace)."</pre>";
 
     ### get the template and swap it in
     # allow for a sub that returns the template
     # or a string
     # or a filename (string starting with /)
     my $out;
-    my $args;
     if ($ERROR_TEMPLATE) {
-      $args = {err => "$err", msg => $msg, ctrace => $ctrace};
       $out = UNIVERSAL::isa($ERROR_TEMPLATE, 'CODE') ? &$ERROR_TEMPLATE($args) # coderef
         : (substr($ERROR_TEMPLATE,0,1) ne '/') ? $ERROR_TEMPLATE # html string
         : do { # filename
@@ -123,7 +128,6 @@ sub die_handler {
     if (my $r = $cgix->apache_request) {
       if ($r->bytes_sent) {
         $r->print($out);
-        $r->exit;
       } else {
         $r->status(500);
         $r->custom_response(500, $out);
@@ -135,6 +139,8 @@ sub die_handler {
   } else {
     ### command line execution
   }
+
+  &$FINAL_HANDLER($args) if $FINAL_HANDLER;
 
   die $err;
 }
