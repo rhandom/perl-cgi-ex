@@ -3,17 +3,18 @@ package CGI::Ex::Conf;
 ### CGI Extended Conf Reader
 
 ###----------------------------------------------------------------###
-#  Copyright 2003 - Paul Seamons                                     #
+#  Copyright 2004 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
 ### See perldoc at bottom
 
 use strict;
-use vars qw($VERSION 
+use vars qw($VERSION
             @DEFAULT_PATHS
             $DEFAULT_EXT
             %EXT_READERS
+            %EXT_WRITERS
             $DIRECTIVE
             $IMMUTABLE_QR
             $IMMUTABLE_KEY
@@ -22,7 +23,7 @@ use vars qw($VERSION
             );
 use CGI::Ex::Dump qw(debug dex_warn);
 
-$VERSION = '0.2';
+$VERSION = '0.3';
 
 $DEFAULT_EXT = 'conf';
 
@@ -40,7 +41,21 @@ $DEFAULT_EXT = 'conf';
                 'htm'      => \&read_handler_html,
                 );
 
-### $DIRECTIVE controls how files are looked for.
+%EXT_WRITERS = (''         => \&write_handler_yaml,
+                'conf'     => \&write_handler_yaml,
+                'ini'      => \&write_handler_ini,
+                'pl'       => \&write_handler_pl,
+                'sto'      => \&write_handler_storable,
+                'storable' => \&write_handler_storable,
+                'val'      => \&write_handler_yaml,
+                'xml'      => \&write_handler_xml,
+                'yaml'     => \&write_handler_yaml,
+                'yml'      => \&write_handler_yaml,
+                'html'     => \&write_handler_html,
+                'htm'      => \&write_handler_html,
+                );
+
+### $DIRECTIVE controls how files are looked for when namespaces are not absolute.
 ### If directories 1, 2 and 3 are passed and each has a config file
 ### LAST would return 3, FIRST would return 1, and MERGE will
 ### try to put them all together.  Merge behavior of hashes
@@ -64,6 +79,8 @@ sub paths {
   my $self = shift;
   return $self->{paths} ||= \@DEFAULT_PATHS;
 }
+
+###----------------------------------------------------------------###
 
 sub read_ref {
   my $self = shift;
@@ -343,6 +360,191 @@ sub read_handler_html {
 
 ###----------------------------------------------------------------###
 
+### Allow for writing out conf values
+### Allow for writing out the correct filename (if there is a path array)
+### Allow for not writing out immutable values on hashes
+sub write {
+  my $self      = shift;
+  my $namespace = shift;
+  my $conf      = shift || die "Must pass hashref to write out"; # the info to write
+  my $args      = shift || {};
+  my $IMMUTABLE = $args->{immutable} || {}; # can pass existing immutable types
+
+  $self = $self->new() if ! ref $self;
+
+  ### allow for fast short ciruit on path lookup for several cases
+  my $directive;
+  my @paths = ();
+  if (ref($namespace)                   # already a ref
+      || $namespace =~ m|^\.{0,2}/.+$|  # absolute or relative file
+      ) {
+    push @paths, $namespace;
+    $directive = 'FIRST';
+
+  } elsif (index($namespace,"\n") != -1) { # yaml string - can't write that
+    die "Cannot use a yaml string as a namespace for write";
+
+  ### use the default directories
+  } else {
+    $directive = uc($args->{directive} || $self->{directive} || $DIRECTIVE);
+    $namespace =~ s|::|/|g;  # allow perlish style namespace
+    my $paths = $args->{paths} || $self->paths
+      || die "No paths found during write on $namespace";
+    $paths = [$paths] if ! ref $paths;
+    if ($directive eq 'LAST') { # LAST shall be FIRST
+      $directive = 'FIRST';
+      $paths = [reverse @$paths] if $#$paths != 0;
+    }
+    foreach my $path (@$paths) {
+      next if exists $CACHE{$path} && ! $CACHE{$path};
+      push @paths, "$path/$namespace";
+    }
+  }
+
+  ### make sure we have at least one path
+  if ($#paths == -1) {
+    die "Couldn't find a path for namespace $namespace.  Perhaps you need to pass paths => \@paths";
+  }
+
+  my $path;
+  if ($directive eq 'FIRST') {
+    $path = $paths[0];
+  } elsif ($directive eq 'LAST' || $directive eq 'MERGE') {
+    $path = $paths[-1];
+  } else {
+    die "Unknown directive ($directive) during write of $namespace";
+  }
+
+  ### remove immutable items (if any)
+  if (UNIVERSAL::isa($conf, 'HASH') && $conf->{"Immutable Keys"}) {
+    $conf = {%$conf}; # copy the values - only for immutable
+    my $IMMUTABLE = delete $conf->{"Immutable Keys"};
+    foreach my $key (keys %$IMMUTABLE) {
+      delete $conf->{$key};
+    }
+  }
+
+  ### finally write it out
+  $self->write_ref($path, $conf);
+
+  return 1;
+}
+
+sub write_ref {
+  my $self = shift;
+  my $file = shift;
+  my $conf = shift || die "Missing conf";
+  my $args = shift || {};
+  my $ext;
+
+  if (ref $file) {
+    die "Invalid filename for write: $file";
+
+  } elsif (index($file,"\n") != -1) {
+    die "Cannot use a yaml string as a filename during write";
+
+  ### otherwise base it off of the file extension
+  } elsif ($args->{file_type}) {
+    $ext = $args->{file_type};
+  } elsif ($file =~ /\.(\w+)$/) {
+    $ext = $1;
+  } else {
+    $ext = defined($args->{default_ext}) ? $args->{default_ext}
+      : defined($self->{default_ext}) ? $self->{default_ext}
+      : defined($DEFAULT_EXT) ? $DEFAULT_EXT : '';
+    $file = length($ext) ? "$file.$ext" : $file;
+  }
+
+  ### allow for a pre-cached reference
+  if (exists $CACHE{$file} && ! $self->{no_cache}) {
+    warn "Cannot write back to a file that is in the cache";
+    return 0;
+  }
+
+  ### determine the handler
+  my $handler;
+  if ($args->{handler}) {
+    $handler = (UNIVERSAL::isa($args->{handler},'CODE'))
+      ? $args->{handler} : $args->{handler}->{$ext};
+  } elsif ($self->{handler}) {
+    $handler = (UNIVERSAL::isa($self->{handler},'CODE'))
+      ? $self->{handler} : $self->{handler}->{$ext};
+  }
+  if (! $handler) {
+    $handler = $EXT_WRITERS{$ext} || die "Unknown file extension: $ext";
+  }
+
+  return eval { scalar &$handler($file, $conf, $args) } || do {
+    dex_warn "Couldn't write $file: $@" if ! $self->{no_warn_on_failed_write};
+    return 0;
+  };
+
+  return 1;
+}
+
+###----------------------------------------------------------------###
+
+sub write_handler_ini {
+  my $file = shift;
+  my $ref  = shift;
+  require Config::IniHash;
+  return &Config::IniHash::WriteINI($file, $ref);
+}
+
+sub write_handler_pl {
+  my $file = shift;
+  my $ref  = shift;
+  ### do has odd behavior in that it turns a simple hashref
+  ### into hash - help it out a little bit
+  require Data::Dumper;
+  local $Data::Dump::Purity = 1;
+  local $Data::Dumper::Sortkeys  = 1;
+  local $Data::Dumper::Quotekeys = 0;
+  local $Data::Dumper::Pad       = '  ';
+  local $Data::Dumper::Varname   = 'VunderVar';
+  my $str = Data::Dumper->Dumpperl([$ref]);
+  if ($str =~ s/^(.+?=\s*)//s) {
+    my $l = length($1);
+    $str =~ s/^\s{1,$l}//mg;
+  }
+  if ($str =~ /\$VunderVar/) {
+    die "Ref to be written contained circular references - can't write";
+  }
+
+  open my $fh, ">$file" || die $!;
+  print $fh $str;
+}
+
+sub write_handler_storable {
+  my $file = shift;
+  my $ref  = shift;
+  require Storable;
+  return &Storable::store($ref, $file);
+}
+
+sub write_handler_yaml {
+  my $file = shift;
+  my $ref  = shift;
+  require YAML;
+  &YAML::DumpFile($file, $ref);
+}
+
+sub write_handler_xml {
+  my $file = shift;
+  my $ref  = shift;
+  require XML::Simple;
+  open my $fh, ">$file" || die $!;
+  print $fh scalar(XML::Simple->new->XMLout($ref, noattr => 1));
+}
+
+sub write_handler_html {
+  my $file = shift;
+  my $ref  = shift;
+  die "Write of conf information to html is not supported";
+}
+
+###----------------------------------------------------------------###
+
 sub preload_files {
   my $self  = shift;
   my $paths = shift || $self->paths;
@@ -400,22 +602,22 @@ CGI::Ex::Conf - CGI Extended Conf Reader
 =head1 SYNOPSIS
 
   my $cob = CGI::Ex::Conf->new;
-  
+
   my $full_path_to_file = "/tmp/foo.val"; # supports ini, sto, val, pl, xml
   my $hash = $cob->read($file);
 
   local $cob->{default_ext} = 'conf'; # default anyway
 
-  
+
   my @paths = qw(/tmp, /home/pauls);
   local $cob->{paths} = \@paths;
   my $hash = $cob->read('My::NameSpace');
   # will look in /tmp/My/NameSpace.conf and /home/pauls/My/NameSpace.conf
-  
+
   my $hash = $cob->read('My::NameSpace', {paths => ['/tmp']});
   # will look in /tmp/My/NameSpace.conf
 
-  
+
   local $cob->{directive} = 'MERGE';
   my $hash = $cob->read('FooSpace');
   # OR #
@@ -423,16 +625,20 @@ CGI::Ex::Conf - CGI Extended Conf Reader
   # will return merged hashes from /tmp/FooSpace.conf and /home/pauls/FooSpace.conf
   # immutable keys are preserved from originating files
 
-  
+
   local $cob->{directive} = 'FIRST';
   my $hash = $cob->read('FooSpace');
   # will return values from first found file in the path.
 
-  
+
   local $cob->{directive} = 'LAST'; # default behavior
   my $hash = $cob->read('FooSpace');
   # will return values from last found file in the path.
-  
+
+
+  ### manipulate $hash
+  $cob->write('FooSpace'); # will write it out the changes
+
 =head1 DESCRIPTION
 
 There are half a million Conf readers out there.  Why not add one more.
@@ -443,9 +649,19 @@ formats of its own.
 This module also provides a preload ability which is useful in conjunction
 with mod_perl.
 
+Oh - and it writes too.
+
 =head1 METHODS
 
 =over 4
+
+=item C<-E<gt>read_ref>
+
+Takes a file and optional argument hashref.  Figures out the type
+of handler to use to read the file, reads it and returns the ref.
+If you don't need the extended merge functionality, or key fallback,
+or immutable keys, or path lookup ability - then use this method.
+Otherwise - use ->read.
 
 =item C<-E<gt>read>
 
@@ -502,6 +718,19 @@ overwritable) by adding a suffix of _immutable or _immu to the key (ie
 {foo_immutable => 'bar'}).  If a value is found in the file that
 matches $IMMUTABLE_KEY, the entire file is considered immutable.
 The immutable defaults may be overriden using $IMMUTABLE_QR and $IMMUTABLE_KEY.
+
+=item C<-E<gt>write_ref>
+
+Takes a file and the reference to be written.  Figures out the type
+of handler to use to write the file and writes it. If you used the ->read_ref
+use this method.  Otherwise, use ->write.
+
+=item C<-E<gt>write>
+
+Allows for writing back out the information read in by ->read.  If multiple
+paths where used - the directive 'FIRST' will write the changes to the first
+file in the path - otherwise the last path will be used.  If ->read had found
+immutable keys, then those keys are removed before writing.
 
 =item C<-E<gt>preload_files>
 
