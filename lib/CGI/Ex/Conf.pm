@@ -13,26 +13,27 @@ use strict;
 use vars qw($VERSION 
             @DEFAULT_PATHS
             $DEFAULT_EXT
-            %EXT_HANDLERS
+            %EXT_READERS
             $DIRECTIVE
             $IMMUTABLE_QR
             $IMMUTABLE_KEY
+            %CACHE
             );
 
 $VERSION = '0.1';
 
 $DEFAULT_EXT = 'conf';
 
-%EXT_HANDLERS = (''         => \&read_handler_yaml,
-                 'conf'     => \&read_handler_yaml,
-                 'ini'      => \&read_handler_ini,
-                 'pl'       => \&read_handler_pl,
-                 'sto'      => \&read_handler_storable,
-                 'storable' => \&read_handler_storable,
-                 'val'      => \&read_handler_yaml,
-                 'xml'      => \&read_handler_xml,
-                 'yaml'     => \&read_handler_yaml,
-                 );
+%EXT_READERS = (''         => \&read_handler_yaml,
+                'conf'     => \&read_handler_yaml,
+                'ini'      => \&read_handler_ini,
+                'pl'       => \&read_handler_pl,
+                'sto'      => \&read_handler_storable,
+                'storable' => \&read_handler_storable,
+                'val'      => \&read_handler_yaml,
+                'xml'      => \&read_handler_xml,
+                'yaml'     => \&read_handler_yaml,
+                );
 
 ### $DIRECTIVE controls how files are looked for.
 ### If directories 1, 2 and 3 are passed and each has a config file
@@ -61,7 +62,8 @@ sub paths {
 
 sub read_ref {
   my $self = shift;
-  my $file  = shift;
+  my $file = shift;
+  my $args = shift || {};
   my $ext;
 
   ### they passed the right stuff already
@@ -76,25 +78,31 @@ sub read_ref {
   } elsif ($file =~ /\.(\w+)$/) {
     $ext = $1;
   } else {
-    $ext = defined($self->{default_ext}) ? $self->{default_ext}
+    $ext = defined($args->{default_ext}) ? $args->{default_ext}
+      : defined($self->{default_ext}) ? $self->{default_ext}
       : defined($DEFAULT_EXT) ? $DEFAULT_EXT : '';
     $file = length($ext) ? "$file.$ext" : $file;
   }
 
-  ### determine the handler
-  my $handler;
-  if ($self->{handler}) {
-    if (UNIVERSAL::isa($self->{handler}, 'CODE')) {
-      $handler = $self->{handler};
-    } else {
-      $handler = $self->{handler}->{$ext};
-    }
-  }
-  if (! $handler) {
-    $handler = $EXT_HANDLERS{$ext} || die "Unknown file extension: $ext";
+  ### allow for a pre-cached reference
+  if (exists $CACHE{$file} && ! $self->{no_cache}) {
+    return $CACHE{$file};
   }
 
-  return scalar eval { &$handler($file) };
+  ### determine the handler
+  my $handler;
+  if ($args->{handler}) {
+    $handler = (UNIVERSAL::isa($args->{handler},'CODE'))
+      ? $args->{handler} : $args->{handler}->{$ext};
+  } elsif ($self->{handler}) {
+    $handler = (UNIVERSAL::isa($self->{handler},'CODE'))
+      ? $self->{handler} : $self->{handler}->{$ext};
+  }
+  if (! $handler) {
+    $handler = $EXT_READERS{$ext} || die "Unknown file extension: $ext";
+  }
+
+  return eval { scalar &$handler($file) };
 }
 
 ### allow for different kinds of merging of arguments
@@ -103,8 +111,9 @@ sub read_ref {
 sub read {
   my $self      = shift;
   my $namespace = shift;
-  my $REF       = shift;       # can pass in existing set of options
-  my $IMMUTABLE = shift || {}; # can pass existing immutable types
+  my $args      = shift || {};
+  my $REF       = $args->{ref} || undef;    # can pass in existing set of options
+  my $IMMUTABLE = $args->{immutable} || {}; # can pass existing immutable types
 
   $self = $self->new() if ! ref $self;
 
@@ -120,15 +129,19 @@ sub read {
 
   ### use the default directories
   } else {
-    $directive = uc($self->{directive} || $DIRECTIVE);
+    $directive = uc($args->{directive} || $self->{directive} || $DIRECTIVE);
     $namespace =~ s|::|/|g;  # allow perlish style namespace
-    my $paths = $self->paths || die "No paths found during read on $namespace";
+    my $paths = $args->{paths} || $self->paths
+      || die "No paths found during read on $namespace";
     $paths = [$paths] if ! ref $paths;
     if ($directive eq 'LAST') { # LAST shall be FIRST
       $directive = 'FIRST';
       $paths = [reverse @$paths] if $#$paths != 0;
     }
-    @paths = map {"$_/$namespace"} @$paths;
+    foreach my $path (@$paths) {
+      next if exists $CACHE{$path} && ! $CACHE{$path};
+      push @paths, "$path/$namespace";
+    }
   }
 
 
@@ -229,6 +242,48 @@ sub read_handler_xml {
 
 ###----------------------------------------------------------------###
 
+sub preload_files {
+  my $self  = shift;
+  my $paths = shift || $self->paths;
+  require File::Find;
+
+  ### what extensions do we look for
+  my %EXT;
+  if ($self->{handler}) {
+    if (UNIVERSAL::isa($self->{handler},'HASH')) {
+      %EXT = %{ $self->{handler} };
+    }
+  } else {
+    %EXT = %EXT_READERS;
+  }
+  return if ! keys %EXT;
+  
+  ### look in the paths for the files
+  foreach my $path (ref($paths) ? @$paths : $paths) {
+    $path =~ s|//+|/|g;
+    $path =~ s|/$||;
+    next if exists $CACHE{$path};
+    if (-f $path) {
+      my $ext = ($path =~ /\.(\w+)$/) ? $1 : '';
+      next if ! $EXT{$ext};
+      $CACHE{$path} = $self->read($path);
+    } elsif (-d _) {
+      $CACHE{$path} = 1;
+      &File::Find::find(sub {
+        return if exists $CACHE{$File::Find::name};
+        return if ! -f;
+        my $ext = (/\.(\w+)$/) ? $1 : '';
+        return if ! $EXT{$ext};
+        $CACHE{$File::Find::name} = $self->read($File::Find::name);
+      }, "$path/");
+    } else {
+      $CACHE{$path} = 0;
+    }
+  }
+}
+
+###----------------------------------------------------------------###
+
 1;
 
 __END__
@@ -237,10 +292,175 @@ __END__
 
 CGI::Ex::Conf - CGI Extended Conf Reader
 
+=head1 SYNOPSIS
+
+  my $cob = CGI::Ex::Conf->new;
+  
+  my $full_path_to_file = "/tmp/foo.val"; # supports ini, sto, val, pl, xml
+  my $hash = $cob->read($file);
+
+  local $cob->{default_ext} = 'conf'; # default anyway
+
+  
+  my @paths = qw(/tmp, /home/pauls);
+  local $cob->{paths} = \@paths;
+  my $hash = $cob->read('My::NameSpace');
+  # will look in /tmp/My/NameSpace.conf and /home/pauls/My/NameSpace.conf
+  
+  my $hash = $cob->read('My::NameSpace', {paths => ['/tmp']});
+  # will look in /tmp/My/NameSpace.conf
+
+  
+  local $cob->{directive} = 'MERGE';
+  my $hash = $cob->read('FooSpace');
+  # OR #
+  my $hash = $cob->read('FooSpace', {directive => 'MERGE'});
+  # will return merged hashes from /tmp/FooSpace.conf and /home/pauls/FooSpace.conf
+  # immutable keys are preserved from originating files
+
+  
+  local $cob->{directive} = 'FIRST';
+  my $hash = $cob->read('FooSpace');
+  # will return values from first found file in the path.
+
+  
+  local $cob->{directive} = 'LAST'; # default behavior
+  my $hash = $cob->read('FooSpace');
+  # will return values from last found file in the path.
+  
 =head1 DESCRIPTION
 
 There are half a million Conf readers out there.  Why not add one more.
 Actually, this module provides a wrapper around the many file formats
-and the config modules that can handle them.
+and the config modules that can handle them.  It does not introduce any
+formats of its own.
+
+This module also provides a preload ability which is useful in conjunction
+with mod_perl.
+
+=head1 METHODS
+
+=over 4
+
+=item C<-E<gt>read>
+
+First argument may be either a perl data structure, yaml string, a
+full filename, or a file "namespace".
+
+The second argument can be a hashref of override values (referred to
+as $args below)..
+
+If the first argument is a perl data structure, it will be
+copied one level deep and returned (nested structures will contain the
+same references).  A yaml string will be parsed and returned.  A full
+filename will be read using the appropriate handler and returned (a
+file beginning with a / or ./ or ../ is considered to be a full
+filename).  A file "namespace" (ie "footer" or "my::config" or
+"what/ever") will be turned into a filename by looking for that
+namespace in the paths found either in $args->{paths} or in
+$self->{paths} or in @DEFAULT_PATHS.  @DEFAULT_PATHS is empty by
+default as is $self->{paths} - read makes no attempt to guess what
+directories to look in.  If the namespace has no extension the
+extension listed in $args->{default_ext} or $self->{default_ext} or
+$DEFAULT_EXT will be used).
+
+  my $ref = $cob->read('My::NameSpace', {
+    paths => [qw(/tmp /usr/data)],
+    default_ext => 'pl',
+  });
+  # would look first for /tmp/My/NameSpace.pl
+  # and then /usr/data/My/NameSpace.pl
+
+  my $ref = $cob->read('foo.sto', {
+    paths => [qw(/tmp /usr/data)],
+    default_ext => 'pl',
+  });
+  # would look first for /tmp/foo.sto
+  # and then /usr/data/foo.sto
+
+When a namespace is used and there are multiple possible paths, there
+area a few options to control which file to look for.  A directive of
+'FIRST', 'MERGE', or 'LAST' may be specified in $args->{directive} or
+$self->{directive} or the default value in $DIRECTIVE will be used
+(default is 'LAST'). When 'FIRST' is specified the first path that
+contains the namespace is returned.  If 'LAST' is used, the last
+found path that contains the namespace is returned.  If 'MERGE' is
+used, the data structures are joined together.  If they are
+arrayrefs, they are joined into one large arrayref.  If they are
+hashes, they are layered on top of each other with keys found in later
+paths overwriting those found in earlier paths.  This allows for
+setting system defaults in a root file, and then allow users to have
+custom overrides.
+
+It is possible to make keys in a root file be immutable (non
+overwritable) by adding a suffix of _immutable or _immu to the key (ie
+{foo_immutable => 'bar'}).  If a value is found in the file that
+matches $IMMUTABLE_KEY, the entire file is considered immutable.
+The immutable defaults may be overriden using $IMMUTABLE_QR and $IMMUTABLE_KEY.
+
+=item C<-E<gt>preload_files>
+
+Arguments are file(s) and/or directory(s) to preload.  preload_files will
+loop through the arguments, find the files that exist, read them in using
+the handler which matches the files extension, and cache them by filename
+in %CACHE.  Directories are spidered for file extensions which match those
+listed in %EXT_READERS.  This is useful for a server environment where CPU
+may be more precious than memory.
+
+=head1 FILETYPES
+
+CGI::Ex::Conf supports the files found in %EXT_READERS by default.
+Additional types may be added to %EXT_READERS, or a custom handler may be
+passed via $args->{handler} or $self->{handler}.  If the custom handler is
+a code ref, all files will be passed to it.  If it is a hashref, it should
+contain keys which are extensions it supports, and values which read those
+extensions.
+
+Some file types have benefits over others.  Storable is very fast, but is
+binary and not human readable.  YAML is readable but very slow.  I would
+suggest using a readable format such as YAML and then using preload_files
+to load in what you need at run time.  All preloaded files are faster than
+any of the other types.
+
+The following is the list of handlers that ships with CGI::Ex::Conf (they
+will only work if the supporting module is installed on your system):
+
+=over 4
+
+=item C<pl>
+
+Should be a file containing a perl structure which is the last thing returned.
+
+=item C<sto> and C<storable>
+
+Should be a file containing a structure stored in Storable format.
+See L<Storable>.
+
+=item C<yaml> and C<conf>
+
+Should be a file containing a yaml document.  Multiple documents are returned
+as a single arrayref.  Also - any file without an extension and custom handler
+will be read using YAML.  See L<YAML>.
+
+=item C<ini>
+
+Should be a windows style ini file.  See L<Config::IniHash>
+
+=item C<xml>
+
+Should be an xml file.  It will be read in by XMLin.  See L<XML::Simple>.
+
+=head1 TODO
+
+Make a similar write method that handles immutability.
+
+=head1 AUTHOR
+
+Paul Seamons
+
+=head1 LICENSE
+
+This module may be distributed under the same terms as Perl itself.
 
 =cut
+
