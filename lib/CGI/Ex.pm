@@ -257,7 +257,7 @@ sub content_type {
 sub print_content_type {
   my ($self, $type) = ($#_ >= 1) ? @_ : ref($_[0]) ? (shift, undef) : (undef, shift);
   $self = __PACKAGE__->new if ! $self;
-  die 'Usage: $cgix_obj->print_content_type' ! ref $self;
+  die 'Usage: $cgix_obj->print_content_type' if ! ref $self;
   if ($type) {
     die "Invalid type: $type" if $type !~ m|^[\w\-\.]+/[\w\-\.\+]+$|; # image/vid.x-foo
   } else {
@@ -283,7 +283,7 @@ sub print_content_type {
 sub content_typed {
   my $self = shift;
   $self = __PACKAGE__->new if ! $self;
-  die 'Usage: $cgix_obj->content_typed' ! ref $self;
+  die 'Usage: $cgix_obj->content_typed' if ! ref $self;
 
   if (my $r = $self->apache_request) {
     return $r->bytes_sent;
@@ -301,7 +301,7 @@ sub content_typed {
 sub location_bounce {
   my ($self, $loc) = ($#_ == 1) ? (@_) : (undef, shift);
   $self = __PACKAGE__->new if ! $self;
-  die 'Usage: $cgix_obj->location_bounce($url)' ! ref $self;
+  die 'Usage: $cgix_obj->location_bounce($url)' if ! ref $self;
 
   if ($self->content_typed) {
     if ($DEBUG_LOCATION_BOUNCE) {
