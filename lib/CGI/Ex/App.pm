@@ -260,15 +260,6 @@ sub add_property {
 ###----------------------------------------------------------------###
 ### a few standard base accessors
 
-sub cgix {
-  my $self = shift;
-  $self->{cgix} = shift if $#_ != -1;
-  return $self->{cgix} ||= do {
-    require CGI::Ex;
-    CGI::Ex->new(); # return of the do
-  };
-}
-
 sub form {
   my $self = shift;
   if ($#_ != -1) {
@@ -277,17 +268,58 @@ sub form {
   return $self->{form} ||= $self->cgix->get_form;
 }
 
+sub cookies {
+  my $self = shift;
+  if ($#_ != -1) {
+    $self->{cookies} = shift || die "Invalid cookies";
+  }
+  return $self->{cookies} ||= $self->cgix->get_cookies;
+}
+
+sub cgix {
+  my $self = shift;
+  return $self->{cgix} ||= do {
+    my $args = shift || {};
+    require CGI::Ex;
+    CGI::Ex->new($args); # return of the do
+  };
+}
+
+sub set_cgix {
+  my $self = shift;
+  $self->{cgix} = shift;
+}
+
 sub vob {
   my $self = shift;
-  if ($#_ = -1) {
-    return $self->{vob} = shift || die "Invalid vob";
-  }
   return $self->{vob} ||= do {
+    my $args = shift || {};
+    $args->{cgix} ||= $self->cgix;
     require CGI::Ex::Validate;
-    CGI::Ex::Validate->new({
-      cgix => $self->cgix,
-    }); # return of the do
+    CGI::Ex::Validate->new($args); # return of the do
   };
+}
+
+sub set_vob {
+  my $self = shift;
+  $self->{vob} = shift;
+}
+
+sub auth {
+  my $self = shift;
+  return $self->{auth} ||= do {
+    my $args = shift || {};
+    $args->{cgix}    ||= $self->cgix,
+    $args->{form}    ||= $self->form,
+    $args->{cookies} ||= $self->cookies,
+    require CGI::Ex::Auth;
+    CGI::Ex::Auth->new($args); # return of the do
+  };
+}
+
+sub set_auth {
+  my $self = shift;
+  $self->{auth} = shift;
 }
 
 ###----------------------------------------------------------------###
