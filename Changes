@@ -1,3 +1,10 @@
+2004-11-08  Paul Seamons  <cgi_ex@seamons.com>
+
+        * Version 1.11 is done
+        * Let file path dependent tests succeed
+        * Allow for next current and previous steps in App
+        * Couple of warn cleans in App
+
 2004-11-05  Paul Seamons  <cgi_ex@seamons.com>
 
         * Version 1.10 is done
