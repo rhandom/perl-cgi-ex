@@ -190,25 +190,30 @@ sub prepared_print {
   my $self = shift;
   my $step = shift;
 
-  my $hash_swap = $self->run_hook('hash_swap', $step);
-  my $hash_form = $self->run_hook('hash_form', $step);
-  my $hash_fill = $self->run_hook('hash_fill', $step);
-  my $hash_errs = $self->run_hook('hash_errors', $step);
+  my $hash_base = $self->run_hook('hash_base',   $step);
   my $hash_comm = $self->run_hook('hash_common', $step);
+  my $hash_form = $self->run_hook('hash_form',   $step);
+  my $hash_fill = $self->run_hook('hash_fill',   $step);
+  my $hash_swap = $self->run_hook('hash_swap',   $step);
+  my $hash_errs = $self->run_hook('hash_errors', $step);
+  $_ ||= {} foreach $hash_base, $hash_comm, $hash_form, $hash_fill, $hash_swap, $hash_errs;
 
   ### fix up errors
   $hash_errs->{$_} = $self->format_error($hash_errs->{$_})
     foreach keys %$hash_errs;
   $hash_errs->{has_errors} = 1 if scalar keys %$hash_errs;
 
-  ### layer hashes together (micro-optimized)
-  my $swap = {%$hash_form, %$hash_comm, %$hash_errs, %$hash_swap};
-  my $fill = {%$hash_form, %$hash_comm, %$hash_fill};
+  ### layer hashes together
+  my $fill = {%$hash_form, %$hash_base, %$hash_comm, %$hash_fill};
+  my $swap = {%$hash_form, %$hash_base, %$hash_comm, %$hash_swap, %$hash_errs};
+  $fill = {} if $self->no_fill($step);
 
   ### run the print hook - passing it the form and fill info
   $self->run_hook('print', $step, undef,
                   $swap, $fill);
 }
+
+sub no_fill { shift->{'no_fill'} }
 
 sub exit_nav_loop {
   my $self = shift;
@@ -936,10 +941,9 @@ sub hash_validation {
   };
 }
 
-sub hash_common {
-  my $self = shift;
-  my $step = shift;
-  return $self->{hash_common} ||= {
+sub hash_base {
+  my ($self, $step) = @_;
+  return $self->{hash_base} ||= {
     script_name   => $ENV{'SCRIPT_NAME'} || $0,
     path_info     => $ENV{'PATH_INFO'}   || '',
     js_validation => sub { $self->run_hook('js_validation', $step, shift) },
@@ -947,25 +951,11 @@ sub hash_common {
   };
 }
 
-sub hash_errors {
-  my $self = shift;
-  return $self->{hash_errors} ||= {};
-}
-
-sub hash_form {
-  my $self = shift;
-  return $self->form;
-}
-
-sub hash_fill {
-  my $self = shift;
-  return $self->{hash_fill} ||= {};
-}
-
-sub hash_swap {
-  my $self = shift;
-  return $self->{hash_swap} ||= {};
-}
+sub hash_common { shift->{'hash_common'} ||= {} }
+sub hash_form   { shift->form }
+sub hash_fill   { shift->{'hash_fill'}   ||= {} }
+sub hash_swap   { shift->{'hash_swap'}   ||= {} }
+sub hash_errors { shift->{'hash_errors'} ||= {} }
 
 sub add_errors {
   my $self = shift;
@@ -983,10 +973,11 @@ sub add_errors {
 }
 
 sub add_to_errors { shift->add_errors(@_) }
-sub add_to_fill   { my $self = shift; $self->add_to_hash($self->hash_fill,   @_) }
 sub add_to_swap   { my $self = shift; $self->add_to_hash($self->hash_swap,   @_) }
+sub add_to_fill   { my $self = shift; $self->add_to_hash($self->hash_fill,   @_) }
 sub add_to_form   { my $self = shift; $self->add_to_hash($self->hash_form,   @_) }
 sub add_to_common { my $self = shift; $self->add_to_hash($self->hash_common, @_) }
+sub add_to_base   { my $self = shift; $self->add_to_hash($self->hash_base,   @_) }
 
 sub add_to_hash {
   my $self = shift;
@@ -1099,11 +1090,10 @@ More examples will come with time.  Here are the basics for now.
        (foo = [% foo %])";
   }
 
-  ### not necessary - this is the default hash_common
-  sub hash_common { # used to include js_validation
-    my $self = shift;
-    my $step = shift;
-    return $self->{hash_common} ||= {
+  ### not necessary - this is the default hash_base
+  sub hash_base { # used to include js_validation
+    my ($self, $step) = @_;
+    return $self->{hash_base} ||= {
       script_name   => $ENV{SCRIPT_NAME} || '',
       js_validation => sub { $self->run_hook('js_validation', $step) },
       form_name     => sub { $self->run_hook('form_name', $step) },
@@ -1242,13 +1232,14 @@ are shown):
     if ! ->prepare || ! ->info_complete || ! ->finalize {
       ->prepared_print
         # DEFAULT ACTION
-        # ->hash_swap (hook)
+        # ->hash_base (hook)
+        # ->hash_common (hook)
         # ->hash_form (hook)
         # ->hash_fill (hook)
+        # ->hash_swap (hook)
         # ->hash_errors (hook)
-        # ->hash_common (hook)
-        # merge form, common, errors, and swap into merged swap
-        # merge form, common, and fill into merged fill
+        # merge form, base, common, and fill into merged fill
+        # merge form, base, common, swap, and errors into merged swap
         # ->print (hook - passed current step, merged swap hash, and merged fill)
           # DEFAULT ACTION
           # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
@@ -1658,8 +1649,8 @@ js_uri_path is called to determine the path to the appropriate
 yaml_load.js and validate.js files.  If the method ext_val is htm,
 then js_validation will return an empty string as it assumes the htm
 file will take care of the validation itself.  In order to make use
-of js_validation, it must be added to either the hash_common, hash_swap or
-hash_form hook (see examples of hash_common used in this doc).
+of js_validation, it must be added to either the hash_base, hash_common, hash_swap or
+hash_form hook (see examples of hash_base used in this doc).
 
 =item Hook C<-E<gt>form_name>
 
@@ -1683,7 +1674,7 @@ default "path" handler.
 
 Called in preparation for print after failed prepare, info_complete,
 or finalize.  Should contain a hash of any items needed to be swapped
-into the html during print.  Will be merged with hash_common, hash_form,
+into the html during print.  Will be merged with hash_base, hash_common, hash_form,
 and hash_errors.  Can be populated by passing a hash to ->add_to_swap.
 
 =item Hook C<-E<gt>hash_form>
@@ -1696,9 +1687,18 @@ to ->add_to_form.
 
 Called in preparation for print after failed prepare, info_complete,
 or finalize.  Should contain a hash of any items needed to be filled
-into the html form during print.  Items from hash_form and hash_common
+into the html form during print.  Items from hash_form, hash_base, and hash_common
 will be layered on top during a print cycle.  Can be populated by passing
 a hash to ->add_to_fill.
+
+By default - forms are sticky and data from previous requests will
+try and populate the form.  There is a method called ->no_fill which
+will turn off sticky forms.
+
+=item Method C<-E<gt>no_fill
+
+Passed the current step.  Should return boolean value of whether or not
+to fill in the form on the printed page. (prevents sticky forms)
 
 =item Hook C<-E<gt>hash_errors>
 
@@ -1714,17 +1714,23 @@ default validate was not used.  Can be populated by passing a hash to
 
 =item Hook C<-E<gt>hash_common>
 
-A hash of common items to be merged with hash_form - such as pulldown
+Almost identical in function and purpose to hash_base.  It is
+intended that hash_base be used for common items used in various
+scripts inheriting from a common CGI::Ex::App type parent.  Hash_common
+is more intended for step level populating of both swap and fill.
+
+=item Hook C<-E<gt>hash_base>
+
+A hash of base items to be merged with hash_form - such as pulldown
 menues.  It will now also be merged with hash_fill, so it can contain
-default fillins.  Can be populated by passing a hash to ->add_to_common.
+default fillins.  Can be populated by passing a hash to ->add_to_base.
 By default the following sub is what is used for hash_common (or something
 similiar).  Note the use of values that are code refs - so that the
 js_validation and form_name hooks are only called if requested:
 
-  sub hash_common {
-    my $self = shift;
-    my $step = shift;
-    return $self->{hash_common} ||= {
+  sub hash_base {
+    my ($self, $step) = @_;
+    return $self->{hash_base} ||= {
       script_name   => $ENV{SCRIPT_NAME},
       js_validation => sub { $self->run_hook('js_validation', $step) },
       form_name     => sub { $self->run_hook('form_name', $step) },
