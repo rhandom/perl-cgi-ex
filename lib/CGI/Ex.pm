@@ -22,7 +22,6 @@ use Data::DumpEx;
 $VERSION               = '1.0';
 $PREFERRED_FILL_MODULE = '';
 $PREFERRED_CGI_MODULE  = 'CGI';
-$OBJECT_METHOD         = 'param';
 
 ###----------------------------------------------------------------###
 
@@ -53,6 +52,38 @@ sub AUTOLOAD {
   return wantarray # does wantarray propogate up ?
     ? ($self->object->$method(@_))
     :  $self->object->$method(@_);
+}
+
+###----------------------------------------------------------------###
+
+### form getter that will act like ->Vars only it will be intelligent
+### thus directly infering that a majority of CGI.pm is unintelligent
+sub get_form {
+  my $self = shift || __PACKAGE__;
+  $self = $self->new(@_) if ! ref $self;
+
+  my $obj  = $self->object;
+  my %hash = ();
+  foreach my $key ($obj->param()) {
+    my @val = $obj->param($key);
+    $hash{$key} = ($#val == -1) ? die : ($#val == 0) ? $val[0] : \@val;
+  }
+  return \%hash;
+}
+
+## like get_form - but a hashref of cookies
+sub get_cookies {
+  my $self = shift || __PACKAGE__;
+  $self = $self->new(@_) if ! ref $self;
+
+  my $obj  = $self->object;
+  my %hash = ();
+  foreach my $key ($obj->cookie()) {
+    my @val = $obj->cookie($key);
+    dex \@val;
+    $hash{$key} = ($#val == -1) ? die : ($#val == 0) ? $val[0] : \@val;
+  }
+  return \%hash;
 }
 
 ###----------------------------------------------------------------###
