@@ -70,7 +70,7 @@ $IMMUTABLE_KEY = 'immutable';
 
 sub new {
   my $class = shift || __PACKAGE__;
-  my $self  = (@_ && ref($_[0])) ? shift : {@_}; 
+  my $self  = (@_ && ref($_[0])) ? shift : {@_};
 
   return bless $self, $class;
 }
@@ -91,7 +91,11 @@ sub read_ref {
   ### they passed the right stuff already
   if (ref $file) {
     if (UNIVERSAL::isa($file, 'SCALAR')) {
-      return &yaml_load($$file); # allow for ref to a YAML string
+      if ($$file =~ /^\s*</) {
+        return &html_parse_yaml_load($file); # allow for ref to a YAML string
+      } else {
+        return &yaml_load($$file); # allow for ref to a YAML string
+      }
     } else {
       return $file;
     }
@@ -284,8 +288,6 @@ sub read_handler_html {
   my $file = shift;
   my $self = shift;
   my $args = shift;
-  my $key = $args->{html_key} || $self->{html_key} || $HTML_KEY;
-  return undef if ! $key || $key !~ /^\w+$/;
   if (! eval {require YAML}) {
     my $err   = $@;
     my $found = 0;
@@ -297,15 +299,24 @@ sub read_handler_html {
   }
 
   ### get the html
-  my $html = '';
-  local *IN;
-  open(IN, $file) || return undef;
-  CORE::read(IN, $html, -s $file);
-  close IN;
+  open(my $fh, $file) || return undef;
+  CORE::read($fh, my $html, -s $file);
+  close $fh;
+
+  return &html_parse_yaml_load(\$html, $self, $args);
+}
+
+sub html_parse_yaml_load {
+  my $html = shift;
+  my $sref = ref($html) ? $html : \$html;
+  my $self = shift || {};
+  my $args = shift || {};
+  my $key = $args->{html_key} || $self->{html_key} || $HTML_KEY;
+  return undef if ! $key || $key !~ /^\w+$/;
 
   my $str = '';
   my @order = ();
-  while ($html =~ m{
+  while ($$sref =~ m{
     (document\.    # global javascript
      | var\s+      # local javascript
      | <\w+\s+[^>]*?) # input, form, select, textarea tag
