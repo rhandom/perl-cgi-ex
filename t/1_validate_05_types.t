@@ -88,47 +88,75 @@ $e = &validate({foo => "str"}, $v);
 $e = &validate({}, $v);
 &print_ok($e);
 
-#  
-#  ### allow for enum types
-#  foreach my $type ($self->filter_type('enum',$types)) {
-#    my $ref = ref($field_val->{$type}) ? $field_val->{$type} : [split(/\s*\|\|\s*/,$field_val->{$type})];
-#    my $value = $form->{$field};
-#    $value = '' if ! defined $value;
-#    if (! grep {$_ eq $value} @$ref) {
-#      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-#    }
-#  }
-#
-#  ### field equality test
-#  foreach my $type ($self->filter_type('equals',$types)) {
-#    my $field2 = $field_val->{$type};
-#    my $success = 0;
-#    if ($field2 =~ m/^([\"\'])(.*)\1$/) {
-#      my $test = $2;
-#      $test = '' if $test eq '|'; # copy behavior from FORMS
-#      if (exists($form->{$field}) || ! defined($form->{$field})) {
-#        $success = ($form->{$field} eq $test);
-#      }
-#    } elsif (exists($form->{$field2}) && defined($field2)) {
-#      if (exists($form->{$field}) || ! defined($form->{$field})) {
-#        $success = ($form->{$field} eq $form->{$field2});
-#      }
-#    } elsif (! exists($form->{$field}) || ! defined($form->{$field})) {
-#      $success = 1; # occurs if they are both undefined
-#    }
-#    if (! $success) {
-#      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-#    }
-#  }
-#
-#  ### length min check
-#  foreach my $type ($self->filter_type('min_len',$types)) {
-#    my $n = $field_val->{$type};
-#    if (exists($form->{$field}) && defined($form->{$field}) && length($form->{$field}) < $n) {
-#      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-#    }
-#  }
-#
+### enum
+$v = {foo => {enum => [1, 2, 3]}, bar => {enum => "1 || 2||3"}};
+$e = &validate({}, $v);
+&print_ok($e);
+
+$e = &validate({foo => 1, bar => 1}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => 1, bar => 2}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => 1, bar => 3}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => 1, bar => 4}, $v);
+&print_ok($e);
+
+# equals
+$v = {foo => {equals => 'bar'}};
+$e = &validate({}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => 1}, $v);
+&print_ok($e);
+
+$e = &validate({bar => 1}, $v);
+&print_ok($e);
+
+$e = &validate({foo => 1, bar => 2}, $v);
+&print_ok($e);
+
+$e = &validate({foo => 1, bar => 1}, $v);
+&print_ok(! $e);
+
+$v = {foo => {equals => '"bar"'}};
+$e = &validate({foo => 1, bar => 1}, $v);
+&print_ok($e);
+
+$e = &validate({foo => 'bar', bar => 1}, $v);
+&print_ok(! $e);
+
+### min_len
+$v = {foo => {min_len => 10}};
+$e = &validate({}, $v);
+&print_ok($e);
+
+$e = &validate({foo => ""}, $v);
+&print_ok($e);
+
+$e = &validate({foo => "123456789"}, $v);
+&print_ok($e);
+
+$e = &validate({foo => "1234567890"}, $v);
+&print_ok(! $e);
+
+### max_len
+$v = {foo => {max_len => 10}};
+$e = &validate({}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => ""}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => "1234567890"}, $v);
+&print_ok(! $e);
+
+$e = &validate({foo => "12345678901"}, $v);
+&print_ok($e);
+
 #  ### length max check
 #  foreach my $type ($self->filter_type('max_len',$types)) {
 #    my $n = $field_val->{$type};
