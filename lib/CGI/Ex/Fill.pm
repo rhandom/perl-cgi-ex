@@ -103,13 +103,14 @@ sub form_fill {
     }
 
     my $val;
+    my $meth;
     foreach my $form (@$forms) {
       next if ! ref $form;
       if (UNIVERSAL::isa($form, 'HASH') && defined $form->{$key}) {
         $val = $form->{$key};
         last;
-      } elsif (UNIVERSAL::can($form, $OBJECT_METHOD)) {
-        $val = $form->$OBJECT_METHOD($key);
+      } elsif ($meth = UNIVERSAL::can($form, $OBJECT_METHOD)) {
+        $val = $form->$meth($key);
         last if defined $val;
       } elsif (UNIVERSAL::isa($form, 'CODE')) {
         $val = &{ $form }($key, $TEMP_TARGET);
