@@ -254,7 +254,7 @@ sub add_property {
     $self->{$prop} = shift() if $#_ != -1;
     $self->{$prop};
   } if ! defined &$name;
-  $self->$prop() = shift() if $#_ != -1;
+  $self->$prop(shift()) if $#_ != -1;
 }
 
 ###----------------------------------------------------------------###
