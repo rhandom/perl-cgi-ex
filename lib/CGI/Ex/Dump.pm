@@ -15,7 +15,7 @@ use Exporter;
 
 @ISA       = qw(Exporter);
 @EXPORT    = qw(dex dex_warn dex_text ctrace dex_trace);
-@EXPORT_OK = qw(dex dex_warn dex_text ctrace dex_trace what_is_this);
+@EXPORT_OK = qw(dex dex_warn dex_text ctrace dex_trace debug what_is_this);
 
 ### is on or off
 sub on  { $ON = 1 };
@@ -56,6 +56,7 @@ BEGIN {
 ### for cgi output
 sub what_is_this {
   return if ! $ON;
+  ### figure out which sub we called
   my ($pkg, $file, $line_n, $called) = caller(0);
   ($pkg, $file, $line_n, $called) = caller(1) if $pkg eq __PACKAGE__;
   substr($called, 0, length(__PACKAGE__) + 2, '');
@@ -109,7 +110,7 @@ sub what_is_this {
 }
 
 ### some aliases
-sub dump     { &what_is_this }
+sub debug    { &what_is_this }
 sub dex      { &what_is_this }
 sub dex_warn { &what_is_this }
 sub dex_text { &what_is_this }
@@ -187,6 +188,12 @@ CGI::Ex::Dump - A debug utility
   dex_warn \@INC;  # same as dex but to STDOUT
 
   print FOO dex_text \@INC; # same as dex but return dump
+
+  # ALSO #
+
+  use CGI::Ex::Dump qw(debug);
+  
+  debug; # same as dex
 
 =head1 DESCRIPTION
 
