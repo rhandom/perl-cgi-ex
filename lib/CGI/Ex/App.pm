@@ -200,6 +200,7 @@ sub prepared_print {
   my $self = shift;
   my $step = shift;
 
+  my $hash_swap = $self->run_hook($step, 'hash_swap');
   my $hash_form = $self->run_hook($step, 'hash_form');
   my $hash_fill = $self->run_hook($step, 'hash_fill');
   my $hash_errs = $self->run_hook($step, 'hash_errors');
@@ -211,12 +212,12 @@ sub prepared_print {
   $hash_errs->{has_errors} = 1 if scalar keys %$hash_errs;
 
   ### layer hashes together (micro-optimized)
-  my $form = {%$hash_comm, %$hash_errs, %$hash_form};
-  my $fill = {%$hash_comm, %$hash_form, %$hash_fill};
+  my $swap = {%$hash_form, %$hash_comm, %$hash_errs, %$hash_swap};
+  my $fill = {%$hash_form, %$hash_comm, %$hash_fill};
 
   ### run the print hook - passing it the form and fill info
   $self->run_hook($step, 'print', undef,
-                  $form, $fill);
+                  $swap, $fill);
 }
 
 sub exit_nav_loop {
@@ -985,6 +986,11 @@ sub hash_fill {
   return $self->{hash_fill} ||= {};
 }
 
+sub hash_swap {
+  my $self = shift;
+  return $self->{hash_swap} ||= {};
+}
+
 ###----------------------------------------------------------------###
 
 sub forbidden_info_complete { 0 }
@@ -1226,12 +1232,13 @@ are shown):
     if ! ->prepare || ! ->info_complete || ! ->finalize {
       ->prepared_print
         # DEFAULT ACTION
+        # ->hash_swap (hook)
         # ->hash_form (hook)
         # ->hash_fill (hook)
         # ->hash_errors (hook)
         # ->hash_common (hook)
-        # merge common, errors, and form into merged form
-        # merge common, form, and fill into merged fill
+        # merge form, common, errors, and swap into merged swap
+        # merge form, common, and fill into merged fill
         # ->print (hook - passed current step, merged form hash, and merged fill)
           # DEFAULT ACTION
           # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
@@ -1639,7 +1646,7 @@ js_uri_path is called to determine the path to the appropriate
 yaml_load.js and validate.js files.  If the method ext_val is htm,
 then js_validation will return an empty string as it assumes the htm
 file will take care of the validation itself.  In order to make use
-of js_validation, it must be added to either the hash_common or
+of js_validation, it must be added to either the hash_common, hash_swap or
 hash_form hook (see examples of hash_common used in this doc).
 
 =item Hook C<-E<gt>form_name>
@@ -1660,18 +1667,24 @@ included with this distribution - if valid_steps is defined, it must
 include the step "js" - js_run_step will work properly with the
 default "path" handler.
 
-=item Hook C<-E<gt>hash_form>
+=item Hook C<-E<gt>hash_swap>
 
 Called in preparation for print after failed prepare, info_complete,
 or finalize.  Should contain a hash of any items needed to be swapped
-into the html during print.
+into the html during print.  Will be merged with hash_common, hash_form,
+and hash_errors.
+
+=item Hook C<-E<gt>hash_form>
+
+Called in preparation for print after failed prepare, info_complete,
+or finalize.  Defaults to ->form.
 
 =item Hook C<-E<gt>hash_fill>
 
 Called in preparation for print after failed prepare, info_complete,
 or finalize.  Should contain a hash of any items needed to be filled
-into the html form during print.  Items from hash_form will be layered
-on top during a print cycle.
+into the html form during print.  Items from hash_form and hash_common
+will be layered on top during a print cycle.
 
 =item Hook C<-E<gt>hash_errors>
 
