@@ -14,31 +14,31 @@ use vars qw($VERSION
             $PREFERRED_FILL_MODULE
             $PREFERRED_CGI_MODULE
             $PREFERRED_CGI_REQUIRED
-            $OBJECT_METHOD
+            $OBJECT_PARAM_METHOD
+            $OBJECT_COOKIE_METHOD
             $TEMPLATE_OPEN
             $TEMPLATE_CLOSE
             $AUTOLOAD
             $DEBUG_LOCATION_BOUNCE
             @EXPORT @EXPORT_OK
-            $SEND_HEADER
             );
 use base qw(Exporter);
 
 $VERSION               = '1.12';
 $PREFERRED_FILL_MODULE ||= '';
 $PREFERRED_CGI_MODULE  ||= 'CGI';
-$OBJECT_METHOD         ||= 'param';
+$OBJECT_PARAM_METHOD   ||= 'param';
+$OBJECT_COOKIE_METHOD  ||= 'cookie';
 $TEMPLATE_OPEN         ||= qr/\[%\s*/;
 $TEMPLATE_CLOSE        ||= qr/\s*%\]/;
 @EXPORT = ();
 @EXPORT_OK = qw(get_form
                 get_cookies
-                set_cookie
                 print_content_type
                 content_type
                 content_typed
+                set_cookie
                 );
-$SEND_HEADER = 0;
 
 ###----------------------------------------------------------------###
 
@@ -71,11 +71,11 @@ sub object {
 
 ### allow for calling their methods
 sub AUTOLOAD {
-  my $self   = shift;
-  my $method = ($AUTOLOAD =~ /(\w+)$/) ? $1 : die "Invalid method $AUTOLOAD";
+  my $self = shift;
+  my $meth = ($AUTOLOAD =~ /(\w+)$/) ? $1 : die "Invalid method $AUTOLOAD";
   return wantarray # does wantarray propogate up ?
-    ? ($self->object->$method(@_))
-    :  $self->object->$method(@_);
+    ? ($self->object->$meth(@_))
+    :  $self->object->$meth(@_);
 }
 
 sub DESTROY {}
@@ -97,13 +97,11 @@ sub get_form {
     $self = __PACKAGE__->new;
     $self->object($obj);
   }
-
-  ### allow for custom hash
   return $self->{'form'} if $self->{'form'};
 
   ### get the info out of the object
   my $obj  = shift || $self->object;
-  my $meth = $obj->can($self->{'object_method'} || $OBJECT_METHOD);
+  my $meth = $obj->can($self->{'object_param_method'} || $OBJECT_PARAM_METHOD);
   my %hash = ();
   foreach my $key ($obj->$meth()) {
     my @val = $obj->$meth($key);
@@ -132,33 +130,7 @@ sub form {
   return $self->get_form;
 }
 
-###----------------------------------------------------------------###
-
-### like get_form - but a hashref of cookies
-### cookies are parsed depending upon the functionality of ->cookie
-#   my $hash = $cgix->get_cookies;
-#   my $hash = get_cookies();
-#   my $hash = $cgix->get_cookies(CGI->new);
-sub get_cookies {
-  my $self = shift;
-  $self = __PACKAGE__->new if ! $self;
-  die 'Usage: $cgix_obj->get_cookies' if ! ref $self;
-  if (! UNIVERSAL::isa($self, __PACKAGE__)) { # get_form(CGI->new) syntax
-    my $obj = $self;
-    $self = __PACKAGE__->new;
-    $self->object($obj);
-  }
-
-  my $obj  = shift || $self->object;
-  my %hash = ();
-  foreach my $key ($obj->cookie) { # assumes list context returns all keys
-    my @val = $obj->cookie($key);  # assumes list context returns all values
-    $hash{$key} = ($#val == -1) ? next : ($#val == 0) ? $val[0] : \@val;
-  }
-  return \%hash;
-}
-
-### allow for creating a query_string
+### allow for creating a url encoded key value sequence
 #   my $str = $cgix->make_form(\%form);
 #   my $str = $cgix->make_form(\%form, \@keys_to_include);
 sub make_form {
@@ -181,6 +153,55 @@ sub make_form {
   }
   chop $str;
   return $str;
+}
+
+###----------------------------------------------------------------###
+
+### like get_form - but a hashref of cookies
+### cookies are parsed depending upon the functionality of ->cookie
+#   my $hash = $cgix->get_cookies;
+#   my $hash = $cgix->get_cookies(CGI->new);
+#   my $hash = get_cookies();
+#   my $hash = get_cookies(CGI->new);
+sub get_cookies {
+  my $self = shift;
+  $self = __PACKAGE__->new if ! $self;
+  die 'Usage: $cgix_obj->get_cookies' if ! ref $self;
+  if (! UNIVERSAL::isa($self, __PACKAGE__)) { # get_cookies(CGI->new) syntax
+    my $obj = $self;
+    $self = __PACKAGE__->new;
+    $self->object($obj);
+  }
+  return $self->{'cookies'} if $self->{'cookies'};
+
+  my $obj  = shift || $self->object;
+  my $meth = $obj->can($self->{'object_cookie_method'} || $OBJECT_COOKIE_METHOD);
+  my %hash = ();
+  foreach my $key ($obj->$meth()) {
+    my @val = $obj->$meth($key);
+    $hash{$key} = ($#val == -1) ? next : ($#val == 0) ? $val[0] : \@val;
+  }
+  return $self->{'cookies'} = \%hash;
+}
+
+### Allow for a setter
+### $cgix->set_cookies(\%cookies);
+sub set_cookies {
+  my $self = shift;
+  die 'Usage: $cgix_obj->set_cookies(\%cookies)' if ! ref $self;
+  $self->{'cookies'} = shift || {};
+}
+
+### Combined get and set cookies
+#   my $hash = $cgix->cookies;
+#   $cgix->cookies(\%cookies);
+sub cookies {
+  my $self = shift;
+  die (defined wantarray
+       ? 'Usage: my $hash = $cgix_obj->cookies' : 'Usage: $cgix_obj->cookies(\%cookies)')
+    if ! UNIVERSAL::isa($self, __PACKAGE__);
+  return $self->set_cookies(shift) if $#_ != -1;
+  return $self->get_cookies;
 }
 
 ###----------------------------------------------------------------###
@@ -214,6 +235,9 @@ sub mod_perl_version {
   return $self->{'mod_perl_version'};
 }
 
+sub is_mod_perl_1 { shift->mod_perl_version <  1.98 }
+sub is_mod_perl_2 { shift->mod_perl_version >= 1.98 }
+
 ### Allow for a setter
 #   $cgix->set_apache_request($r)
 sub set_apache_request { shift->apache_request(shift) }
@@ -235,7 +259,7 @@ sub print_content_type {
   $self = __PACKAGE__->new if ! $self;
   die 'Usage: $cgix_obj->print_content_type' ! ref $self;
   if ($type) {
-    die "Invalid type: $type" if $type !~ m|^[\w\-\.]+/[\w\-\.\+]+$|;
+    die "Invalid type: $type" if $type !~ m|^[\w\-\.]+/[\w\-\.\+]+$|; # image/vid.x-foo
   } else {
     $type = 'text/html';
   }
@@ -243,7 +267,7 @@ sub print_content_type {
   if (my $r = $self->apache_request) {
     return if $r->bytes_sent;
     $r->content_type($type);
-    $r->send_http_header if $SEND_HEADER;
+    $r->send_http_header if $self->is_mod_perl_1;
   } else {
     if (! $ENV{'CONTENT_TYPED'}) {
       print "Content-Type: $type\r\n\r\n";
@@ -287,14 +311,18 @@ sub location_bounce {
     }
   } else {
     if (my $r = $self->apache_request) {
-      my $t = $r->headers_out;
-      $t->add("Location", $loc);
-      $r->headers_out($t);
       $r->status(302);
-#      $r->content_type('text/html');
-#      $r->send_http_header if $SEND_HEADER;
-#      $r->print("Bounced to $loc\n");
-    } else { 
+      if ($self->is_mod_perl_1) {
+        $r->header_out("Location", $loc);
+        $r->content_type('text/html');
+        $r->send_http_header;
+        $r->print("Bounced to $loc\n");
+      } else {
+        my $t = $r->headers_out;
+        $t->add("Location", $loc);
+        $r->headers_out($t);
+      }
+    } else {
       print "Location: $loc\r\n",
             "Status: 302 Bounce\r\n",
             "Content-Type: text/html\r\n\r\n",
@@ -321,15 +349,21 @@ sub set_cookie {
   $args->{-path} ||= '/';
   $args->{-expires} = time_calc($args->{-expires}) if $args->{-expires};
 
-  my $cookie = "" . $self->object->cookie(%$args);
+  my $obj    = $self->object;
+  my $meth   = $obj->can($self->{'object_cookie_method'} || $OBJECT_COOKIE_METHOD);
+  my $cookie = "" . $obj->$meth(%$args);
 
   if ($self->content_typed) {
     print "<meta http-equiv=\"Set-Cookie\" content=\"$cookie\" />\n";
   } else {
     if (my $r = $self->apache_request) {
-      my $t = $r->headers_out;
-      $t->add("Set-Cookie", $cookie);
-      $r->headers_out($t);
+      if ($self->is_mod_perl_1) {
+        $r->header_out("Set-cookie", $cookie);
+      } else {
+        my $t = $r->headers_out;
+        $t->add("Set-Cookie", $cookie);
+        $r->headers_out($t);
+      }
     } else {
       print "Set-Cookie: $cookie\r\n"
     }
@@ -359,9 +393,13 @@ sub last_modified {
     print "<meta http-equiv=\"$key\" content=\"$time\" />\n";
   } else {
     if (my $r = $self->apache_request) {
-      my $t = $r->headers_out;
-      $t->add($key, $time);
-      $r->headers_out($t);
+      if ($self->is_mod_perl_1) {
+        $r->header_out($key, $time);
+      } else {
+        my $t = $r->headers_out;
+        $t->add($key, $time);
+        $r->headers_out($t);
+      }
     } else {
       print "$key: $time\r\n"
     }
@@ -417,9 +455,12 @@ sub send_status {
   }
   if (my $r = $self->apache_request) {
     $r->status($code);
-    $r->content_type('text/html');
-    $r->send_http_header if $SEND_HEADER;
-    $r->print($mesg);
+    if ($self->is_mod_perl_1) {
+      $r->content_type('text/html');
+      $r->send_http_header;
+      $r->print($mesg);
+    } else {
+    }
   } else {
     print "Status: $code\r\n";
     $self->print_content_type;
@@ -436,9 +477,13 @@ sub send_header {
     die "Cannot send a header ($key - $value) after content has been sent";
   }
   if (my $r = $self->apache_request) {
-    my $t = $r->headers_out;
-    $t->add($key, $value);
-    $r->headers_out($t);
+    if ($self->is_mod_perl_1) {
+      $r->header_out($key, $value);
+    } else {
+      my $t = $r->headers_out;
+      $t->add($key, $value);
+      $r->headers_out($t);
+    }
   } else {
     print "$key: $value\r\n";
   }
@@ -637,13 +682,13 @@ sub swap_template {
   $form = $self->get_form() if UNIVERSAL::isa($form, __PACKAGE__);
   
   my $get_form_value;
-  my $meth;
   if (UNIVERSAL::isa($form, 'HASH')) {
     $get_form_value = sub {
       my $key = shift;
       return defined($form->{$key}) ? $form->{$key} : '';
     };
-  } elsif ($meth = UNIVERSAL::can($form, $OBJECT_METHOD)) {
+  } elsif (my $meth = UNIVERSAL::can($form,
+                                     $self->{'object_param_method'} || $OBJECT_PARAM_METHOD)) {
     $get_form_value = sub {
       my $key = shift;
       my $val = $form->$meth($key);
