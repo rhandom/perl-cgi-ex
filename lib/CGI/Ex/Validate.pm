@@ -102,6 +102,7 @@ sub validate {
     ### look for a group order and then fail back to the keys of the group
     my @order  = sort keys %$group_val;
     my $fields = $group_val->{'group fields'};
+    my %found = ();
     if ($fields) {
       die "'group fields' must be an arrayref" if ! UNIVERSAL::isa($fields,'ARRAY');
     } else {
@@ -116,13 +117,13 @@ sub validate {
             $field_val = { %$field_val, 'field' => $field }; # copy the values to add the key
           }
           push @fields, $field_val;
+          $found{$field} = 1; # the group name ($field) may be different than the 'field' name
         }
       }
       $fields = \@fields;
     }
 
-    ### check which fields have been used
-    my %found = ();
+    ### double check which fields have been used
     foreach my $field_val (@$fields) {
       my $field = $field_val->{'field'} || die "Missing field key in validation";
       #die "Duplicate order found for $field in group order or fields" if $found{$field};
@@ -1078,7 +1079,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.71 2004-11-10 21:44:20 pauls Exp $
+$Id: Validate.pm,v 1.72 2004-11-12 17:19:01 pauls Exp $
 
 =head1 SYNOPSIS
 
