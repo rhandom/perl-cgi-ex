@@ -113,6 +113,7 @@ sub fill_plain {
   my $target        = shift;
   my $fill_password = shift;
   my $ignore        = shift || {};
+  $ignore = {map {$_ => 1} @$ignore} if UNIVERSAL::isa($ignore, 'ARRAY');
   $fill_password = 1 if ! defined $fill_password;
 
 
@@ -138,7 +139,7 @@ sub fill_plain {
               }{
                 local $self->{remove_script}   = undef;
                 local $self->{remove_comments} = undef;
-                $self->fill_plain($1, $form, undef, $fill_password);
+                $self->fill_plain($1, $form, undef, $fill_password, $ignore);
               }sigex;
 
     ### put scripts and comments back and return
@@ -214,7 +215,7 @@ sub fill_plain {
       my $type  = uc(get_tagval_by_key(\$tag, 'type') || '');
       my $name  = get_tagval_by_key(\$tag, 'name');
 
-      if ($name || ! $self->{no_automatic_swap}) {
+      if ($name && ! $ignore->{$name}) {
         if (! $type
             || $type eq 'HIDDEN'
             || $type eq 'TEXT'
@@ -257,7 +258,7 @@ sub fill_plain {
     }{
       my ($tag, $opts, $close) = ($1, $2, $3);
       my $name   = get_tagval_by_key(\$tag, 'name');
-      my $values = &$get_form_value($name, 'all');
+      my $values = $ignore->{$name} ? [] : &$get_form_value($name, 'all');
       if (@$values) {
         $opts =~ s{
           (<option[^>]*>)            # opening tag - no embedded > allowed
@@ -290,7 +291,7 @@ sub fill_plain {
     }{
       my ($tag, $opts, $close) = ($1, $2, $3);
       my $name  = get_tagval_by_key(\$tag, 'name');
-      my $value = &$get_form_value($name, 'next') || '';
+      my $value = $ignore->{$name} ? "" : &$get_form_value($name, 'next') || '';
       "$tag$value$close"; # return of swap
     }sigex;
 
