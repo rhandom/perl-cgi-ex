@@ -8,7 +8,7 @@ use vars qw($VERSION
 use Data::DumpEx;
 use YAML ();
 
-$VERSION = (qw$Revision: 1.14 $ )[1];
+$VERSION = (qw$Revision: 1.15 $ )[1];
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 
@@ -338,7 +338,6 @@ sub validate_buddy {
   if (! $is_required) {
     foreach my $type ($self->filter_type('required_if',$types)) {
       my $ifs = $field_val->{$type};
-      die "Conditions for $type on field $field must be a ref" if ! ref $ifs;
       next if ! $self->check_conditional($form, $ifs, $N_level, $ifs_match);
       $is_required = $type;
       last;
@@ -829,7 +828,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.14 2003-11-12 21:52:17 pauls Exp $
+$Id: Validate.pm,v 1.15 2003-11-12 22:03:48 pauls Exp $
 
 =head1 SYNOPSIS
 
