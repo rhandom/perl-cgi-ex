@@ -1,3 +1,11 @@
+2004-12-06  Paul Seamons  <cgi_ex@seamons.com>
+
+        * Version 1.14 is done
+        * Bug fix in validate (OR's were not working)
+        * Allow for checking for package existence without require in App
+        * Add hash_swap
+        * Add add_to_ methods for swap, fill, form, common, and errors
+
 2004-12-02  Paul Seamons  <cgi_ex@seamons.com>
 
         * Version 1.13 is done
