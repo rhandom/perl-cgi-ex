@@ -639,28 +639,44 @@ sub get_validation {
 
 ### returns all keys from all groups - even if group has validate_if
 sub get_validation_keys {
-  my $self = shift;
-  my $refs = $self->get_validation(@_);
+  my $self     = shift;
+  my $val_hash = shift;
+  my $form     = shift; # with optional form - will only return keys in validated groups
+  my %keys     = ();
+
+  ### if a form was passed - make sure it is a hashref
+  if ($form) {
+    if (! ref($form)) {
+      die "Invalid form hash or cgi object";
+    } elsif(! UNIVERSAL::isa($form,'HASH')) {
+      require CGI::Ex;
+      $form = CGI::Ex->new->get_form($form);
+    }
+  }
+
+  my $refs     = $self->get_validation($val_hash);
   $refs = [$refs] if ! UNIVERSAL::isa($refs,'ARRAY');
-  my %keys = ();
-  foreach my $ref (@$refs) {
-    die "Group found that was not a hashref" if ! UNIVERSAL::isa($ref, 'HASH');
+  foreach my $group_val (@$refs) {
+    die "Group found that was not a hashref" if ! UNIVERSAL::isa($group_val, 'HASH');
 
-    ### could optionally allow a pass in form
-    ### that we could run against the validate_if
+    ### if form is passed, check to see if the group passed validation
+    if ($form) {
+      my $validate_if = $group_val->{'group validate_if'};
+      next if $validate_if && ! $self->check_conditional($form, $validate_if);
+    }
 
-    if ($ref->{"group fields"}) {
-      die "Group fields must be an arrayref" if ! UNIVERSAL::isa($ref->{"group fields"}, 'ARRAY');
-      foreach my $field_val (@{ $ref->{"group fields"} }) {
+    if ($group_val->{"group fields"}) {
+      die "Group fields must be an arrayref" if ! UNIVERSAL::isa($group_val->{"group fields"}, 'ARRAY');
+      foreach my $field_val (@{ $group_val->{"group fields"} }) {
         next if ! ref($field_val) && $field_val eq 'OR';
         die "Field_val must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');
         my $key = $field_val->{'field'} || die "Missing field key in field_val hashref";
         $keys{$key} = 1;
       }
-    } elsif ($ref->{"group order"}) {
-      die "Group order must be an arrayref" if ! UNIVERSAL::isa($ref->{"group order"}, 'ARRAY');
-      foreach my $key (@{ $ref->{"group order"} }) {
-        my $field_val = $ref->{$key};
+    } elsif ($group_val->{"group order"}) {
+      die "Group order must be an arrayref" if ! UNIVERSAL::isa($group_val->{"group order"}, 'ARRAY');
+      foreach my $key (@{ $group_val->{"group order"} }) {
+        my $field_val = $group_val->{$key};
         next if ! $field_val && $key eq 'OR';
         die "Field_val for $key must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');        
         $key = $field_val->{'field'} if $field_val->{'field'};
@@ -669,7 +685,7 @@ sub get_validation_keys {
     }
 
     ### get all others
-    foreach my $key (keys %$ref) {
+    foreach my $key (keys %$group_val) {
       next if $key =~ /^(general|group)\s/;
       $keys{$key} = 1;
     }
@@ -948,7 +964,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.31 2003-11-14 21:40:20 pauls Exp $
+$Id: Validate.pm,v 1.32 2003-11-14 21:50:08 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1062,7 +1078,9 @@ group is contained in the file, it will return an arrayref of hashrefs.
 
 Given a filename or YAML string or a validation hashref, will return all
 of the possible keys found in the validation hash.  This can be used to
-check to see if extra items have been passed to validate.
+check to see if extra items have been passed to validate.  If a second
+argument containt a form hash is passed, get_validation_keys will only
+return the keys of groups that were validated.
 
   my $key_hashref = $self->get_validation_keys($val_hash);
 
