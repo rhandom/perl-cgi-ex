@@ -30,6 +30,7 @@ sub print_ok {
 
 ### where are my samples
 my $dir = __FILE__;
+$dir =~ tr|\\|/|; # should probably use File::Spec
 $dir =~ s|[^/]+$|samples| || die "Couldn't determine dir";
 $dir =~ s|^t/|./t/|; # to satisfy conf
 

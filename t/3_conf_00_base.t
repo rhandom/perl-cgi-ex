@@ -8,6 +8,7 @@ use CGI::Ex::Conf;
 ok(1);
 
 my $dir = $0;
+$dir =~ tr|\\|/|; # should probably use File::Spec
 $dir =~ s|/[^/]+$||;
 $dir = '.' if ! length $dir;
 $dir .= '/samples';
