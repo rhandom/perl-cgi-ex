@@ -290,10 +290,11 @@ sub print_js {
   my $stat;
   if ($js_file !~ m|^\.{0,2}/|) {
     foreach my $path (@INC) {
-      my $file = "$path/$js_file";
-      next if ! -f $file;
-      $js_file = $file;
+      my $_file = "$path/$js_file";
+      next if ! -f $_file;
+      $js_file = $_file;
       $stat = [stat _];
+      last;
     }
   } else {
     if (-f $js_file) {
