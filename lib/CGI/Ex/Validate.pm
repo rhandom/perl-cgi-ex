@@ -748,7 +748,7 @@ sub as_string {
   ### allow for formatting
   my $join = defined($extra2->{as_string_join}) ? $extra2->{as_string_join}
     : defined($extra->{as_string_join}) ? $extra->{as_string_join}
-    : "<br />";
+    : "\n";
   my $header = defined($extra2->{as_string_header}) ? $extra2->{as_string_header}
     : defined($extra->{as_string_header}) ? $extra->{as_string_header} : "";
   my $footer = defined($extra2->{as_string_footer}) ? $extra2->{as_string_footer}
@@ -814,8 +814,8 @@ sub as_hash {
 
   my $suffix = defined($extra2->{as_hash_suffix}) ? $extra2->{as_hash_suffix}
     : defined($extra->{as_hash_suffix}) ? $extra->{as_hash_suffix} : '_error';
-  my $join   = exists($extra2->{as_hash_join}) ? $extra2->{as_hash_join}
-    : exists($extra->{as_hash_join}) ? $extra->{as_hash_join} : undef;
+  my $join   = defined($extra2->{as_hash_join}) ? $extra2->{as_hash_join}
+    : defined($extra->{as_hash_join}) ? $extra->{as_hash_join} : '<br />';
 
   ### now add to the hash
   my %found  = ();
@@ -962,7 +962,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.34 2003-11-21 04:57:50 pauls Exp $
+$Id: Validate.pm,v 1.35 2003-11-21 05:10:59 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1646,7 +1646,7 @@ Default is '  '.
 =item C<'general as_string_join'>
 
 When as_string is called, the values from as_array will be joined with
-as_string_join.  Default value is "<br />".
+as_string_join.  Default value is "\n".
 
 =item C<'general as_string_header'>
 
@@ -1662,9 +1662,10 @@ Added on to key names during the call to as_hash.  Default is '_error'.
 
 =item C<'general as_hash_join'>
 
-By default, as_hash will return hashref values that are lists.  It can
-return strings instead by setting as_hash_join.  'as_hash_join' must be
-set to a true value to enable this behavior (' ' is a true value, '' is not).
+By default, as_hash will return hashref values that are errors joined with
+the default as_hash_join value of <br />.  It can also return values that are
+arrayrefs of the errors.  This can be done by setting as_hash_join to a non-true value
+(for example '')
 
 =item C<'general as_hash_header'>
 
