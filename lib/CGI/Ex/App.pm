@@ -868,7 +868,15 @@ __END__
 
 =head1 NAME
 
-CGI::Ex::App - Simple CGI::Application type module
+CGI::Ex::App - Full featured (within reason) application builder.
+
+=head1 DESCRIPTION
+
+Fill in the blanks and get a ready made CGI.  This module is somewhat
+similar in spirit to CGI::Application, CGI::Path, and CGI::Builder and any
+other "CGI framework."  As with the others, CGI::Ex::App tries to do as
+much as possible, in a simple manner, without getting in the
+developer's way.  Your milage may vary.
 
 =head1 SYNOPSIS
 
@@ -877,9 +885,9 @@ More examples will come with time.  Here are the basics for now.
   #!/usr/bin/perl -w
 
   MyApp->navigate;
-  # OR you could do the following which cleans
-  # circular references - useful for a mod_perl situation
-  # MyApp->navigate->cleanup;
+   # OR you could do the following which cleans
+   # circular references - useful for a mod_perl situation
+   # MyApp->navigate->cleanup;
   exit;
 
   package MyApp;
@@ -887,29 +895,34 @@ More examples will come with time.  Here are the basics for now.
   use base qw(CGI::Ex::App);
   use CGI::Ex::Dump qw(debug);
 
-  sub valid_steps { return {success => 1} }
+  sub valid_paths { return {success => 1, js => 1} }
     # default_step (main) is a valid path
+    # note the inclusion of js step for js_validation
 
   # base_dir_abs is only needed if default print is used
   # template toolkit needs an INCLUDE_PATH
   sub base_dir_abs { '/tmp' }
 
   sub main_file_print {
-    # reference to string is content
+    # reference to string means ref to content
     # non-reference means filename
-    return \"<h1>Main Step</h1>
-    <form method=post>
-    <input type=text name=foo><span style='color:red'>[% foo_error %]</span><br>
+    return \ "<h1>Main Step</h1>
+    <form method=post name=[% form_name %]>
+    <input type=text name=foo>
+    <span style='color:red' id=foo_error>[% foo_error %]</span><br>
     <input type=submit>
     </form>
-    <a href='$ENV{SCRIPT_NAME}?step=foo'>Link to forbidden step</a>
+    [% js_validation %]
+    <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
     ";
   }
 
+  sub post_print { debug shift->{history} } # show what happened
+
   sub main_file_val {
-    # reference to string is yaml
+    # reference to string means ref to yaml document
     # non-reference means filename
-    return \"foo:
+    return \ "foo:
       required: 1
       min_len: 2
       max_len: 20
@@ -920,6 +933,7 @@ More examples will come with time.  Here are the basics for now.
 
   sub main_finalize {
     my $self = shift;
+
     debug $self->form, "Do something useful with form here";
 
     ### add success step
@@ -929,18 +943,20 @@ More examples will come with time.  Here are the basics for now.
   }
 
   sub success_file_print {
-    \"<h1>Success Step</h1> All done";
+    \ "<h1>Success Step</h1> All done";
+  }
+
+  sub hash_common { # used to include js_validation
+    my $self = shift;
+    my $step = shift;
+    return $self->{hash_common} ||= {
+      script_name   => $ENV{SCRIPT_NAME},
+      js_validation => $self->run_hook($step, 'js_validation'),
+      form_name     => $self->run_hook($step, 'form_name'),
+    };
   }
 
   __END__
-
-=head1 DESCRIPTION
-
-Fill in the blanks and get a ready made CGI.  This module is somewhat
-similar to CGI::Application and CGI::Path and CGI::Builder and any
-other "CGI framework."  As with the others, CGI::App tries to do as
-much as possible, in a simple manner, without getting in the
-developer's way.  Your milage may vary.
 
 =head1 HOOKS / METHODS
 
