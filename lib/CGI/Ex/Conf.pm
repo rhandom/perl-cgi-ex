@@ -18,6 +18,7 @@ use vars qw($VERSION
             $IMMUTABLE_QR
             $IMMUTABLE_KEY
             %CACHE
+            $HTML_KEY
             );
 
 $VERSION = '0.1';
@@ -33,6 +34,8 @@ $DEFAULT_EXT = 'conf';
                 'val'      => \&read_handler_yaml,
                 'xml'      => \&read_handler_xml,
                 'yaml'     => \&read_handler_yaml,
+                'html'     => \&read_handler_html,
+                'htm'      => \&read_handler_html,
                 );
 
 ### $DIRECTIVE controls how files are looked for.
@@ -102,7 +105,7 @@ sub read_ref {
     $handler = $EXT_READERS{$ext} || die "Unknown file extension: $ext";
   }
 
-  return eval { scalar &$handler($file) };
+  return eval { scalar &$handler($file, $self, $args) };
 }
 
 ### allow for different kinds of merging of arguments
@@ -147,7 +150,7 @@ sub read {
 
   ### now loop looking for a ref
   foreach my $path (@paths) {
-    my $ref = $self->read_ref($path) || next;
+    my $ref = $self->read_ref($path, $args) || next;
     if (! $REF) {
       if (UNIVERSAL::isa($ref, 'ARRAY')) {
         $REF = [];
@@ -240,6 +243,67 @@ sub read_handler_xml {
   return XML::Simple::XMLin($file);
 }
 
+### this handler will only function if a html_key (such as validation)
+### is specified - actually this somewhat specific to validation - but
+### I left it as a general use for other types
+
+### is specified
+sub read_handler_html {
+  my $file = shift;
+  my $self = shift;
+  my $args = shift;
+  my $key = $args->{html_key} || $self->{html_key} || $HTML_KEY;
+  return undef if ! $key || $key !~ /^\w+$/;
+  return undef if ! eval {require YAML};
+
+  ### get the html
+  my $html = '';
+  local *IN;
+  open(IN, $file) || return undef;
+  CORE::read(IN, $html, -s $file);
+  close IN;
+
+  my $str = '';
+  my @order = ();
+  while ($html =~ m{
+    (document\.    # global javascript
+     | var\s+      # local javascript
+     | <\w+\s+[^>]*?) # input, form, select, textarea tag
+      \Q$key\E   # the key
+      \s*=\s*    # an equals sign
+      ([\"\'])   # open quote
+      (.+?[^\\]) # something in between
+      \2        # close quote
+    }xsg) {
+    my ($line, $quot, $yaml) = ($1, $2, $3);
+    if ($line =~ /^(document\.|var\s)/) { # js variable
+      $yaml =~ s/\\$quot/$quot/g;
+      $yaml =~ s/\\n\\\n?/\n/g;
+      $yaml =~ s/\\\\/\\/g;
+      $yaml =~ s/\s*$/\n/s; # fix trailing newline
+      $str = $yaml; # use last one found
+    } else { # inline attributes
+      $yaml =~ s/\s*$/\n/s; # fix trailing newline
+      if ($line =~ m/\bname\s*=\s*('[^\']*'|"[^\"]*"|\S+)/) {
+        my $key = $1;
+        push @order, $key;
+        $yaml =~ s/^/ /g; # indent entire thing
+        $yaml =~ s/^(\ *[^\s&*\{\[])/\n$1/; # add first newline
+        $str .= "$key:$yaml";
+      } else { # form tag
+        $yaml =~ s/^\Q$1\E//m if $yaml =~ m/^( +)/s;
+        $str .= $yaml;
+      }
+    }
+  }
+  $str .= "group order: [".join(", ",@order)."]\n"
+    if $str && $#order != -1 && $key eq 'validation';
+
+  return undef if ! $str;
+  my $ref = eval {&yaml_load($str)};
+  return $ref;
+}
+
 ###----------------------------------------------------------------###
 
 sub preload_files {
@@ -255,6 +319,9 @@ sub preload_files {
     }
   } else {
     %EXT = %EXT_READERS;
+    if (! $self->{html_key} && ! $HTML_KEY) {
+      delete $EXT{$_} foreach qw(html htm);
+    }
   }
   return if ! keys %EXT;
   
@@ -436,7 +503,7 @@ Should be a file containing a perl structure which is the last thing returned.
 Should be a file containing a structure stored in Storable format.
 See L<Storable>.
 
-=item C<yaml> and C<conf>
+=item C<yaml> and C<conf> and C<val>
 
 Should be a file containing a yaml document.  Multiple documents are returned
 as a single arrayref.  Also - any file without an extension and custom handler
@@ -449,6 +516,40 @@ Should be a windows style ini file.  See L<Config::IniHash>
 =item C<xml>
 
 Should be an xml file.  It will be read in by XMLin.  See L<XML::Simple>.
+
+=item C<html> and C<htm>
+
+This is actually a custom type intended for use with CGI::Ex::Validate.
+The configuration to be read is actually validation that is stored
+inline with the html.  The handler will look for any form elements or
+input elements with an attribute with the same name as in $HTML_KEY.  It
+will also look for a javascript variable by the same name as in $HTML_KEY.
+All configuration items done this way should be written in YAML.
+For example, if $HTML_KEY contained 'validation' it would find validation in:
+
+  <input type=text name=username validation="{required: 1}">
+  # automatically indented and "username:\n" prepended
+  # AND #
+  <form name=foo validation="
+  general no_confirm: 1
+  ">
+  # AND #
+  <script>
+  document.validation = "\n\
+  username: {required: 1}\n\
+  ";
+  </script>
+  # AND #
+  <script>
+  var validation = "\n\
+  username: {required: 1}\n\
+  ";
+  </script>
+
+If the key $HTML_KEY is not set, the handler will always return undef
+without even opening the file.
+
+=back
 
 =head1 TODO
 
