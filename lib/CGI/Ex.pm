@@ -15,13 +15,15 @@ use vars qw($VERSION
             $PREFERRED_CGI_MODULE
             $OBJECT_METHOD
             $AUTOLOAD
+            %EXPORT %EXPORT_OK
             );
-
+use base qw(Exporter);
 use Data::DumpEx;
 
 $VERSION               = '1.0';
 $PREFERRED_FILL_MODULE = '';
 $PREFERRED_CGI_MODULE  = 'CGI';
+%EXPORT = %EXPORT_OK = qw(get_form get_cookies);
 
 ###----------------------------------------------------------------###
 
