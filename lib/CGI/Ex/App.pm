@@ -78,6 +78,9 @@ sub navigate {
     }
   }
 
+  ### one chance to do things at the very end
+  $self->post_navigate;
+
   return $self;
 }
 
@@ -185,6 +188,8 @@ sub nav_loop {
 
   return;
 }
+
+sub post_navigate {}
 
 sub recurse_limit { shift->{'recurse_limit'} || $RECURSE_LIMIT || 15 }
 
@@ -435,7 +440,8 @@ sub allow_nested_morph {
 sub morph {
   my $self = shift;
   my $step = shift || return;
-  return if ! $self->allow_morph;
+  return if ! (my $allow = $self->allow_morph); # not true
+  return if ref($allow) && ! $allow->{$step};   # hash - but no step
 
   ### which package we are blessing into
   my $new = $self->run_hook($step, 'morph_package');
@@ -445,7 +451,10 @@ sub morph {
   my $ref = $self->{'_morph_lineage'} ||= [];
 
   ### make sure we haven't already been reblessed
-  if (! $self->allow_nested_morph && $#$ref != -1) {
+  if ($#$ref != -1                               # is this the second morph call
+      && (! ($allow = $self->allow_nested_morph) # not true
+          || (ref($allow) && ! $allow->{$step})  # hash - but no step
+          )) {
     push @$ref, $cur; # needed so unmorph does the right thing
     return;
     # This is also possible if we want to die but it
@@ -468,6 +477,12 @@ sub morph {
       bless $self, $new;
       if (my $method = $self->can('fixup_after_morph')) {
         $self->$method($step);
+      }
+    } else {
+      if ($@ && $@ !~ /^\s*Can\'t locate/) { # let us know what happened
+        my $err = "Trouble while morphing to $file: $@";
+        debug $err;
+        warn $err;
       }
     }
   }
@@ -1090,6 +1105,7 @@ are shown):
   navigate {
     eval { ->nav_loop }
     # dying errors will run the ->handle_error method
+    ->post_navigate
   }
 
   nav_loop {
@@ -1172,6 +1188,12 @@ are shown):
     ->nav_loop (called again recursively)
 
   } end of nav_loop
+
+=item Method C<-E<gt>post_navigate>
+
+Called from within navigate.  Called after the nav_loop has finished running.
+Will only run if there were no errors which died during the nav_loop
+process.
 
 =item Method C<-E<gt>history>
 
@@ -1330,15 +1352,17 @@ history.
 Allows for temporarily "becoming" another object type for the
 execution of the current step.  This allows for separating some steps
 out into their own packages.  Morph will only run if the method
-allow_morph returns true.  The morph call occurs at the beginning of
-the step loop.  A corresponding unmorph call occurs before the loop is
-exited.  An object can morph several levels deep if allow_nested_morph
-returns true. For example, an object running as Foo::Bar that is
-looping on the step "my_step" that has allow_morph = 1, will do the
-following: call the hook morph_package (which would default to
-returning Foo::Bar::MyStep in this case), translate this to a package
-filename (Foo/Bar/MyStep.pm) and try and require it, if the file can
-be required, the object is blessed into that package.  If that package
+allow_morph returns true.  Additionally if the allow_morph returns a hash
+ref, morph will only run if the step being morphed to is in the hash.
+The morph call occurs at the beginning of the step loop.  A
+corresponding unmorph call occurs before the loop is exited.  An
+object can morph several levels deep if allow_nested_morph returns
+true. For example, an object running as Foo::Bar that is looping on
+the step "my_step" that has allow_morph = 1, will do the following:
+call the hook morph_package (which would default to returning
+Foo::Bar::MyStep in this case), translate this to a package filename
+(Foo/Bar/MyStep.pm) and try and require it, if the file can be
+required, the object is blessed into that package.  If that package
 has a "fixup_after_morph" method, it is called.  The navigate loop
 then continues for the current step.  At any exit point of the loop,
 the unmorph call is made which reblesses the object into the original
@@ -1390,12 +1414,15 @@ object type.  Before the object is reblessed the method
 
 Boolean value.  Specifies whether or not morphing is allowed.
 Defaults to the property "allow_morph" if found, otherwise false.
+For more granularity, if true value is a hash, the step being
+morphed to must be in the hash.
 
 =item Method C<-E<gt>allow_nested_morph>
 
 Boolean value.  Specifies whether or not nested morphing is allowed.
 Defaults to the property "allow_nested_morph" if found, otherwise
-false.
+false.  For more granularity, if true value is a hash, the step being
+morphed to must be in the hash.
 
 =item Hook C<-E<gt>morph_package>
 
