@@ -1382,21 +1382,30 @@ package.
 It is possible to call morph earlier on in the program.  An example of
 a useful early use of morph would be as in the following code:
 
-  sub init {
-    my $self = shift;
-    $self->SUPER::init;
+  sub allow_morph { 1 }
 
-    return if ! $ENV{'PATH_INFO'};
-    my $info = ($ENV{'PATH_INFO'} =~ s|^/(\w+)||) ? $1 : return;
-    $self->morph($info);
+  sub pre_navigate {
+    my $self = shift;
+    if ($ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ s|^/(\w+)||) {
+      my $step = $1;
+      $self->morph($step);
+      $ENV{'PATH_INFO'} = "/$step";
+      $self->stash->{'base_morphed'} = 1;
+    }
+    return 0;
+  }
+
+  sub post_navigate {
+    my $self = shift;
+    $self->unmorph if $self->stash->{'base_morphed'};
   }
 
 If this code was in a module Base.pm and the cgi running was cgi/base
 and called:
 
-  Base->navigate->unmorph;
+  Base->navigate;
   # OR - for mod_perl resident programs
-  Base->navigate->unmorph->cleanup;
+  Base->navigate->cleanup;
 
 and you created a sub module that inherited Base.pm called
 Base/Ball.pm -- you could then access it using cgi/base/ball.  You
@@ -1656,12 +1665,13 @@ fall back to the default step.
 =item Method C<-E<gt>stash>
 
 Returns a hashref that can store arbitrary user space data without
-clobering the internals of the Application.
+clobering the internals of the application.
 
 =item Method C<-E<gt>add_property>
 
 Takes the property name as an argument.  Creates an accessor that can
-be used to access a new property.  Calling the new accessor with an
+be used to access a new property.  If there were additional arguments
+they will call the new accessor. Calling the new accessor with an
 argument will set the property.  Using the accessor in an assignment
 will also set the property (it is an lvalue).  Calling the accessor in
 any other way will return the value.
