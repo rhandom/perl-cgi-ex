@@ -339,7 +339,27 @@ sub print {
 
 sub base_dir_rel {
   my $self = shift;
+  $self->{base_dir_rel} = shift if $#_ != -1;
   return $self->{base_dir_rel} ||= $BASE_DIR_REL;
+}
+
+sub base_dir_abs {
+  my $self = shift;
+  $self->{base_dir_abs} = shift if $#_ != -1;
+  return $self->{base_dir_abs} || $BASE_DIR_ABS
+    || die "\$BASE_DIR_ABS not set for use in stub functions";
+}
+
+sub ext_val {
+  my $self = shift;
+  $self->{ext_val} = shift if $#_ != -1;
+  return $self->{ext_val} || $EXT_VAL || die "\$EXT_VAL not set for use in stub functions";
+}
+
+sub ext_print {
+  my $self = shift;
+  $self->{ext_print} = shift if $#_ != -1;
+  return $self->{ext_print} || $EXT_PRINT || die "\$EXT_PRINT not set for use in stub functions";
 }
 
 sub has_errors {
@@ -386,7 +406,7 @@ sub file_print {
   my $base_dir_rel = $self->base_dir_rel;
   my $module       = $self->run_hook($step, 'name_module');
   my $_step        = $self->run_hook($step, 'name_step', $step);
-  my $ext          = $self->{file_print_ext} || $EXT_PRINT;
+  my $ext          = $self->ext_print;
 
   return "$base_dir_rel/$module/$_step.$ext";
 }
@@ -398,18 +418,16 @@ sub file_val {
   my $base_dir = $self->base_dir_rel;
   my $module   = $self->run_hook($step, 'name_module');
   my $_step    = $self->run_hook($step, 'name_step', $step);
-  my $ext      = $self->{file_val_ext} || $EXT_VAL;
+  my $ext      = $self->ext_val;
 
   ### get absolute if necessary
-  $base_dir = do {
-    $BASE_DIR_ABS ||= do {
-      die "BASE_DIR_ABS not set for use in stub functions";
-    };
-    "$BASE_DIR_ABS/$base_dir";
-  } if $base_dir !~ m|^/|;
+  if ($base_dir !~ m|^/|) {
+    $base_dir = $self->base_dir_abs . "/$base_dir";
+  }
   
   return "$base_dir/$module/$_step.$ext";
 }
+
 
 sub info_complete {
   my $self = shift;
@@ -608,7 +626,8 @@ CGI::Ex::Validate::get_validation.
 =item Hook C<-E<gt>file_val>
 
 Returns a filename containing the validation.  Adds method base_dir_rel to hook name_module,
-and name_step and adds on the default file extension found in $EXT_VAL.  File
+and name_step and adds on the default file extension found in $self->ext_val which defaults
+to the global $EXT_VAL (the property $self->{ext_val} may also be set).  File
 should be readible by CGI::Ex::Validate::get_validation.
 
 =item Hook C<-E<gt>hash_form>
@@ -637,7 +656,8 @@ A hash of common items to be merged with hash_form - such as pulldown menues.
 =item Hook C<-E<gt>file_print>
 
 Returns a filename of the content to be used in the default print hook.  Adds method base_dir_rel to
-hook name_module, and name_step and adds on the default file extension found in $EXT_PRINT.
+hook name_module, and name_step and adds on the default file extension found in $self->ext_print
+which defaults to the global $EXT_PRINT (the property $self->{ext_print} may also be set).
 Should be a file that can be handled by hook print.
 
 =item Hook C<-E<gt>print>
@@ -645,9 +665,10 @@ Should be a file that can be handled by hook print.
 Take the information and print it out.  Default incarnation uses Template.  Arguments
 are: step name, form hashref, and fill hashref.
 
-=item Hook C<-E<gt>post_hook>
+=item Hook C<-E<gt>post_print>
 
-A hook which occurs after the printing has taken place.  Is only run if the information was not complete.  Useful for printing rows of a database query.
+A hook which occurs after the printing has taken place.  Is only run if the information
+was not complete.  Useful for printing rows of a database query.
 
 =item Hook C<-E<gt>post_step>
 
