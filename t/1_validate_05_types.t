@@ -296,22 +296,36 @@ $e = &validate({foo => 'd'}, $v);
 $e = &validate({foo => 'c'}, $v);
 &print_ok(! $e); # 80
 
-
 ### sql
-### can't really do anything here without prompting for a db
+### can't really do anything here without prompting for a db connection
 
-### boolean
-#
-#  ### server side boolean type
-#  foreach my $type ($self->filter_type('boolean',$types)) {
-#    next if $field_val->{$type};
-#    $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-#  }
-#
-#  ### do specific type checks
-#  foreach my $type ($self->filter_type('type',$types)) {
-#    if (! $self->check_type($form->{$field},$field_val->{'type'},$field,$form)){
-#      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-#    }
-#  }            
+### custom
+my $n = 1;
+$v = {foo => {custom => $n}};
+$e = &validate({}, $v);
+&print_ok(! $e);
+$e = &validate({foo => "str"}, $v);
+&print_ok(! $e);
+
+$n = 0;
+$v = {foo => {custom => $n}};
+$e = &validate({}, $v);
+&print_ok($e);
+$e = &validate({foo => "str"}, $v);
+&print_ok($e);
+
+$n = sub { my ($key, $val) = @_; return defined($val) ? 1 : 0};
+$v = {foo => {custom => $n}};
+$e = &validate({}, $v);
+&print_ok($e);
+$e = &validate({foo => "str"}, $v);
+&print_ok(! $e);
+
+### type checks
+$v = {foo => {type => 'ip'}};
+$e = &validate({foo => '209.108.25'}, $v);
+&print_ok($e);
+$e = &validate({foo => '209.108.25.111'}, $v);
+&print_ok(! $e);
+
 __DATA__
