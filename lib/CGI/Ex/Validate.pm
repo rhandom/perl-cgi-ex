@@ -21,7 +21,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '0.97';
+$VERSION = '0.98';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 $DEFAULT_EXT   = 'val';
@@ -1029,7 +1029,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.54 2004-03-19 16:19:22 pauls Exp $
+$Id: Validate.pm,v 1.55 2004-03-19 20:51:53 pauls Exp $
 
 =head1 SYNOPSIS
 
