@@ -284,15 +284,16 @@ sub read_handler_html {
       $str = $yaml; # use last one found
     } else { # inline attributes
       $yaml =~ s/\s*$/\n/s; # fix trailing newline
-      if ($line =~ m/\bname\s*=\s*('[^\']*'|"[^\"]*"|\S+)/) {
-        my $key = $1;
-        push @order, $key;
-        $yaml =~ s/^/ /g; # indent entire thing
-        $yaml =~ s/^(\ *[^\s&*\{\[])/\n$1/; # add first newline
-        $str .= "$key:$yaml";
-      } else { # form tag
+      if ($line =~ m/<form/i) {
         $yaml =~ s/^\Q$1\E//m if $yaml =~ m/^( +)/s;
         $str .= $yaml;
+
+      } elsif ($line =~ m/\bname\s*=\s*('[^\']*'|"[^\"]*"|\S+)/) {
+        my $key = $1;
+        push @order, $key;
+        $yaml =~ s/^/ /mg; # indent entire thing
+        $yaml =~ s/^(\ *[^\s&*\{\[])/\n$1/; # add first newline
+        $str .= "$key:$yaml";
       }
     }
   }
@@ -301,6 +302,7 @@ sub read_handler_html {
 
   return undef if ! $str;
   my $ref = eval {&yaml_load($str)};
+
   return $ref;
 }
 
