@@ -37,6 +37,8 @@ sub import {
     $IGNORE_EVAL     = $args{'ignore_eval'}     if exists $args{'ignore_eval'};
     $EXTENDED_ERRORS = $args{'extended_errors'} if exists $args{'extended_errors'};
     $ERROR_TEMPLATE  = $args{'error_template'}  if exists $args{'error_template'};
+    $LOG_HANDLER     = $args{'log_handler'}     if exists $args{'log_handler'};
+    $FINAL_HANDLER   = $args{'final_handler'}   if exists $args{'final_handler'};
   }
   return 1;
 }
