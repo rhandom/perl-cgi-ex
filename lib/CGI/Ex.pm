@@ -600,7 +600,7 @@ __END__
 
 =head1 NAME
 
-CGI::Ex - Yet Another Form Utility
+CGI::Ex - Yet Another CGI suite
 
 =head1 SYNOPSIS
 
@@ -685,14 +685,19 @@ CGI::Ex - Yet Another Form Utility
 
 =head1 DESCRIPTION
 
-CGI::Ex is another form filler / validator / conf reader / template
-interface.  Its goal is to take the wide scope of validators and other
-useful CGI application modules out there and merge them into one
-utility that has all of the necessary features of them all, as well
-as several extended methods that I have found useful in working on the web.
+CGI::Ex is another form filler / validator / conf reader / template /
+application builder interface.  Its goal is to take the wide scope of
+validators and other useful CGI application modules out there and
+merge them into one utility that has all of the necessary features of
+them all, as well as several extended methods that I have found useful
+in working on the web.
 
 The main functionality is provided by several other modules that
 may be used separately, or together through the CGI::Ex interface.
+
+Possibly the most useful module is CGI::Ex::App which merges most of
+this functionality together and allows for easy CGI building out
+of the box.
 
 =over 4
 
@@ -974,25 +979,6 @@ templates that were being swapped by CGI::Ex::swap_template should
 be compatible with Template::Toolkit.
 
 =back
-
-=head1 EXISTING MODULES
-
-The following is a list of existing validator and formfiller modules
-at the time of this writing (I'm sure this probably isn't exaustive).
-
-=over 4
-
-=item C<Email::Valid> - Validator
-
-=item C<SSN::Validate> - Validator
-
-=item C<Embperl::Form::Validate> - Validator
-
-=item C<Data::CGIForm> - Validator
-
-=item C<HTML::FillInForm> - Form filler-iner
-
-=item C<CGI> - CGI Getter.  Form filler-iner
 
 =head1 TODO
 
