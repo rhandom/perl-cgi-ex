@@ -27,13 +27,11 @@ WriteMakefile(
               },
               );
 
-WriteMakefile(%args);
-
 package MY;
 
 sub postamble {
   return qq^
-
+    
 pm_to_blib: README
 
 README: \$(VERSION_FROM)
