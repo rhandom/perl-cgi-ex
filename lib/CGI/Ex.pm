@@ -24,7 +24,9 @@ $VERSION               = '1.0';
 $PREFERRED_FILL_MODULE = '';
 $PREFERRED_CGI_MODULE  = 'CGI';
 @EXPORT = ();
-@EXPORT_OK = qw(get_form get_cookies);
+@EXPORT_OK = qw(get_form get_cookies
+                content_type content_typed
+                );
 
 ###----------------------------------------------------------------###
 
@@ -86,6 +88,35 @@ sub get_cookies {
     $hash{$key} = ($#val == -1) ? die : ($#val == 0) ? $val[0] : \@val;
   }
   return \%hash;
+}
+
+###----------------------------------------------------------------###
+
+sub content_type {
+  my $self = ref($_[0]) ? shift : undef;
+  my $type = shift || 'text/html';
+
+  if ($ENV{MOD_PERL} && (my $r = Apache->request)) {
+    return if $r->bytes_sent;
+    $r->content_type($type);
+    $r->send_http_header;
+  } else {
+    my $ref = $ENV{CONTENT_TYPED} ||= [];
+    if ($#$ref == -1) {
+      print "Content-type: $type\r\n\r\n";
+    }
+    push @$ref, [caller] if $#$ref < 10;
+  }
+}
+
+sub content_typed {
+  my $self = ref($_[0]) ? shift : undef;
+  if ($ENV{MOD_PERL} && (my $r = Apache->request)) {
+    return $r->bytes_sent;
+  } else {
+    my $ref = $ENV{CONTENT_TYPED} ||= [];
+    return $#$ref != 1;
+  }
 }
 
 ###----------------------------------------------------------------###
