@@ -359,4 +359,12 @@ $e = &validate({foo => [1, 2]}, $v);
 $e = &validate({foo => [1, 2, 3]}, $v);
 &print_ok($e);
 
+### validate_if revisited (but negated - uses max_in_set)
+$v = {foo => {required => 1, validate_if => '! bar'}};
+$e = &validate({}, $v);
+&print_ok($e);
+
+$e = &validate({bar => 1}, $v);
+&print_ok(! $e);
+
 __DATA__
