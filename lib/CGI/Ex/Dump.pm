@@ -14,8 +14,8 @@ use strict;
 use Exporter;
 
 @ISA       = qw(Exporter);
-@EXPORT    = qw(dex dex_warn dex_text ctrace dex_trace);
-@EXPORT_OK = qw(dex dex_warn dex_text ctrace dex_trace debug what_is_this);
+@EXPORT    = qw(dex dex_warn dex_text dex_html ctrace dex_trace);
+@EXPORT_OK = qw(dex dex_warn dex_text dex_html ctrace dex_trace debug what_is_this);
 
 ### is on or off
 sub on  { $ON = 1 };
@@ -43,7 +43,7 @@ BEGIN {
     require Data::Dumper;
     return Data::Dumper->Dumpperl(\@_);
   };
-  
+
   ### how to display or parse the filename
   $QR1 = qr{\A(?:/[^/]+){2,}/(?:perl|lib)/(.+)\Z};
   $QR2 = qr{\A.+?([\w\.\-]+/[\w\.\-]+)\Z};
@@ -96,16 +96,18 @@ sub what_is_this {
     elsif ($called eq 'dex_warn') { warn  $txt  }
     else                          { print $txt  }
   } else {
-    require CGI::Ex;
-    &CGI::Ex::content_type();
-    print "<pre><b>$called: $file line $line_n</b>\n";
+    my $html = "<pre><b>$called: $file line $line_n</b>\n";
     for (0 .. $#dump) {
       $dump[$_] =~ s/\\n/\n/g;
       $dump[$_] = _html_quote($dump[$_]);
       $dump[$_] =~ s|\$VAR1|<b>$var[$_]</b>|g;
-      print $dump[$_];
+      $html .= $dump[$_];
     }
-    print "</pre>\n";
+    $html .= "</pre>\n";
+    return $html if $called eq 'dex_html';
+    require CGI::Ex;
+    &CGI::Ex::print_content_type();
+    print $html;
   }
 }
 
@@ -114,6 +116,7 @@ sub debug    { &what_is_this }
 sub dex      { &what_is_this }
 sub dex_warn { &what_is_this }
 sub dex_text { &what_is_this }
+sub dex_html { &what_is_this }
 
 sub _html_quote {
   my $value = shift;
