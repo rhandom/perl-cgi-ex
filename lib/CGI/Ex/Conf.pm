@@ -11,13 +11,12 @@ package CGI::Ex::Conf;
 
 use strict;
 use vars qw($VERSION 
-            @DEFAULT_DIRS
+            @DEFAULT_PATHS
             $DEFAULT_EXT
             %EXT_HANDLERS
-            $ARRAY_DIRECTIVE
-            $HASH_DIRECTIVE
-            $HASH_IMMUTABLE_QR
-            $HASH_IMMUTABLE_KEY
+            $DIRECTIVE
+            $IMMUTABLE_QR
+            $IMMUTABLE_KEY
             );
 
 $VERSION = '0.1';
@@ -35,13 +34,16 @@ $DEFAULT_EXT = 'conf';
                  'yaml'     => \&conf_handler_yaml,
                  );
 
-$ARRAY_DIRECTIVE = 'FIRST'; # FIRST, LAST, JOIN
+### $DIRECTIVE controls how files are looked for.
+### If directories 1, 2 and 3 are passed and each has a config file
+### LAST would return 3, FIRST would return 1, and MERGE will
+### try to put them all together.  Merge behavior of hashes
+### is determined by $IMMUTABLE_\w+ variables.
+$DIRECTIVE = 'LAST'; # LAST, MERGE, FIRST
 
-$HASH_DIRECTIVE = 'MERGE'; # FIRST, LAST, MERGE
+$IMMUTABLE_QR = qr/_immu(?:table)?$/i;
 
-$HASH_IMMUTABLE_QR = qr/_immu(?:table)?$/i;
-
-$HASH_IMMUTABLE_KEY = 'immutable';
+$IMMUTABLE_KEY = 'immutable';
 
 ###----------------------------------------------------------------###
 
@@ -52,9 +54,9 @@ sub new {
   return bless $self, $class;
 }
 
-sub dirs {
+sub paths {
   my $self = shift;
-  return $self->{dirs} ||= \@DEFAULT_DIRS;
+  return $self->{paths} ||= \@DEFAULT_PATHS;
 }
 
 sub get_ref {
@@ -98,60 +100,68 @@ sub get_ref {
 ### allow for different kinds of merging of arguments
 ### allow for key fallback on hashes
 ### allow for immutable values on hashes
-sub load {
+sub read {
   my $self      = shift;
   my $namespace = shift;
-  my $dirs      = $self->dirs;
-  my $REF       = shift; # can pass in existing set of options
-  my $found;
-  my %IMMUTABLE = ();
+  my $REF       = shift;       # can pass in existing set of options
+  my $IMMUTABLE = shift || {}; # can pass existing immutable types
 
-  $namespace =~ s|::|/|g; # allow perlish style
+  $self = $self->new() if ! ref $self;
+  $namespace =~ s|::|/|g;      # allow perlish style namespace
 
-  foreach my $dir (ref($dirs) ? @$dirs : $dirs) {
-    my $ref = $self->get_ref("$dir/$namespace") || next;
+  my $direct = uc($self->{directive} || $DIRECTIVE);
+
+  ### allow for fast short ciruit
+  my $paths  = $self->paths;
+  if ($direct eq 'LAST') {
+    $direct = 'FIRST';
+    $paths = [reverse @$paths] if ref $paths;
+  }
+
+  ### now loop looking for a ref
+  foreach my $path (ref($paths) ? @$paths : $paths) {
+    my $ref = $self->get_ref("$path/$namespace") || next;
     if (! $REF) {
       if (UNIVERSAL::isa($ref, 'ARRAY')) {
         $REF = [];
       } elsif (UNIVERSAL::isa($ref, 'HASH')) {
         $REF = {};
       } else {
-        die "Unknown config type on $ref for namespace $namespace";
+        die "Unknown config type of \"".ref($ref)."\" for namespace $namespace";
       }
     } elsif (! UNIVERSAL::isa($ref, ref($REF))) {
-      die "Found different reference types for namespace $namespace";
+      die "Found different reference types for namespace $namespace"
+        . " - wanted a type ".ref($REF);
     }
     if (ref($REF) eq 'ARRAY') {
-      my $direct = $self->{array_directive} || $ARRAY_DIRECTIVE;
-      if ($direct eq 'JOIN') {
+      if ($direct eq 'MERGE') {
         push @$REF, @$ref;
-      } else {
-        $REF = [@$ref];
-        last if $direct eq 'FIRST';
+        next;
       }
+      splice @$REF, 0, $#$REF + 1, @$ref;
+      last;
     } else {
-      my $direct = $self->{hash_directive} || $HASH_DIRECTIVE;
-      my $immutable = delete $ref->{$HASH_IMMUTABLE_KEY};
+      my $immutable = delete $ref->{$IMMUTABLE_KEY};
       my ($key,$val);
       if ($direct eq 'MERGE') {
         while (($key,$val) = each %$ref) {
-          next if $IMMUTABLE{$key};
-          my $immute = $key =~ s/$HASH_IMMUTABLE_QR//o;
-          $IMMUTALBE{$key} = 1 if $immute || $immutable;
+          next if $IMMUTABLE->{$key};
+          my $immute = $key =~ s/$IMMUTABLE_QR//o;
+          $IMMUTABLE->{$key} = 1 if $immute || $immutable;
           $REF->{$key} = $val;
         }
-      } else {
-        $REF = {};
-        while (($key,$val) = each %$ref) {
-          my $immute = $key =~ s/$HASH_IMMUTABLE_QR//o;
-          $IMMUTALBE{$key} = 1 if $immute || $immutable;
-          $REF->{$key} = $val;
-        }
-        last if $direct eq 'FIRST';
+        next;
       }
+      delete $REF->{$key} while $key = each %$REF;
+      while (($key,$val) = each %$ref) {
+        my $immute = $key =~ s/$IMMUTABLE_QR//o;
+        $IMMUTABLE->{$key} = 1 if $immute || $immutable;
+        $REF->{$key} = $val;
+      }
+      last;
     }
   }
-  $REF->{"Immutable Keys"} = \%IMMUTABLE if scalar keys %IMMUTABLE;
+  $REF->{"Immutable Keys"} = $IMMUTABLE if scalar keys %$IMMUTABLE;
   return $REF;
 }
 
@@ -165,7 +175,10 @@ sub conf_handler_ini {
 
 sub conf_handler_pl {
   my $file = shift;
-  return do $file;
+  ### do has odd behavior in that it turns a simple hashref
+  ### into hash - help it out a little bit
+  my @ref = do $file;
+  return ($#ref != 0) ? {@ref} : $ref[0];
 }
 
 sub conf_handler_storable {
