@@ -480,6 +480,8 @@ sub swap_template {
 
   ### basic - allow for passing a hash, or object, or code ref
   my $form = shift;
+  $form = $self if ! $form && ref($self);
+
   my $get_form_value;
   my $meth;
   if (UNIVERSAL::isa($form, 'HASH')) {
