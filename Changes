@@ -5,6 +5,7 @@
         * Allow for checking for package existence without require in App
         * Add hash_swap
         * Add add_to_ methods for swap, fill, form, common, and errors
+        * Swap the run_hook order of step and hookname
 
 2004-12-02  Paul Seamons  <cgi_ex@seamons.com>
 
