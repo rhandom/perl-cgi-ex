@@ -87,7 +87,7 @@ sub nav_loop {
   ### keep from an infinate nesting
   local $self->{recurse} = $self->{recurse} || 0;
   if ($self->{recurse} ++ >= $self->recurse_limit) {
-    die "Too much recursion ($self->{recurse})";
+    die "recurse_limit reached (".$self->recurse_limit.")";
   }
 
   ### get the path (simple array based thing)
