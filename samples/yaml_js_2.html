@@ -74,9 +74,30 @@ document.write(document.js_dump(y));
     </td>
     <td>
 <pre>Dump:
-[obj].0.baz=bee
-[obj].0.foo=bar
-[obj].0.hem=haw
+[obj].0.0.foo1=bar1
+[obj].0.0.foo2.key1=val1
+[obj].0.0.foo2.key2=value 2
+[obj].0.0.foo3.0=a
+[obj].0.0.foo3.1=list
+[obj].0.0.foo3.2=of
+[obj].0.0.foo3.3=items
+[obj].0.0.foo3.4=with the last item being a long string
+[obj].0.0.foo4.0=another
+[obj].0.0.foo4.1=list
+[obj].0.0.foo4.2=of
+[obj].0.0.foo4.3=values
+[obj].0.0.foo5a=A block of text
+that is on multiple lines.
+[obj].0.0.foo5b=A block
+of text
+ that is on
+multiple lines.
+
+[obj].0.0.foo6a=A block of text that is on multiple lines and is folded.
+[obj].0.0.foo6b=A block of text that is on multiple lines and is folded.
+
+[obj].0.0.foo7=singlequoted'with embedded quote
+[obj].0.0.foo8=doublequoted"with embedded quote
 </pre>
     </td>
   </tr>
