@@ -179,13 +179,13 @@ sub form_fill {
             $tag =~ s{\s+\bCHECKED\b(?=\s|>|/>)}{}ig;
             
             if ($type eq 'CHECKBOX' && @$values == 1 && $values->[0] eq 'on') {
-              $tag =~ s|(/?>\s*)$| checked$1|;
+              $tag =~ s|(/?>\s*)$| checked="checked"$1|;
             } else {
               my $fvalue = &get_tagval_by_key(\$tag, 'value');
               if (defined $fvalue) {
                 foreach (@$values) {
                   next if $_ ne $fvalue;
-                  $tag =~ s|(\s*/?>\s*)$| checked$1|;
+                  $tag =~ s|(\s*/?>\s*)$| checked="checked"$1|;
                   last;
                 }
               }
@@ -221,7 +221,7 @@ sub form_fill {
               : $opt =~ /^\s*(.*?)\s*$/ ? $1 : "";
             foreach (@$values) {
               next if $_ ne $fvalue;
-              $tag2 =~ s|(\s*/?>\s*)$| selected$1|;
+              $tag2 =~ s|(\s*/?>\s*)$| selected="selected"$1|;
               last;
             }
             "$tag2$opt"; # return of inner swap
@@ -414,16 +414,13 @@ it won't change case, reorder your attributes, or miscellaneous spaces).
 HTML::FillInForm both benefits and suffers from being based on
 HTML::Parser. It is good for standards and poor for performance.  Testing
 the form_fill module against HTML::FillInForm gave some surprising
-results.  On tiny forms (< 1 k) FillInForm was 30% faster (avg).  As
-soon as the html document incorporated very many entities at all, the
-performace kept going down (and down).  On one simple form, FillInForm
-was 30% faster.  I added 180 <BR> tags.  FillInForm lagged behind.
-form_fill kept on par and ended up 420% faster.  I added another
-180 <BR> and the difference jumped to 740%. Another 180 and it was
-1070% faster (ALL BENCHMARKS SHOULD BE TAKEN WITH A GRAIN OF SALT).
-The problem is that HTML::Parser has to fire events for
-every tag it finds.  I would be interested to test a Recursive Descent
-form filler against these two.
+results.  On tiny forms (< 1 k) form_fill was ~ 17% faster than FillInForm.
+If the html document incorporated very many entities at all, the
+performace of FillInForm goes down (and down).  However, if you are only
+filling in one form every so often, then it shouldn't matter - but form_fill
+will be nicer on the tags and won't balk at ugly html.
+See the benchmarks in the t/samples directory for more information (ALL
+BENCHMARKS SHOULD BE TAKEN WITH A GRAIN OF SALT).
 
 =head1 HTML COMMENT / JAVASCRIPT
 
