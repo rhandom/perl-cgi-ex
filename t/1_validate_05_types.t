@@ -367,4 +367,12 @@ $e = &validate({}, $v);
 $e = &validate({bar => 1}, $v);
 &print_ok(! $e);
 
+### default value
+my $f = {};
+$v = {foo => {required => 1, default => 'hmmmm'}};
+$e = &validate($f, $v);
+&print_ok(! $e);
+
+&print_ok($f->{foo} && $f->{foo} eq 'hmmmm');
+
 __DATA__
