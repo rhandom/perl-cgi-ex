@@ -938,7 +938,7 @@ sub get_error_text {
 
   ### the the name of this thing
   my $name = $field_val->{'name'} || "The field $field";
-  $name =~ s/$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+  $name =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
 
   ### type can look like "required" or "required2" or "required100023"
   ### allow for fallback from required100023_error through required_error
@@ -979,7 +979,7 @@ sub get_error_text {
     } elsif ($type eq 'equals') {
       my $field2 = $field_val->{"equals${dig}"};
       my $name2  = $field_val->{"equals${dig}_name"} || "the field $field2";
-      $name2 =~ s/$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+      $name2 =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
       $return = "$name did not equal $name2.";
   
     } elsif ($type eq 'min_len') {
@@ -1029,7 +1029,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.53 2004-03-08 20:23:18 pauls Exp $
+$Id: Validate.pm,v 1.54 2004-03-19 16:19:22 pauls Exp $
 
 =head1 SYNOPSIS
 
