@@ -1,5 +1,16 @@
+2004-04-23  Paul Seamons  <cgi_ex@seamons.com>
+
+        * Version 1.00 is done
+        * Added set_path method
+        * Added Auth module
+        * Fix validate.js for select-multiple
+        * Fix validate.js for max_values
+        * Add min_in_set and max_in_set types for validate
+        * Add default for validate (sets default value)
+
 2004-03-22  Paul Seamons  <cgi_ex@seamons.com>
-        * Verion 0.99 is done
+
+        * Version 0.99 is done
         * Allow swap_template to be called with one argument
         * Added extended examples in t/samples/cgi_ex_*
         * Remove dependency on CGI::Util (doesn't exists on some perls)
@@ -9,7 +20,7 @@
 
 2004-03-19  Paul Seamons  <cgi_ex@seamons.com>
 
-        * Verion 0.98 is done
+        * Version 0.98 is done
         * Multiple fixes in Fill module
         * Updates on perldocs (thanks to Simon Bellwood for bug reports)
         * Addition of Dump (debug) module
