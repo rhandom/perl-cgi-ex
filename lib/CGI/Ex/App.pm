@@ -13,7 +13,7 @@ package CGI::Ex::App;
 use strict;
 use vars qw($EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS);
 
-use CGI::Ex::Dump qw(dex);
+use CGI::Ex::Dump qw(debug);
 
 BEGIN {
   ### Default file locations
@@ -234,7 +234,7 @@ sub run_hook {
 sub handle_error {
   my $self = shift;
   my $err  = shift;
-  dex $err, $self->{history};
+  debug $err, $self->{history};
 }
 
 ###----------------------------------------------------------------###
@@ -258,10 +258,12 @@ sub add_property {
 }
 
 ###----------------------------------------------------------------###
-### implementation specific subs
+### a few standard base accessors
 
 sub cgix {
-  return shift()->{cgix} ||= do {
+  my $self = shift;
+  $self->{cgix} = shift if $#_ != -1;
+  return $self->{cgix} ||= do {
     require CGI::Ex;
     CGI::Ex->new(); # return of the do
   };
@@ -269,18 +271,27 @@ sub cgix {
 
 sub form {
   my $self = shift;
-  if ($#_ != -1) { ### allow for setting of form
-    return $self->{form} = shift;
+  if ($#_ != -1) {
+    $self->{form} = shift || die "Invalid form";
   }
   return $self->{form} ||= $self->cgix->get_form;
 }
 
 sub vob {
-  return shift()->{vob} ||= do {
+  my $self = shift;
+  if ($#_ = -1) {
+    return $self->{vob} = shift || die "Invalid vob";
+  }
+  return $self->{vob} ||= do {
     require CGI::Ex::Validate;
-    CGI::Ex::Validate->new; # return of the do
+    CGI::Ex::Validate->new({
+      cgix => $self->cgix,
+    }); # return of the do
   };
 }
+
+###----------------------------------------------------------------###
+### implementation specific subs
 
 sub print {
   my $self = shift;
