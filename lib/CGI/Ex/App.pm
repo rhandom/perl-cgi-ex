@@ -40,7 +40,7 @@ BEGIN {
 ###----------------------------------------------------------------###
 
 sub new {
-  my $class = shift || __PACKAGE__;
+  my $class = shift || die "Usage: Package->new";
   my $self  = ref($_[0]) ? shift : {@_};
   bless $self, $class;
   $self->init;
@@ -115,8 +115,9 @@ sub nav_loop {
     ### check if this is an allowed step
     if ($valid_steps) {
       if (! $valid_steps->{$step}
+          && $step ne 'forbidden'
           && $step ne $self->default_step
-          && $step ne 'forbidden') {
+          && $step ne $self->js_step) {
         $self->stash->{'forbidden_step'} = $step;
         $self->replace_path('forbidden');
         next;
@@ -286,10 +287,9 @@ sub jump {
   $self->exit_nav_loop;
 }
 
-sub default_step {
-  my $self = shift;
-  return $self->{'default_step'} || 'main';
-}
+sub default_step { shift->{'default_step'} || 'main' }
+
+sub js_step { shift->{'js_step'} || 'js' }
 
 ###----------------------------------------------------------------###
 
@@ -702,9 +702,10 @@ sub js_validation {
 sub js_uri_path {
   my $self   = shift;
   my $script = $ENV{'SCRIPT_NAME'} || die "Missing SCRIPT_NAME";
+  my $js_step = $self->js_step;
   return ($self->can('path') == \&CGI::Ex::App::path)
-    ? $script . '/js' # try to use a cache friendly URI (if path is our own)
-    : $script . '?'.$self->step_key.'=js&js='; # use one that works with more paths
+    ? $script .'/'. $js_step # try to use a cache friendly URI (if path is our own)
+    : $script . '?'.$self->step_key.'='.$js_step.'&js='; # use one that works with more paths
 }
 
 ### name to attach js validation to
@@ -726,6 +727,29 @@ sub js_run_step {
 ###----------------------------------------------------------------###
 ### implementation specific subs
 
+sub print {
+  my ($self, $step, $swap, $fill) = @_;
+
+  ### get a filename relative to base_dir_abs
+  my $file = $self->run_hook('file_print', $step);
+
+  my $out = $self->run_hook('swap_template', $step, undef, $file, $swap);
+
+  $self->run_hook('fill_template', $step, undef, \$out, $fill);
+
+  $self->run_hook('print_out', $step, undef, $out);
+}
+
+sub print_out {
+  my $self = shift;
+  my $step = shift;
+  my $out  = shift;
+
+  ### now print
+  $self->cgix->print_content_type();
+  print $out;
+}
+
 sub template_args {
   my $self = shift;
   my $step = shift;
@@ -734,14 +758,8 @@ sub template_args {
   };
 }
 
-sub print {
-  my $self = shift;
-  my $step = shift;
-  my $swap = shift;
-  my $fill = shift;
-
-  ### get a filename relative to base_dir_abs
-  my $file = $self->run_hook('file_print', $step);
+sub swap_template {
+  my ($self, $step, $file, $swap) = @_;
 
   require Template;
   my $t = Template->new($self->template_args($step));
@@ -750,12 +768,16 @@ sub print {
   my $out = '';
   my $status = $t->process($file, $swap, \$out) || die $Template::ERROR;
 
-  ### fill in any forms
-  $self->cgix->fill(\$out, $fill) if $fill && ! $self->no_fill($step);
+  return $out;
+}
 
-  ### now print
-  $self->cgix->print_content_type();
-  print $out;
+sub fill_template {
+  my ($self, $step, $outref, $fill) = @_;
+
+  return if ! $fill || $self->no_fill($step);
+
+  ### fill in any forms
+  $self->cgix->fill($outref, $fill);
 }
 
 sub base_dir_rel {
@@ -1028,31 +1050,41 @@ other "CGI framework."  As with the others, CGI::Ex::App tries to do as
 much as possible, in a simple manner, without getting in the
 developer's way.  Your milage may vary.
 
-=head1 SYNOPSIS
+=head1 SYNOPSIS (A LONG "SYNOPSIS")
 
 More examples will come with time.  Here are the basics for now.
+This example script would most likely be in the form of a cgi, accessible via
+the path http://yourhost.com/cgi-bin/my_app (or however you do CGIs on
+your system.  About the best way to get started is to pasted the following
+code into a cgi script and try it out.  A detailed walk through follows in the
+next section.
 
   #!/usr/bin/perl -w
 
-  MyApp->navigate;
-   # OR you could do the following which cleans
-   # circular references - useful for a mod_perl situation
-   # MyApp->navigate->cleanup;
-  exit;
-
-  package MyApp;
   use strict;
   use base qw(CGI::Ex::App);
   use CGI::Ex::Dump qw(debug);
 
-  sub valid_steps { return {success => 1, js => 1} }
-    # default_step (main) is a valid path
-    # note the inclusion of js step to allow the
-    # javascript scripts in js_validation to function properly.
+  __PACKAGE__->navigate;
+   # OR you could do
+   # my $obj = __PACKAGE__->new; $obj->navigate;
+   # OR you could do the following which cleans
+   # circular references - useful for a mod_perl situation
+   # __PACKAGE__->navigate->cleanup;
+  exit;
+
+  ###------------------------------------------###
+
+  sub valid_steps { return {success => 1} }
+    # the default_step "main" and the built in step "js" are valid paths
 
   # base_dir_abs is only needed if default print is used
   # template toolkit needs an INCLUDE_PATH
   sub base_dir_abs { '/tmp' }
+
+  sub post_print {
+    debug shift->history;
+  } # show what happened
 
   sub main_file_print {
     # reference to string means ref to content
@@ -1067,10 +1099,6 @@ More examples will come with time.  Here are the basics for now.
       <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
     ";
   }
-
-  sub post_print {
-    debug shift->history;
-  } # show what happened
 
   sub main_file_val {
     # reference to string means ref to yaml document
@@ -1121,7 +1149,138 @@ shown it is more probable that any platform using it will customize
 the various hooks to their own tastes (for example, switching print to
 use a system other than Template::Toolkit).
 
-=head1 HOOKS / METHODS
+=head1 STEP BY STEP
+
+This section goes step by step over the previous example.
+
+Well - we start out with with the customary CGI introduction.
+
+  #!/usr/bin/perl -w
+
+  use strict;
+  use base qw(CGI::Ex::App);
+  use CGI::Ex::Dump qw(debug);
+
+Note:  the "use base" is not normally used in the "main" portion of a script.
+It does allow us to just do __PACKAGE__->navigate.
+
+Now we need to invoke the process:
+
+  __PACKAGE__->navigate;
+   # OR you could do
+   # my $obj = __PACKAGE__->new; $obj->navigate;
+   # OR you could do the following which cleans
+   # circular references - useful for a mod_perl situation
+   # __PACKAGE__->navigate->cleanup;
+  exit;
+
+Note: the "exit" isn't necessary - but it is kind of nice to infer that
+program flow doesn't go beyond the ->navigate call.
+
+The navigate routine is now going to try and "run" through a series of
+steps.  Navigate will call the ->path method which should return an arrayref
+containing the valid steps.  By default, if path method has not been overridden,
+the path method will default first to the step found in form key named ->step_name,
+then it will fall to the contents of $ENV{'PATH_INFO'}.  If navigation runs out
+of steps to run it will run the step found in ->default_step which defaults to 'main'.
+So the URI '/cgi-bin/my_app' would run the step 'main' first by default.  The URI
+'/cgi-bin/my_app?step=foo' would run the step 'foo' first.  The URI '/cgi-bin/my_app/bar'
+would run the step 'bar' first.
+
+CGI::Ex::App allows for running steps in a preset path.  The navigate method will go
+through a step of the path at a time and see if it is completed (various methods determine
+the definition of "completed").  This preset type of path can also be automated using the
+CGI::Path module.  Rather than using a preset path, CGI::Ex::App also has methods that
+allow for dynamic changing of the path, so that each step can determine which step to do next
+(see the jump, append_path, insert_path, and replace_path methods).
+
+Because the default ->path call allows for testing arbitrary step names, it would be
+nice to restrict what they can use.  And you can with valid_steps.
+
+  sub valid_steps { return {success => 1} }
+    # the default_step (default "main") and the js_step (default "js") are valid paths
+
+CGI::Ex::App is prewired to use Template::Toolkit, but should be easy to use any
+other toolkit as well.  The following piece gives a default directory to get
+the Template::Toolkit templates.  We aren't using a separate template in this
+example so we default it to a non-existent dir
+
+  # base_dir_abs is only needed if default print is used
+  # template toolkit needs an INCLUDE_PATH
+  sub base_dir_abs { '/non_existent_dir' }
+
+During development it would be nice to see what happened during the course of
+our navigation.  This is stored in the arrayref contained in ->history.  There
+is a hook that runs after a step is printed its content called "post_print."  This
+chunk will display history after we have printed the content.
+
+  sub post_print {
+    debug shift->history;
+  } # show what happened
+
+Ok.  Finally we are looking at the methods used by each step of the path.  The
+hook mechanism of CGI::Ex::App will look first for a method ${step}_${hook_name}
+called before falling back to the method named $hook_name.
+
+  sub main_file_print {
+    # reference to string means ref to content
+    # non-reference means filename
+    return \ "<h1>Main Step</h1>
+      <form method=post name=[% form_name %]>
+      <input type=text name=foo>
+      <span style='color:red' id=foo_error>[% foo_error %]</span><br>
+      <input type=submit>
+      </form>
+      [% js_validation %]
+      <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
+    ";
+  }
+
+  sub main_file_val {
+    # reference to string means ref to yaml document
+    # non-reference means filename
+    return \ "foo:
+      required: 1
+      min_len: 2
+      max_len: 20
+      match: 'm/^([a-z]\\d)+[a-z]?\$/'
+      match_error: Characters must alternate letter digit letter.
+      \n";
+  }
+
+  sub main_finalize {
+    my $self = shift;
+
+    debug $self->form, "Do something useful with form here";
+
+    ### add success step
+    $self->add_to_swap({success_msg => "We did something"});
+    $self->append_path('success');
+    $self->set_ready_validate(0);
+    return 1;
+  }
+
+  sub success_file_print {
+    \ "<h1>Success Step</h1> All done.<br>
+       ([% success_msg %])<br>
+       (foo = [% foo %])";
+  }
+
+  ### not necessary - this is the default hash_base
+  sub hash_base { # used to include js_validation
+    my ($self, $step) = @_;
+    return $self->{hash_base} ||= {
+      script_name   => $ENV{SCRIPT_NAME} || '',
+      js_validation => sub { $self->run_hook('js_validation', $step) },
+      form_name     => sub { $self->run_hook('form_name', $step) },
+    };
+  }
+
+  __END__
+
+
+
+=head1 AVAILABLE HOOKS / METHODS
 
 CGI::Ex::App works on the principles of hooks which are essentially
 glorified method lookups.  When a hook is called, CGI::Ex::App will
