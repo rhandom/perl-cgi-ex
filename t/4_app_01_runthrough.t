@@ -42,31 +42,38 @@ BEGIN {plan tests => 2};
 
   sub step2_finalize { shift->append_path('step3') }
 
+  sub step3_info_complete { 0 }
+
   sub step3_file_print { return \ "All good" }
 
 }
 
 ###----------------------------------------------------------------###
 
-$ENV{'REQUEST_METHOD'} = 'GET';
-$ENV{'QUERY_STRING'}   = '';
+#$ENV{'REQUEST_METHOD'} = 'GET';
+#$ENV{'QUERY_STRING'}   = '';
 
-Foo->navigate;
+Foo->new({
+  form => {},
+})->navigate;
 ok($Foo::test_stdout eq "Main Content");
 
 ###----------------------------------------------------------------###
 
-$ENV{'REQUEST_METHOD'} = 'GET';
-$ENV{'QUERY_STRING'}   = 'step=step2';
+#$ENV{'REQUEST_METHOD'} = 'GET';
+#$ENV{'QUERY_STRING'}   = 'step=step2';
 
-Foo->navigate;
+Foo->new({
+  form => {step => 'step2'},
+})->navigate;
 ok($Foo::test_stdout eq "Some step2 content (bar, two) <input type=text name=wow value=\"wee\">wow is required");
 
 ###----------------------------------------------------------------###
 
-$ENV{'REQUEST_METHOD'} = 'GET';
-$ENV{'QUERY_STRING'}   = 'step=step2&wow=something';
+#$ENV{'REQUEST_METHOD'} = 'GET';
+#$ENV{'QUERY_STRING'}   = 'step=step2&wow=something';
 
-Foo->navigate;
-print "($Foo::test_stdout)\n";
+Foo->new({
+  form=> {step => 'step2', wow => 'something'},
+})->navigate;
 ok($Foo::test_stdout eq "All good");
