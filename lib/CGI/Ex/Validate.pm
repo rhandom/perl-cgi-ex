@@ -324,7 +324,7 @@ sub validate_buddy {
     }
   }
   # allow for inline specified modifications (ie s/foo/bar/)
-  foreach my $type ($self->filter_type('replace',$types)) {
+  foreach my $type (grep {/^replace_?\d*$/} @$types) {
     my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
       : [split(/\s*\|\|\s*/,$field_val->{$type})];
     foreach my $rx (@$ref) {
@@ -374,7 +374,7 @@ sub validate_buddy {
   ### only continue if a validate_if is not present or passes test
   my $needs_val = 0;
   my $n_vif = 0;
-  foreach my $type ($self->filter_type('validate_if',$types)) {
+  foreach my $type (grep {/^validate_if_?\d*$/} @$types) {
     $n_vif ++;
     my $ifs = $field_val->{$type};
     my $ret = $self->check_conditional($form, $ifs, $N_level, $ifs_match);
@@ -389,7 +389,7 @@ sub validate_buddy {
   ### optionally check only if another condition is met
   my $is_required = $field_val->{'required'} ? 'required' : '';
   if (! $is_required) {
-    foreach my $type ($self->filter_type('required_if',$types)) {
+    foreach my $type (grep {/^required_if_?\d*$/} @$types) {
       my $ifs = $field_val->{$type};
       next if ! $self->check_conditional($form, $ifs, $N_level, $ifs_match);
       $is_required = $type;
@@ -422,9 +422,12 @@ sub validate_buddy {
   }
 
   ### max_in_set and min_in_set checks
-  foreach my $minmax (qw(min max)) {
-    my @keys = $self->filter_type("${minmax}_in_set",$types);
-    foreach my $type (@keys) {
+  my @min = grep {/^min_in_set_?\d*$/} @$types;
+  my @max = grep {/^max_in_set_?\d*$/} @$types;
+  foreach ([min => \@min],
+           [max => \@max]) {
+    my ($minmax, $keys) = @$_;
+    foreach my $type (@$keys) {
       $field_val->{$type} =~ m/^\s*(\d+)(?i:\s*of)?\s+(.+)\s*$/
         || die "Invalid in_set check $field_val->{$type}";
       my $n = $1;
@@ -464,7 +467,7 @@ sub validate_buddy {
     }
 
     ### field equality test
-    foreach my $type ($self->filter_type('equals',$types)) {
+    foreach my $type (grep {/^equals_?\d*$/} @$types) {
       my $field2  = $field_val->{$type};
       my $not     = ($field2 =~ s/^!\s*//) ? 1 : 0;
       my $success = 0;
@@ -502,7 +505,7 @@ sub validate_buddy {
     }
 
     ### now do match types
-    foreach my $type ($self->filter_type('match',$types)) {
+    foreach my $type (grep {/^match_?\d*$/} @$types) {
       my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
          : UNIVERSAL::isa($field_val->{$type}, 'Regexp') ? [$field_val->{$type}]
          : [split(/\s*\|\|\s*/,$field_val->{$type})];
@@ -530,7 +533,7 @@ sub validate_buddy {
     }
 
     ### allow for comparison checks
-    foreach my $type ($self->filter_type('compare',$types)) {
+    foreach my $type (grep {/^compare_?\d*$/} @$types) {
       my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
         : [split(/\s*\|\|\s*/,$field_val->{$type})];
       foreach my $comp (@$ref) {
@@ -569,7 +572,7 @@ sub validate_buddy {
     }
 
     ### server side sql type
-    foreach my $type ($self->filter_type('sql',$types)) {
+    foreach my $type (grep {/^sql_?\d*$/} @$types) {
       my $db_type = $field_val->{"${type}_db_type"};
       my $dbh = ($db_type) ? $self->{dbhs}->{$db_type} : $self->{dbh};
       if (! $dbh) {
@@ -590,7 +593,7 @@ sub validate_buddy {
     }
 
     ### server side custom type
-    foreach my $type ($self->filter_type('custom',$types)) {
+    foreach my $type (grep {/^custom_?\d*$/} @$types) {
       my $check = $field_val->{$type};
       next if UNIVERSAL::isa($check, 'CODE') ? &$check($field, $value, $field_val, $type) : $check;
       return 1 if ! wantarray;
@@ -599,7 +602,7 @@ sub validate_buddy {
     }
 
     ### do specific type checks
-    foreach my $type ($self->filter_type('type',$types)) {
+    foreach my $type (grep {/^type_?\d*$/} @$types) {
       if (! $self->check_type($value,$field_val->{'type'},$field,$form)){
         return 1 if ! wantarray;
         $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
@@ -637,19 +640,6 @@ sub add_error {
   my $self = shift;
   my $errors = shift;
   push @$errors, \@_;
-}
-
-### allow for multiple validations in the same hash
-### ie Match, Match1, Match2, Match234
-sub filter_type {
-  my $self  = shift;
-  my $type  = shift;
-  my $order = shift || die "Missing order array";
-  my @array = ();
-  foreach (@$order) {
-    push @array, $_ if /^\Q$type\E_?\d*$/;
-  }
-  return wantarray ? @array : $#array + 1;
 }
 
 ###----------------------------------------------------------------###
@@ -1105,7 +1095,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.80 2005-10-07 09:12:16 pauls Exp $
+$Id: Validate.pm,v 1.81 2005-10-07 09:36:58 pauls Exp $
 
 =head1 SYNOPSIS
 
