@@ -278,7 +278,7 @@ sub validate_buddy {
   my $types  = [sort keys %$field_val];
 
   ### allow for not running some tests in the cgi
-  if (scalar $self->filter_type('exclude_cgi',$types)) {
+  if ($field_val->{'exclude_cgi'}) {
     delete $field_val->{'was_validated'};
     return wantarray ? @errors : $#errors + 1;
   }
@@ -297,9 +297,9 @@ sub validate_buddy {
   }
 
   ### allow for default value
-  foreach my $type ($self->filter_type('default', $types)) {
+  if (exists $field_val->{'default'}) {
     if (! defined($form->{$field}) || (! ref($form->{$field}) && ! length($form->{$field}))) {
-      $form->{$field} = $field_val->{$type};
+      $form->{$field} = $field_val->{'default'};
     }
   }
 
@@ -310,15 +310,15 @@ sub validate_buddy {
   my $modified = 0;
   foreach my $value (@$values) {
     next if ! defined $value;
-    if (! scalar $self->filter_type('do_not_trim',$types)) { # whitespace
+    if (! $field_val->{'do_not_trim'}) { # whitespace
       $value =~ s/^\s+//;
       $value =~ s/\s+$//;
       $modified = 1;
     }
-    if (scalar $self->filter_type('to_upper_case',$types)) { # uppercase
+    if ($field_val->{'to_upper_case'}) { # uppercase
       $value = uc($value);
       $modified = 1;
-    } elsif (scalar $self->filter_type('to_lower_case',$types)) { # lowercase
+    } elsif ($field_val->{'to_lower_case'}) { # lowercase
       $value = lc($value);
       $modified = 1;
     }
@@ -387,12 +387,7 @@ sub validate_buddy {
 
   ### check for simple existence
   ### optionally check only if another condition is met
-  my $is_required = '';
-  foreach my $type ($self->filter_type('required',$types)) {
-    next if ! $field_val->{$type};
-    $is_required = $type;
-    last;
-  }
+  my $is_required = $field_val->{'required'} ? 'required' : '';
   if (! $is_required) {
     foreach my $type ($self->filter_type('required_if',$types)) {
       my $ifs = $field_val->{$type};
@@ -410,28 +405,20 @@ sub validate_buddy {
   }
 
   ### min values check
-  foreach my $type ($self->filter_type('min_values',$types)) {
-    my $n = $field_val->{$type} || 0;
-    if ($n_values < $n) {
-      return 1 if ! wantarray;
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-      return @errors;
-    }
+  my $n = exists($field_val->{'min_values'}) ? $field_val->{'min_values'} || 0 : 0;
+  if ($n_values < $n) {
+    return 1 if ! wantarray;
+    $self->add_error(\@errors, $field, 'min_values', $field_val, $ifs_match);
+    return @errors;
   }
 
   ### max values check
-  my @keys = $self->filter_type('max_values',$types);
-  if ($#keys == -1) {
-    push @keys, 'max_values';
-    $field_val->{'max_values'} = 1;
-  }
-  foreach my $type (@keys) {
-    my $n = $field_val->{$type} || 0;
-    if ($n_values > $n) {
-      return 1 if ! wantarray;
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
-      return @errors;
-    }
+  $field_val->{'max_values'} = 1 if ! exists $field_val->{'max_values'};
+  $n = $field_val->{'max_values'} || 0;
+  if ($n_values > $n) {
+    return 1 if ! wantarray;
+    $self->add_error(\@errors, $field, 'max_values', $field_val, $ifs_match);
+    return @errors;
   }
 
   ### max_in_set and min_in_set checks
@@ -463,15 +450,15 @@ sub validate_buddy {
   foreach my $value (@$values) {
 
     ### allow for enum types
-    foreach my $type ($self->filter_type('enum',$types)) {
-      my $ref = ref($field_val->{$type}) ? $field_val->{$type} : [split(/\s*\|\|\s*/,$field_val->{$type})];
+    if (exists $field_val->{'enum'}) {
+      my $ref = ref($field_val->{'enum'}) ? $field_val->{'enum'} : [split(/\s*\|\|\s*/,$field_val->{'enum'})];
       my $found = 0;
       foreach (@$ref) {
         $found = 1 if defined($value) && $_ eq $value;
       }
       if (! $found) {
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+        $self->add_error(\@errors, $field, 'enum', $field_val, $ifs_match);
       }
       $content_checked = 1;
     }
@@ -497,20 +484,20 @@ sub validate_buddy {
     }
 
     ### length min check
-    foreach my $type ($self->filter_type('min_len',$types)) {
-      my $n = $field_val->{$type};
+    if (exists $field_val->{'min_len'}) {
+      my $n = $field_val->{'min_len'};
       if (! defined($value) || length($value) < $n) {
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+        $self->add_error(\@errors, $field, 'min_len', $field_val, $ifs_match);
       }
     }
 
     ### length max check
-    foreach my $type ($self->filter_type('max_len',$types)) {
-      my $n = $field_val->{$type};
+    if (exists $field_val->{'max_len'}) {
+      my $n = $field_val->{'max_len'};
       if (defined($value) && length($value) > $n) {
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+        $self->add_error(\@errors, $field, 'max_len', $field_val, $ifs_match);
       }
     }
 
@@ -623,10 +610,9 @@ sub validate_buddy {
 
   ### allow for the data to be "untainted"
   ### this is only allowable if the user ran some other check for the datatype
-  foreach my $type ($self->filter_type('untaint',$types)) {
-    last if $#errors != -1;
+  if ($field_val->{'untaint'} && $#errors == -1) {
     if (! $content_checked) {
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+      $self->add_error(\@errors, $field, 'untaint', $field_val, $ifs_match);
     } else {
       ### generic untainter - assuming the other required content_checks did good validation
       $_ = /(.*)/ ? $1 : die "Couldn't match?" foreach @$values;
@@ -1119,7 +1105,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.79 2005-02-23 21:28:11 pauls Exp $
+$Id: Validate.pm,v 1.80 2005-10-07 09:12:16 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1419,8 +1405,21 @@ matching that pattern will be validated.
 =head1 VALIDATION TYPES
 
 The following are the available validation types.  Multiple instances of
-the same type may be used by adding a number to the type (ie match, match2,
-match232, match_94).  Multiple instances are validated in sorted order.
+the same type may be used for some validation types by adding a number to
+the type (ie match, match2, match232, match_94).  Multiple instances are
+validated in sorted order.  Types that allow multiple values are:
+
+  compare
+  custom
+  equals
+  match
+  max_in_set
+  min_in_set
+  replace
+  required_if
+  sql
+  type
+  validate_if
 
 =over 4
 
