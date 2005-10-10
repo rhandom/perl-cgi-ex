@@ -102,6 +102,9 @@ if (eval {require JSON}) {
   open(my $fh, ">$_file");
   print $fh $str;
   $TESTS{json} = sub {
+    my $hash = $cob->read_ref($_file);
+  };
+  $TESTS{json2} = sub {
     open(my $fh, "<$_file") || die "Couldn't open file: $!";
     read($fh, my $str, -s $_file);
     my $hash = JSON::jsonToObj($str);
