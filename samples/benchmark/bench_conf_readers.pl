@@ -96,6 +96,20 @@ $TESTS{g_conf} = sub {
 $files{g_conf} = $file2;
 
 
+if (eval {require JSON}) {
+  my $_file = tmpnam(). '.json';
+  my $str = JSON::objToJson($conf, {pretty => 1, indent => 2});
+  open(my $fh, ">$_file");
+  print $fh $str;
+  $TESTS{json} = sub {
+    open(my $fh, "<$_file") || die "Couldn't open file: $!";
+    read($fh, my $str, -s $_file);
+    my $hash = JSON::jsonToObj($str);
+  };
+  $files{json} = $_file;
+}
+
+
 ### load in the rest of the tests that we support
 if (eval {require Storable}) {
   my $_file = tmpnam(). '.sto';
