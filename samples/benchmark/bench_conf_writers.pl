@@ -95,6 +95,14 @@ $files{g_conf} = $file2;
 
 
 ### load in the rest of the tests that we support
+if (eval {require JSON}) {
+  my $_file = tmpnam(). '.json';
+  $TESTS{json} = sub {
+    $cob->write_ref($file, $str);
+  };
+  $files{json} = $_file;
+}
+
 if (eval {require Storable}) {
   my $_file = $tmpnam. '.sto';
   $TESTS{sto} = sub {
