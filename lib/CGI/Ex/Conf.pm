@@ -30,6 +30,7 @@ $DEFAULT_EXT = 'conf';
 
 %EXT_READERS = (''         => \&read_handler_yaml,
                 'conf'     => \&read_handler_yaml,
+                'json'     => \&read_handler_json,
                 'ini'      => \&read_handler_ini,
                 'pl'       => \&read_handler_pl,
                 'sto'      => \&read_handler_storable,
@@ -45,6 +46,7 @@ $DEFAULT_EXT = 'conf';
 %EXT_WRITERS = (''         => \&write_handler_yaml,
                 'conf'     => \&write_handler_yaml,
                 'ini'      => \&write_handler_ini,
+                'json'     => \&write_handler_json,
                 'pl'       => \&write_handler_pl,
                 'sto'      => \&write_handler_storable,
                 'storable' => \&write_handler_storable,
@@ -247,6 +249,15 @@ sub read_handler_pl {
   ### into hash - help it out a little bit
   my @ref = do $file;
   return ($#ref != 0) ? {@ref} : $ref[0];
+}
+
+sub read_handler_json
+  my $file = shift;
+  local *IN;
+  open (IN, $file) || die "Couldn't open $file: $!";
+  CORE::read(IN, my $text, -s $file);
+  close IN;
+  return scalar JSON::jsonToObj($text);
 }
 
 sub read_handler_storable {
@@ -524,6 +535,17 @@ sub write_handler_pl {
     die "Ref to be written contained circular references - can't write";
   }
 
+  local *OUT;
+  open (OUT, ">$file") || die $!;
+  print OUT $str;
+  close(OUT);
+}
+
+sub write_handler_json
+  my $file = shift;
+  my $ref  = shift;
+  require JSON;
+  my $str = JSON::objToJson($ref, {pretty => 1, indent => 2});
   local *OUT;
   open (OUT, ">$file") || die $!;
   print OUT $str;
