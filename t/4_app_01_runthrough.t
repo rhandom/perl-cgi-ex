@@ -3,7 +3,7 @@
 use Test;
 use strict;
 
-BEGIN {plan tests => 2};
+BEGIN {plan tests => 3};
 
 {
   package Foo;
