@@ -251,7 +251,7 @@ sub read_handler_pl {
   return ($#ref != 0) ? {@ref} : $ref[0];
 }
 
-sub read_handler_json
+sub read_handler_json {
   my $file = shift;
   local *IN;
   open (IN, $file) || die "Couldn't open $file: $!";
@@ -541,7 +541,7 @@ sub write_handler_pl {
   close(OUT);
 }
 
-sub write_handler_json
+sub write_handler_json {
   my $file = shift;
   my $ref  = shift;
   require JSON;
