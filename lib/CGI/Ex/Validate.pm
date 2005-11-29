@@ -54,14 +54,6 @@ sub cgix {
   };
 }
 
-sub conf {
-  my $self = shift;
-  return $self->{conf_obj} ||= CGI::Ex::Conf->new({
-    default_ext => $DEFAULT_EXT,
-    directive   => 'LAST',
-  });
-}
-
 ### the main validation routine
 sub validate {
   my $self = (! ref($_[0])) ? shift->new                    # $class->validate
@@ -731,7 +723,7 @@ sub check_type {
 sub get_validation {
   my $self = shift;
   my $val  = shift;
-  return $self->conf->read($val, {html_key => 'validation'});
+  return CGI::Ex::Conf::conf_read($val, {html_key => 'validation', default_ext => $DEFAULT_EXT});
 }
 
 ### returns all keys from all groups - even if group has validate_if
@@ -1095,7 +1087,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.81 2005-10-07 09:36:58 pauls Exp $
+$Id: Validate.pm,v 1.82 2005-11-29 23:02:16 pauls Exp $
 
 =head1 SYNOPSIS
 
@@ -1304,10 +1296,6 @@ the browser (caching is suggested as they are medium sized files).
 =item C<-E<gt>cgix>
 
 Returns a CGI::Ex object.  Used internally.
-
-=item C<-E<gt>conf>
-
-Returns a CGI::Ex::Conf object.  Used internally.
 
 =back
 
