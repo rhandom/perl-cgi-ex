@@ -10,6 +10,8 @@ package CGI::Ex::Conf;
 ### See perldoc at bottom
 
 use strict;
+use base qw(Exporter);
+use Carp qw(croak);
 use vars qw($VERSION
             @DEFAULT_PATHS
             $DEFAULT_EXT
@@ -20,17 +22,18 @@ use vars qw($VERSION
             $IMMUTABLE_KEY
             %CACHE
             $HTML_KEY
-            $DEBUG_ON_FAIL
+            @EXPORT_OK
             );
-use CGI::Ex::Dump qw(debug dex_warn);
+@EXPORT_OK = qw(conf_read conf_write);
 
-$VERSION = '0.03';
+$VERSION = '0.04';
 
 $DEFAULT_EXT = 'conf';
 
 %EXT_READERS = (''         => \&read_handler_yaml,
                 'conf'     => \&read_handler_yaml,
                 'json'     => \&read_handler_json,
+                'val_json' => \&read_handler_json,
                 'ini'      => \&read_handler_ini,
                 'pl'       => \&read_handler_pl,
                 'sto'      => \&read_handler_storable,
@@ -47,6 +50,7 @@ $DEFAULT_EXT = 'conf';
                 'conf'     => \&write_handler_yaml,
                 'ini'      => \&write_handler_ini,
                 'json'     => \&write_handler_json,
+                'val_json' => \&write_handler_json,
                 'pl'       => \&write_handler_pl,
                 'sto'      => \&write_handler_storable,
                 'storable' => \&write_handler_storable,
@@ -73,9 +77,9 @@ $IMMUTABLE_KEY = 'immutable';
 
 sub new {
   my $class = shift || __PACKAGE__;
-  my $self  = (@_ && ref($_[0])) ? shift : {@_};
+  my $args  = shift || {};
 
-  return bless $self, $class;
+  return bless $args, $class;
 }
 
 sub paths {
@@ -84,6 +88,11 @@ sub paths {
 }
 
 ###----------------------------------------------------------------###
+
+sub conf_read {
+    my ($file, $args) = @_;
+    return __PACKAGE__->new($args)->read_ref($file);
+}
 
 sub read_ref {
   my $self = shift;
@@ -95,17 +104,21 @@ sub read_ref {
   if (ref $file) {
     if (UNIVERSAL::isa($file, 'SCALAR')) {
       if ($$file =~ /^\s*</) {
-        return &html_parse_yaml_load($$file, $self, $args); # allow for ref to a YAML string
+        return html_parse_yaml_load($$file, $self, $args); # allow for ref to a YAML string
       } else {
-        return &yaml_load($$file); # allow for ref to a YAML string
+        return yaml_load($$file); # allow for ref to a YAML string
       }
     } else {
       return $file;
     }
 
+  ### allow for a pre-cached reference
+  } elsif (exists $CACHE{$file} && ! $self->{no_cache}) {
+    return $CACHE{$file};
+
   ### if contains a newline - treat it as a YAML string
   } elsif (index($file,"\n") != -1) {
-    return &yaml_load($file);
+    return yaml_load($file);
 
   ### otherwise base it off of the file extension
   } elsif ($args->{file_type}) {
@@ -119,27 +132,11 @@ sub read_ref {
     $file = length($ext) ? "$file.$ext" : $file;
   }
 
-  ### allow for a pre-cached reference
-  if (exists $CACHE{$file} && ! $self->{no_cache}) {
-    return $CACHE{$file};
-  }
-
   ### determine the handler
-  my $handler;
-  if ($args->{handler}) {
-    $handler = (UNIVERSAL::isa($args->{handler},'CODE'))
-      ? $args->{handler} : $args->{handler}->{$ext};
-  } elsif ($self->{handler}) {
-    $handler = (UNIVERSAL::isa($self->{handler},'CODE'))
-      ? $self->{handler} : $self->{handler}->{$ext};
-  }
-  if (! $handler) {
-    $handler = $EXT_READERS{$ext} || die "Unknown file extension: $ext";
-  }
+  my $handler = $EXT_READERS{$ext} || croak "Unknown file extension: $ext";
 
-  return eval { scalar &$handler($file, $self, $args) } || do {
-    debug    "Couldn't read $file: $@" if $DEBUG_ON_FAIL;
-    dex_warn "Couldn't read $file: $@" if ! $self->{no_warn_on_fail};
+  return eval { scalar $handler->($file, $self, $args) } || do {
+    warn "Couldn't read $file: $@ " if ! $self->{no_warn_on_fail};
     return undef;
   };
 }
@@ -171,7 +168,7 @@ sub read {
     $directive = uc($args->{directive} || $self->{directive} || $DIRECTIVE);
     $namespace =~ s|::|/|g;  # allow perlish style namespace
     my $paths = $args->{paths} || $self->paths
-      || die "No paths found during read on $namespace";
+      || croak "No paths found during read on $namespace";
     $paths = [$paths] if ! ref $paths;
     if ($directive eq 'LAST') { # LAST shall be FIRST
       $directive = 'FIRST';
@@ -185,9 +182,9 @@ sub read {
 
   ### make sure we have at least one path
   if ($#paths == -1) {
-    die "Couldn't find a path for namespace $namespace.  Perhaps you need to pass paths => \@paths";
+    croak "Couldn't find a path for namespace $namespace.  Perhaps you need to pass paths => \@paths";
   }
-  
+
   ### now loop looking for a ref
   foreach my $path (@paths) {
     my $ref = $self->read_ref($path, $args) || next;
@@ -197,10 +194,10 @@ sub read {
       } elsif (UNIVERSAL::isa($ref, 'HASH')) {
         $REF = {};
       } else {
-        die "Unknown config type of \"".ref($ref)."\" for namespace $namespace";
+        croak "Unknown config type of \"".ref($ref)."\" for namespace $namespace";
       }
     } elsif (! UNIVERSAL::isa($ref, ref($REF))) {
-      die "Found different reference types for namespace $namespace"
+      croak "Found different reference types for namespace $namespace"
         . " - wanted a type ".ref($REF);
     }
     if (ref($REF) eq 'ARRAY') {
@@ -240,7 +237,7 @@ sub read {
 sub read_handler_ini {
   my $file = shift;
   require Config::IniHash;
-  return &Config::IniHash::ReadINI($file);
+  return Config::IniHash::ReadINI($file);
 }
 
 sub read_handler_pl {
@@ -263,7 +260,7 @@ sub read_handler_json {
 sub read_handler_storable {
   my $file = shift;
   require Storable;
-  return &Storable::retrieve($file);
+  return Storable::retrieve($file);
 }
 
 sub read_handler_yaml {
@@ -272,13 +269,13 @@ sub read_handler_yaml {
   open (IN, $file) || die "Couldn't open $file: $!";
   CORE::read(IN, my $text, -s $file);
   close IN;
-  return &yaml_load($text);
+  return yaml_load($text);
 }
 
 sub yaml_load {
   my $text = shift;
   require YAML;
-  my @ret = eval { &YAML::Load($text) };
+  my @ret = eval { YAML::Load($text) };
   if ($@) {
     die "$@";
   }
@@ -300,7 +297,7 @@ sub read_handler_html {
   my $file = shift;
   my $self = shift;
   my $args = shift;
-  if (! eval {require YAML}) {
+  if (! eval { require YAML }) {
     my $err   = $@;
     my $found = 0;
     my $i     = 0;
@@ -316,7 +313,7 @@ sub read_handler_html {
   CORE::read(IN, my $html, -s $file);
   close IN;
 
-  return &html_parse_yaml_load($html, $self, $args);
+  return html_parse_yaml_load($html, $self, $args);
 }
 
 sub html_parse_yaml_load {
@@ -364,7 +361,7 @@ sub html_parse_yaml_load {
     if $str && $#order != -1 && $key eq 'validation';
 
   return undef if ! $str;
-  my $ref = eval {&yaml_load($str)};
+  my $ref = eval { yaml_load($str) };
   if ($@) {
     my $err = "$@";
     if ($err =~ /line:\s+(\d+)/) {
@@ -375,7 +372,6 @@ sub html_parse_yaml_load {
         last;
       }
     }
-    debug $err;
     die $err;
   }
   return $ref;
@@ -383,13 +379,71 @@ sub html_parse_yaml_load {
 
 ###----------------------------------------------------------------###
 
+sub conf_write {
+    my $file = shift;
+    my $conf = shift;
+    return __PACKAGE__->new(@_)->write_ref($file, $conf);
+}
+
+sub write_ref {
+  my $self = shift;
+  my $file = shift;
+  my $conf = shift || croak "Missing conf";
+  my $args = shift || {};
+  my $ext;
+
+  if (ref $file) {
+    croak "Invalid filename for write: $file";
+
+  } elsif (index($file,"\n") != -1) {
+    croak "Cannot use a yaml string as a filename during write";
+
+  ### allow for a pre-cached reference
+  } elsif (exists $CACHE{$file} && ! $self->{no_cache}) {
+    warn "Cannot write back to a file that is in the cache";
+    return 0;
+
+  ### otherwise base it off of the file extension
+  } elsif ($args->{file_type}) {
+    $ext = $args->{file_type};
+  } elsif ($file =~ /\.(\w+)$/) {
+    $ext = $1;
+  } else {
+    $ext = defined($args->{default_ext}) ? $args->{default_ext}
+      : defined($self->{default_ext}) ? $self->{default_ext}
+      : defined($DEFAULT_EXT) ? $DEFAULT_EXT : '';
+    $file = length($ext) ? "$file.$ext" : $file;
+
+  }
+
+  ### determine the handler
+  my $handler;
+  if ($args->{handler}) {
+    $handler = (UNIVERSAL::isa($args->{handler},'CODE'))
+      ? $args->{handler} : $args->{handler}->{$ext};
+  } elsif ($self->{handler}) {
+    $handler = (UNIVERSAL::isa($self->{handler},'CODE'))
+      ? $self->{handler} : $self->{handler}->{$ext};
+  }
+  if (! $handler) {
+    $handler = $EXT_WRITERS{$ext} || croak "Unknown file extension: $ext";
+  }
+
+  return eval { scalar $handler->($file, $conf, $args) } || do {
+    warn "Couldn't write $file: $@ " if ! $self->{no_warn_on_fail};
+    return 0;
+  };
+
+  return 1;
+}
+
 ### Allow for writing out conf values
 ### Allow for writing out the correct filename (if there is a path array)
 ### Allow for not writing out immutable values on hashes
 sub write {
   my $self      = shift;
   my $namespace = shift;
-  my $conf      = shift || die "Must pass hashref to write out"; # the info to write
+  my $conf      = shift || croak "Must pass hashref to write out"; # the info to write
   my $args      = shift || {};
   my $IMMUTABLE = $args->{immutable} || {}; # can pass existing immutable types
 
@@ -405,14 +459,14 @@ sub write {
     $directive = 'FIRST';
 
   } elsif (index($namespace,"\n") != -1) { # yaml string - can't write that
-    die "Cannot use a yaml string as a namespace for write";
+    croak "Cannot use a yaml string as a namespace for write";
 
   ### use the default directories
   } else {
     $directive = uc($args->{directive} || $self->{directive} || $DIRECTIVE);
     $namespace =~ s|::|/|g;  # allow perlish style namespace
     my $paths = $args->{paths} || $self->paths
-      || die "No paths found during write on $namespace";
+      || croak "No paths found during write on $namespace";
     $paths = [$paths] if ! ref $paths;
     if ($directive eq 'LAST') { # LAST shall be FIRST
       $directive = 'FIRST';
@@ -426,7 +480,7 @@ sub write {
 
   ### make sure we have at least one path
   if ($#paths == -1) {
-    die "Couldn't find a path for namespace $namespace.  Perhaps you need to pass paths => \@paths";
+    croak "Couldn't find a path for namespace $namespace.  Perhaps you need to pass paths => \@paths";
   }
 
   my $path;
@@ -435,7 +489,7 @@ sub write {
   } elsif ($directive eq 'LAST' || $directive eq 'MERGE') {
     $path = $paths[-1];
   } else {
-    die "Unknown directive ($directive) during write of $namespace";
+    croak "Unknown directive ($directive) during write of $namespace";
   }
 
   ### remove immutable items (if any)
@@ -453,66 +507,13 @@ sub write {
   return 1;
 }
 
-sub write_ref {
-  my $self = shift;
-  my $file = shift;
-  my $conf = shift || die "Missing conf";
-  my $args = shift || {};
-  my $ext;
-
-  if (ref $file) {
-    die "Invalid filename for write: $file";
-
-  } elsif (index($file,"\n") != -1) {
-    die "Cannot use a yaml string as a filename during write";
-
-  ### otherwise base it off of the file extension
-  } elsif ($args->{file_type}) {
-    $ext = $args->{file_type};
-  } elsif ($file =~ /\.(\w+)$/) {
-    $ext = $1;
-  } else {
-    $ext = defined($args->{default_ext}) ? $args->{default_ext}
-      : defined($self->{default_ext}) ? $self->{default_ext}
-      : defined($DEFAULT_EXT) ? $DEFAULT_EXT : '';
-    $file = length($ext) ? "$file.$ext" : $file;
-  }
-
-  ### allow for a pre-cached reference
-  if (exists $CACHE{$file} && ! $self->{no_cache}) {
-    warn "Cannot write back to a file that is in the cache";
-    return 0;
-  }
-
-  ### determine the handler
-  my $handler;
-  if ($args->{handler}) {
-    $handler = (UNIVERSAL::isa($args->{handler},'CODE'))
-      ? $args->{handler} : $args->{handler}->{$ext};
-  } elsif ($self->{handler}) {
-    $handler = (UNIVERSAL::isa($self->{handler},'CODE'))
-      ? $self->{handler} : $self->{handler}->{$ext};
-  }
-  if (! $handler) {
-    $handler = $EXT_WRITERS{$ext} || die "Unknown file extension: $ext";
-  }
-
-  return eval { scalar &$handler($file, $conf, $args) } || do {
-    debug    "Couldn't write $file: $@" if $DEBUG_ON_FAIL;
-    dex_warn "Couldn't write $file: $@" if ! $self->{no_warn_on_fail};
-    return 0;
-  };
-
-  return 1;
-}
-
 ###----------------------------------------------------------------###
 
 sub write_handler_ini {
   my $file = shift;
   my $ref  = shift;
   require Config::IniHash;
-  return &Config::IniHash::WriteINI($file, $ref);
+  return Config::IniHash::WriteINI($file, $ref);
 }
 
 sub write_handler_pl {
@@ -538,7 +539,7 @@ sub write_handler_pl {
   local *OUT;
   open (OUT, ">$file") || die $!;
   print OUT $str;
-  close(OUT);
+  close OUT;
 }
 
 sub write_handler_json {
@@ -556,14 +557,14 @@ sub write_handler_storable {
   my $file = shift;
   my $ref  = shift;
   require Storable;
-  return &Storable::store($ref, $file);
+  return Storable::store($ref, $file);
 }
 
 sub write_handler_yaml {
   my $file = shift;
   my $ref  = shift;
   require YAML;
-  &YAML::DumpFile($file, $ref);
+  return YAML::DumpFile($file, $ref);
 }
 
 sub write_handler_xml {
@@ -602,7 +603,7 @@ sub preload_files {
     }
   }
   return if ! keys %EXT;
-  
+
   ### look in the paths for the files
   foreach my $path (ref($paths) ? @$paths : $paths) {
     $path =~ s|//+|/|g;
@@ -614,7 +615,7 @@ sub preload_files {
       $CACHE{$path} = $self->read($path);
     } elsif (-d _) {
       $CACHE{$path} = 1;
-      &File::Find::find(sub {
+      File::Find::find(sub {
         return if exists $CACHE{$File::Find::name};
         return if $File::Find::name =~ m|/CVS/|;
         return if ! -f;
