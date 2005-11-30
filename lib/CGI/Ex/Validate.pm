@@ -273,7 +273,7 @@ sub validate_buddy {
     die "The e option cannot be used on validation keys on field $field" if $opt =~ /e/;
     foreach my $_field (sort keys %$form) {
       next if ($not && $_field =~ m/(?$opt:$pat)/) || (! $not && $_field !~ m/(?$opt:$pat)/);
-      my @match = (undef,$1,$2,$3,$4,$5); # limit to the matches
+      my @match = (undef, $1, $2, $3, $4, $5); # limit to the matches
       push @errors, $self->validate_buddy($form, $_field, $field_val, $N_level, \@match);
     }
     return wantarray ? @errors : $#errors + 1;
@@ -286,8 +286,8 @@ sub validate_buddy {
     }
   }
 
-  my $n_values = UNIVERSAL::isa($form->{$field},'ARRAY') ? $#{ $form->{$field} } + 1 : 1;
-  my $values = ($n_values > 1) ? $form->{$field} : [$form->{$field}];
+  my $values   = UNIVERSAL::isa($form->{$field},'ARRAY') ? $form->{$field} : [$form->{$field}];
+  my $n_values = $#$values + 1;
 
   ### allow for a few form modifiers
   my $modified = 0;
@@ -312,16 +312,16 @@ sub validate_buddy {
       : [split(/\s*\|\|\s*/,$field_val->{$type})];
     foreach my $rx (@$ref) {
       if ($rx !~ m/^\s*s([^\s\w])(.+)\1(.*)\1([eigsmx]*)$/s) {
-        die "Not sure how to parse that match ($rx)";
+        die "Not sure how to parse that replace ($rx)";
       }
-      my ($pat,$swap,$opt) = ($2,$3,$4);
+      my ($pat, $swap, $opt) = ($2, $3, $4);
       die "The e option cannot be used in swap on field $field" if $opt =~ /e/;
       my $global = $opt =~ s/g//g;
       $swap =~ s/\\n/\n/g;
       if ($global) {
         foreach my $value (@$values) {
           $value =~ s{(?$opt:$pat)}{
-            my @match = (undef,$1,$2,$3,$4,$5,$6); # limit on the number of matches
+            my @match = (undef, $1, $2, $3, $4, $5, $6); # limit on the number of matches
             my $copy = $swap;
             $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
             $modified = 1;
@@ -331,7 +331,7 @@ sub validate_buddy {
       }else{
         foreach my $value (@$values) {
           $value =~ s{(?$opt:$pat)}{
-            my @match = (undef,$1,$2,$3,$4,$5,$6); # limit on the number of matches
+            my @match = (undef, $1, $2, $3, $4, $5, $6); # limit on the number of matches
             my $copy = $swap;
             $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
             $modified = 1;
@@ -1075,7 +1075,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.83 2005-11-30 21:02:36 pauls Exp $
+$Id: Validate.pm,v 1.84 2005-11-30 21:53:33 pauls Exp $
 
 =head1 SYNOPSIS
 
