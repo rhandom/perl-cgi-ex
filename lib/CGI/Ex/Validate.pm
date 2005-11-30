@@ -77,10 +77,10 @@ sub validate {
 
   ### allow for validation passed as single group hash, single group array,
   ### or array of group hashes or group arrays
-  my @ERRORS = ();
-  my %EXTRA  = ();
+  my @ERRORS      = ();
+  my %EXTRA       = ();
   my @USED_GROUPS = ();
-  my $group_order = (UNIVERSAL::isa($val_hash,'HASH')) ? [$val_hash] : $val_hash;
+  my $group_order = UNIVERSAL::isa($val_hash,'HASH') ? [$val_hash] : $val_hash;
   foreach my $group_val (@$group_order) {
     die "Validation groups must be a hashref" if ! UNIVERSAL::isa($group_val,'HASH');
     my $title       = $group_val->{'group title'};
@@ -94,20 +94,21 @@ sub validate {
     ### Look for a group order and then fail back to the keys of the group.
     ### We will keep track of what was added using %found - the keys will
     ###   be the hash signatures of the field_val hashes (ignore the hash internals).
-    my @order  = sort keys %$group_val;
+    my @field_keys;
+    my @group_keys;
+    foreach (sort keys %$group_val) {
+        /^(group|general)\s+(\w+)/ ? push(@group_keys, [$1, $2, $_]) : push(@field_keys, $_);
+    }
     my $fields = $group_val->{'group fields'};
-    my %found = (); # attempt to keep track of what field_vals have been added
     if ($fields) { # if I passed group fields array - use it
       die "'group fields' must be an arrayref" if ! UNIVERSAL::isa($fields,'ARRAY');
     } else { # other wise - create our own array
       my @fields = ();
-      if (my $order = $group_val->{'group order'} || \@order) {
+      if (my $order = $group_val->{'group order'} || \@field_keys) {
         die "Validation 'group order' must be an arrayref" if ! UNIVERSAL::isa($order,'ARRAY');
         foreach my $field (@$order) {
-          next if $field =~ /^(group|general)\s/;
           my $field_val = exists($group_val->{$field}) ? $group_val->{$field}
             : ($field eq 'OR') ? 'OR' : die "No element found in group for $field";
-          $found{"$field_val"} = 1; # do this before modifying on the next line
           if (ref $field_val && ! $field_val->{'field'}) {
             $field_val = { %$field_val, 'field' => $field }; # copy the values to add the key
           }
@@ -118,19 +119,13 @@ sub validate {
     }
 
     ### double check which field_vals have been used so far
-    foreach my $field_val (@$fields) {
-      my $field = $field_val->{'field'} || die "Missing field key in validation";
-      $found{"$field_val"} = 1;
-    }
-
     ### add any remaining field_vals from the order
     ### this is necessary for items that weren't in group fields or group order
-    foreach my $field (@order) {
-      next if $field =~ /^(group|general)\s/;
+    my %found = map {$_->{'field'} => 1} @$fields;
+    foreach my $field (@field_keys) {
+      next if $found{$field};
       my $field_val = $group_val->{$field};
       die "Found a nonhashref value on field $field" if ! UNIVERSAL::isa($field_val, 'HASH');
-      next if $found{"$field_val"}; # do before modifying ref on next line
-      $field_val = { %$field_val, 'field' => $field } if ! $field_val->{'field'}; # copy the values
       push @$fields, $field_val;
     }
 
@@ -175,19 +170,15 @@ sub validate {
     }
 
     ### add on general options, and group options if errors in group occurred
-    foreach my $field (@order) {
-      next if $field !~ /^(general|group)\s+(\w+)$/;
-      my $key = $2;
-      next if $1 eq 'group' && ($#errors == -1 || $key =~ /^(field|order|title)$/);
-      $EXTRA{$key} = $group_val->{$field};
+    foreach (@group_keys) {
+      my ($type, $short_key, $full_key) = @$_;
+      next if $type eq 'group' && ($#errors == -1 || $short_key =~ /^(field|order|title)$/);
+      $EXTRA{$short_key} = $group_val->{$full_key};
     }
   }
 
   ### store any extra items from self
-  foreach my $key (keys %$self) {
-    next if $key !~ $QR_EXTRA;
-    $EXTRA{$key} = $self->{$key};
-  }
+  $EXTRA{$_} = $self->{$_} for grep {/$QR_EXTRA/o} keys %$self;
 
   ### allow for checking for unused keys
   if ($EXTRA{no_extra_fields}) {
@@ -806,10 +797,7 @@ sub generate_js {
 
   ### store any extra items from self
   my %EXTRA = ();
-  foreach my $key (keys %$self) {
-    next if $key !~ $QR_EXTRA;
-    $EXTRA{"general $key"} = $self->{$key};
-  }
+  $EXTRA{"general $_"} = $self->{$_} for grep {/$QR_EXTRA/o} keys %$self; # add 'general' to be used in javascript
 
   my $str = &YAML::Dump((scalar keys %EXTRA) ? (\%EXTRA) : () , $val_hash);
   $str =~ s/(?<!\\)\\(?=[sSdDwWbB0-9?.*+|\-\^\${}()\[\]])/\\\\/g;
@@ -1087,7 +1075,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.82 2005-11-29 23:02:16 pauls Exp $
+$Id: Validate.pm,v 1.83 2005-11-30 21:02:36 pauls Exp $
 
 =head1 SYNOPSIS
 
