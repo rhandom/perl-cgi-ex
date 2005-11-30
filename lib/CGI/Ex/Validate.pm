@@ -380,8 +380,8 @@ sub validate_buddy {
     }
   }
   if ($is_required && (! defined($form->{$field})
-                       || ((UNIVERSAL::isa($form->{$field},'ARRAY') && $#{ $form->{$field} } == -1)
-                           || ! length($form->{$field})))) {
+                       || $n_values == 0
+                       || ($n_values == 1 && ! length $values->[0]))) {
     return 1 if ! wantarray;
     push @errors, [$field, $is_required, $field_val, $ifs_match];
     return @errors;
@@ -1068,7 +1068,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.85 2005-11-30 22:23:46 pauls Exp $
+$Id: Validate.pm,v 1.86 2005-11-30 23:14:58 pauls Exp $
 
 =head1 SYNOPSIS
 
