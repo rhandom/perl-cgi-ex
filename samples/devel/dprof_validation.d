@@ -13,15 +13,14 @@ my $val_hash_ce = {
     username => {
         required => 1,
         match    => 'm/^\w+$/',
-#        match_error => '$name may only contain letters and numbers',
+        match_error => '$name may only contain letters and numbers',
 #        untaint  => 1,
     },
     password => {
         required => 1,
-        password => 'm/^[ -~]{6,30}$/',
-#        min_len  => 6,
-#        max_len  => 30,
-#        match    => 'm/^[ -~]+$/',
+        min_len  => 6,
+        max_len  => 30,
+        match    => 'm/^[ -~]+$/',
 #        untaint  => 1,
     },
     password2 => {
@@ -37,6 +36,6 @@ my $val_hash_ce = {
 
 
 for (1 .. 10_000) {
-    my $err_obj = CGI::Ex::Validate->validate($form, $val_hash_ce);
-#    my $err_obj = CGI::Ex::Validate->validate($form, $val_hash_ce)->as_hash;
+#    my $err_obj = CGI::Ex::Validate->validate($form, $val_hash_ce);
+    my $err_obj = CGI::Ex::Validate->validate($form, $val_hash_ce)->as_hash;
 }
