@@ -279,15 +279,15 @@ sub validate_buddy {
     return wantarray ? @errors : $#errors + 1;
   }
 
-  ### allow for default value
-  if (exists $field_val->{'default'}) {
-    if (! defined($form->{$field}) || (! ref($form->{$field}) && ! length($form->{$field}))) {
-      $form->{$field} = $field_val->{'default'};
-    }
-  }
-
   my $values   = UNIVERSAL::isa($form->{$field},'ARRAY') ? $form->{$field} : [$form->{$field}];
   my $n_values = $#$values + 1;
+
+  ### allow for default value
+  if (exists $field_val->{'default'}) {
+    if ($n_values == 0 || ($n_values == 1 && (! defined($values->[0]) || ! length($values->[0])))) {
+      $form->{$field} = $values->[0] = $field_val->{'default'};
+    }
+  }
 
   ### allow for a few form modifiers
   my $modified = 0;
@@ -379,9 +379,8 @@ sub validate_buddy {
       last;
     }
   }
-  if ($is_required && (! defined($form->{$field})
-                       || $n_values == 0
-                       || ($n_values == 1 && ! length $values->[0]))) {
+  if ($is_required
+      && ($n_values == 0 || ($n_values == 1 && (! defined($values->[0]) || ! length $values->[0])))) {
     return 1 if ! wantarray;
     push @errors, [$field, $is_required, $field_val, $ifs_match];
     return @errors;
@@ -1068,7 +1067,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.86 2005-11-30 23:14:58 pauls Exp $
+$Id: Validate.pm,v 1.87 2005-11-30 23:23:00 pauls Exp $
 
 =head1 SYNOPSIS
 
