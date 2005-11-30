@@ -90,12 +90,6 @@ sub paths {
 ###----------------------------------------------------------------###
 
 sub conf_read {
-    my ($file, $args) = @_;
-    return __PACKAGE__->new($args)->read_ref($file);
-}
-
-sub read_ref {
-  my $self = shift;
   my $file = shift;
   my $args = shift || {};
   my $ext;
@@ -104,7 +98,7 @@ sub read_ref {
   if (ref $file) {
     if (UNIVERSAL::isa($file, 'SCALAR')) {
       if ($$file =~ /^\s*</) {
-        return html_parse_yaml_load($$file, $self, $args); # allow for ref to a YAML string
+        return html_parse_yaml_load($$file, $args); # allow for ref to a YAML string
       } else {
         return yaml_load($$file); # allow for ref to a YAML string
       }
@@ -113,7 +107,7 @@ sub read_ref {
     }
 
   ### allow for a pre-cached reference
-  } elsif (exists $CACHE{$file} && ! $self->{no_cache}) {
+  } elsif (exists $CACHE{$file} && ! $args->{no_cache}) {
     return $CACHE{$file};
 
   ### if contains a newline - treat it as a YAML string
@@ -127,18 +121,25 @@ sub read_ref {
     $ext = $1;
   } else {
     $ext = defined($args->{default_ext}) ? $args->{default_ext}
-      : defined($self->{default_ext}) ? $self->{default_ext}
-      : defined($DEFAULT_EXT) ? $DEFAULT_EXT : '';
+         : defined($DEFAULT_EXT)         ? $DEFAULT_EXT
+         : '';
     $file = length($ext) ? "$file.$ext" : $file;
   }
 
   ### determine the handler
   my $handler = $EXT_READERS{$ext} || croak "Unknown file extension: $ext";
 
-  return eval { scalar $handler->($file, $self, $args) } || do {
-    warn "Couldn't read $file: $@ " if ! $self->{no_warn_on_fail};
+  return eval { scalar $handler->($file, $args) } || do {
+    warn "Couldn't read $file: $@ " if ! $args->{no_warn_on_fail};
     return undef;
   };
+}
+
+sub read_ref {
+  my $self = shift;
+  my $file = shift;
+  my $args = shift || {};
+  return conf_read($file, {%$self, %$args});
 }
 
 ### allow for different kinds of merging of arguments
@@ -295,7 +296,6 @@ sub read_handler_xml {
 ### is specified
 sub read_handler_html {
   my $file = shift;
-  my $self = shift;
   my $args = shift;
   if (! eval { require YAML }) {
     my $err   = $@;
@@ -313,14 +313,13 @@ sub read_handler_html {
   CORE::read(IN, my $html, -s $file);
   close IN;
 
-  return html_parse_yaml_load($html, $self, $args);
+  return html_parse_yaml_load($html, $args);
 }
 
 sub html_parse_yaml_load {
   my $html = shift;
-  my $self = shift || {};
   my $args = shift || {};
-  my $key = $args->{html_key} || $self->{html_key} || $HTML_KEY;
+  my $key  = $args->{html_key} || $HTML_KEY;
   return undef if ! $key || $key !~ /^\w+$/;
 
   my $str = '';
@@ -380,13 +379,6 @@ sub html_parse_yaml_load {
 ###----------------------------------------------------------------###
 
 sub conf_write {
-    my $file = shift;
-    my $conf = shift;
-    return __PACKAGE__->new(@_)->write_ref($file, $conf);
-}
-
-sub write_ref {
-  my $self = shift;
   my $file = shift;
   my $conf = shift || croak "Missing conf";
   my $args = shift || {};
@@ -399,7 +391,7 @@ sub write_ref {
     croak "Cannot use a yaml string as a filename during write";
 
   ### allow for a pre-cached reference
-  } elsif (exists $CACHE{$file} && ! $self->{no_cache}) {
+  } elsif (exists $CACHE{$file} && ! $args->{no_cache}) {
     warn "Cannot write back to a file that is in the cache";
     return 0;
 
@@ -410,10 +402,9 @@ sub write_ref {
     $ext = $1;
   } else {
     $ext = defined($args->{default_ext}) ? $args->{default_ext}
-      : defined($self->{default_ext}) ? $self->{default_ext}
-      : defined($DEFAULT_EXT) ? $DEFAULT_EXT : '';
+         : defined($DEFAULT_EXT)         ? $DEFAULT_EXT
+         : '';
     $file = length($ext) ? "$file.$ext" : $file;
-
   }
 
   ### determine the handler
@@ -421,20 +412,25 @@ sub write_ref {
   if ($args->{handler}) {
     $handler = (UNIVERSAL::isa($args->{handler},'CODE'))
       ? $args->{handler} : $args->{handler}->{$ext};
-  } elsif ($self->{handler}) {
-    $handler = (UNIVERSAL::isa($self->{handler},'CODE'))
-      ? $self->{handler} : $self->{handler}->{$ext};
   }
   if (! $handler) {
     $handler = $EXT_WRITERS{$ext} || croak "Unknown file extension: $ext";
   }
 
   return eval { scalar $handler->($file, $conf, $args) } || do {
-    warn "Couldn't write $file: $@ " if ! $self->{no_warn_on_fail};
+    warn "Couldn't write $file: $@ " if ! $args->{no_warn_on_fail};
     return 0;
   };
 
   return 1;
+}
+
+sub write_ref {
+  my $self = shift;
+  my $file = shift;
+  my $conf = shift;
+  my $args = shift || {};
+  conf_write($file, $conf, {%$self, %$args});
 }
 
 ### Allow for writing out conf values
