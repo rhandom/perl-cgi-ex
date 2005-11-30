@@ -1,30 +1,15 @@
 # -*- Mode: Perl; -*-
 
+use Test::More tests => 21;
 use strict;
 
 $^W = 1;
 
-### determine number of tests
-seek(DATA,0,0);
-my $prog  = join "", <DATA>;
-my @tests = ($prog =~ /&print_ok\(/g);
-my $tests = @tests;
-print "1..$tests\n";
+use_ok('CGI::Ex::Validate');
 
-require CGI::Ex::Validate;
+my ($v, $e);
 
-my ($N, $v, $e, $ok) = (0);
-
-sub validate {
-  return scalar &CGI::Ex::Validate::validate(@_);
-}
-sub print_ok {
-  my $ok = shift;
-  $N ++;
-  warn "Test failed at line ".(caller)[2]."\n" if ! $ok;
-  print "" . ($ok ? "" : "not ") . "ok $N\n";
-}
-&print_ok(1);
+sub validate { CGI::Ex::Validate::validate(@_) }
 
 ###----------------------------------------------------------------###
 
@@ -36,17 +21,17 @@ $v = [
 },
 ];
 
-$e = &validate({}, $v);
-&print_ok(! $e);
+$e = validate({}, $v);
+ok(! $e);
 
-$e = &validate({foo => "foo"}, $v);
-&print_ok(! $e);
+$e = validate({foo => "foo"}, $v);
+ok(! $e);
 
-$e = &validate({foo => "foo", bar => "bar"}, $v);
-&print_ok($e);
+$e = validate({foo => "foo", bar => "bar"}, $v);
+ok($e);
 
-$e = &validate({bar => "bar"}, $v);
-&print_ok($e);
+$e = validate({bar => "bar"}, $v);
+ok($e);
 
 
 ### test on failed validate if
@@ -58,17 +43,17 @@ $v = [
 },
 ];
 
-$e = &validate({}, $v);
-&print_ok(! $e);
+$e = validate({}, $v);
+ok(! $e);
 
-$e = &validate({foo => "foo"}, $v);
-&print_ok(! $e);
+$e = validate({foo => "foo"}, $v);
+ok(! $e);
 
-$e = &validate({foo => "foo", bar => "bar"}, $v);
-&print_ok(! $e);
+$e = validate({foo => "foo", bar => "bar"}, $v);
+ok(! $e);
 
-$e = &validate({bar => "bar"}, $v);
-&print_ok(! $e);
+$e = validate({bar => "bar"}, $v);
+ok(! $e);
 
 ### test on successful validate if
 $v = [
@@ -80,17 +65,17 @@ $v = [
 },
 ];
 
-$e = &validate({baz => 1}, $v);
-&print_ok(! $e);
+$e = validate({baz => 1}, $v);
+ok(! $e);
 
-$e = &validate({baz => 1, foo => "foo"}, $v);
-&print_ok(! $e);
+$e = validate({baz => 1, foo => "foo"}, $v);
+ok(! $e);
 
-$e = &validate({baz => 1, foo => "foo", bar => "bar"}, $v);
-&print_ok($e);
+$e = validate({baz => 1, foo => "foo", bar => "bar"}, $v);
+ok($e);
 
-$e = &validate({baz => 1, bar => "bar"}, $v);
-&print_ok($e);
+$e = validate({baz => 1, bar => "bar"}, $v);
+ok($e);
 
 ### test on multiple groups, some with validate if
 $v = [
@@ -106,17 +91,17 @@ $v = [
 },
 ];
 
-$e = &validate({haw => 1, baz => 1}, $v);
-&print_ok(! $e);
+$e = validate({haw => 1, baz => 1}, $v);
+ok(! $e);
 
-$e = &validate({haw => 1, baz => 1, foo => "foo"}, $v);
-&print_ok(! $e);
+$e = validate({haw => 1, baz => 1, foo => "foo"}, $v);
+ok(! $e);
 
-$e = &validate({haw => 1, baz => 1, foo => "foo", bar => "bar"}, $v);
-&print_ok($e);
+$e = validate({haw => 1, baz => 1, foo => "foo", bar => "bar"}, $v);
+ok($e);
 
-$e = &validate({haw => 1, baz => 1, bar => "bar"}, $v);
-&print_ok($e);
+$e = validate({haw => 1, baz => 1, bar => "bar"}, $v);
+ok($e);
 
 
 ### test on multiple groups, some with validate if
@@ -133,16 +118,14 @@ $v = [
 },
 ];
 
-$e = &validate({haw => 1, baz => 1}, $v);
-&print_ok($e);
+$e = validate({haw => 1, baz => 1}, $v);
+ok($e);
 
-$e = &validate({haw => 1, baz => 1, foo => "foo"}, $v);
-&print_ok($e);
+$e = validate({haw => 1, baz => 1, foo => "foo"}, $v);
+ok($e);
 
-$e = &validate({haw => 1, baz => 1, foo => "foo", bar => "bar"}, $v);
-&print_ok($e);
+$e = validate({haw => 1, baz => 1, foo => "foo", bar => "bar"}, $v);
+ok($e);
 
-$e = &validate({haw => 1, baz => 1, bar => "bar"}, $v);
-&print_ok($e);
-
-__DATA__
+$e = validate({haw => 1, baz => 1, bar => "bar"}, $v);
+ok($e);
