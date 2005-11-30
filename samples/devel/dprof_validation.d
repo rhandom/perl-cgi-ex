@@ -14,14 +14,14 @@ my $val_hash_ce = {
         required => 1,
         match    => 'm/^\w+$/',
         match_error => '$name may only contain letters and numbers',
-#        untaint  => 1,
+        untaint  => 1,
     },
     password => {
         required => 1,
         min_len  => 6,
         max_len  => 30,
         match    => 'm/^[ -~]+$/',
-#        untaint  => 1,
+        untaint  => 1,
     },
     password2 => {
         validate_if => 'password',
@@ -30,7 +30,7 @@ my $val_hash_ce = {
     email => {
         required => 1,
         match    => 'm/^[\w\.\-]+\@[\w\.\-]+$/',
-#        untaint  => 1,
+        untaint  => 1,
     },
 };
 
