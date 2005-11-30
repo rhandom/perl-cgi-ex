@@ -187,7 +187,7 @@ sub validate {
     my $keys  = $self->get_validation_keys($ref);
     foreach my $key (sort keys %$form) {
       next if $keys->{$key};
-      $self->add_error(\@ERRORS, $key, 'no_extra_fields', {}, undef);
+      push @ERRORS, [$key, 'no_extra_fields', {}, undef];
     }
   }
 
@@ -383,7 +383,7 @@ sub validate_buddy {
                        || ((UNIVERSAL::isa($form->{$field},'ARRAY') && $#{ $form->{$field} } == -1)
                            || ! length($form->{$field})))) {
     return 1 if ! wantarray;
-    $self->add_error(\@errors, $field, $is_required, $field_val, $ifs_match);
+    push @errors, [$field, $is_required, $field_val, $ifs_match];
     return @errors;
   }
 
@@ -391,7 +391,7 @@ sub validate_buddy {
   my $n = exists($field_val->{'min_values'}) ? $field_val->{'min_values'} || 0 : 0;
   if ($n_values < $n) {
     return 1 if ! wantarray;
-    $self->add_error(\@errors, $field, 'min_values', $field_val, $ifs_match);
+    push @errors, [$field, 'min_values', $field_val, $ifs_match];
     return @errors;
   }
 
@@ -400,7 +400,7 @@ sub validate_buddy {
   $n = $field_val->{'max_values'} || 0;
   if ($n_values > $n) {
     return 1 if ! wantarray;
-    $self->add_error(\@errors, $field, 'max_values', $field_val, $ifs_match);
+    push @errors, [$field, 'max_values', $field_val, $ifs_match];
     return @errors;
   }
 
@@ -423,7 +423,7 @@ sub validate_buddy {
       if (   ($minmax eq 'min' && $n > 0)
           || ($minmax eq 'max' && $n < 0)) {
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+        push @errors, [$field, $type, $field_val, $ifs_match];
         return @errors;
       }
     }
@@ -444,7 +444,7 @@ sub validate_buddy {
       }
       if (! $found) {
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, 'enum', $field_val, $ifs_match);
+        push @errors, [$field, 'enum', $field_val, $ifs_match];
       }
       $content_checked = 1;
     }
@@ -464,7 +464,7 @@ sub validate_buddy {
       }
       if ($not ? $success : ! $success) {
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+        push @errors, [$field, $type, $field_val, $ifs_match];
       }
       $content_checked = 1;
     }
@@ -474,7 +474,7 @@ sub validate_buddy {
       my $n = $field_val->{'min_len'};
       if (! defined($value) || length($value) < $n) {
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, 'min_len', $field_val, $ifs_match);
+        push @errors, [$field, 'min_len', $field_val, $ifs_match];
       }
     }
 
@@ -483,7 +483,7 @@ sub validate_buddy {
       my $n = $field_val->{'max_len'};
       if (defined($value) && length($value) > $n) {
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, 'max_len', $field_val, $ifs_match);
+        push @errors, [$field, 'max_len', $field_val, $ifs_match];
       }
     }
 
@@ -495,7 +495,7 @@ sub validate_buddy {
       foreach my $rx (@$ref) {
         if (UNIVERSAL::isa($rx,'Regexp')) {
           if (! defined($value) || $value !~ $rx) {
-            $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+              push @errors, [$field, $type, $field_val, $ifs_match];
           }
         } else {
           if ($rx !~ m/^(!\s*|)m([^\s\w])(.*)\2([eigsmx]*)$/s) {
@@ -508,7 +508,7 @@ sub validate_buddy {
                || (! $not && (! defined($value) || $value !~ m/(?$opt:$pat)/))
                ) {
             return 1 if ! wantarray;
-            $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+            push @errors, [$field, $type, $field_val, $ifs_match];
           }
         }
       }
@@ -548,7 +548,7 @@ sub validate_buddy {
         }
         if (! $test) {
           return 1 if ! wantarray;
-          $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+          push @errors, [$field, $type, $field_val, $ifs_match];
         }
       }
       $content_checked = 1;
@@ -570,7 +570,7 @@ sub validate_buddy {
       if ( (! $return && $field_val->{"${type}_error_if"})
            || ($return && ! $field_val->{"${type}_error_if"}) ) {
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+        push @errors, [$field, $type, $field_val, $ifs_match];
       }
       $content_checked = 1;
     }
@@ -580,7 +580,7 @@ sub validate_buddy {
       my $check = $field_val->{$type};
       next if UNIVERSAL::isa($check, 'CODE') ? &$check($field, $value, $field_val, $type) : $check;
       return 1 if ! wantarray;
-      $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+      push @errors, [$field, $type, $field_val, $ifs_match];
       $content_checked = 1;
     }
 
@@ -588,7 +588,7 @@ sub validate_buddy {
     foreach my $type (grep {/^type_?\d*$/} @$types) {
       if (! $self->check_type($value,$field_val->{'type'},$field,$form)){
         return 1 if ! wantarray;
-        $self->add_error(\@errors, $field, $type, $field_val, $ifs_match);
+        push @errors, [$field, $type, $field_val, $ifs_match];
       }
       $content_checked = 1;
     }
@@ -598,7 +598,7 @@ sub validate_buddy {
   ### this is only allowable if the user ran some other check for the datatype
   if ($field_val->{'untaint'} && $#errors == -1) {
     if (! $content_checked) {
-      $self->add_error(\@errors, $field, 'untaint', $field_val, $ifs_match);
+        push @errors, [$field, 'untaint', $field_val, $ifs_match];
     } else {
       ### generic untainter - assuming the other required content_checks did good validation
       $_ = /(.*)/ ? $1 : die "Couldn't match?" foreach @$values;
@@ -616,13 +616,6 @@ sub validate_buddy {
 
   ### all done - time to return
   return wantarray ? @errors : $#errors + 1;
-}
-
-### simple error adder abstraction
-sub add_error {
-  my $self = shift;
-  my $errors = shift;
-  push @$errors, \@_;
 }
 
 ###----------------------------------------------------------------###
@@ -1075,7 +1068,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.84 2005-11-30 21:53:33 pauls Exp $
+$Id: Validate.pm,v 1.85 2005-11-30 22:23:46 pauls Exp $
 
 =head1 SYNOPSIS
 
