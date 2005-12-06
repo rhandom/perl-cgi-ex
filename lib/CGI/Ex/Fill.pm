@@ -21,20 +21,24 @@ use vars qw($VERSION
             );
 use base qw(Exporter);
 
-$VERSION   = '1.3';
-@EXPORT    = qw(form_fill);
-@EXPORT_OK = qw(form_fill html_escape get_tagval_by_key swap_tagval_by_key);
+BEGIN {
+    $VERSION   = '1.3';
+    @EXPORT    = qw(form_fill);
+    @EXPORT_OK = qw(form_fill html_escape get_tagval_by_key swap_tagval_by_key);
+};
 
 ### These directives are used to determine whether or not to
 ### remove html comments and script sections while filling in
 ### a form.  Default is on.  This may give some trouble if you
 ### have a javascript section with form elements that you would
 ### like filled in.
-$REMOVE_SCRIPT  = 1;
-$REMOVE_COMMENT = 1;
-$MARKER_SCRIPT  = "\0SCRIPT\0";
-$MARKER_COMMENT = "\0COMMENT\0";
-$OBJECT_METHOD  = "param";
+BEGIN {
+    $REMOVE_SCRIPT  = 1;
+    $REMOVE_COMMENT = 1;
+    $MARKER_SCRIPT  = "\0SCRIPT\0";
+    $MARKER_COMMENT = "\0COMMENT\0";
+    $OBJECT_METHOD  = "param";
+};
 
 ###----------------------------------------------------------------###
 
@@ -181,16 +185,13 @@ sub form_fill {
                     if (@$values) {
                         $tag =~ s{\s+\bCHECKED\b(?:=([\"\']?)checked\1)?(?=\s|>|/>)}{}ig;
 
-                        if ($type eq 'CHECKBOX' && @$values == 1 && $values->[0] eq 'on') {
-                            $tag =~ s|(/?>\s*)$| checked="checked"$1|;
-                        } else {
-                            my $fvalue = get_tagval_by_key(\$tag, 'value');
-                            if (defined $fvalue) {
-                                foreach (@$values) {
-                                    next if $_ ne $fvalue;
-                                    $tag =~ s|(\s*/?>\s*)$| checked="checked"$1|;
-                                    last;
-                                }
+                        my $fvalue = get_tagval_by_key(\$tag, 'value');
+                        $fvalue = 'on' if ! defined $fvalue;
+                        if (defined $fvalue) {
+                            foreach (@$values) {
+                                next if $_ ne $fvalue;
+                                $tag =~ s|(\s*/?>\s*)$| checked="checked"$1|;
+                                last;
                             }
                         }
                     }
@@ -505,6 +506,60 @@ run out. For example:
        <input type=text name=foo value="">
        <input type=text name=foo value="">
    ';
+
+=item C<<lt>input type="hidden"<gt>>
+
+Same as C<<lt>input type="text"<gt>>.
+
+=item C<<lt>input type="password"<gt>>
+
+Same as C<<lt>input type="text"<gt>>.
+
+=item C<<lt>input type="file"<gt>>
+
+Same as C<<lt>input type="text"<gt>>.  (Note - this is subject
+to browser support for pre-population)
+
+=item C<<lt>input type="checkbox"<gt>>
+
+As each checkbox is found the following rules are applied:
+
+    1) Get the values from the form (do nothing if no values found)
+    2) Remove any existing "checked=checked" or "checked" value from the tag.
+    3) Compare the "value" field to the values and mark with checked="checked"
+    if there is a match.
+
+If no "value" field is found in the html, a default value of "on" will be used (which is
+what most browsers will send as the default value for checked boxes without
+"value" fields).
+
+   my $form = {foo => 'FOO', bar => ['aaaa', 'bbbb', 'cccc'], baz => 'on'};
+
+   my $html = '
+       <input type=checkbox name=foo value="123">
+       <input type=checkbox name=foo value="FOO">
+       <input type=checkbox name=bar value="aaaa">
+       <input type=checkbox name=bar value="cccc">
+       <input type=checkbox name=bar value="dddd" checked="checked">
+       <input type=checkbox name=baz>
+   ';
+
+   form_fill(\$html, $form);
+
+   $html eq  '
+       <input type=checkbox name=foo value="123">
+       <input type=checkbox name=foo value="FOO" checked="checked">
+       <input type=checkbox name=bar value="aaaa" checked="checked">
+       <input type=checkbox name=bar value="cccc" checked="checked">
+       <input type=checkbox name=bar value="dddd">
+       <input type=checkbox name=baz checked="checked">
+   ';
+
+
+=item C<<lt>input type="radio"<gt>>
+
+Same as C<<lt>input type="checkbox"<gt>>.
+
 
 =item C<<lt>input type="submit"<gt>>
 
