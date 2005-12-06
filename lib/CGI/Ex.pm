@@ -1,9 +1,13 @@
 package CGI::Ex;
 
-### CGI Extended
+=head1 NAME
+
+CGI::Ex - CGI utility suite - makes powerful application writing fun and easy
+
+=cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2003 - Paul Seamons                                     #
+#  Copyright 2005 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -22,19 +26,24 @@ use vars qw($VERSION
             );
 use base qw(Exporter);
 
-$VERSION               = '1.14';
-$PREFERRED_FILL_MODULE ||= '';
-$PREFERRED_CGI_MODULE  ||= 'CGI';
-$TEMPLATE_OPEN         ||= qr/\[%\s*/;
-$TEMPLATE_CLOSE        ||= qr/\s*%\]/;
-@EXPORT = ();
-@EXPORT_OK = qw(get_form
-                get_cookies
-                print_content_type
-                content_type
-                content_typed
-                set_cookie
-                );
+BEGIN {
+    $VERSION               = '1.14';
+    $PREFERRED_FILL_MODULE ||= '';
+    $PREFERRED_CGI_MODULE  ||= 'CGI';
+    $TEMPLATE_OPEN         ||= qr/\[%\s*/;
+    $TEMPLATE_CLOSE        ||= qr/\s*%\]/;
+    @EXPORT = ();
+    @EXPORT_OK = qw(get_form
+                    get_cookies
+                    print_content_type
+                    content_type
+                    content_typed
+                    set_cookie
+                    );
+    if ($ENV{'MOD_PERL'}) {
+        require $PREFERRED_CGI_MODULE;
+    }
+}
 
 ###----------------------------------------------------------------###
 
@@ -44,6 +53,8 @@ sub new {
   my $self  = ref($_[0]) ? shift : {@_};
   return bless $self, $class;
 }
+
+###----------------------------------------------------------------###
 
 ### allow for holding another classed CGI style object
 #   my $query = $cgix->object;
@@ -65,11 +76,11 @@ sub object {
   };
 }
 
-### allow for calling their methods
+### allow for calling CGI MODULE methods
 sub AUTOLOAD {
   my $self = shift;
   my $meth = ($AUTOLOAD =~ /(\w+)$/) ? $1 : die "Invalid method $AUTOLOAD";
-  return wantarray # does wantarray propogate up ?
+  return wantarray # force wantarray to propogate up
     ? ($self->object->$meth(@_))
     :  $self->object->$meth(@_);
 }
@@ -498,7 +509,7 @@ sub print_js {
 
   ### get file info
   my $stat;
-  if ($js_file =~ m|^(\w+(?:/+\w+)*\.js)$|i) {
+  if ($js_file && $js_file =~ m|^(\w+(?:/+\w+)*\.js)$|i) {
     foreach my $path (@INC) {
       my $_file = "$path/$1";
       next if ! -f $_file;
@@ -506,7 +517,7 @@ sub print_js {
       $stat = [stat _];
       last;
     }
-  } # no else
+  }
 
   ### no - file - 404
   if (! $stat) {
@@ -737,22 +748,35 @@ sub swap_template {
 
 __END__
 
-=head1 NAME
+=head1 OVERVIEW
 
-CGI::Ex - CGI utility suite (form getter/filler/validator/app builder)
-
-=head1 SYNOPSIS
+=head1 CGI::Ex SYNOPSIS
 
   ### CGI Module Extensions
 
   my $cgix = CGI::Ex->new;
-  my $hashref = $cgix->get_form; # uses CGI by default
 
   ### send the Content-type header - whether or not we are mod_perl
   $cgix->print_content_type;
+  print "Hello world\n";
 
+  ### see what was passed in
+  my $hashref = $cgix->form; # uses CGI by default
+
+  ### send a location bounce (works even if content has been printed)
+  $cgix->location_bounce($new_url_location);
+
+  ### set a cookie (works even if content has been printed)
+  ### using CGI to generate the cookie
+  $cgix->set_cookie({
+      name  => ...,
+      value => ...,
+  });
+
+  ### read YAML, Storable, INI, XML, or JSON configuration files
   my $val_hash = $cgix->conf_read($pathtovalidation);
 
+  ### validate the input
   my $err_obj = $cgix->validate($hashref, $val_hash);
   if ($err_obj) {
     my $errors  = $err_obj->as_hash;
@@ -768,7 +792,8 @@ CGI::Ex - CGI utility suite (form getter/filler/validator/app builder)
 
   ### Filling functionality
 
-  $cgix->fill({text => \$text, form    => \%hash});
+  $cgix->fill({text => \$text, form => \%hash});
+  $cgix->fill({text => \$text, form => CGI->new});
   $cgix->fill({text => \$text, fdat    => \%hash});
   $cgix->fill({text => \$text, fobject => $cgiobject});
   $cgix->fill({text => \$text, form    => [\%hash1, $cgiobject]});
@@ -830,13 +855,8 @@ main functionality of each of the modules is best represented in
 the CGI::Ex::App module.  CGI::Ex::App takes CGI application building
 to the next step.  CGI::Ex::App is not a framework (which normally
 includes prebuilt html) instead CGI::Ex::App is an extended application
-flow that normally dramatically reduces CGI build time.  See L<CGI::Ex::App>.
-
-CGI::Ex is another form filler / validator / conf reader / template
-interface.  Its goal is to take the wide scope of validators and other
-useful CGI application modules out there and merge them into one
-utility that has all of the necessary features of them all, as well
-as several extended methods that I have found useful in working on the web.
+flow that dramatically reduces CGI build time in most cases.  It does so
+using as little magic as possible.  See L<CGI::Ex::App>.
 
 The main functionality is provided by several other modules that
 may be used separately, or together through the CGI::Ex interface.
@@ -867,7 +887,7 @@ for definition of others.  See L<CGI::Ex::Conf> for more information.
 
 =back
 
-=head1 METHODS
+=head1 CGI::Ex METHODS
 
 =over 4
 
@@ -899,7 +919,7 @@ multiple hashrefs, cgi objects, and coderefs.  Hashes should be key
 value pairs.  CGI objects should be able
 to call the method B<param> (This can be overrided).  Coderefs should
 expect expect the field name as an argument and should return a value.
-Values returned by form may be undef, scalar, arrayref, or coderef 
+Values returned by form may be undef, scalar, arrayref, or coderef
 (coderef values should expect an argument of field name and should
 return a value).  The code ref options are available to delay or add
 options to the bringing in of form informatin - without having to
@@ -993,6 +1013,11 @@ be read in depending upon file extension.
 Very similar to CGI->new->Vars except that arrays are returned as
 arrays.  Not sure why CGI::Val didn't do this anyway (well - yes -
 legacy Perl 4 - but at some point things need to be updated).
+
+    my $hash = $cgix->get_form;
+    my $hash = $cgix->get_form(CGI->new);
+    my $hash = get_form();
+    my $hash = get_form(CGI->new);
 
 =item C<-E<gt>set_form>
 
@@ -1108,7 +1133,7 @@ return the proper value.
   #$str eq "<html>(bar) <br>
   #        (wow) <br>
   #        (wee) </html>";
-  
+
 For further examples, please see the code contained in t/samples/cgi_ex_*
 of this distribution.
 
@@ -1136,12 +1161,6 @@ at the time of this writing (I'm sure this probably isn't exaustive).
 =item C<HTML::FillInForm> - Form filler-iner
 
 =item C<CGI> - CGI Getter.  Form filler-iner
-
-=head1 TODO
-
-Add an integrated template toolkit interface.
-
-Add an integrated debug module.
 
 =head1 MODULES
 
