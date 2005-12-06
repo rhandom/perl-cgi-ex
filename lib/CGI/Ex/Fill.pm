@@ -1,6 +1,10 @@
 package CGI::Ex::Fill;
 
-### CGI Extended Form Filler
+=head1 NAME
+
+CGI::Ex::Fill - Regex based form filler
+
+=cut
 
 ###----------------------------------------------------------------###
 #  Copyright 2005 - Paul Seamons                                     #
@@ -393,10 +397,6 @@ sub swap_tagval_by_key {
 __END__
 
 ###----------------------------------------------------------------###
-
-=head1 NAME
-
-CGI::Ex::Fill - Regex based form filler
 
 =head1 SYNOPSIS
 
