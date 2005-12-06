@@ -16,8 +16,6 @@ use Benchmark qw(cmpthese);
 use HTML::FillInForm;
 use CGI::Ex;
 
-my $n = 1000;
-
 my $t = q{
 
 <!-- This is another thing -->
@@ -84,7 +82,7 @@ my $x = $fo->fill(scalarref => \$t,
 #print $x;
 #exit;
 
-cmpthese($n, {
+cmpthese(-2, {
   hfif => sub {
     my $copy = $t;
     my $new = $fif->fill(scalarref => \$copy,
