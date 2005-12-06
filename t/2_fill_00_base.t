@@ -118,6 +118,7 @@ use_ok qw(CGI::Ex::Fill);
 
    $html = '
        <textarea name=foo></textarea>
+       <textarea name=foo></textarea>
 
        <textarea name=bar>
        <textarea name=bar></textarea><br>
@@ -129,6 +130,7 @@ use_ok qw(CGI::Ex::Fill);
 
    ok(
    $html eq  '
+       <textarea name=foo>FOO</textarea>
        <textarea name=foo>FOO</textarea>
 
        <textarea name=bar>aaaa<textarea name=bar>bbbb</textarea><br>
