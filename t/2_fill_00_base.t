@@ -137,6 +137,6 @@ use_ok qw(CGI::Ex::Fill);
        <textarea name=bar></textarea><br>
        <textarea name=bar>', "Perldoc example 5 passed");
 
-   print $html;
+#   print $html;
 
 ###----------------------------------------------------------------###
