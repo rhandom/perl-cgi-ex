@@ -37,51 +37,58 @@ sub swap {
   return $str if ! $str;
   my $ref  = ref($str) ? $str : \$str;
 
-  $self->swap_variables($ref);
+  $self->swap_buddy($ref);
 
   return ref($str) ? 1 : $$ref;
 }
 
-sub swap_variables {
+sub swap_buddy {
     my $self = shift;
     my $ref  = shift;
     my $stash = $self->stash;
 
   ### now do the swap
-  $$ref =~ s{$TEMPLATE_OPEN \b (\w+) ((?:\.\w+)*) \b $TEMPLATE_CLOSE}{
-    my ($name, $extra) = ($1, $2);
-    my $val;
-    if (! $extra) {
-      $val = defined($stash->{$name}) ? $stash->{$name} : '';
-    } else {
-      my @extra = split(/\./, substr($extra,1));
-      my $ref   = defined($stash->{$name}) ? $stash->{$name} : '';
-      while (defined(my $key = shift(@extra))) {
-        if (UNIVERSAL::isa($ref, 'HASH')) {
-          if (! exists($ref->{$key}) || ! defined($ref->{$key})) {
-            $val = '';
-            last;
-          }
-          $ref = $ref->{$key};
-        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-          if (! exists($ref->[$key]) || ! defined($ref->[$key])) {
-            $val = '';
-            last;
-          }
-          $ref = $ref->[$key];
+    $$ref =~ s{
+        (\s*) $TEMPLATE_OPEN (-?) \s* # opening tag and prechomp info
+        (\w+) ((?:\.\w+)*)
+        \s* (-?) $TEMPLATE_CLOSE (\s*)
+    }{
+        my $ws_pre  = $2 ? '' : $1; # pre  whitespace
+        my $ws_post = $5 ? '' : $6; # post whitespace
+        my ($name, $extra) = ($3, $4);
+        my $val;
+
+        if (! $extra) {
+            $val = defined($stash->{$name}) ? $stash->{$name} : '';
         } else {
-          $val = '';
-          last;
+            my @extra = split(/\./, substr($extra,1));
+            my $ref   = defined($stash->{$name}) ? $stash->{$name} : '';
+            while (defined(my $key = shift(@extra))) {
+                if (UNIVERSAL::isa($ref, 'HASH')) {
+                    if (! exists($ref->{$key}) || ! defined($ref->{$key})) {
+                        $val = '';
+                        last;
+                    }
+                    $ref = $ref->{$key};
+                } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+                    if (! exists($ref->[$key]) || ! defined($ref->[$key])) {
+                        $val = '';
+                        last;
+                    }
+                    $ref = $ref->[$key];
+                } else {
+                    $val = '';
+                    last;
+                }
+            }
+            if (! defined($val)) {
+                if ($#extra == -1) {
+                    $val = $ref;
+                }
+                $val = '' if ! defined($val);
+            }
         }
-      }
-      if (! defined($val)) {
-        if ($#extra == -1) {
-          $val = $ref;
-        }
-        $val = '' if ! defined($val);
-      }
-    }
-    $val; # return of the swap
+        "$ws_pre$val$ws_post"; # return of the swap
   }xeg;
 
 }
@@ -133,6 +140,8 @@ sub process {
     if (ref $in) {
         if (UNIVERSAL::isa($in, 'SCALAR')) { # reference to a string
             $content = $$in;
+        } elsif (UNIVERSAL::isa($in, 'CODE')) {
+            $content = $in->();
         } else { # should be a file handle
             local $/ = undef;
             $content = <$in>;
@@ -148,6 +157,10 @@ sub process {
     if (ref $out) {
         if (UNIVERSAL::isa($out, 'SCALAR')) { # reference to a string
             $$out = $content;
+        } elsif (UNIVERSAL::isa($out, 'CODE')) {
+            $out->($content);
+        } elsif (UNIVERSAL::can($out, 'print')) {
+            $out->print($content);
         } else { # should be a file handle
             print $out $content;
         }
