@@ -1,6 +1,6 @@
 # -*-perl-*-
 
-use Test::More tests => 4;
+use Test::More tests => 5;
 
 use_ok qw(CGI::Ex::Fill);
 
@@ -80,6 +80,35 @@ use_ok qw(CGI::Ex::Fill);
        <input type=checkbox name=bar value="dddd">
        <input type=checkbox name=baz checked="checked">
    ', "Perldoc example 3 passed");
+
+   #print $html;
+
+###----------------------------------------------------------------###
+
+   $form = {foo => 'FOO', bar => ['aaaa', 'bbbb', 'cccc']};
+
+   $html = '
+       <select name=foo><option>FOO<option>123<br>
+
+       <select name=bar>
+         <option>aaaa</option>
+         <option value="cccc">cccc</option>
+         <option value="dddd" selected="selected">dddd</option>
+       </select>
+   ';
+
+   form_fill(\$html, $form);
+
+   ok(
+   $html eq  '
+       <select name=foo><option selected="selected">FOO<option>123<br>
+
+       <select name=bar>
+         <option selected="selected">aaaa</option>
+         <option value="cccc" selected="selected">cccc</option>
+         <option value="dddd">dddd</option>
+       </select>
+   ', "Perldoc example 4 passed");
 
    print $html;
 
