@@ -1,6 +1,6 @@
 # -*-perl-*-
 
-use Test::More tests => 5;
+use Test::More tests => 6;
 
 use_ok qw(CGI::Ex::Fill);
 
@@ -109,6 +109,31 @@ use_ok qw(CGI::Ex::Fill);
          <option value="dddd">dddd</option>
        </select>
    ', "Perldoc example 4 passed");
+
+#   print $html;
+
+###----------------------------------------------------------------###
+
+   $form = {foo => 'FOO', bar => ['aaaa', 'bbbb']};
+
+   $html = '
+       <textarea name=foo></textarea>
+
+       <textarea name=bar>
+       <textarea name=bar></textarea><br>
+       <textarea name=bar>dddd</textarea><br>
+       <textarea name=bar><br><br>
+   ';
+
+   form_fill(\$html, $form);
+
+   ok(
+   $html eq  '
+       <textarea name=foo>FOO</textarea>
+
+       <textarea name=bar>aaaa<textarea name=bar>bbbb</textarea><br>
+       <textarea name=bar></textarea><br>
+       <textarea name=bar>', "Perldoc example 5 passed");
 
    print $html;
 
