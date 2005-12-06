@@ -3,7 +3,7 @@ package CGI::Ex::Fill;
 ### CGI Extended Form Filler
 
 ###----------------------------------------------------------------###
-#  Copyright 2003 - Paul Seamons                                     #
+#  Copyright 2005 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -22,7 +22,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION   = '1.3';
+    $VERSION   = '1.4';
     @EXPORT    = qw(form_fill);
     @EXPORT_OK = qw(form_fill html_escape get_tagval_by_key swap_tagval_by_key);
 };
@@ -144,7 +144,8 @@ sub form_fill {
             return ref($val) ? $val : [$val];
         } elsif (ref($val)) {
             $indexes{$key} ||= 0;
-            my $ret = $val->[$indexes{$key}] || '';
+            my $ret = $val->[$indexes{$key}];
+            $ret = '' if ! defined $ret;
             $indexes{$key} ++; # don't wrap - if we run out of values - we're done
             return $ret;
         } else {
@@ -263,26 +264,30 @@ sub form_fill {
     push @close, pos($$ref) - length($1) while $$ref =~ m|(</\s*textarea\b)|ig;
     for (my $i = 0; $i <= $#start; $i ++) {
         while (defined($close[$i]) && $close[$i] < $start[$i]) {
-            splice (@close,$i,1,());
+            splice (@close,$i,1,()); # get rid of extra closes
         }
         if ($i == $#start) {
             $close[$i] = length($$ref) if ! defined $close[$i]; # set to end of string if no closing
         } elsif (! defined($close[$i]) || $close[$i] > $start[$i + 1]) {
-            $close[$i] = $start[$i + 1]; # set to start of next select if no closing or > next select
+            splice(@close, $i, 0, $start[$i + 1]); # set to start of next select if no closing or > next select
         }
     }
-    for (my $i = $#start; $i >= 0; $i --) {
-        my $oldval = substr($$ref, $start[$i], $close[$i] - $start[$i]);
+    my $offset = 0;
+    for (my $i = 0; $i <= $#start; $i ++) {
+        my $oldval = substr($$ref, $start[$i] + $offset, $close[$i] - $start[$i]);
         $oldval =~ s{
             (<textarea \s                               # opening
              (?: "" | '' | ([\"\']).*?[^\\]\2 | [^>] )* # nested html ok
              >)                                         # end of tag
             }{}sxi || next;
-        my $tag   = $1;
-        my $name  = get_tagval_by_key(\$tag, 'name');
-        my $value = $ignore->{$name} ? [] : $get_form_value->($name, 'next');
-        next if ! defined $value;
-        substr($$ref, $start[$i], $close[$i] - $start[$i], "$tag$value");
+        my $tag  = $1;
+        my $name = get_tagval_by_key(\$tag, 'name');
+        if ($name && ! $ignore->{$name}) {
+            my $value = $get_form_value->($name, 'next');
+            next if ! defined $value;
+            substr($$ref, $start[$i] + $offset, $close[$i] - $start[$i], "$tag$value");
+            $offset += length($value) - length($oldval);
+        }
     }
 
     ### put scripts and comments back and return
@@ -308,8 +313,8 @@ sub html_escape {
 }
 
 ### get a named value for key="value" pairs
-### usage: my $val     = &get_tagval_by_key(\$tag, $key);
-### usage: my $valsref = &get_tagval_by_key(\$tag, $key, 'all');
+### usage: my $val     = get_tagval_by_key(\$tag, $key);
+### usage: my $valsref = get_tagval_by_key(\$tag, $key, 'all');
 sub get_tagval_by_key {
     my $tag = shift;
     my $ref = ref($tag) ? $tag : \$tag;
@@ -429,18 +434,55 @@ CGI::Ex::Fill - Regex based form filler
 
 form_fill is directly comparable to HTML::FillInForm.  It will pass the
 same suite of tests (actually - it is a little bit kinder on the parse as
-it won't change case, reorder your attributes, or alter miscellaneous spaces).
+it won't change case, reorder your attributes, or alter miscellaneous spaces
+and it won't require the HTML to be well formed).
 
-HTML::FillInForm both benefits and suffers from being based on
-HTML::Parser. It is good for standards and poor for performance.  Testing
-the form_fill module against HTML::FillInForm gave some surprising
-results.  On tiny forms (< 1 k) form_fill was ~ 17% faster than FillInForm.
+HTML::FillInForm is based upon HTML::Parser while CGI::Ex::Fill is purely regex
+driven.  The performance of CGI::Ex::Fill will be better on HTML with
+many markup tags because HTML::Parser will parse each tag while CGI::Ex::Fill will
+search only for those tags it knows how to handle.
+
+On tiny forms (< 1 k) form_fill was ~ 13% slower than FillInForm.
 If the html document incorporated very many entities at all, the
-performace of FillInForm goes down (and down).  However, if you are only
-filling in one form every so often, then it shouldn't matter - but form_fill
-will be nicer on the tags and won't balk at ugly html.
-See the benchmarks in the t/samples directory for more information (ALL
+performace of FillInForm goes down (adding 360 <br> tags pushed form_fill to
+~ 350% faster).  However, if you are only filling in one form every so often,
+then it shouldn't matter which you use - but form_fill
+will be nicer on the tags and won't balk at ugly html and will decrease performance
+only at a slow rate as the size of the html increases.
+See the benchmarks in the t/samples/bench_cgix_hfif.pl file for more information (ALL
 BENCHMARKS SHOULD BE TAKEN WITH A GRAIN OF SALT).
+
+=head1 ARGUMENTS
+
+The following are the arguments to the main function C<form_fill>.
+
+=over 4
+
+=item C<\$html>
+
+A referrence to an html string that includes one or more forms or form entities.
+
+=item C<\%FORM>
+
+A form hash, or CGI query object, or an arrayref of multiple hash refs and/or
+CGI query objects that will supply values for the form.
+
+=item C<$form_name>
+
+The name of the form to fill in values for.  The default is undef which indicates
+that all forms are to be filled in.
+
+=item C<$swap_pass>
+
+Default true.  Indicates that C<<lt>input type="password"<gt>> fields are to
+be swapped as well.  Set to false to disable this behavior.
+
+=item C<\%IGNORE_FIELDS> OR C<\@IGNORE_FIELDS>
+
+A hash ref of key names or an array ref of key names that will be ignored during
+the fill in of the form.
+
+=back
 
 =head1 BEHAVIOR
 
@@ -449,11 +491,11 @@ are used on the following types of form elements.
 
 =over 4
 
-=item C<<lt>input type="text"<gt>>
+=item C<E<lt>input type="text"E<gt>>
 
 The following rules are used when matching this type:
 
-   1) Gets the value from the form that matches the inputs "name".
+   1) Get the value from the form that matches the input's "name".
    2) If the value is defined - it adds or replaces the existing value.
    3) If the value is not defined and the existing value is not defined,
       a value of "" is added.
@@ -485,11 +527,12 @@ For example:
 
 If the value returned from the form is an array ref, the values of the array ref
 will be sequentially used for each input found by that name until the values
-run out. For example:
+run out.  If the value is not an array ref - it will be used to fill in any values
+by that name.  For example:
 
-   my $form = {foo => ['aaaa', 'bbbb', 'cccc']};
+   $form = {foo => ['aaaa', 'bbbb', 'cccc']};
 
-   my $html = '
+   $html = '
        <input type=text name=foo>
        <input type=text name=foo>
        <input type=text name=foo>
@@ -507,25 +550,25 @@ run out. For example:
        <input type=text name=foo value="">
    ';
 
-=item C<<lt>input type="hidden"<gt>>
+=item C<E<lt>input type="hidden"E<gt>>
 
-Same as C<<lt>input type="text"<gt>>.
+Same as C<E<lt>input type="text"E<gt>>.
 
-=item C<<lt>input type="password"<gt>>
+=item C<E<lt>input type="password"E<gt>>
 
-Same as C<<lt>input type="text"<gt>>.
+Same as C<E<lt>input type="text"E<gt>>.
 
-=item C<<lt>input type="file"<gt>>
+=item C<E<lt>input type="file"E<gt>>
 
-Same as C<<lt>input type="text"<gt>>.  (Note - this is subject
+Same as C<E<lt>input type="text"E<gt>>.  (Note - this is subject
 to browser support for pre-population)
 
-=item C<<lt>input type="checkbox"<gt>>
+=item C<E<lt>input type="checkbox"E<gt>>
 
 As each checkbox is found the following rules are applied:
 
     1) Get the values from the form (do nothing if no values found)
-    2) Remove any existing "checked=checked" or "checked" value from the tag.
+    2) Remove any existing "checked=checked" or "checked" markup from the tag.
     3) Compare the "value" field to the values and mark with checked="checked"
     if there is a match.
 
@@ -533,9 +576,9 @@ If no "value" field is found in the html, a default value of "on" will be used (
 what most browsers will send as the default value for checked boxes without
 "value" fields).
 
-   my $form = {foo => 'FOO', bar => ['aaaa', 'bbbb', 'cccc'], baz => 'on'};
+   $form = {foo => 'FOO', bar => ['aaaa', 'bbbb', 'cccc'], baz => 'on'};
 
-   my $html = '
+   $html = '
        <input type=checkbox name=foo value="123">
        <input type=checkbox name=foo value="FOO">
        <input type=checkbox name=bar value="aaaa">
@@ -556,17 +599,99 @@ what most browsers will send as the default value for checked boxes without
    ';
 
 
-=item C<<lt>input type="radio"<gt>>
+=item C<E<lt>input type="radio"E<gt>>
 
-Same as C<<lt>input type="checkbox"<gt>>.
+Same as C<E<lt>input type="checkbox"E<gt>>.
+
+=item C<E<lt>selectE<gt>>
+
+As each select box is found the following rules are applied (these rules are
+applied regardless of if the box is a select-one or a select-multi - if multiple
+values are selected on a select-one it is up to the browser to choose which one
+to highlight):
+
+    1) Get the values from the form (do nothing if no values found)
+    2) Remove any existing "selected=selected" or "selected" markup from the tag.
+    3) Compare the "value" field to the values and mark with selected="selected"
+    if there is a match.
+    4) If there is no "value" field - use the text in between the "option" tags.
+
+    (Note: There does not need to be a closing "select" tag or closing "option" tag)
 
 
-=item C<<lt>input type="submit"<gt>>
+   $form = {foo => 'FOO', bar => ['aaaa', 'bbbb', 'cccc']};
+
+   $html = '
+       <select name=foo><option>FOO<option>123<br>
+
+       <select name=bar>
+         <option>aaaa</option>
+         <option value="cccc">cccc</option>
+         <option value="dddd" selected="selected">dddd</option>
+       </select>
+   ';
+
+   form_fill(\$html, $form);
+
+   ok(
+   $html eq  '
+       <select name=foo><option selected="selected">FOO<option>123<br>
+
+       <select name=bar>
+         <option selected="selected">aaaa</option>
+         <option value="cccc" selected="selected">cccc</option>
+         <option value="dddd">dddd</option>
+       </select>
+   ', "Perldoc example 4 passed");
+
+
+=item C<E<lt>textareaE<gt>>
+
+The rules for swapping textarea are as follows:
+
+   1) Get the value from the form that matches the textarea's "name".
+   2) If the value is defined - it adds or replaces the existing value.
+   3) If the value is not defined, the text area is left alone.
+
+   (Note - there does not need to be a closing textarea tag.  In the case of
+    a missing close textarea tag, the contents of the text area will be
+    assumed to be the start of the next textarea of the end of the document -
+    which ever comes sooner)
+
+If the form returned an array ref of values, then these values will be
+used sequentially each time a textarea by that name is found.  If a single value
+(not array ref) is found, that value will be used for each textarea by that name.
+
+For example.
+
+   $form = {foo => 'FOO', bar => ['aaaa', 'bbbb']};
+
+   $html = '
+       <textarea name=foo></textarea>
+       <textarea name=foo></textarea>
+
+       <textarea name=bar>
+       <textarea name=bar></textarea><br>
+       <textarea name=bar>dddd</textarea><br>
+       <textarea name=bar><br><br>
+   ';
+
+   form_fill(\$html, $form);
+
+   $html eq  '
+       <textarea name=foo>FOO</textarea>
+       <textarea name=foo>FOO</textarea>
+
+       <textarea name=bar>aaaa<textarea name=bar>bbbb</textarea><br>
+       <textarea name=bar></textarea><br>
+       <textarea name=bar>';
+
+=item C<E<lt>input type="submit"E<gt>>
 
 Does nothing.  The value for submit should typically be set by the
 templating system or application system.
 
-=item C<<lt>input type="button"<gt>>
+=item C<E<lt>input type="button"E<gt>>
 
 Same as submit.
 
@@ -584,6 +709,34 @@ results in a speed increase of 5%. The function uses \0COMMENT\0 and
 \0SCRIPT\0 as placeholders so i'd avoid these in your text (Actually
 they may be reset to whatever you'd like via $MARKER_COMMENT and
 $MARKER_SCRIPT).
+
+=head1 UTILITY FUNCTIONS
+
+=over 4
+
+=item C<html_escape>
+
+Very minimal entity escaper for filled in values.
+
+    my $escaped = html_escape($unescaped);
+
+    html_escape(\$text_to_escape);
+
+=item C<get_tagval_by_key>
+
+Get a named value for from an html tag (key="value" pairs).
+
+    my $val     = get_tagval_by_key(\$tag, $key);
+    my $valsref = get_tagval_by_key(\$tag, $key, 'all'); # get all values
+
+=item C<swap_tagval_by_key>
+
+Swap out values in an html tag (key="value" pairs).
+
+    my $count  = swap_tagval_by_key(\$tag, $key, $val); # modify ref
+    my $newtag = swap_tagval_by_key($tag, $key, $val);  # copies tag
+
+=back
 
 =head1 AUTHOR
 
