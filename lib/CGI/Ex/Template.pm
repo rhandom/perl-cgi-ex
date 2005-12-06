@@ -18,22 +18,10 @@ BEGIN {
 sub new {
   my $class = shift;
   my $args  = ref($_[0]) ? shift : {@_};
-
-  $args->{INCLUDE_PATH} ||= \@INCLUDE_PATH;
-
   return bless $args, $class;
 }
 
 ###----------------------------------------------------------------###
-
-sub stash {
-    my $self = shift;
-    if (@_) {
-        die "Stash must be a hashref" if ! UNIVERSAL::isa($_[0], 'HASH');
-        $self->{'STASH'} = shift;
-    }
-    return $self->{'STASH'} ||= {};
-}
 
 ### This is intended as a simple yet strong subroutine to swap
 ### in tags to a document.  It is intended to be very basic
@@ -100,42 +88,78 @@ sub swap_variables {
 
 ###----------------------------------------------------------------###
 
-
-sub process {
-  my $self = ref($_[0]) ? shift : shift->new;
-  my $in   = shift;
-
-  ### force the content to have a .html prefix
-  if (! ref $in) {
-    $in .= '.html' if $in !~ /\.\w+$/;
-  }
-
-  ### prepend "content" dir as needed
-  if (! ref($in)                                # not a scalar ref or a file glob
-      && $in =~ m|^\w+(\.\w+)?(/\w+(\.\w+)?)*$| # not an absolute filename
-      && index($in, $CONTENT_SUBDIR) == -1) {
-    $in = $CONTENT_SUBDIR .'/'. $in;
-  }
-
-  return $self->SUPER::process($in, @_);
+sub stash {
+    my $self = shift;
+    if (@_) {
+        die "Stash must be a hashref" if ! UNIVERSAL::isa($_[0], 'HASH');
+        $self->{'STASH'} = shift;
+    }
+    return $self->{'STASH'} ||= {};
 }
 
-###----------------------------------------------------------------###
+sub include_path {
+    my $self = shift;
+    return $self->{'INCLUDE_PATH'} ||= [@INCLUDE_PATH];
+}
 
-sub out {
-  my $self = ref($_[0]) ? shift : shift->new;
-#  dex $self;
-  my $in   = shift;
-  my $form = shift;
-  my $fill = shift;
-  my $out  = '';
+sub include_filename {
+    my ($self, $file) = @_;
+    if ($file =~ m|^/|) {
+        # check if absolute is allowed
+        return $file if -e $file;
+    } else {
+        my $paths = $self->include_path;
+        $paths = [$paths] if ! ref $paths;
+        foreach my $path (@$paths) {
+            return "$path/$file" if -e "$path/$file";
+        }
+    }
+    die "Couldn't find \"$file\" in INCLUDE_PATH";
+}
 
-  ### run the template
-  my $status = $self->process($in, $form, \$out) || die $Template::ERROR;
+sub include_file {
+    my ($self, $file) = @_;
+    my $full = $self->include_filename($file);
+    open(my $fh, "<$full") || die "Couldn't open $file for reading: $!";
+    read $fh, my $txt, -s $full;
+    return $txt;
+}
 
-  ### fill in any forms
+sub process {
+    my ($self, $in, $swap, $out) = @_;
 
-  return $out;
+    ### get the content
+    my $content;
+    if (ref $in) {
+        if (UNIVERSAL::isa($in, 'SCALAR')) { # reference to a string
+            $content = $$in;
+        } else { # should be a file handle
+            local $/ = undef;
+            $content = <$in>;
+        }
+    } else {
+        $content = $self->include_file($in);
+    }
+
+    ### do swap
+    $self->swap(\$content, $swap);
+
+    ### put it back out
+    if (ref $out) {
+        if (UNIVERSAL::isa($out, 'SCALAR')) { # reference to a string
+            $$out = $content;
+        } else { # should be a file handle
+            print $out $content;
+        }
+    } elsif ($out) {
+        my $file = $self->include_filename($out);
+        open(my $fh, ">$file") || die "Couldn't open \"$out\" for writing: $!";
+        print $fh $content;
+    } else {
+        print $content;
+    }
+
+    return 1;
 }
 
 ###----------------------------------------------------------------###
