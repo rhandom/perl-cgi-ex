@@ -2,15 +2,13 @@ package CGI::Ex::Template;
 
 use strict;
 use vars qw(@INCLUDE_PATH
-            $CONTENT_SUBDIR
-            $TEMPLATE_OPEN
-            $TEMPLATE_CLOSE
+            $START_TAG
+            $END_TAG
             );
 
 BEGIN {
-    $CONTENT_SUBDIR ||= 'content';
-    $TEMPLATE_OPEN  ||= qr/\[%\s*/;
-    $TEMPLATE_CLOSE ||= qr/\s*%\]/;
+    $START_TAG  ||= qr/\[%/;
+    $END_TAG    ||= qr/%\]/;
 };
 
 ###----------------------------------------------------------------###
@@ -37,6 +35,10 @@ sub swap {
   return $str if ! $str;
   my $ref  = ref($str) ? $str : \$str;
 
+  local $START_TAG = $self->{'START_TAG'} || $START_TAG;
+  local $END_TAG   = $self->{'END_TAG'}   || $END_TAG;
+  local $self->{'state'} = {};
+
   $self->swap_buddy($ref);
 
   return ref($str) ? 1 : $$ref;
@@ -45,52 +47,113 @@ sub swap {
 sub swap_buddy {
     my $self = shift;
     my $ref  = shift;
-    my $stash = $self->stash;
 
-  ### now do the swap
+    ### now do the swap
     $$ref =~ s{
-        (\s*) $TEMPLATE_OPEN (-?) \s* # opening tag and prechomp info
-        (\w+) ((?:\.\w+)*)
-        \s* (-?) $TEMPLATE_CLOSE (\s*)
+        (\s*) (
+               $START_TAG (-?) \s* # opening tag and prechomp info
+               ( | \S.+?)          # nothing or something
+               \s* (-?) $END_TAG   # the close tag and postchomp info
+               ) (\s*)
     }{
-        my $ws_pre  = $2 ? '' : $1; # pre  whitespace
-        my $ws_post = $5 ? '' : $6; # post whitespace
-        my ($name, $extra) = ($3, $4);
+        local $self->{'state'}->{'pos'} = pos;
+        my ($ws_pre, $all, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6);
         my $val;
 
-        if (! $extra) {
-            $val = defined($stash->{$name}) ? $stash->{$name} : '';
+        ### look for functions or variables
+        if (my $ref = $self->get_variable_ref(\$tag)) {
+            $val = UNIVERSAL::isa($ref, 'CODE')   ? $ref->()
+                 : UNIVERSAL::isa($ref, 'SCALAR') ? $$ref
+                 :                                  "$ref";
+        } elsif ($tag =~ /(\w+) (?: $|\s)/x) {
+            my $func = $1;
+            die "Unknown function \"$func\" in tag $all" if ! $self->{'FUNCTIONS'}->{$func};
+            $val = $self->{'FUNCTIONS'}->{$func}->($self, \$tag);
         } else {
-            my @extra = split(/\./, substr($extra,1));
-            my $ref   = defined($stash->{$name}) ? $stash->{$name} : '';
-            while (defined(my $key = shift(@extra))) {
-                if (UNIVERSAL::isa($ref, 'HASH')) {
-                    if (! exists($ref->{$key}) || ! defined($ref->{$key})) {
-                        $val = '';
-                        last;
-                    }
-                    $ref = $ref->{$key};
-                } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-                    if (! exists($ref->[$key]) || ! defined($ref->[$key])) {
-                        $val = '';
-                        last;
-                    }
-                    $ref = $ref->[$key];
-                } else {
-                    $val = '';
-                    last;
-                }
-            }
-            if (! defined($val)) {
-                if ($#extra == -1) {
-                    $val = $ref;
-                }
-                $val = '' if ! defined($val);
-            }
+            die "Not sure how to handle tag $all";
         }
+
+        ### return the val and any whitespace
+        $ws_pre  = '' if $pre_chomp  || $self->{'PRE_CHOMP'};
+        $ws_post = '' if $post_chomp || $self->{'POST_CHOMP'};
         "$ws_pre$val$ws_post"; # return of the swap
   }xeg;
 
+}
+
+sub get_variable_ref {
+    my ($self, $str_ref) = @_;
+
+    if ($str_ref =~ /^([\"\']) (|.*?[^\\]) \1 \s*/xs) {
+        my $str = $2;
+        $self->interpolate(\$str);
+        return \$str;
+    }
+
+    my $ref  = $self->stash;
+    my $copy = $$str_ref;
+    my $traverse = '';
+
+    while (defined($ref)
+           && length($copy)
+           && $copy !~ /^\s+/) {
+        if (UNIVERSAL::isa($ref, 'CODE')) {
+            my $new_ref = $ref->();
+            $ref = ref($new_ref) ? $new_ref : \ $new_ref;
+            next;
+        }
+        if ($copy =~ s/^(\w+)\.?//) {
+            my $name = $1;
+            if (UNIVERSAL::can($ref, 'can')) {
+                if (UNIVERSAL::can($ref, $name)) {
+                    my $obj = $ref;
+                    $ref = sub { $ref->$name(@_) };
+                } else {
+                    die "Unknown method \"$name\" for object $ref";
+                }
+            } elsif (UNIVERSAL::isa($ref, 'HASH')) {
+                if (exists $ref->{$name}) {
+                    $ref = ref($ref->{$name}) ? $ref->{$name} : \ $ref->{$name};
+                    next;
+                } elsif ($name eq 'keys') {
+                    $ref = [keys %$ref];
+                } elsif ($name eq 'sort') {
+                    $ref = [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref];
+                } elsif ($name eq 'nsort') {
+                    $ref = [sort {$ref->{$a} <=> $ref->{$b}} keys %$ref];
+                } else {
+                    die "HASH virtual method \"$name\" not implemented ($$str_ref)";
+                }
+            } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+                if ($name =~ /^-?\d+/) {
+                    $ref = ref($ref->[$name]) ? $ref->[$name] : \ $ref->[$name];
+                    next;
+                } elsif ($name eq 'join') {
+                    my $array_ref = $ref;
+                    $ref = sub { my $join = shift; $join = ' ' if ! defined($join); return join $join, @$array_ref };
+                } else {
+                    die "ARRAY virtual method \"$name\" not implemented ($$str_ref)";
+                }
+            } elsif (UNIVERSAL::isa($ref, 'SCALAR')) {
+                die "SCALAR virtual method not implemented ($$str_ref)";
+            }
+        }
+    } # end of while
+
+    return $ref;
+}
+
+sub interpolate {
+    my ($self, $str_ref) = @_;
+    my $copy;
+    $str_ref =~ s/\$(\w+)/$self->_get_interp_value($copy = $1)/gs;
+    $str_ref =~ s/\$\{ ([^\}]+) \}/$self->_get_interp_value($copy = $1)/gsx;
+}
+
+sub _get_interp_value {
+    my ($self, $name) = @_;
+    my $ref = $self->get_variable_ref(\$name);
+    return $$ref; # TODO - allow for more return types
 }
 
 ###----------------------------------------------------------------###
@@ -112,7 +175,10 @@ sub include_path {
 sub include_filename {
     my ($self, $file) = @_;
     if ($file =~ m|^/|) {
-        # check if absolute is allowed
+        die "ABSOLUTE paths disabled" if ! $self->{'ABSOLUTE'};
+        return $file if -e $file;
+    } elsif ($file =~ m|^\./|) {
+        die "RELATIVE paths disabled" if ! $self->{'RELATIVE'};
         return $file if -e $file;
     } else {
         my $paths = $self->include_path;
@@ -164,8 +230,18 @@ sub process {
         } else { # should be a file handle
             print $out $content;
         }
-    } elsif ($out) {
-        my $file = $self->include_filename($out);
+    } elsif ($out) { # should be a filename
+        my $file;
+        if ($out =~ m|^/|) {
+            die "ABSOLUTE paths disabled" if ! $self->{'ABSOLUTE'};
+            $file = $out;
+        } elsif ($out =~ m|^\./|) {
+            die "RELATIVE paths disabled" if ! $self->{'RELATIVE'};
+            $file = $out;
+        } else {
+            die "OUTPUT_PATH not set" if ! $self->{'OUTPUT_PATH'};
+            $file = $self->{'OUTPUT_PATH'} . '/' . $out;
+        }
         open(my $fh, ">$file") || die "Couldn't open \"$out\" for writing: $!";
         print $fh $content;
     } else {
