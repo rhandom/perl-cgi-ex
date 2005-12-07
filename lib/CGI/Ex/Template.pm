@@ -84,30 +84,69 @@ sub swap_buddy {
 sub get_variable_ref {
     my ($self, $str_ref) = @_;
 
-    if ($str_ref =~ /^([\"\']) (|.*?[^\\]) \1 \s*/xs) {
+    ### looks like a quoted string - return early
+    if ($$str_ref =~ s/^([\"\']) (|.*?[^\\]) \1 \s*//xs) {
         my $str = $2;
         $self->interpolate(\$str);
         return \$str;
+
+    ### looks like an unquoted num
+    } elsif ($$str_ref =~ s/(\d*\.\d+|\d+)//) {
+        my $num = $1;
+        return \$num;
     }
 
-    my $ref  = $self->stash;
-    my $copy = $$str_ref;
+    my $stash    = $self->stash;
+    my $ref      = $stash;
+    my $copy     = $$str_ref;
     my $traverse = '';
 
-    while (defined($ref)
-           && length($copy)
-           && $copy !~ /^\s+/) {
+    while (defined $ref) {
+
+        ### parse for arguments (if we look like an arg list)
+        my @args;
+        if ($copy =~ s/^\(\s*//) {
+            while (my $_ref = $self->get_variable_ref(\$copy)) {
+                push @args, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
+                next if $copy =~ s/^,\s*//;
+            }
+            $copy =~ s/^\)\.?\s*// || die "Unterminated arg list in $$str_ref";
+        }
+
+        ### if the previously found thing was a code block - run it with any parsed args
         if (UNIVERSAL::isa($ref, 'CODE')) {
-            my $new_ref = $ref->();
-            $ref = ref($new_ref) ? $new_ref : \ $new_ref;
+            my @results = $ref->(@args);
+            if ($#results > 0) {
+                $ref = \@results;
+            } elsif (defined(my $result = $results[0])) {
+                $ref = ref($result) ? $result : \ $result;
+            } else {
+                my $str = '';
+                $ref = \ $str;
+            }
             next;
         }
-        if ($copy =~ s/^(\w+)\.?//) {
+
+        ### allow for interpolated variables in the middle
+        if ($copy =~ s/^\$(\w+)\b(\.?)\s*//
+            || $copy =~ s/^\$\{\s* ([^\}]+) \s*\}(\.?)\s*//x) {
+            my ($var, $dot) = ($1, $2);
+            my $ref = $self->get_variable_ref(\$var);
+            if (! $ref || ! UNIVERSAL::isa($ref, 'SCALAR')) {
+                die "Unknown variable \"$var\" in $$str_ref"; # TODO - allow
+            } else {
+                $copy = $$ref . $dot . $copy;
+            }
+        }
+
+        ### walk down the line this.that.foo(blah).equals george
+        if ($copy =~ s/^(\w+)\b\.?\s*//) {
             my $name = $1;
             if (UNIVERSAL::can($ref, 'can')) {
                 if (UNIVERSAL::can($ref, $name)) {
                     my $obj = $ref;
-                    $ref = sub { $ref->$name(@_) };
+                    $ref = sub { [$ref->$name(@_)] };
+                    next;
                 } else {
                     die "Unknown method \"$name\" for object $ref";
                 }
@@ -117,8 +156,10 @@ sub get_variable_ref {
                     next;
                 } elsif ($name eq 'keys') {
                     $ref = [keys %$ref];
+                    next;
                 } elsif ($name eq 'sort') {
                     $ref = [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref];
+                    next;
                 } elsif ($name eq 'nsort') {
                     $ref = [sort {$ref->{$a} <=> $ref->{$b}} keys %$ref];
                 } else {
@@ -131,15 +172,29 @@ sub get_variable_ref {
                 } elsif ($name eq 'join') {
                     my $array_ref = $ref;
                     $ref = sub { my $join = shift; $join = ' ' if ! defined($join); return join $join, @$array_ref };
+                    next;
                 } else {
                     die "ARRAY virtual method \"$name\" not implemented ($$str_ref)";
                 }
             } elsif (UNIVERSAL::isa($ref, 'SCALAR')) {
+                if ($name eq 'length') {
+                    my $len = length $$ref;
+                    $ref = \ $len;
+                    next;
+                }
                 die "SCALAR virtual method not implemented ($$str_ref)";
             }
         }
+
+        last;
     } # end of while
 
+
+    ### we didn't find a variable - return nothing
+    return if $ref == $stash;
+
+    ### finalize the changes and return the var reference
+    $$str_ref = $copy;
     return $ref;
 }
 
@@ -147,7 +202,7 @@ sub interpolate {
     my ($self, $str_ref) = @_;
     my $copy;
     $str_ref =~ s/\$(\w+)/$self->_get_interp_value($copy = $1)/gs;
-    $str_ref =~ s/\$\{ ([^\}]+) \}/$self->_get_interp_value($copy = $1)/gsx;
+    $str_ref =~ s/\$\{\s* ([^\}]+) \s*\}/$self->_get_interp_value($copy = $1)/gsx;
 }
 
 sub _get_interp_value {
