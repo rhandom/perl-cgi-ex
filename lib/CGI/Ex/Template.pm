@@ -157,13 +157,15 @@ sub get_variable_ref {
         return \ $num;
 
     ### allow for some constructs (arrays, hash constuctors) to quote vars
-    } elsif ($args->{'auto_quote_interp_values'}
+    } elsif ($args->{'auto_quote'}
              && ($$str_ref =~ s/^(\$\w+) \s* (?:$|(?!\.))//x
-                 || $$str_ref =~ s/^(\$\{\s* [^\}]+ \s*\}) \s* (?:$|(?!\.))//x)
+                 || $$str_ref =~ s/^(\$\{\s* [^\}]+ \s*\}) \s* (?:$|(?!\.))//x
+                 || $$str_ref =~ s/^(\w+) \s* //x)
              ) {
         my $str = $1;
         $self->interpolate(\$str);
         return \ $str;
+
     }
 
     my $stash    = $self->stash;
@@ -174,7 +176,7 @@ sub get_variable_ref {
     ### looks like an array constructor
     if ($copy =~ s/^\[\s*//) {
         my @array;
-        while (my $_ref = $self->get_variable_ref(\$copy, {auto_quote_interp_values => 1})) {
+        while (my $_ref = $self->get_variable_ref(\$copy)) {
             push @array, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
             next if $copy =~ s/^,\s*//;
         }
@@ -184,10 +186,10 @@ sub get_variable_ref {
     ### looks like a hash constructor
     } elsif ($copy =~ s/^\{\s*//) {
         my %hash;
-        while (my $_ref = $self->get_variable_ref(\$copy, {auto_quote_interp_values => 1})) {
+        while (my $_ref = $self->get_variable_ref(\$copy, {auto_quote => 1})) {
             my $key = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
             $copy =~ s/^=>\s*// || die "Missing => in hash constructor in $$str_ref";
-            $_ref = $self->get_variable_ref(\$copy, {auto_quote_interp_values => 1});
+            $_ref = $self->get_variable_ref(\$copy);
             my $val = defined($_ref) ? UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref : undef;
             $hash{$key} = $val;
             next if $copy =~ s/^,\s*//;
