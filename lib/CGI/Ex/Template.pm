@@ -5,6 +5,7 @@ use vars qw(@INCLUDE_PATH
             $START_TAG
             $END_TAG
             $SCALAR_OPS $HASH_OPS $LIST_OPS
+            $FUNCTIONS
             );
 
 BEGIN {
@@ -58,6 +59,11 @@ BEGIN {
         sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
         values  => sub { [values %{ $_[0] }] },
     };
+
+    $FUNCTIONS = {
+        SET => \&func_SET,
+        GET => \&func_GET,
+    };
 };
 
 ###----------------------------------------------------------------###
@@ -70,11 +76,6 @@ sub new {
 
 ###----------------------------------------------------------------###
 
-### This is intended as a simple yet strong subroutine to swap
-### in tags to a document.  It is intended to be very basic
-### for those who may not want the full features of a Templating
-### system such as Template::Toolkit (even though they should
-### investigate them because they are pretty nice)
 sub swap {
   my $self = shift;
   my $str  = shift;
@@ -110,12 +111,13 @@ sub swap_buddy {
         my $val;
 
         ### look for functions or variables
-        if (my $ref = $self->get_variable_ref(\$tag)) {
+        if ($tag =~ /^(\w+) (?: $|\s)/x
+            && (my $code = $self->get_function(my $func = $1))) {
+            $tag =~ s/^\w+\s*//;
+            $val = $code->($self, \$tag, $func);
+            $val = '' if ! defined $val;
+        } elsif (my $ref = $self->get_variable_ref(\$tag)) {
             $val = UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
-        } elsif ($tag =~ /(\w+) (?: $|\s)/x) {
-            my $func = $1;
-            die "Unknown function \"$func\" in tag $all" if ! $self->{'FUNCTIONS'}->{$func};
-            $val = $self->{'FUNCTIONS'}->{$func}->($self, \$tag);
         } else {
             die "Not sure how to handle tag $all";
         }
@@ -127,6 +129,8 @@ sub swap_buddy {
   }xeg;
 
 }
+
+###----------------------------------------------------------------###
 
 sub get_variable_ref {
     my ($self, $str_ref) = @_;
@@ -290,10 +294,18 @@ sub get_variable_ref {
     ### we didn't find a variable - return nothing
     return if $ref == $stash;
 
+    if (UNIVERSAL::isa($ref, 'SCALAR') && ! defined $$ref) {
+        my $str = $self->undefined($$str_ref);
+        $str = '' if ! defined $str;
+        $ref = \ $str;
+    }
+
     ### finalize the changes and return the var reference
     $$str_ref = $copy;
     return $ref;
 }
+
+sub undefined {''}
 
 sub interpolate {
     my ($self, $str_ref) = @_;
@@ -321,6 +333,21 @@ sub list_op {
 sub hash_op {
     my ($self, $name) = @_;
     return $HASH_OPS->{$name};
+}
+
+sub get_function {
+    my ($self, $name) = @_;
+    return $FUNCTIONS->{$name};
+}
+
+###----------------------------------------------------------------###
+
+sub func_GET {
+    my ($self, $tag_ref) = @_;
+    my $copy = $$tag_ref;
+    my $ref = $self->get_variable_ref($tag_ref);
+    die "Couldn't find variable on GET on $copy" if ! $ref;
+    return UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
 }
 
 ###----------------------------------------------------------------###
