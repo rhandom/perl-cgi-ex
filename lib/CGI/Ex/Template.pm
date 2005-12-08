@@ -149,12 +149,21 @@ sub get_variable_ref {
     if ($$str_ref =~ s/^([\"\']) (|.*?[^\\]) \1 \s*//xs) {
         my $str = $2;
         $self->interpolate(\$str) if $1 eq '"'; # ' don't interpolate
-        return \$str;
+        return \ $str;
 
     ### looks like an unquoted num
     } elsif ($$str_ref =~ s/^(-?(?:\d*\.\d+|\d+))\s*//) {
         my $num = $1;
-        return \$num;
+        return \ $num;
+
+    ### allow for some constructs (arrays, hash constuctors) to quote vars
+    } elsif ($args->{'auto_quote_interp_values'}
+             && ($$str_ref =~ s/^(\$\w+) \s* (?:$|(?!\.))//x
+                 || $$str_ref =~ s/^(\$\{\s* [^\}]+ \s*\}) \s* (?:$|(?!\.))//x)
+             ) {
+        my $str = $1;
+        $self->interpolate(\$str);
+        return \ $str;
     }
 
     my $stash    = $self->stash;
@@ -165,7 +174,7 @@ sub get_variable_ref {
     ### looks like an array constructor
     if ($copy =~ s/^\[\s*//) {
         my @array;
-        while (my $_ref = $self->get_variable_ref(\$copy)) {
+        while (my $_ref = $self->get_variable_ref(\$copy, {auto_quote_interp_values => 1})) {
             push @array, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
             next if $copy =~ s/^,\s*//;
         }
@@ -175,10 +184,10 @@ sub get_variable_ref {
     ### looks like a hash constructor
     } elsif ($copy =~ s/^\{\s*//) {
         my %hash;
-        while (my $_ref = $self->get_variable_ref(\$copy)) {
+        while (my $_ref = $self->get_variable_ref(\$copy, {auto_quote_interp_values => 1})) {
             my $key = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
             $copy =~ s/^=>\s*// || die "Missing => in hash constructor in $$str_ref";
-            $_ref = $self->get_variable_ref(\$copy);
+            $_ref = $self->get_variable_ref(\$copy, {auto_quote_interp_values => 1});
             my $val = defined($_ref) ? UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref : undef;
             $hash{$key} = $val;
             next if $copy =~ s/^,\s*//;
@@ -215,8 +224,8 @@ sub get_variable_ref {
         }
 
         ### allow for interpolated variables in the middle
-        if ($copy =~ s/^\$(\w+)\b(\.?)//
-            || $copy =~ s/^\$\{\s* ([^\}]+) \s*\}(\.?)\s*//x) {
+        if ($copy =~ s/^\$(\w+)(\.?)//
+            || $copy =~ s/^\$\{\s* ([^\}]+) \s*\}(\.?)//x) {
             my ($var, $dot) = ($1, $2);
             my $_ref = $self->get_variable_ref(\$var);
             if (! $_ref || ! UNIVERSAL::isa($_ref, 'SCALAR')) {
@@ -230,8 +239,8 @@ sub get_variable_ref {
             }
         }
 
-        ### walk down the line this.that.foo(blah).equals george
-        if ($copy =~ s/^(\w+)\b\.?//) {
+        ### walk down the line this.that.foo(blah).0.them
+        if ($copy =~ s/^(\w+)\.?//) {
             my $name = $1;
 
             ### current level looks like an object method calll
