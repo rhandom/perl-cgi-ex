@@ -362,14 +362,15 @@ sub undefined {''}
 sub interpolate {
     my ($self, $str_ref) = @_;
     my $copy;
-    $str_ref =~ s/\$(\w+)/$self->_get_interp_value($copy = $1)/gs;
-    $str_ref =~ s/\$\{\s* ([^\}]+) \s*\}/$self->_get_interp_value($copy = $1)/gsx;
+    $$str_ref =~ s/\$(\w+)/$self->_get_interp_value($1)/egs;
+    $$str_ref =~ s/\$\{\s* ([^\}]+) \s*\}/$self->_get_interp_value($1)/egsx;
 }
 
 sub _get_interp_value {
     my ($self, $name) = @_;
     my $ref = $self->get_variable_ref(\$name);
-    return $$ref; # TODO - allow for more return types
+    die "Couldn't find interpolation value in $name" if ! $ref;
+    return UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
 }
 
 sub scalar_op {
