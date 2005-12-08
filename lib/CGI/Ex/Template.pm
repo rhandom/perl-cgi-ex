@@ -61,8 +61,9 @@ BEGIN {
     };
 
     $FUNCTIONS = {
-        SET => \&func_SET,
-        GET => \&func_GET,
+        SET  => \&func_SET,
+        GET  => \&func_GET,
+        DUMP => \&func_DUMP,
     };
 };
 
@@ -79,15 +80,19 @@ sub new {
 sub swap {
   my $self = shift;
   my $str  = shift;
-  my $form = shift;
-  $self->stash($form) if $form;
+  my $form = shift || {};
 
   return $str if ! $str;
   my $ref  = ref($str) ? $str : \$str;
 
+  ### setup our start and end
   local $START_TAG = $self->{'START_TAG'} || $START_TAG;
   local $END_TAG   = $self->{'END_TAG'}   || $END_TAG;
   local $self->{'state'} = {};
+
+  ### copy form to the stash
+  my $stash = $self->stash;
+  local @$stash{keys %$form} = values %$form;
 
   $self->swap_buddy($ref);
 
@@ -133,7 +138,10 @@ sub swap_buddy {
 ###----------------------------------------------------------------###
 
 sub get_variable_ref {
-    my ($self, $str_ref) = @_;
+    my ($self, $str_ref, $args) = @_;
+    $args ||= {};
+    my $set_ref;
+    my $set_name;
 
     ### looks like a quoted string - return early
     if ($$str_ref =~ s/^([\"\']) (|.*?[^\\]) \1 \s*//xs) {
@@ -177,7 +185,7 @@ sub get_variable_ref {
         $ref = \%hash;
     }
 
-    ### look for normal type names
+    ### look for normal name element types
     while (defined $ref) {
 
         ### parse for arguments (if we look like an arg list)
@@ -208,67 +216,93 @@ sub get_variable_ref {
         if ($copy =~ s/^\$(\w+)\b(\.?)\s*//
             || $copy =~ s/^\$\{\s* ([^\}]+) \s*\}(\.?)\s*//x) {
             my ($var, $dot) = ($1, $2);
-            my $ref = $self->get_variable_ref(\$var);
-            if (! $ref || ! UNIVERSAL::isa($ref, 'SCALAR')) {
+            my $_ref = $self->get_variable_ref(\$var);
+            if (! $_ref || ! UNIVERSAL::isa($_ref, 'SCALAR')) {
                 die "Unknown variable \"$var\" in $$str_ref"; # TODO - allow
+            } elsif ($$_ref =~ /^\w+$/) {
+                $copy = $$_ref . $dot . $copy;
             } else {
-                $copy = $$ref . $dot . $copy;
+                my $str = undef;
+                $ref = \ $str;
+                next;
             }
         }
 
         ### walk down the line this.that.foo(blah).equals george
         if ($copy =~ s/^(\w+)\b\.?\s*//) {
             my $name = $1;
-            if (UNIVERSAL::can($ref, 'can')) {
-                if (UNIVERSAL::can($ref, $name)) {
-                    my $obj = $ref;
-                    $ref = sub { [$ref->$name(@_)] };
-                    next;
-                } else {
-                    die "Unknown method \"$name\" for object $ref";
-                }
+
+            ### current level looks like an object method calll
+            if (UNIVERSAL::can($ref, $name)) {
+                my $obj = $ref;
+                $ref = sub {
+                    my @results = $obj->$name(@_);
+                    if ($#results > 0) {
+                        return \@results;
+                    } else {
+                        my $result = $results[0];
+                        return ref($result) ? $result : \ $result;
+                    }
+                };
+                next;
+
+            ### current level looks like a hashref
             } elsif (UNIVERSAL::isa($ref, 'HASH')) {
                 if (exists $ref->{$name}) {
+                    if ($args->{'return_set_ref'}) {
+                        $set_ref  = $ref;
+                        $set_name = $name;
+                    }
                     $ref = ref($ref->{$name}) ? $ref->{$name} : \ $ref->{$name};
                     next;
                 } elsif (my $code = $self->hash_op($name)) {
                     my $hash = $ref;
                     $ref = sub { $code->($hash, @_) };
                     next;
-                } elsif ($self->{'function'} && $self->{'function'} eq 'SET') { # setting
+                } elsif ($args->{'return_set_ref'}) {
+                    $set_ref  = $ref;
+                    $set_name = $name;
                     $ref = $ref->{$name} = {}; # AUTOVIVIFY
                     next;
                 } else { # undef
                     my $var = undef;
-                    $ref = \$var;
+                    $ref = \ $var;
                     next;
                     #die "HASH virtual method \"$name\" not implemented ($$str_ref)";
                 }
+
+            ### current level looks like an arrayref
             } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-                if ($name =~ /^-?\d+/) {
-                    if ($name >= 0 && $name > $#$ref) { # allow for out of bounds
-                        if ($self->{'function'} && $self->{'function'} eq 'SET') {
+                if ($name =~ /^\d+/) { # index lookup
+                    if ($name > $#$ref) { # allow for out of bounds
+                        if ($args->{'return_set_ref'}) {
                             $ref->[$name] = {}; # AUTOVIVIFY
-                            next;
                         } else {
                             my $var = undef;
                             $ref = \ $var;
                             next;
                         }
-                    } else { # return that index
-                        $ref = ref($ref->[$name]) ? $ref->[$name] : \ $ref->[$name];
                     }
+                    if ($args->{'return_set_ref'}) {
+                        $set_ref  = $ref;
+                        $set_name = $name;
+                    }
+                    $ref = ref($ref->[$name]) ? $ref->[$name] : \ $ref->[$name];
                     next;
                 } elsif (my $code = $self->list_op($name)) { # virtual method
                     my $array = $ref;
                     $ref = sub { $code->($array, @_) };
                     next;
+                } elsif ($args->{'return_set_ref'}) {
+                    die "Refusing to translate array to hash during set operation in $$str_ref";
                 } else { # undef
                     my $var = undef;
-                    $ref = \$var;
+                    $ref = \ $var;
                     next;
                     #die "ARRAY virtual method \"$name\" not implemented ($$str_ref)";
                 }
+
+            ### looks like a normal variable
             } elsif (UNIVERSAL::isa($ref, 'SCALAR')) {
                 if (! defined $$ref) {
                     ### undefs gobble up the rest
@@ -277,9 +311,19 @@ sub get_variable_ref {
                     my $scalar = $$ref;
                     $ref = sub { $code->($scalar, @_) };
                     next;
+                } elsif ($args->{'return_set_ref'}) {
+                    if (UNIVERSAL::isa($set_ref, 'HASH')) {
+                        $set_ref = $set_ref->{$set_name} = {};
+                        $ref     = $set_ref->{$name}     = {};
+                    } elsif (UNIVERSAL::isa($set_ref, 'ARRAY')) {
+                        $set_ref = $set_ref->[$set_name] = {};
+                        $ref     = $set_ref->{$name}     = {};
+                    }
+                    $set_name = $name;
+                    next;
                 } else {
                     my $var = undef;
-                    $ref = \$var;
+                    $ref = \ $var;
                     next;
                     #die "SCALAR virtual method not implemented ($$str_ref)";
                 }
@@ -294,15 +338,23 @@ sub get_variable_ref {
     ### we didn't find a variable - return nothing
     return if $ref == $stash;
 
+    ### finalize the changes and return the var reference
+    $$str_ref = $copy;
+
+    ### undefined values
     if (UNIVERSAL::isa($ref, 'SCALAR') && ! defined $$ref) {
         my $str = $self->undefined($$str_ref);
         $str = '' if ! defined $str;
         $ref = \ $str;
-    }
 
-    ### finalize the changes and return the var reference
-    $$str_ref = $copy;
-    return $ref;
+    ### if we are setting
+    } elsif ($args->{'return_set_ref'}) {
+        return [$set_ref, $set_name];
+
+    ### normal variable access
+    } else {
+        return $ref;
+    }
 }
 
 sub undefined {''}
@@ -350,15 +402,42 @@ sub func_GET {
     return UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
 }
 
+sub func_SET {
+    my ($self, $tag_ref) = @_;
+    my $copy = $$tag_ref;
+    while (length $$tag_ref) {
+        my $set = $self->get_variable_ref($tag_ref, {return_set_ref => 1});
+        die "Couldn't find variable on SET on $copy" if ! $set;
+        $$tag_ref =~ s/^=\s*// || die "Missing '=' in SET on $copy";
+        my $val_ref = $self->get_variable_ref($tag_ref);
+        $$tag_ref =~ s/^;\s*//;
+
+        my ($ref, $name) = @$set;
+        my $val = UNIVERSAL::isa($val_ref, 'SCALAR') ? $$val_ref : $val_ref;
+        if (UNIVERSAL::isa($ref, 'HASH')) {
+            $ref->{$name} = $val;
+        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+            $ref->[$name] = $val;
+        }
+    }
+    return '';
+}
+
+sub func_DUMP {
+    my ($self, $tag_ref) = @_;
+    my $copy = $$tag_ref;
+    my $ref = $self->get_variable_ref($tag_ref);
+    require Data::Dumper;
+    my $str = Data::Dumper::Dumper(UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref);
+    $str =~ s/\$VAR1/$copy/g;
+    return $str;
+}
+
 ###----------------------------------------------------------------###
 
 sub stash {
     my $self = shift;
-    if (@_) {
-        die "Stash must be a hashref" if ! UNIVERSAL::isa($_[0], 'HASH');
-        $self->{'STASH'} = shift;
-    }
-    return $self->{'STASH'} ||= {};
+    return $self->{'stash'} ||= {};
 }
 
 sub include_path {
