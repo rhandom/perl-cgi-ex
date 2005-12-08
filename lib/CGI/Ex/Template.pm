@@ -4,11 +4,60 @@ use strict;
 use vars qw(@INCLUDE_PATH
             $START_TAG
             $END_TAG
+            $SCALAR_OPS $HASH_OPS $LIST_OPS
             );
 
 BEGIN {
     $START_TAG  ||= qr/\[%/;
     $END_TAG    ||= qr/%\]/;
+    $SCALAR_OPS = {
+        hash    => sub { {value => $_[0]} },
+        length  => sub { defined($_[0]) ? length($_[0]) : 0 },
+        list    => sub { [ $_[0] ] },
+        match   => sub {
+            my ($str, $pat, $global) = @_;
+            return [] if ! defined $str || ! defined $pat;
+            return [$str =~ /$pat/g] if $global;
+            return [$str =~ /$pat/ ];
+        },
+        replace => sub {
+            my ($str, $pat, $replace) = @_;
+            return undef if ! defined $str || ! defined $pat;
+            $replace = '' if ! defined $replace;
+            $str =~ s/$pat/$replace/g;
+            return $str;
+        },
+        size    => sub { 1 },
+    };
+
+    $LIST_OPS = {
+        grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
+        join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; return join $join, @$ref },
+        list    => sub { $_[0] },
+        max     => sub { $#{ $_[0] } },
+        nsort   => sub { [sort {$a->[1] <=> $b->[1]} @{ $_[0] } ] },
+        pop     => sub { pop @{ $_[0] } },
+        push    => sub { my $ref = shift; push @$ref, @_; return '' },
+        reverse => sub { [ reverse @{ $_[0] } ] },
+        shift   => sub { shift @{ $_[0] } },
+        size    => sub { $#{ $_[0] } + 1 },
+        sort    => sub { [map {$_->[0]} sort {$a->[1] cmp $b->[1]} map {[$_, lc $_]} @{ $_[0] } ] }, # case insensitive
+        unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
+    };
+
+    $HASH_OPS = {
+        defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
+        delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
+        each    => sub { [each %{ $_[0] }] },
+        exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
+        hash    => sub { $_[0] },
+        keys    => sub { [keys %{ $_[0] }] },
+        list    => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
+        nsort   => sub { my $ref = shift; [sort {$ref->{$a}    <=> $ref->{$b}   } keys %$ref] },
+        size    => sub { scalar keys %{ $_[0] } },
+        sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
+        values  => sub { [values %{ $_[0] }] },
+    };
 };
 
 ###----------------------------------------------------------------###
@@ -62,9 +111,7 @@ sub swap_buddy {
 
         ### look for functions or variables
         if (my $ref = $self->get_variable_ref(\$tag)) {
-            $val = UNIVERSAL::isa($ref, 'CODE')   ? $ref->()
-                 : UNIVERSAL::isa($ref, 'SCALAR') ? $$ref
-                 :                                  "$ref";
+            $val = UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
         } elsif ($tag =~ /(\w+) (?: $|\s)/x) {
             my $func = $1;
             die "Unknown function \"$func\" in tag $all" if ! $self->{'FUNCTIONS'}->{$func};
@@ -87,11 +134,11 @@ sub get_variable_ref {
     ### looks like a quoted string - return early
     if ($$str_ref =~ s/^([\"\']) (|.*?[^\\]) \1 \s*//xs) {
         my $str = $2;
-        $self->interpolate(\$str);
+        $self->interpolate(\$str) if $1 eq '"'; # ' don't interpolate
         return \$str;
 
     ### looks like an unquoted num
-    } elsif ($$str_ref =~ s/(\d*\.\d+|\d+)//) {
+    } elsif ($$str_ref =~ s/^(-?(?:\d*\.\d+|\d+))//) {
         my $num = $1;
         return \$num;
     }
@@ -101,6 +148,32 @@ sub get_variable_ref {
     my $copy     = $$str_ref;
     my $traverse = '';
 
+    ### looks like an array constructor
+    if ($copy =~ s/^\[\s*//) {
+        my @array;
+        while (my $_ref = $self->get_variable_ref(\$copy)) {
+            push @array, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
+            next if $copy =~ s/^,\s*//;
+        }
+        $copy =~ s/^\]\.?\s*// || die "Unterminated array constructor in $$str_ref";
+        $ref = \@array;
+
+    ### looks like a hash constructor
+    } elsif ($copy =~ s/^\{\s*//) {
+        my %hash;
+        while (my $_ref = $self->get_variable_ref(\$copy)) {
+            my $key = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
+            $copy =~ s/^=>\s*// || die "Missing => in hash constructor in $$str_ref";
+            $_ref = $self->get_variable_ref(\$copy);
+            my $val = defined($_ref) ? UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref : undef;
+            $hash{$key} = $val;
+            next if $copy =~ s/^,\s*//;
+        }
+        $copy =~ s/^\}\.?\s*// || die "Unterminated hash constructor in $$str_ref";
+        $ref = \%hash;
+    }
+
+    ### look for normal type names
     while (defined $ref) {
 
         ### parse for arguments (if we look like an arg list)
@@ -154,38 +227,62 @@ sub get_variable_ref {
                 if (exists $ref->{$name}) {
                     $ref = ref($ref->{$name}) ? $ref->{$name} : \ $ref->{$name};
                     next;
-                } elsif ($name eq 'keys') {
-                    $ref = [keys %$ref];
+                } elsif (my $code = $self->hash_op($name)) {
+                    my $hash = $ref;
+                    $ref = sub { $code->($hash, @_) };
                     next;
-                } elsif ($name eq 'sort') {
-                    $ref = [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref];
+                } elsif ($self->{'function'} && $self->{'function'} eq 'SET') { # setting
+                    $ref = $ref->{$name} = {}; # AUTOVIVIFY
                     next;
-                } elsif ($name eq 'nsort') {
-                    $ref = [sort {$ref->{$a} <=> $ref->{$b}} keys %$ref];
-                } else {
-                    die "HASH virtual method \"$name\" not implemented ($$str_ref)";
+                } else { # undef
+                    my $var = undef;
+                    $ref = \$var;
+                    next;
+                    #die "HASH virtual method \"$name\" not implemented ($$str_ref)";
                 }
             } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
                 if ($name =~ /^-?\d+/) {
-                    $ref = ref($ref->[$name]) ? $ref->[$name] : \ $ref->[$name];
+                    if ($name >= 0 && $name > $#$ref) { # allow for out of bounds
+                        if ($self->{'function'} && $self->{'function'} eq 'SET') {
+                            $ref->[$name] = {}; # AUTOVIVIFY
+                            next;
+                        } else {
+                            my $var = undef;
+                            $ref = \ $var;
+                            next;
+                        }
+                    } else { # return that index
+                        $ref = ref($ref->[$name]) ? $ref->[$name] : \ $ref->[$name];
+                    }
                     next;
-                } elsif ($name eq 'join') {
-                    my $array_ref = $ref;
-                    $ref = sub { my $join = shift; $join = ' ' if ! defined($join); return join $join, @$array_ref };
+                } elsif (my $code = $self->list_op($name)) { # virtual method
+                    my $array = $ref;
+                    $ref = sub { $code->($array, @_) };
                     next;
-                } else {
-                    die "ARRAY virtual method \"$name\" not implemented ($$str_ref)";
+                } else { # undef
+                    my $var = undef;
+                    $ref = \$var;
+                    next;
+                    #die "ARRAY virtual method \"$name\" not implemented ($$str_ref)";
                 }
             } elsif (UNIVERSAL::isa($ref, 'SCALAR')) {
-                if ($name eq 'length') {
-                    my $len = length $$ref;
-                    $ref = \ $len;
+                if (! defined $$ref) {
+                    ### undefs gobble up the rest
                     next;
+                } elsif (my $code = $self->scalar_op($name)) {
+                    my $scalar = $$ref;
+                    $ref = sub { $code->($scalar, @_) };
+                    next;
+                } else {
+                    my $var = undef;
+                    $ref = \$var;
+                    next;
+                    #die "SCALAR virtual method not implemented ($$str_ref)";
                 }
-                die "SCALAR virtual method not implemented ($$str_ref)";
             }
         }
 
+        ### if we hit here - we were unable to parse more - so stop
         last;
     } # end of while
 
@@ -209,6 +306,21 @@ sub _get_interp_value {
     my ($self, $name) = @_;
     my $ref = $self->get_variable_ref(\$name);
     return $$ref; # TODO - allow for more return types
+}
+
+sub scalar_op {
+    my ($self, $name) = @_;
+    return $SCALAR_OPS->{$name};
+}
+
+sub list_op {
+    my ($self, $name) = @_;
+    return $LIST_OPS->{$name};
+}
+
+sub hash_op {
+    my ($self, $name) = @_;
+    return $HASH_OPS->{$name};
 }
 
 ###----------------------------------------------------------------###
