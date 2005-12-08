@@ -122,6 +122,7 @@ sub swap_buddy {
             $val = $code->($self, \$tag, $func);
             $val = '' if ! defined $val;
         } elsif (my $ref = $self->get_variable_ref(\$tag)) {
+            die "Found trailing info during variable access \"$tag" if $tag;
             $val = UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
         } else {
             die "Not sure how to handle tag $all";
@@ -150,7 +151,7 @@ sub get_variable_ref {
         return \$str;
 
     ### looks like an unquoted num
-    } elsif ($$str_ref =~ s/^(-?(?:\d*\.\d+|\d+))//) {
+    } elsif ($$str_ref =~ s/^(-?(?:\d*\.\d+|\d+))\s*//) {
         my $num = $1;
         return \$num;
     }
@@ -167,7 +168,7 @@ sub get_variable_ref {
             push @array, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
             next if $copy =~ s/^,\s*//;
         }
-        $copy =~ s/^\]\.?\s*// || die "Unterminated array constructor in $$str_ref";
+        $copy =~ s/^\]\.?// || die "Unterminated array constructor in $$str_ref";
         $ref = \@array;
 
     ### looks like a hash constructor
@@ -181,7 +182,7 @@ sub get_variable_ref {
             $hash{$key} = $val;
             next if $copy =~ s/^,\s*//;
         }
-        $copy =~ s/^\}\.?\s*// || die "Unterminated hash constructor in $$str_ref";
+        $copy =~ s/^\}\.?// || die "Unterminated hash constructor in $$str_ref";
         $ref = \%hash;
     }
 
@@ -195,7 +196,7 @@ sub get_variable_ref {
                 push @args, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
                 next if $copy =~ s/^,\s*//;
             }
-            $copy =~ s/^\)\.?\s*// || die "Unterminated arg list in $$str_ref";
+            $copy =~ s/^\)\.?// || die "Unterminated arg list in $$str_ref";
         }
 
         ### if the previously found thing was a code block - run it with any parsed args
@@ -213,7 +214,7 @@ sub get_variable_ref {
         }
 
         ### allow for interpolated variables in the middle
-        if ($copy =~ s/^\$(\w+)\b(\.?)\s*//
+        if ($copy =~ s/^\$(\w+)\b(\.?)//
             || $copy =~ s/^\$\{\s* ([^\}]+) \s*\}(\.?)\s*//x) {
             my ($var, $dot) = ($1, $2);
             my $_ref = $self->get_variable_ref(\$var);
@@ -229,7 +230,7 @@ sub get_variable_ref {
         }
 
         ### walk down the line this.that.foo(blah).equals george
-        if ($copy =~ s/^(\w+)\b\.?\s*//) {
+        if ($copy =~ s/^(\w+)\b\.?//) {
             my $name = $1;
 
             ### current level looks like an object method calll
@@ -339,6 +340,7 @@ sub get_variable_ref {
     return if $ref == $stash;
 
     ### finalize the changes and return the var reference
+    $copy =~ s/^\s+//;
     $$str_ref = $copy;
 
     ### undefined values
@@ -409,12 +411,16 @@ sub func_SET {
     while (length $$tag_ref) {
         my $set = $self->get_variable_ref($tag_ref, {return_set_ref => 1});
         die "Couldn't find variable on SET on $copy" if ! $set;
-        $$tag_ref =~ s/^=\s*// || die "Missing '=' in SET on $copy";
-        my $val_ref = $self->get_variable_ref($tag_ref);
+        my $val;
+        if ($$tag_ref =~ s/^=\s*//) {
+            my $val_ref = $self->get_variable_ref($tag_ref);
+            $val = UNIVERSAL::isa($val_ref, 'SCALAR') ? $$val_ref : $val_ref;
+        } else {
+            $val = '';
+        }
         $$tag_ref =~ s/^;\s*//;
 
         my ($ref, $name) = @$set;
-        my $val = UNIVERSAL::isa($val_ref, 'SCALAR') ? $$val_ref : $val_ref;
         if (UNIVERSAL::isa($ref, 'HASH')) {
             $ref->{$name} = $val;
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
