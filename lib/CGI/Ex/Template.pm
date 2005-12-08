@@ -92,7 +92,8 @@ sub swap {
 
   ### copy form to the stash
   my $stash = $self->stash;
-  local @$stash{keys %$form} = values %$form;
+  local @$stash{keys %$stash} = values %$stash;
+  local @$stash{keys %$form}  = values %$form;
 
   $self->swap_buddy($ref);
 
