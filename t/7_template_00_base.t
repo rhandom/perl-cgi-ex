@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 121 - ($is_tt ? 2 : 0);
+use Test::More tests => 133 - ($is_tt ? 9 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -39,6 +39,7 @@ my $obj = OBJ->new;
 
 ###----------------------------------------------------------------###
 ### variable GETting
+
 process_ok("[% foo %]" => "");
 process_ok("[% foo %]" => "7",       {foo => 7});
 process_ok("[% foo %][% foo %][% foo %]" => "777", {foo => 7});
@@ -173,6 +174,19 @@ process_ok("[% SET name = 'two' %][% SET \$name.foo = 3 %][% two.foo %]" => 3);
 process_ok("[% SET name = 'two' %][% SET \${name}.foo = 3 %][% two.foo %]" => 3);
 process_ok("[% SET name = 'two' %][% SET foo.\$name.foo = 3 %][% foo.two.foo %]" => 3);
 process_ok("[% SET name = 'two' %][% SET foo.\${name}.foo = 3 %][% foo.two.foo %]" => 3);
+
+process_ok("[% SET foo = [1..10] %][% foo.6 %]" => 7);
+process_ok("[% SET foo = [10..1] %][% foo.6 %]" => '');
+process_ok("[% SET foo = [-10..-1] %][% foo.6 %]" => -4);
+process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => 7)               if ! $is_tt;
+process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => 7)               if ! $is_tt;
+process_ok("[% SET foo = [1,1..0..10] %][% foo.6 %]" => 7)             if ! $is_tt;
+process_ok("[% SET foo = [1..10, 21..30] %][% foo.12 %]" => 23)        if ! $is_tt;
+process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => 7) if ! $is_tt;
+process_ok("[% SET foo = [100..] bar = 7 %][% bar %][% foo.0 %]" => 7) if ! $is_tt;
+process_ok("[% SET foo = ['a'..'z'] %][% foo.6 %]" => 'g');
+process_ok("[% SET foo = ['z'..'a'] %][% foo.6 %]" => '');
+process_ok("[% SET foo = ['a'..'z'].reverse %][% foo.6 %]" => 't')     if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### CALL and DEFAULT
