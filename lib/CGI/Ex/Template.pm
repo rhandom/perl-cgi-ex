@@ -70,6 +70,7 @@ BEGIN {
         DUMP    => \&func_DUMP,
         GET     => \&func_GET,
         INCLUDE => \&func_INCLUDE,
+        INSERT  => \&func_INSERT,
         SET     => \&func_SET,
         PROCESS => \&func_PROCESS,
     };
@@ -462,6 +463,16 @@ sub func_INCLUDE {
     return $str;
 }
 
+sub func_INSERT {
+    my ($self, $tag_ref) = @_;
+    my $copy = $$tag_ref;
+    my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => $QR_FILENAME});
+    die "Couldn't find a filename on INSERT/INCLUDE/PROCESS on $copy"
+        if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
+
+    return $self->include_file($$ref);
+}
+
 sub func_GET {
     my ($self, $tag_ref) = @_;
     my $copy = $$tag_ref;
@@ -472,17 +483,13 @@ sub func_GET {
 
 sub func_PROCESS {
     my ($self, $tag_ref) = @_;
-    my $copy = $$tag_ref;
-    my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => $QR_FILENAME});
-    die "Couldn't find a variable on INCLUDE/PROCESS on $copy"
-        if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
 
-    my $str = $self->include_file($$ref);
     $self->{'state'}->{'recurse'} ||= 0;
     $self->{'state'}->{'recurse'} ++;
-    die "MAX_RECURSE $MAX_RECURSE reached during INCLUDE/PROCESS on $copy"
+    die "MAX_RECURSE $MAX_RECURSE reached during INCLUDE/PROCESS on $$tag_ref"
         if $self->{'state'}->{'recurse'} >= $MAX_RECURSE;
 
+    my $str = $self->func_INSERT($tag_ref);
     $self->swap_buddy(\$str);
 
     $self->{'state'}->{'recurse'} --;
