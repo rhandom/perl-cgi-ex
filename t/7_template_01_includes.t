@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 20 - ($is_tt ? 0 : 0);
+use Test::More tests => 18 - ($is_tt ? 4 : 0);
 use Data::Dumper qw(Dumper);
 
 use_ok($module);
@@ -47,6 +47,12 @@ open(my $fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
 print $fh "BAR";
 close $fh;
 
+my $baz_template = "$test_dir/baz.tt";
+END { unlink $baz_template };
+open(my $fh, ">$baz_template") || die "Couldn't open $baz_template: $!";
+print $fh "[% SET baz = 42 %][% baz %][% bing %]";
+close $fh;
+
 ###----------------------------------------------------------------###
 ### INCLUDE
 
@@ -56,6 +62,10 @@ process_ok("([% SET file = 'bar.tt' %][% INCLUDE \${file} %])" => '(BAR)') if ! 
 process_ok("([% SET file = 'bar.tt' %][% INCLUDE \"\$file\" %])" => '(BAR)');
 process_ok("([% SET file = 'bar' %][% INCLUDE \"\$file.tt\" %])" => '(BAR)') if ! $is_tt;
 
+process_ok("([% INCLUDE baz.tt %])" => '(42)');
+process_ok("([% INCLUDE baz.tt %])[% baz %]" => '(42)');
+process_ok("[% SET baz = 21 %]([% INCLUDE baz.tt %])[% baz %]" => '(42)21');
+
 ###----------------------------------------------------------------###
 ### PROCESS
 
@@ -64,3 +74,7 @@ process_ok("([% SET file = 'bar.tt' %][% PROCESS \$file %])" => '(BAR)');
 process_ok("([% SET file = 'bar.tt' %][% PROCESS \${file} %])" => '(BAR)') if ! $is_tt;
 process_ok("([% SET file = 'bar.tt' %][% PROCESS \"\$file\" %])" => '(BAR)');
 process_ok("([% SET file = 'bar' %][% PROCESS \"\$file.tt\" %])" => '(BAR)') if ! $is_tt;
+
+process_ok("([% PROCESS baz.tt %])" => '(42)');
+process_ok("([% PROCESS baz.tt %])[% baz %]" => '(42)42');
+process_ok("[% SET baz = 21 %]([% PROCESS baz.tt %])[% baz %]" => '(42)42');
