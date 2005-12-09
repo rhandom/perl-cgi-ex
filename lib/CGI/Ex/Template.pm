@@ -125,50 +125,50 @@ sub swap_buddy {
     my @state;
 
     ### now do the swap
-    while ($$ref =~ m{(
-                       (\s*)
-                       $START_TAG (-?) \s* # opening tag and prechomp info
-                       ( | \S.+?)          # nothing or something
-                       \s* (-?) $END_TAG   # the close tag and postchomp info
-                       (\s*)
-                       )}xg) {
+    while ($$ref =~ m{
+            (\s*)
+            ($START_TAG) (-?) # opening tag and prechomp info
+            (.*?)             # nothing or something
+            (-?) ($END_TAG)   # the close tag and postchomp info
+            (\s*)
+        }xg) {
         my $pos = pos($$ref);
-        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6);
-
-        ### look for functions or variables
-        my ($code, $func);
-        if ($tag =~ /^(\w+) (?: $|\s)/x
-            && ($code = $self->get_function($func = $1))) {
-            $tag =~ s/^\w+\s*//;
-        }
-
-        push @state, [$all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $code, $pos];
+        push @state, [$pos, length($1), length($2), length($3), length($4), length($5), length($6), length($7)];
     }
 
     my $offset = 0;
-    for (@state) {
-        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $code, $pos) = @$_;
+    foreach my $s (@state) {
+        my $tag = substr($$ref, $s->[0] + $offset - ($s->[4] + $s->[5] + $s->[6] + $s->[7]), $s->[4]);
+        $tag =~ s/^\s+//;
+        $tag =~ s/\s+$//;
 
+        ### look for functions or variables
         my $val;
-        if ($code) {
+        if ($tag =~ /^(\w+) (?: $|\s)/x
+            && (my $code = $self->get_function(my $func = $1))) {
+            $tag =~ s/^\w+\s*//;
             $val = $code->($self, \$tag, $func);
             $val = '' if ! defined $val;
         } elsif (my $_ref = $self->get_variable_ref(\$tag)) {
             die "Found trailing info during variable access \"$tag\"" if $tag;
             $val = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
         } else {
-            $all =~ s/^\s+//;
-            $all =~ s/\s+$//;
-            die "Not sure how to handle tag $all";
+            die "Not sure how to handle tag \""
+                . substr($$ref, $s->[0] + $offset - ($s->[4] + $s->[5] + $s->[6] + $s->[7]), $s->[4])
+                . "\"";
         }
 
         ### return the val and any whitespace
-        $ws_pre  = '' if $pre_chomp  || $self->{'PRE_CHOMP'};
-        $ws_post = '' if $post_chomp || $self->{'POST_CHOMP'};
+        my $len_all = $s->[1] + $s->[2] + $s->[3] + $s->[4] + $s->[5] + $s->[6] + $s->[7];
+        my $ws_pre  = ($s->[3] || $self->{'PRE_CHOMP'})
+            ? '' : substr($$ref, $s->[0] + $offset - ($len_all), $s->[1]);
+        my $ws_post = ($s->[5] || $self->{'POST_CHOMP'})
+            ? '' : substr($$ref, $s->[0] + $offset - ($s->[7]), $s->[7]);
         my $str = "$ws_pre$val$ws_post";
 
-        substr($$ref, $pos + $offset - length($all), length($all), $str);
-        $offset += length($str) - length($all);
+        ### insert the string back in
+        substr($$ref, $s->[0] + $offset - $len_all, $len_all, $str);
+        $offset += length($str) - $len_all;
     }
 
     return 1;
