@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 136 - ($is_tt ? 12 : 0);
+use Test::More tests => 142 - ($is_tt ? 12 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -137,9 +137,10 @@ process_ok("[% \"hi \${foo.echo(7)}\" %]" => 'hi 7', {foo => $obj});
 
 process_ok("[% SET foo bar %][% foo %]" => '');
 process_ok("[% SET foo = 1 %][% foo %]" => '1');
-process_ok("[% SET foo = 1  bar = 1 %][% foo %]" => '1');
+process_ok("[% SET foo = 1  bar = 1 %][% foo %][% bar %]" => '11');
 process_ok("[% SET foo  bar = 1 %][% foo %]" => '');
 process_ok("[% SET foo = 1 ; bar = 1 %][% foo %]" => '1');
+process_ok("[% SET foo = 1 %][% SET foo %][% foo %]" => '');
 
 process_ok("[% SET foo = [] %][% foo.0 %]" => "");
 process_ok("[% SET foo = [1, 2, 3] %][% foo.1 %]" => 2);
@@ -147,6 +148,11 @@ process_ok("[% SET foo = {} %][% foo.0 %]" => "");
 process_ok("[% SET foo = {1 => 2} %][% foo.1 %]" => "2") if ! $is_tt;
 process_ok("[% SET foo = {'1' => 2} %][% foo.1 %]" => "2");
 
+process_ok("[% SET name = 1 %][% SET foo = name %][% foo %]" => "1");
+process_ok("[% SET name = 1 %][% SET foo = \$name %][% foo %]" => "");
+process_ok("[% SET name = 1 %][% SET foo = \${name} %][% foo %]" => "");
+process_ok("[% SET name = 1 %][% SET foo = \"\$name\" %][% foo %]" => "1");
+process_ok("[% SET name = 1 foo = name %][% foo %]" => '1');
 process_ok("[% SET name = 1 %][% SET foo = {\$name => 2} %][% foo.1 %]" => "2");
 process_ok("[% SET name = 1 %][% SET foo = {\"\$name\" => 2} %][% foo.1 %]" => "2") if ! $is_tt;
 process_ok("[% SET name = 1 %][% SET foo = {\${name} => 2} %][% foo.1 %]" => "2");
