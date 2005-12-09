@@ -138,22 +138,22 @@ sub swap_buddy {
                     my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6);
 
                     ### look for functions or variables
-                    my ($code, $func);
+                    my ($func);
                     if ($tag =~ /^(\w+) (?: $|\s)/x
-                        && ($code = $self->get_function($func = $1))) {
+                        && ($func = $self->has_function($1))) {
                         $tag =~ s/^\w+\s*//;
                     }
 
-                    push @state, [$all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $code];
+                    push @state, [$all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func];
                     $SPS.$#state.$SPS; # return of the s///
                 }exg;
 
     $$ref =~ s{$SPS_QR}{
-        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $code) = @{ $state[$1] };
+        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func) = @{ $state[$1] };
 
         my $val;
-        if ($code) {
-            $val = $code->($self, \$tag, $func);
+        if ($func) {
+            $val = $self->get_function($func)->($self, \$tag, $func);
             $val = '' if ! defined $val;
         } elsif (my $_ref = $self->get_variable_ref(\$tag)) {
             die "Found trailing info during variable access \"$tag" if $tag;
@@ -450,10 +450,10 @@ sub hash_op {
     return $HASH_OPS->{$name};
 }
 
-sub get_function {
-    my ($self, $name) = @_;
-    return $FUNCTIONS->{$name};
-}
+sub has_function { $FUNCTIONS->{$_[1]} ? 1 : 0 }
+
+sub get_function { $FUNCTIONS->{$_[1]} }
+
 
 ###----------------------------------------------------------------###
 
