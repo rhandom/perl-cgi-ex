@@ -65,7 +65,8 @@ BEGIN {
     };
 
     $FUNCTIONS = {
-        CALL    => sub { &func_GET; '' },
+        BLOCK   => \&func_BLOCK,
+        CALL    => \&func_CALL,
         DEFAULT => \&func_DEFAULT,
         DUMP    => \&func_DUMP,
         GET     => \&func_GET,
@@ -102,12 +103,17 @@ sub swap {
   local $END_TAG   = $self->{'END_TAG'}   || $END_TAG;
   local $self->{'state'} = {};
 
-  ### copy form to the stash
+  ### localize the stash
   my $stash = $self->stash;
-  local @$stash{keys %$stash} = values %$stash;
+  my @keys  = keys %$stash;
+  local @$stash{@keys} = values %$stash;
   local @$stash{keys %$form}  = values %$form;
 
   $self->swap_buddy($ref);
+
+  ### remove items added to stash
+  my %keys = map {$_ => 1} @keys;
+  delete @$stash{grep {!$keys{$_}} keys %$stash};
 
   return ref($str) ? 1 : $$ref;
 }
@@ -117,15 +123,15 @@ sub swap_buddy {
     my $ref  = shift;
 
     ### now do the swap
-    $$ref =~ s{
-        (\s*) (
-               $START_TAG (-?) \s* # opening tag and prechomp info
-               ( | \S.+?)          # nothing or something
-               \s* (-?) $END_TAG   # the close tag and postchomp info
-               ) (\s*)
-    }{
-        local $self->{'state'}->{'pos'} = pos;
-        my ($ws_pre, $all, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6);
+    while ($$ref =~ m{(
+                       (\s*)
+                       $START_TAG (-?) \s* # opening tag and prechomp info
+                       ( | \S.+?)          # nothing or something
+                       \s* (-?) $END_TAG   # the close tag and postchomp info
+                       (\s*)
+                       )}xg) {
+        my $pos = local $self->{'state'}->{'pos'} = pos($$ref);
+        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6);
         my $val;
 
         ### look for functions or variables
@@ -134,19 +140,25 @@ sub swap_buddy {
             $tag =~ s/^\w+\s*//;
             $val = $code->($self, \$tag, $func);
             $val = '' if ! defined $val;
-        } elsif (my $ref = $self->get_variable_ref(\$tag)) {
+        } elsif (my $_ref = $self->get_variable_ref(\$tag)) {
             die "Found trailing info during variable access \"$tag" if $tag;
-            $val = UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
+            $val = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
         } else {
+            $all =~ s/^\s+//;
+            $all =~ s/\s+$//;
             die "Not sure how to handle tag $all";
         }
 
         ### return the val and any whitespace
         $ws_pre  = '' if $pre_chomp  || $self->{'PRE_CHOMP'};
         $ws_post = '' if $post_chomp || $self->{'POST_CHOMP'};
-        "$ws_pre$val$ws_post"; # return of the swap
-  }xeg;
+        my $str = "$ws_pre$val$ws_post";
 
+        substr($$ref, $pos - length($all), length($all), $str);
+        pos($$ref) = $pos + length($str) - length($all);
+    }
+
+    return 1;
 }
 
 ###----------------------------------------------------------------###
@@ -425,6 +437,23 @@ sub get_function {
 }
 
 ###----------------------------------------------------------------###
+
+sub func_BLOCK {
+    my ($self, $tag_ref) = @_;
+    my $copy = $$tag_ref;
+    my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => qr/\w+/o});
+    die "Couldn't find a filename on INSERT/INCLUDE/PROCESS on $copy"
+        if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
+
+    my $block_name = $$ref;
+
+    use Data::Dumper;
+    print Dumper $self;
+    return '';
+}
+
+
+sub func_CALL { &func_GET; '' }
 
 sub func_DEFAULT {
     my ($self, $tag_ref) = @_;
