@@ -8,11 +8,15 @@ use vars qw(@INCLUDE_PATH
             $FUNCTIONS
             $QR_FILENAME
             $MAX_RECURSE
+            $SPS
+            $SPS_QR
             );
 
 BEGIN {
     $START_TAG  ||= qr/\[%/;
     $END_TAG    ||= qr/%\]/;
+    $SPS = chr(186);
+    $SPS_QR = qr/$SPS(\d+)$SPS/;
 
     ### list out the virtual methods
     $SCALAR_OPS = {
@@ -124,52 +128,47 @@ sub swap_buddy {
 
     my @state;
 
-    ### now do the swap
-    while ($$ref =~ m{
-            (\s*)
-            ($START_TAG) (-?) # opening tag and prechomp info
-            (.*?)             # nothing or something
-            (-?) ($END_TAG)   # the close tag and postchomp info
-            (\s*)
-        }xg) {
-        my $pos = pos($$ref);
-        push @state, [$pos, length($1), length($2), length($3), length($4), length($5), length($6), length($7)];
-    }
+    $$ref =~ s{(
+                (\s*)
+                $START_TAG (-?) \s* # opening tag and prechomp info
+                ( | \S.+?)          # nothing or something
+                \s* (-?) $END_TAG   # the close tag and postchomp info
+                (\s*)
+                )}{
+                    my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6);
 
-    my $offset = 0;
-    foreach my $s (@state) {
-        my $tag = substr($$ref, $s->[0] + $offset - ($s->[4] + $s->[5] + $s->[6] + $s->[7]), $s->[4]);
-        $tag =~ s/^\s+//;
-        $tag =~ s/\s+$//;
+                    ### look for functions or variables
+                    my ($code, $func);
+                    if ($tag =~ /^(\w+) (?: $|\s)/x
+                        && ($code = $self->get_function($func = $1))) {
+                        $tag =~ s/^\w+\s*//;
+                    }
 
-        ### look for functions or variables
+                    push @state, [$all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $code];
+                    $SPS.$#state.$SPS; # return of the s///
+                }exg;
+
+    $$ref =~ s{$SPS_QR}{
+        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $code) = @{ $state[$1] };
+
         my $val;
-        if ($tag =~ /^(\w+) (?: $|\s)/x
-            && (my $code = $self->get_function(my $func = $1))) {
-            $tag =~ s/^\w+\s*//;
+        if ($code) {
             $val = $code->($self, \$tag, $func);
             $val = '' if ! defined $val;
         } elsif (my $_ref = $self->get_variable_ref(\$tag)) {
-            die "Found trailing info during variable access \"$tag\"" if $tag;
+            die "Found trailing info during variable access \"$tag" if $tag;
             $val = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
         } else {
-            die "Not sure how to handle tag \""
-                . substr($$ref, $s->[0] + $offset - ($s->[4] + $s->[5] + $s->[6] + $s->[7]), $s->[4])
-                . "\"";
+            $all =~ s/^\s+//;
+            $all =~ s/\s+$//;
+            die "Not sure how to handle tag $all";
         }
 
         ### return the val and any whitespace
-        my $len_all = $s->[1] + $s->[2] + $s->[3] + $s->[4] + $s->[5] + $s->[6] + $s->[7];
-        my $ws_pre  = ($s->[3] || $self->{'PRE_CHOMP'})
-            ? '' : substr($$ref, $s->[0] + $offset - ($len_all), $s->[1]);
-        my $ws_post = ($s->[5] || $self->{'POST_CHOMP'})
-            ? '' : substr($$ref, $s->[0] + $offset - ($s->[7]), $s->[7]);
-        my $str = "$ws_pre$val$ws_post";
-
-        ### insert the string back in
-        substr($$ref, $s->[0] + $offset - $len_all, $len_all, $str);
-        $offset += length($str) - $len_all;
-    }
+        $ws_pre  = '' if $pre_chomp  || $self->{'PRE_CHOMP'};
+        $ws_post = '' if $post_chomp || $self->{'POST_CHOMP'};
+        "$ws_pre$val$ws_post";
+    }egxo;
 
     return 1;
 }
