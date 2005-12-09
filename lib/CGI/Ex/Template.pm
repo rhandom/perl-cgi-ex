@@ -7,6 +7,7 @@ use vars qw(@INCLUDE_PATH
             $SCALAR_OPS $HASH_OPS $LIST_OPS
             $FUNCTIONS
             $QR_FILENAME
+            $MAX_RECURSE
             );
 
 BEGIN {
@@ -74,6 +75,7 @@ BEGIN {
     };
 
     $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w-\.]+ (?:/[\w-\.]+)* }x;
+    $MAX_RECURSE = 50;
 };
 
 ###----------------------------------------------------------------###
@@ -445,9 +447,19 @@ sub func_DUMP {
 
 sub func_INCLUDE {
     my ($self, $tag_ref) = @_;
+
+    ### localize the stash
     my $stash = $self->stash;
-    local @$stash{keys %$stash} = values %$stash;
-    return $self->func_PROCESS($tag_ref);
+    my @keys  = keys %$stash;
+    local @$stash{@keys} = values %$stash; # note that we are only "cloning" one level deep
+
+    my $str = $self->func_PROCESS($tag_ref);
+
+    ### kill added keys
+    my %keys = map {$_ => 1} @keys;
+    delete @$stash{grep {!$keys{$_}} keys %$stash};
+
+    return $str;
 }
 
 sub func_GET {
@@ -464,7 +476,17 @@ sub func_PROCESS {
     my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => $QR_FILENAME});
     die "Couldn't find a variable on INCLUDE/PROCESS on $copy"
         if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
-    return $self->include_file($$ref);
+
+    my $str = $self->include_file($$ref);
+    $self->{'state'}->{'recurse'} ||= 0;
+    $self->{'state'}->{'recurse'} ++;
+    die "MAX_RECURSE $MAX_RECURSE reached during INCLUDE/PROCESS on $copy"
+        if $self->{'state'}->{'recurse'} >= $MAX_RECURSE;
+
+    $self->swap_buddy(\$str);
+
+    $self->{'state'}->{'recurse'} --;
+    return $str;
 }
 
 sub func_SET {
