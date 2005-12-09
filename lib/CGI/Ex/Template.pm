@@ -128,28 +128,30 @@ sub swap_buddy {
 
     my @state;
 
-    $$ref =~ s{(
-                (\s*)
-                $START_TAG (-?) \s* # opening tag and prechomp info
-                ( | \S.+?)          # nothing or something
-                \s* (-?) $END_TAG   # the close tag and postchomp info
-                (\s*)
-                )}{
-                    my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6);
+    ### now do the swap
+    while ($$ref =~ m{(
+                       (\s*)
+                       $START_TAG (-?) \s* # opening tag and prechomp info
+                       ( | \S.+?)          # nothing or something
+                       \s* (-?) $END_TAG   # the close tag and postchomp info
+                       (\s*)
+                       )}xg) {
+        my $pos = pos($$ref);
+        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6);
 
-                    ### look for functions or variables
-                    my ($func);
-                    if ($tag =~ /^(\w+) (?: $|\s)/x
-                        && ($func = $self->has_function($1))) {
-                        $tag =~ s/^\w+\s*//;
-                    }
+        ### look for functions or variables
+        my $func;
+        if ($tag =~ /^(\w+) (?: $|\s)/x && $self->has_function($1)) {
+            $func = $1;
+            $tag =~ s/^\w+\s*//;
+        }
 
-                    push @state, [$all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func];
-                    $SPS.$#state.$SPS; # return of the s///
-                }exg;
+        push @state, [$all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $pos];
+    }
 
-    $$ref =~ s{$SPS_QR}{
-        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func) = @{ $state[$1] };
+    my $offset = 0;
+    for (@state) {
+        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $pos) = @$_;
 
         my $val;
         if ($func) {
@@ -167,8 +169,11 @@ sub swap_buddy {
         ### return the val and any whitespace
         $ws_pre  = '' if $pre_chomp  || $self->{'PRE_CHOMP'};
         $ws_post = '' if $post_chomp || $self->{'POST_CHOMP'};
-        "$ws_pre$val$ws_post";
-    }egxo;
+        my $str = "$ws_pre$val$ws_post";
+
+        substr($$ref, $pos + $offset - length($all), length($all), $str);
+        $offset += length($str) - length($all);
+    }
 
     return 1;
 }
