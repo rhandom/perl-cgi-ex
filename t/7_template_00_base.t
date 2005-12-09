@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 20 - ($is_tt ? 0 : 0);
+use Test::More tests => 121 - ($is_tt ? 2 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -39,9 +39,9 @@ my $obj = OBJ->new;
 
 ###----------------------------------------------------------------###
 ### variable GETting
-
 process_ok("[% foo %]" => "");
 process_ok("[% foo %]" => "7",       {foo => 7});
+process_ok("[% foo %][% foo %][% foo %]" => "777", {foo => 7});
 process_ok("[% foo() %]" => "7",     {foo => 7});
 process_ok("[% foo.bar %]" => "");
 process_ok("[% foo.bar %]" => "",    {foo => {}});
@@ -175,6 +175,7 @@ process_ok("[% SET name = 'two' %][% SET foo.\$name.foo = 3 %][% foo.two.foo %]"
 process_ok("[% SET name = 'two' %][% SET foo.\${name}.foo = 3 %][% foo.two.foo %]" => 3);
 
 ###----------------------------------------------------------------###
+### CALL and DEFAULT
 
 process_ok("[% DEFAULT foo = 7 %][% foo %]" => 7);
 process_ok("[% SET foo = 5 %][% DEFAULT foo = 7 %][% foo %]" => 5);
@@ -187,6 +188,10 @@ process_ok("[% CALL foo %]" => '',   {foo => sub {$t++; 'hi'}});
 ok($t == 3, "CALL method actually called var");
 
 ###----------------------------------------------------------------###
-### vitual methods
+### virtual methods
 
 
+###----------------------------------------------------------------###
+### blocks
+
+process_ok("[% BLOCK foo %]" => '');
