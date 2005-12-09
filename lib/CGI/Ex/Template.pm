@@ -215,11 +215,18 @@ sub get_variable_ref {
     ### looks like an array constructor
     if ($copy =~ s/^\[\s*//) {
         my @array;
-        while (my $_ref = $self->get_variable_ref(\$copy)) {
-            push @array, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
+        my ($range, $_ref);
+        while (($range = $copy =~ s/^\.\.\s*//) || ($_ref = $self->get_variable_ref(\$copy))) {
+            push @array, $range ? "\0..\0" : UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
             next if $copy =~ s/^,\s*//;
         }
         $copy =~ s/^\]\.?// || die "Unterminated array constructor in $$str_ref";
+        for (my $i = 0; $i <= $#array; $i++) {
+            next if $array[$i] ne "\0..\0";
+            my $range = do { local $^W; $i == 0 ? [] : [$array[$i - 1] .. $array[$i + 1]] };
+            splice @array, ($i == 0 ? 0 : $i - 1), ($i == 0 ? 2 : 3), @$range;
+            $i += ($#$range + 1) - ($i == 0 ? 2 : 3)
+        }
         $ref = \@array;
 
     ### looks like a hash constructor
