@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 18 - ($is_tt ? 4 : 0);
+use Test::More tests => 23 - ($is_tt ? 4 : 0);
 use Data::Dumper qw(Dumper);
 
 use_ok($module);
@@ -52,6 +52,15 @@ END { unlink $baz_template };
 open(my $fh, ">$baz_template") || die "Couldn't open $baz_template: $!";
 print $fh "[% SET baz = 42 %][% baz %][% bing %]";
 close $fh;
+
+###----------------------------------------------------------------###
+### INSERT
+
+process_ok("([% INSERT bar.tt %])" => '(BAR)');
+process_ok("([% SET file = 'bar.tt' %][% INSERT \$file %])" => '(BAR)');
+process_ok("([% SET file = 'bar.tt' %][% INSERT \${file} %])" => '(BAR)') if ! $is_tt;
+process_ok("([% SET file = 'bar.tt' %][% INSERT \"\$file\" %])" => '(BAR)');
+process_ok("([% SET file = 'bar' %][% INSERT \"\$file.tt\" %])" => '(BAR)') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### INCLUDE
