@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 133 - ($is_tt ? 9 : 0);
+use Test::More tests => 136 - ($is_tt ? 12 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -204,6 +204,9 @@ ok($t == 3, "CALL method actually called var");
 ###----------------------------------------------------------------###
 ### virtual methods
 
+process_ok("[% [0 .. 10].reverse.1 %]" => 9) if ! $is_tt;
+process_ok("[% {a => 'A'}.a %]" => 'A') if ! $is_tt;
+process_ok("[% 'This is a string'.length %]" => 16) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### blocks
