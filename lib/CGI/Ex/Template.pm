@@ -176,8 +176,11 @@ sub swap_buddy {
 
 ###----------------------------------------------------------------###
 
-sub get_literals_ref {
+sub get_variable_ref {
     my ($self, $str_ref, $args) = @_;
+    $args ||= {};
+    my $set_ref;
+    my $set_name;
 
     ### looks like a quoted string - return early
     if ($$str_ref =~ s/^([\"\']) (|.*?[^\\]) \1 \s*//xs) {
@@ -192,73 +195,48 @@ sub get_literals_ref {
 
     ### allow hash constuctor auto quote
     } elsif ($args->{'auto_quote'}) {
-        my $quote_qr = $args->{'quote_qr'} || '\w+';
-        if ($$str_ref =~ s{
-            ^(
-                \$\w+                    # $foo
-              | \$\{\s* [^\}]+ \s*\}     # ${foo.bar}
-              | $quote_qr                # whatever
-              )  (?: \s+ | \s* (?!\.) )  # end of string or not a dot
-          }{}x) {
+        my $quote_qr = $args->{'quote_qr'} || qr/\w+/;;
+        if ($$str_ref =~ s/^(\$\w+) \s* (?:$|(?!\.))//x
+            || $$str_ref =~ s/^(\$\{\s* [^\}]+ \s*\}) \s* (?:$|(?!\.))//x
+            || $$str_ref =~ s/^($quote_qr) \s* //x
+            ) {
             my $str = $1;
             $self->interpolate(\$str);
             return \ $str;
         }
     }
-    return;
-}
 
-sub get_constructors_ref {
-    my ($self, $str_ref, $args) = @_;
+    my $stash    = $self->stash;
+    my $ref      = $stash;
+    my $copy     = $$str_ref;
+    my $traverse = '';
 
     ### looks like an array constructor
-    if ($$str_ref =~ s/^\[\s*//) {
+    if ($copy =~ s/^\[\s*//) {
         my @array;
-        while (my $_ref = $self->get_variable_ref($str_ref)) {
+        while (my $_ref = $self->get_variable_ref(\$copy)) {
             push @array, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
-            next if $$str_ref =~ s/^,\s*//;
+            next if $copy =~ s/^,\s*//;
         }
-        $$str_ref =~ s/^\]\.?// || die "Unterminated array constructor in $$str_ref";
-        return \@array;
+        $copy =~ s/^\]\.?// || die "Unterminated array constructor in $$str_ref";
+        $ref = \@array;
 
     ### looks like a hash constructor
-    } elsif ($$str_ref =~ s/^\{\s*//) {
+    } elsif ($copy =~ s/^\{\s*//) {
         my %hash;
-        while (my $_ref = $self->get_variable_ref($str_ref, {auto_quote => 1})) {
+        while (my $_ref = $self->get_variable_ref(\$copy, {auto_quote => 1})) {
             my $key = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
-            $$str_ref =~ s/^=>\s*// || die "Missing => in hash constructor in $$str_ref";
-            $_ref = $self->get_variable_ref($str_ref);
+            $copy =~ s/^=>\s*// || die "Missing => in hash constructor in $$str_ref";
+            $_ref = $self->get_variable_ref(\$copy);
             my $val = defined($_ref) ? UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref : undef;
             $hash{$key} = $val;
-            next if $$str_ref =~ s/^,\s*//;
+            next if $copy =~ s/^,\s*//;
         }
-        $$str_ref =~ s/^\}\.?// || die "Unterminated hash constructor in $$str_ref";
-        return \%hash;
-    }
-
-    return;
-}
-
-sub get_variable_ref {
-    my ($self, $str_ref, $args) = @_;
-    $args ||= {};
-    my $ref;
-
-    if ($ref = $self->get_literals_ref($str_ref, $args)) {
-        return $ref;
-    }
-
-    my $copy = $$str_ref;
-    my $stash;
-    if ($ref = $self->get_constructors_ref(\$copy, $args)) {
-        ### do nothing
-    } else {
-        $ref = $stash = $self->stash;
+        $copy =~ s/^\}\.?// || die "Unterminated hash constructor in $$str_ref";
+        $ref = \%hash;
     }
 
     ### look for normal name element types
-    my $set_ref;
-    my $set_name;
     while (defined $ref) {
 
         ### parse for arguments (if we look like an arg list)
@@ -409,7 +387,7 @@ sub get_variable_ref {
 
 
     ### we didn't find a variable - return nothing
-    return if $stash && $ref == $stash;
+    return if $ref == $stash;
 
     ### finalize the changes and return the var reference
     $copy =~ s/^\s+//;
