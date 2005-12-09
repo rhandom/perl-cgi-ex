@@ -61,9 +61,11 @@ BEGIN {
     };
 
     $FUNCTIONS = {
-        SET  => \&func_SET,
-        GET  => \&func_GET,
-        DUMP => \&func_DUMP,
+        CALL    => sub { &func_GET; '' },
+        DEFAULT => \&func_DEFAULT,
+        DUMP    => \&func_DUMP,
+        GET     => \&func_GET,
+        SET     => \&func_SET,
     };
 };
 
@@ -156,7 +158,7 @@ sub get_variable_ref {
         my $num = $1;
         return \ $num;
 
-    ### allow for some constructs (arrays, hash constuctors) to quote vars
+    ### allow hash constuctor auto quote
     } elsif ($args->{'auto_quote'}
              && ($$str_ref =~ s/^(\$\w+) \s* (?:$|(?!\.))//x
                  || $$str_ref =~ s/^(\$\{\s* [^\}]+ \s*\}) \s* (?:$|(?!\.))//x
@@ -165,7 +167,6 @@ sub get_variable_ref {
         my $str = $1;
         $self->interpolate(\$str);
         return \ $str;
-
     }
 
     my $stash    = $self->stash;
@@ -409,6 +410,26 @@ sub get_function {
 
 ###----------------------------------------------------------------###
 
+sub func_DEFAULT {
+    my ($self, $tag_ref) = @_;
+    my $copy = $$tag_ref;
+    my $str = $self->func_GET($tag_ref);
+    if (! $str) {
+        $self->func_SET(\$copy);
+    }
+    return '';
+}
+
+sub func_DUMP {
+    my ($self, $tag_ref) = @_;
+    my $copy = $$tag_ref;
+    my $ref = $self->get_variable_ref($tag_ref);
+    require Data::Dumper;
+    my $str = Data::Dumper::Dumper(UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref);
+    $str =~ s/\$VAR1/$copy/g;
+    return $str;
+}
+
 sub func_GET {
     my ($self, $tag_ref) = @_;
     my $copy = $$tag_ref;
@@ -440,16 +461,6 @@ sub func_SET {
         }
     }
     return '';
-}
-
-sub func_DUMP {
-    my ($self, $tag_ref) = @_;
-    my $copy = $$tag_ref;
-    my $ref = $self->get_variable_ref($tag_ref);
-    require Data::Dumper;
-    my $str = Data::Dumper::Dumper(UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref);
-    $str =~ s/\$VAR1/$copy/g;
-    return $str;
 }
 
 ###----------------------------------------------------------------###
