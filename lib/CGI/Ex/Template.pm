@@ -6,11 +6,14 @@ use vars qw(@INCLUDE_PATH
             $END_TAG
             $SCALAR_OPS $HASH_OPS $LIST_OPS
             $FUNCTIONS
+            $QR_FILENAME
             );
 
 BEGIN {
     $START_TAG  ||= qr/\[%/;
     $END_TAG    ||= qr/%\]/;
+
+    ### list out the virtual methods
     $SCALAR_OPS = {
         hash    => sub { {value => $_[0]} },
         length  => sub { defined($_[0]) ? length($_[0]) : 0 },
@@ -65,8 +68,12 @@ BEGIN {
         DEFAULT => \&func_DEFAULT,
         DUMP    => \&func_DUMP,
         GET     => \&func_GET,
+        INCLUDE => \&func_INCLUDE,
         SET     => \&func_SET,
+        PROCESS => \&func_PROCESS,
     };
+
+    $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w-\.]+ (?:/[\w-\.]+)* }x;
 };
 
 ###----------------------------------------------------------------###
@@ -159,14 +166,16 @@ sub get_variable_ref {
         return \ $num;
 
     ### allow hash constuctor auto quote
-    } elsif ($args->{'auto_quote'}
-             && ($$str_ref =~ s/^(\$\w+) \s* (?:$|(?!\.))//x
-                 || $$str_ref =~ s/^(\$\{\s* [^\}]+ \s*\}) \s* (?:$|(?!\.))//x
-                 || $$str_ref =~ s/^(\w+) \s* //x)
-             ) {
-        my $str = $1;
-        $self->interpolate(\$str);
-        return \ $str;
+    } elsif ($args->{'auto_quote'}) {
+        my $quote_qr = $args->{'quote_qr'} || qr/\w+/;;
+        if ($$str_ref =~ s/^(\$\w+) \s* (?:$|(?!\.))//x
+            || $$str_ref =~ s/^(\$\{\s* [^\}]+ \s*\}) \s* (?:$|(?!\.))//x
+            || $$str_ref =~ s/^($quote_qr) \s* //x
+            ) {
+            my $str = $1;
+            $self->interpolate(\$str);
+            return \ $str;
+        }
     }
 
     my $stash    = $self->stash;
@@ -372,7 +381,7 @@ sub get_variable_ref {
     }
 }
 
-sub undefined {''}
+###----------------------------------------------------------------###
 
 sub interpolate {
     my ($self, $str_ref) = @_;
@@ -387,6 +396,10 @@ sub _get_interp_value {
     die "Couldn't find interpolation value in $name" if ! $ref;
     return UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
 }
+
+###----------------------------------------------------------------###
+
+sub undefined {''}
 
 sub scalar_op {
     my ($self, $name) = @_;
@@ -430,12 +443,28 @@ sub func_DUMP {
     return $str;
 }
 
+sub func_INCLUDE {
+    my ($self, $tag_ref) = @_;
+    my $stash = $self->stash;
+    local @$stash{keys %$stash} = values %$stash;
+    return $self->func_PROCESS($tag_ref);
+}
+
 sub func_GET {
     my ($self, $tag_ref) = @_;
     my $copy = $$tag_ref;
     my $ref = $self->get_variable_ref($tag_ref);
     die "Couldn't find variable on GET on $copy" if ! $ref;
     return UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
+}
+
+sub func_PROCESS {
+    my ($self, $tag_ref) = @_;
+    my $copy = $$tag_ref;
+    my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => $QR_FILENAME});
+    die "Couldn't find a variable on INCLUDE/PROCESS on $copy"
+        if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
+    return $self->include_file($$ref);
 }
 
 sub func_SET {
