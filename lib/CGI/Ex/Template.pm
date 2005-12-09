@@ -177,10 +177,9 @@ sub swap_buddy {
 ###----------------------------------------------------------------###
 
 sub get_variable_ref {
-    my ($self, $str_ref, $args) = @_;
-    $args ||= {};
-    my $set_ref;
-    my $set_name;
+    my $self    = shift;
+    my $str_ref = shift;
+    my $args    = shift || {};
 
     ### looks like a quoted string - return early
     if ($$str_ref =~ s/^([\"\']) (|.*?[^\\]) \1 \s*//xs) {
@@ -196,20 +195,22 @@ sub get_variable_ref {
     ### allow hash constuctor auto quote
     } elsif ($args->{'auto_quote'}) {
         my $quote_qr = $args->{'quote_qr'} || qr/\w+/;;
-        if ($$str_ref =~ s/^(\$\w+) \s* (?:$|(?!\.))//x
-            || $$str_ref =~ s/^(\$\{\s* [^\}]+ \s*\}) \s* (?:$|(?!\.))//x
-            || $$str_ref =~ s/^($quote_qr) \s* //x
-            ) {
+        if ($$str_ref =~ s{
+            ^(  \$\w+                    # $foo
+              | \$\{\s* [^\}]+ \s*\}     # ${foo.bar}
+              | $quote_qr                # whatever
+              )  (?: \s+ | \s* (?!\.) )  # end of string or not a dot
+          }{}x) {
             my $str = $1;
             $self->interpolate(\$str);
             return \ $str;
         }
     }
 
-    my $stash    = $self->stash;
-    my $ref      = $stash;
-    my $copy     = $$str_ref;
-    my $traverse = '';
+
+    ### determine our data source start point
+    my ($ref, $stash, $set_ref, $set_name);
+    my $copy = $$str_ref; # retain for rollback
 
     ### looks like an array constructor
     if ($copy =~ s/^\[\s*//) {
@@ -234,12 +235,17 @@ sub get_variable_ref {
         }
         $copy =~ s/^\}\.?// || die "Unterminated hash constructor in $$str_ref";
         $ref = \%hash;
+
+    ### just use the stash
+    } else {
+        $ref = $stash = $self->stash;
     }
+
 
     ### look for normal name element types
     while (defined $ref) {
 
-        ### parse for arguments (if we look like an arg list)
+        ### parse for arguments - one.two(arg1, arg2)
         my @args;
         if ($copy =~ s/^\(\s*//) {
             while (my $_ref = $self->get_variable_ref(\$copy)) {
@@ -249,7 +255,7 @@ sub get_variable_ref {
             $copy =~ s/^\)\.?// || die "Unterminated arg list in $$str_ref";
         }
 
-        ### if the previously found thing was a code block - run it with any parsed args
+        ### if the previously found ref was a code block - run it with any parsed args
         if (UNIVERSAL::isa($ref, 'CODE')) {
             my @results = $ref->(@args);
             if ($#results > 0) {
@@ -263,7 +269,7 @@ sub get_variable_ref {
             next;
         }
 
-        ### allow for interpolated variables in the middle
+        ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
         if ($copy =~ s/^\$(\w+)(\.?)//
             || $copy =~ s/^\$\{\s* ([^\}]+) \s*\}(\.?)//x) {
             my ($var, $dot) = ($1, $2);
@@ -273,13 +279,12 @@ sub get_variable_ref {
             } elsif ($$_ref =~ /^\w+$/) {
                 $copy = $$_ref . $dot . $copy;
             } else {
-                my $str = undef;
-                $ref = \ $str;
+                $ref = \ undef;
                 next;
             }
         }
 
-        ### walk down the line this.that.foo(blah).0.them
+        ### walk down the normal line this.that.foo(blah).0.them
         if ($copy =~ s/^(\w+)\.?//) {
             my $name = $1;
 
@@ -315,11 +320,9 @@ sub get_variable_ref {
                     $set_name = $name;
                     $ref = $ref->{$name} = {}; # AUTOVIVIFY
                     next;
-                } else { # undef
-                    my $var = undef;
-                    $ref = \ $var;
+                } else { # undef - no such key or virtual method
+                    $ref = \ undef;
                     next;
-                    #die "HASH virtual method \"$name\" not implemented ($$str_ref)";
                 }
 
             ### current level looks like an arrayref
@@ -329,8 +332,7 @@ sub get_variable_ref {
                         if ($args->{'return_set_ref'}) {
                             $ref->[$name] = {}; # AUTOVIVIFY
                         } else {
-                            my $var = undef;
-                            $ref = \ $var;
+                            $ref = \ undef;
                             next;
                         }
                     }
@@ -346,11 +348,9 @@ sub get_variable_ref {
                     next;
                 } elsif ($args->{'return_set_ref'}) {
                     die "Refusing to translate array to hash during set operation in $$str_ref";
-                } else { # undef
-                    my $var = undef;
-                    $ref = \ $var;
+                } else { # undef - no such lookup
+                    $ref = \ undef;
                     next;
-                    #die "ARRAY virtual method \"$name\" not implemented ($$str_ref)";
                 }
 
             ### looks like a normal variable
@@ -373,8 +373,7 @@ sub get_variable_ref {
                     $set_name = $name;
                     next;
                 } else {
-                    my $var = undef;
-                    $ref = \ $var;
+                    $ref = \ undef;
                     next;
                     #die "SCALAR virtual method not implemented ($$str_ref)";
                 }
@@ -387,19 +386,19 @@ sub get_variable_ref {
 
 
     ### we didn't find a variable - return nothing
-    return if $ref == $stash;
+    return if $stash && $ref == $stash;
 
-    ### finalize the changes and return the var reference
+    ### finalize the changes
     $copy =~ s/^\s+//;
     $$str_ref = $copy;
 
-    ### undefined values
+    ### allow for custom undefined
     if (UNIVERSAL::isa($ref, 'SCALAR') && ! defined $$ref) {
         my $str = $self->undefined($$str_ref);
         $str = '' if ! defined $str;
         $ref = \ $str;
 
-    ### if we are setting
+    ### if we are setting - return the accessor info
     } elsif ($args->{'return_set_ref'}) {
         return [$set_ref, $set_name];
 
