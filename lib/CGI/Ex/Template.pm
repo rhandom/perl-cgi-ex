@@ -75,7 +75,7 @@ BEGIN {
         PROCESS => \&func_PROCESS,
     };
 
-    $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w-\.]+ (?:/[\w-\.]+)* }x;
+    $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)* }x;
     $MAX_RECURSE = 50;
 };
 
