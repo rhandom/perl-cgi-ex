@@ -154,7 +154,7 @@ sub swap_buddy {
             $val = $code->($self, \$tag, $func);
             $val = '' if ! defined $val;
         } elsif (my $_ref = $self->get_variable_ref(\$tag)) {
-            die "Found trailing info during variable access \"$tag" if $tag;
+            die "Found trailing info during variable access \"$tag\"" if $tag;
             $val = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
         } else {
             $all =~ s/^\s+//;
@@ -181,20 +181,14 @@ sub get_variable_ref {
     my $str_ref = shift;
     my $args    = shift || {};
 
-    ### looks like a quoted string - return early
-    if ($$str_ref =~ s/^([\"\']) (|.*?[^\\]) \1 \s*//xs) {
-        my $str = $2;
-        $self->interpolate(\$str) if $1 eq '"'; # ' don't interpolate
-        return \ $str;
-
     ### looks like an unquoted num
-    } elsif ($$str_ref =~ s/^(-?(?:\d*\.\d+|\d+))\s*//) {
+    if ($$str_ref =~ s/^(-?(?:\d*\.\d+|\d+))\s*//) {
         my $num = $1;
         return \ $num;
 
-    ### allow hash constuctor auto quote
+    ### allow hash various items to auto quote (such as hash constructors)
     } elsif ($args->{'auto_quote'}) {
-        my $quote_qr = $args->{'quote_qr'} || qr/\w+/;;
+        my $quote_qr = $args->{'quote_qr'} || qr/\w+/;
         if ($$str_ref =~ s{
             ^(  \$\w+                    # $foo
               | \$\{\s* [^\}]+ \s*\}     # ${foo.bar}
@@ -212,8 +206,15 @@ sub get_variable_ref {
     my ($ref, $stash, $set_ref, $set_name);
     my $copy = $$str_ref; # retain for rollback
 
+    ### looks like an literal string
+    if ($copy =~ s/^([\"\']) (|.*?[^\\]) \1 //xs) {
+        my $str = $2;
+        $self->interpolate(\$str) if $1 eq '"'; # ' doesn't interpolate
+        $ref = \ $str;
+        $copy =~ s/^\.(?!\.)//; # remove trailing . on a "string".length type construct
+
     ### looks like an array constructor
-    if ($copy =~ s/^\[\s*//) {
+    } elsif ($copy =~ s/^\[\s*//) {
         my @array;
         my ($range, $_ref);
         while (($range = $copy =~ s/^\.\.\s*//) || ($_ref = $self->get_variable_ref(\$copy))) {
