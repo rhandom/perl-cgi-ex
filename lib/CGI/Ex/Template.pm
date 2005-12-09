@@ -122,6 +122,8 @@ sub swap_buddy {
     my $self = shift;
     my $ref  = shift;
 
+    my @state;
+
     ### now do the swap
     while ($$ref =~ m{(
                        (\s*)
@@ -130,14 +132,25 @@ sub swap_buddy {
                        \s* (-?) $END_TAG   # the close tag and postchomp info
                        (\s*)
                        )}xg) {
-        my $pos = local $self->{'state'}->{'pos'} = pos($$ref);
+        my $pos = pos($$ref);
         my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6);
-        my $val;
 
         ### look for functions or variables
+        my ($code, $func);
         if ($tag =~ /^(\w+) (?: $|\s)/x
-            && (my $code = $self->get_function(my $func = $1))) {
+            && ($code = $self->get_function($func = $1))) {
             $tag =~ s/^\w+\s*//;
+        }
+
+        push @state, [$all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $code, $pos];
+    }
+
+    my $offset = 0;
+    for (@state) {
+        my ($all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post, $func, $code, $pos) = @$_;
+
+        my $val;
+        if ($code) {
             $val = $code->($self, \$tag, $func);
             $val = '' if ! defined $val;
         } elsif (my $_ref = $self->get_variable_ref(\$tag)) {
@@ -154,8 +167,8 @@ sub swap_buddy {
         $ws_post = '' if $post_chomp || $self->{'POST_CHOMP'};
         my $str = "$ws_pre$val$ws_post";
 
-        substr($$ref, $pos - length($all), length($all), $str);
-        pos($$ref) = $pos + length($str) - length($all);
+        substr($$ref, $pos + $offset - length($all), length($all), $str);
+        $offset += length($str) - length($all);
     }
 
     return 1;
