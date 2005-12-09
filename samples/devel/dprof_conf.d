@@ -1,5 +1,5 @@
 # -*-perl-*-
-# run with perl -D:DProf $0
+# run with perl -d:DProf $0
 
 use CGI::Ex::Conf qw(conf_read conf_write);
 use POSIX qw(tmpnam);

@@ -36,6 +36,6 @@ my $val_hash_ce = {
 
 
 for (1 .. 10_000) {
-#    my $err_obj = CGI::Ex::Validate->validate($form, $val_hash_ce);
-    my $err_obj = CGI::Ex::Validate->validate($form, $val_hash_ce)->as_hash;
+    my $err_obj = CGI::Ex::Validate->validate($form, $val_hash_ce);
+#    my $err_obj = CGI::Ex::Validate->validate($form, $val_hash_ce)->as_hash;
 }
