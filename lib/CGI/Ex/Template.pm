@@ -95,37 +95,14 @@ sub new {
 ###----------------------------------------------------------------###
 
 sub swap {
-  my $self = shift;
-  my $str  = shift;
-  my $form = shift || {};
-
-  return $str if ! $str;
-  my $ref  = ref($str) ? $str : \$str;
-
-  ### setup our start and end
-  local $START_TAG = $self->{'START_TAG'} || $START_TAG;
-  local $END_TAG   = $self->{'END_TAG'}   || $END_TAG;
-  local $self->{'state'} = {};
-
-  ### localize the stash
-  my $stash = $self->stash;
-  my @keys  = keys %$stash;
-  local @$stash{@keys} = values %$stash;
-  local @$stash{keys %$form}  = values %$form;
-
-  $self->swap_buddy($ref);
-
-  ### remove items added to stash
-  my %keys = map {$_ => 1} @keys;
-  delete @$stash{grep {!$keys{$_}} keys %$stash};
-
-  return ref($str) ? 1 : $$ref;
-}
-
-sub swap_buddy {
     my $self = shift;
     my $ref  = shift;
+    my $swap = shift || {};
 
+    my $START_TAG = $self->{'START_TAG'} || $START_TAG;
+    my $END_TAG   = $self->{'END_TAG'}   || $END_TAG;
+    local $self->{'state'} = {};
+    local $self->{'_swap'} = $swap;
     my @state;
 
     ### now do the swap
@@ -207,7 +184,7 @@ sub get_variable_ref {
 
 
     ### determine our data source start point
-    my ($ref, $stash, $set_ref, $set_name);
+    my ($ref, $root, $set_ref, $set_name);
     my $copy = $$str_ref; # retain for rollback
 
     ### looks like an literal string
@@ -248,9 +225,9 @@ sub get_variable_ref {
         $copy =~ s/^\}\.?// || die "Unterminated hash constructor in $$str_ref";
         $ref = \%hash;
 
-    ### just use the stash
+    ### just use the swap
     } else {
-        $ref = $stash = $self->stash;
+        $ref = $root = $self->{'_swap'};
     }
 
 
@@ -398,7 +375,7 @@ sub get_variable_ref {
 
 
     ### we didn't find a variable - return nothing
-    return if $stash && $ref == $stash;
+    return if $root && $ref == $root;
 
     ### finalize the changes
     $copy =~ s/^\s+//;
@@ -502,16 +479,16 @@ sub func_DUMP {
 sub func_INCLUDE {
     my ($self, $tag_ref) = @_;
 
-    ### localize the stash
-    my $stash = $self->stash;
-    my @keys  = keys %$stash;
-    local @$stash{@keys} = values %$stash; # note that we are only "cloning" one level deep
+    ### localize the swap
+    my $swap = $self->{'_swap'};
+    my @keys  = keys %$swap;
+    local @$swap{@keys} = values %$swap; # note that we are only "cloning" one level deep
 
     my $str = $self->func_PROCESS($tag_ref);
 
     ### kill added keys
     my %keys = map {$_ => 1} @keys;
-    delete @$stash{grep {!$keys{$_}} keys %$stash};
+    delete @$swap{grep {!$keys{$_}} keys %$swap};
 
     return $str;
 }
@@ -543,7 +520,7 @@ sub func_PROCESS {
         if $self->{'state'}->{'recurse'} >= $MAX_RECURSE;
 
     my $str = $self->func_INSERT($tag_ref);
-    $self->swap_buddy(\$str);
+    $self->swap(\$str, $self->{'_swap'}); # restart the swap - passing it our current stash
 
     $self->{'state'}->{'recurse'} --;
     return $str;
@@ -630,8 +607,19 @@ sub process {
         $content = $self->include_file($in);
     }
 
-    ### do swap
-    $self->swap(\$content, $swap);
+    ### localize the stash
+    my $stash = $self->stash;
+    my @keys  = keys %$stash;
+    local @$stash{@keys} = values %$stash;
+    local @$stash{keys %$swap}  = values %$swap;
+
+    ### do the swap
+    $self->swap(\$content, $stash);
+
+    ### remove items added to stash
+    my %keys = map {$_ => 1} @keys;
+    delete @$stash{grep {!$keys{$_}} keys %$stash};
+
 
     ### put it back out
     if (ref $out) {
