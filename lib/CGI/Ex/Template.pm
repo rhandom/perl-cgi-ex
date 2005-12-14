@@ -216,6 +216,12 @@ sub get_variable_ref {
         $copy =~ s/^\}\.?// || die "Unterminated hash constructor in $$str_ref";
         $ref = \%hash;
 
+    ### looks like a paren grouper
+    } elsif ($copy =~ s/^\(\s*//) {
+        local $self->{'_state'}->{'parse_math'}; # let grouping parens have their own math
+        $ref = $self->get_variable_ref(\$copy);
+        $copy =~ s/^\s*\)\.?//;
+
     ### just use the swap
     } else {
         $ref = $root = $self->{'_swap'};
@@ -228,6 +234,7 @@ sub get_variable_ref {
         ### parse for arguments - one.two(arg1, arg2)
         my @args;
         if ($copy =~ s/^\(\s*//) {
+            local $self->{'_state'}->{'parse_math'}; # arguments can have their own math calculations
             while (my $_ref = $self->get_variable_ref(\$copy)) {
                 push @args, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
                 next if $copy =~ s/^,\s*//;
@@ -363,6 +370,36 @@ sub get_variable_ref {
         ### if we hit here - we were unable to parse more - so stop
         last;
     } # end of while
+
+
+    ### allow for math operators
+    if ($copy =~ s/^\s*(\*\*)\s*//
+        || $copy =~ s|^\s*([%*/+-])\s*||) {
+        my $op = $1;
+        my $is_top = ! $self->{'_state'}->{'parse_math'};
+        local $self->{'_state'}->{'parse_math'} = 1;
+
+        my $val  = UNIVERSAL::isa($ref, 'SCALAR')  ? do { local $^W; $$ref + 0 } : 0;
+        my $ref2 = $self->get_variable_ref(\$copy); # parsed with parse_math
+        my $val2 = $$ref2;
+
+        $val = "$val$op$val2";
+        if (! $is_top) {
+            $ref = \ $val; # return our built up string
+        } else {
+            $root = undef;
+            $val = ($val =~ m|^([\d\.%*/+-]+)$|) ? eval $1 : 0; # TODO - maybe not eval
+            $ref = \ $val;
+        }
+    } elsif ($self->{'_state'}->{'parse_math'}) {
+        my $val = UNIVERSAL::isa($ref, 'SCALAR') ? do { local $^W; $$ref + 0 } : 0;
+        $ref = \ $val;
+    }
+
+#    ### allow for boolean operators
+#    } elsif ($copy =~ s/^(&&|\|\|)/\s*//) {
+#        die "Un-implemented";
+#    }
 
 
     ### we didn't find a variable - return nothing
