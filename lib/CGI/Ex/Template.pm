@@ -152,13 +152,8 @@ sub get_variable_ref {
     my $str_ref = shift;
     my $args    = shift || {};
 
-    ### looks like an unquoted num
-    if ($$str_ref =~ s/^(-?(?:\d*\.\d+|\d+))\s*//) {
-        my $num = $1;
-        return \ $num;
-
     ### allow hash various items to auto quote (such as hash constructors)
-    } elsif ($args->{'auto_quote'}) {
+    if ($args->{'auto_quote'}) {
         my $quote_qr = $args->{'quote_qr'} || qr/\w+/;
         if ($$str_ref =~ s{
             ^(  \$\w+                    # $foo
@@ -177,12 +172,18 @@ sub get_variable_ref {
     my ($ref, $root, $set_ref, $set_name);
     my $copy = $$str_ref; # retain for rollback
 
+    ### looks like an unquoted number
+    if ($copy =~ s/^ (-?(?:\d*\.\d+|\d+))//x) {
+        my $num = $1;
+        $ref = \ $num;
+        $copy =~ s/^\.(?!\.)//; # remove trailing . on a "string".length type construct - but allow 0..1
+
     ### looks like an literal string
-    if ($copy =~ s/^([\"\']) (|.*?[^\\]) \1 //xs) {
+    } elsif ($copy =~ s/^([\"\']) (|.*?[^\\]) \1 //xs) {
         my $str = $2;
         $self->interpolate(\$str) if $1 eq '"'; # ' doesn't interpolate
         $ref = \ $str;
-        $copy =~ s/^\.(?!\.)//; # remove trailing . on a "string".length type construct
+        $copy =~ s/^\.(?!\.)//; # remove trailing . on a "string".length type construct - but allow 'a'..'z'
 
     ### looks like an array constructor
     } elsif ($copy =~ s/^\[\s*//) {
