@@ -13,8 +13,8 @@ use vars qw(@INCLUDE_PATH
             );
 
 BEGIN {
-    $START_TAG  ||= qr/\[%/;
-    $END_TAG    ||= qr/%\]/;
+    $START_TAG  ||= '[%';
+    $END_TAG    ||= '%]';
     $SPS = chr(186);
     $SPS_QR = qr/$SPS(\d+)$SPS/;
 
@@ -96,27 +96,35 @@ sub new {
 
 sub swap {
     my $self = shift;
-    my $ref  = shift;
-    my $swap = shift || {};
 
-    my $START_TAG = $self->{'START_TAG'} || $START_TAG;
-    my $END_TAG   = $self->{'END_TAG'}   || $END_TAG;
     local $self->{'_state'} = {};
-    local $self->{'_swap'}  = $swap;
+    local $self->{'_swap'}  = $_[1] || {};
+
+    my $START = quotemeta($self->{'START_TAG'} || $START_TAG);
+    my $END   = quotemeta($self->{'END_TAG'}   || $END_TAG);
 
     my $new = '';
+    my $pos = 0;
+    while ($_[0] =~ m{\G(.*?)
+                       $START # opening tag and prechomp info
+                       (.*?)  # nothing or something
+                       $END   # the close tag and postchomp info
+                       }gxs) {
+        $pos = pos($_[0]);
+        my ($begin, $tag, $copy) = ($1, $2, $2);
 
-    while ($$ref =~ s{^(.*?)(
-                       (\s*)
-                       $START_TAG (-?) \s* # opening tag and prechomp info
-                       (.*?)          # nothing or something
-                       \s* (-?) $END_TAG   # the close tag and postchomp info
-                       (\s*)
-                       )}{}xg) {
-        my ($begin, $all, $ws_pre, $pre_chomp, $tag, $post_chomp, $ws_post) = ($1, $2, $3, $4, $5, $6, $7);
-        my $val;
+        ### take care of whitespace
+        if ($tag =~ s/^-// || $self->{'PRE_CHOMP'}) {
+            $begin =~ s/ (?:\n|^) [^\S\n]* \z //xm; # remove any leading whitespace on the same line
+        }
+        if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
+            $_[0] =~ m/\G [^\S\n]* (?:\n?$|\n) /xg; # "remove" postpended whitespace on the same line (by updating pos)
+            $pos = pos($_[0]);
+        }
+        $tag =~ s/^\s+//;
 
         ### look for functions or variables
+        my $val;
         if ($tag =~ /^(\w+) (?: $|\s)/x
             && (my $code = $self->get_function(my $func = $1))) {
             $tag =~ s/^\w+\s*//;
@@ -126,20 +134,15 @@ sub swap {
             die "Found trailing info during variable access \"$tag" if $tag;
             $val = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
         } else {
-            $all =~ s/^\s+//;
-            $all =~ s/\s+$//;
-            die "Not sure how to handle tag $all";
+            $copy =~ s/^\s+//;
+            $copy =~ s/\s+$//;
+            die "Not sure how to handle tag $copy";
         }
 
-        ### return the val and any whitespace
-        $ws_pre  = '' if $pre_chomp  || $self->{'PRE_CHOMP'};
-        $ws_post = '' if $post_chomp || $self->{'POST_CHOMP'};
-
-        $new .= "$begin$ws_pre$val$ws_post";
+        $new .= $begin . $val;
     }
 
-    $$ref = $new . $$ref;
-    return 1;
+    return $pos ? $new . substr($_[0], $pos) : $_[0];
 }
 
 ###----------------------------------------------------------------###
@@ -507,7 +510,7 @@ sub func_PROCESS {
         if $self->{'state'}->{'recurse'} >= $MAX_RECURSE;
 
     my $str = $self->func_INSERT($tag_ref);
-    $self->swap(\$str, $self->{'_swap'}); # restart the swap - passing it our current stash
+    $str = $self->swap($str, $self->{'_swap'}); # restart the swap - passing it our current stash
 
     $self->{'state'}->{'recurse'} --;
     return $str;
@@ -601,7 +604,7 @@ sub process {
     local @$stash{keys %$swap}  = values %$swap;
 
     ### do the swap
-    $self->swap(\$content, $stash);
+    $content = $self->swap($content, $stash);
 
     ### remove items added to stash
     my %keys = map {$_ => 1} @keys;
