@@ -391,15 +391,32 @@ sub get_variable_ref {
             $val = ($val =~ m|^([\d\.%*/+-]+)$|) ? eval $1 : 0; # TODO - maybe not eval
             $ref = \ $val;
         }
+
+    ### if we are parsing math operations - turn non numbers into numbers
     } elsif ($self->{'_state'}->{'parse_math'}) {
         my $val = UNIVERSAL::isa($ref, 'SCALAR') ? do { local $^W; $$ref + 0 } : 0;
         $ref = \ $val;
-    }
 
-#    ### allow for boolean operators
-#    } elsif ($copy =~ s/^(&&|\|\|)/\s*//) {
-#        die "Un-implemented";
-#    }
+    ### allow for boolean operators
+    } elsif ($copy =~ s/^\s*(&&|\|\|)\s*//) {
+        my $op       = $1;
+        my $bool = UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref;
+        if ($op eq '&&') {
+            if ($bool) {
+                $ref = $self->get_variable_ref(\$copy);
+            } else {
+                ### $ref stays as is
+                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
+            }
+        } else {
+            if ($bool) {
+                ### $ref stays as is
+                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
+            } else {
+                $ref = $self->get_variable_ref(\$copy);
+            }
+        }
+    }
 
 
     ### we didn't find a variable - return nothing
