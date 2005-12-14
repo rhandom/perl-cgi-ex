@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 142 - ($is_tt ? 12 : 0);
+use Test::More tests => 156 - ($is_tt ? 15 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -218,3 +218,22 @@ process_ok("[% 'This is a string'.length %]" => 16) if ! $is_tt;
 ### blocks
 
 process_ok("[% BLOCK foo %]" => '');
+
+###----------------------------------------------------------------###
+### chomping
+
+process_ok(" [% foo %]" => ' ');
+process_ok(" [%- foo %]" => '');
+process_ok("\n[%- foo %]" => '');
+process_ok("\n [%- foo %]" => '');
+process_ok("\n\n[%- foo %]" => "\n");
+process_ok(" \n\n[%- foo %]" => " \n");
+process_ok(" \n[%- foo %]" => " ") if ! $is_tt;
+process_ok(" \n \n[%- foo %]" => " \n ") if ! $is_tt;
+
+process_ok("[% foo %] " => ' ');
+process_ok("[% foo -%] " => '') if ! $is_tt;
+process_ok("[% foo -%]\n" => '');
+process_ok("[% foo -%] \n" => '');
+process_ok("[% foo -%]\n " => ' ');
+process_ok("[% foo -%] \n " => ' ');
