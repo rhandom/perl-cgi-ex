@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 156 - ($is_tt ? 15 : 0);
+use Test::More tests => 188 - ($is_tt ? 21 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -137,7 +137,7 @@ process_ok("[% \"hi \${foo.echo(7)}\" %]" => 'hi 7', {foo => $obj});
 
 process_ok("[% SET foo bar %][% foo %]" => '');
 process_ok("[% SET foo = 1 %][% foo %]" => '1');
-process_ok("[% SET foo = 1  bar = 1 %][% foo %][% bar %]" => '11');
+process_ok("[% SET foo = 1  bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% SET foo  bar = 1 %][% foo %]" => '');
 process_ok("[% SET foo = 1 ; bar = 1 %][% foo %]" => '1');
 process_ok("[% SET foo = 1 %][% SET foo %][% foo %]" => '');
@@ -213,11 +213,21 @@ ok($t == 3, "CALL method actually called var");
 process_ok("[% [0 .. 10].reverse.1 %]" => 9) if ! $is_tt;
 process_ok("[% {a => 'A'}.a %]" => 'A') if ! $is_tt;
 process_ok("[% 'This is a string'.length %]" => 16) if ! $is_tt;
+process_ok("[% 123.length %]" => 3) if ! $is_tt;
+process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
+process_ok("[% -123.2.length %]" => 6) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### blocks
 
+process_ok("[% PROCESS foo %]" => '');
 process_ok("[% BLOCK foo %]" => '');
+process_ok("[% BLOCK foo %][% END %]" => '');
+process_ok("[% BLOCK foo %]hi there[% END %]" => '');
+process_ok("[% BLOCK foo %][% BLOCK foo %][% END %][% END %]" => '');
+process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
+process_ok("[% IF 1 %]Yes[% END %]" => 'Yes');
+process_ok("[% IF 0 %]Yes[% END %]" => '');
 
 ###----------------------------------------------------------------###
 ### chomping
@@ -236,4 +246,35 @@ process_ok("[% foo -%] " => '') if ! $is_tt;
 process_ok("[% foo -%]\n" => '');
 process_ok("[% foo -%] \n" => '');
 process_ok("[% foo -%]\n " => ' ');
+process_ok("[% foo -%]\n\n\n" => "\n\n");
 process_ok("[% foo -%] \n " => ' ');
+
+###----------------------------------------------------------------###
+### math operations
+
+process_ok("[% 1 + 2 %]" => 3);
+process_ok("[% (1 + 2) %]" => 3);
+process_ok("[% 2 - 1 %]" => 1);
+process_ok("[% -1 + 2 %]" => 1);
+process_ok("[% 4 * 2 %]" => 8);
+process_ok("[% 4 / 2 %]" => 2);
+process_ok("[% 2 ** 3 %]" => 8) if ! $is_tt;
+process_ok("[% 1 + 2 * 3 %]" => 7);
+process_ok("[% 3 * 2 + 1 %]" => 7);
+process_ok("[% (1 + 2) * 3 %]" => 9);
+process_ok("[% 3 * (1 + 2) %]" => 9);
+process_ok("[% 1 + 2 ** 3 %]" => 9) if ! $is_tt;
+process_ok("[% 2 * 2 ** 3 %]" => 16) if ! $is_tt;
+process_ok("[% SET foo = 1 %][% foo + 2 %]" => 3);
+process_ok("[% SET foo = 1 %][% (foo + 2) %]" => 3);
+
+###----------------------------------------------------------------###
+### boolean operations
+
+process_ok("[% 5 && 6 %]" => 6);
+process_ok("[% 5 || 6 %]" => 5);
+process_ok("[% 0 || 6 %]" => 6);
+process_ok("[% 0 && 6 %]" => 0);
+process_ok("[% 0 && 0 %]" => 0);
+
+process_ok("[% 5 + (0 || 5) %]" => 10);
