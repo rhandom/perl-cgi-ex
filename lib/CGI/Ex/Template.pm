@@ -164,7 +164,9 @@ sub swap {
                 next;
             }
             if ($#args != -1) {
-                dex \@args;
+                my $args = $self->vivify_args(\@args);
+                undef @args;
+                return $args->[0];
             }
         } elsif ($_[0] =~ /\G (\w+) \s*/gcx) {
             $trace .= "Found a word \"$1\"\n" if trace;
@@ -189,6 +191,38 @@ sub swap {
 #            $begin =~ s/ (?:\n|^) [^\S\n]* \z //xm; # remove any leading whitespace on the same line
 #            $_[0] =~ m/\G [^\S\n]* (?:\n?$|\n) /xg; # "remove" postpended whitespace on the same line (by updating pos)
     return $new;
+}
+
+
+sub vivify_args {
+    my ($self, $args) = @_;
+    return [map {$self->vivify_var($_)} @$args];
+}
+
+sub vivify_var {
+    my ($self, $var) = @_;
+    my $ref;
+    if (! ref $var) {
+        return $var; # looks like a num or a quoted string
+    } elsif (! ref $var->[0]) {
+        $ref = $self->{'_swap'};
+    } else {
+        shift @$var; # remove args if the first thing was a data structure
+    }
+    while ($#$var != -1) {
+        my $name = shift @$var;
+        my $args = shift @$var;
+        if (UNIVERSAL::isa($ref, 'HASH')) {
+            if (exists $ref->{$name}) {
+                $ref = $ref->{$name};
+            } elsif (my $code = $self->hash_op($name)) {
+                $ref = $code->($ref, @{ $self->vivify_args($args) });
+            } else {
+                $ref = undef;
+            }
+        }
+    }
+    return $ref;
 }
 
 ###----------------------------------------------------------------###
