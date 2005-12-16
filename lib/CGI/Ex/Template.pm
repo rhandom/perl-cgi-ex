@@ -6,6 +6,7 @@ use vars qw(@INCLUDE_PATH
             $END_TAG
             $SCALAR_OPS $HASH_OPS $LIST_OPS
             $FUNCTIONS
+            $REQ_END
             $QR_FILENAME
             $MAX_RECURSE
             $SPS
@@ -73,11 +74,18 @@ BEGIN {
         CALL    => \&func_CALL,
         DEFAULT => \&func_DEFAULT,
         DUMP    => \&func_DUMP,
+        END     => sub { die "Shouldn't actually ever enter an end" },
         GET     => \&func_GET,
+        IF      => \&func_IF,
         INCLUDE => \&func_INCLUDE,
         INSERT  => \&func_INSERT,
         SET     => \&func_SET,
         PROCESS => \&func_PROCESS,
+    };
+
+    $REQ_END = {
+        BLOCK => 1,
+        IF    => 1,
     };
 
     $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)* }x;
@@ -102,16 +110,17 @@ sub swap {
 
     my $START = quotemeta($self->{'START_TAG'} || $START_TAG);
     my $END   = quotemeta($self->{'END_TAG'}   || $END_TAG);
+    my $new   = '';
+    my $pos   = 0;
+    my @state;
 
-    my $new = '';
-    my $pos = 0;
     while ($_[0] =~ m{\G(.*?)
-                       $START # opening tag and prechomp info
-                       (.*?)  # nothing or something
-                       $END   # the close tag and postchomp info
+                       ($START
+                       (.*?)
+                       $END)
                        }gxs) {
         $pos = pos($_[0]);
-        my ($begin, $tag, $copy) = ($1, $2, $2);
+        my ($begin, $tag, $all) = ($1, $3, $2);
 
         ### take care of whitespace
         if ($tag =~ s/^-// || $self->{'PRE_CHOMP'}) {
@@ -126,21 +135,45 @@ sub swap {
         ### look for functions or variables
         my $val;
         if ($tag =~ /^(\w+) (?: $|\s)/x
-            && (my $code = $self->get_function(my $func = $1))) {
+            && ($self->has_function(my $func = $1))) {
             $tag =~ s/^\w+\s*//;
-            $val = $code->($self, \$tag, $func);
-            $val = '' if ! defined $val;
+            if ($func eq 'END') {
+                if ($#state == -1) {
+                    die "Found an unmatched END tag";
+                } else {
+                    my $s = pop @state;
+                    next if $#state != -1; # skip more parsing because we are parsing a block
+                    $begin = '';
+                    my ($begin_pos, $func, $tag) = @$s;
+                    my $body = substr($_[0], $begin_pos, $pos - length($all) - $begin_pos);
+                    my $a = length($all);
+                    $val = $self->get_function($func)->($self, \$tag, $func, \$body);
+                    $val = '' if ! defined $val;
+                }
+            } elsif ($REQ_END->{$func}) {
+                push @state, [$pos, $func, $tag];
+                next if $#state != 0; # wasn't the first item - we are still parsing a block
+                $val = '';
+
+            } else {
+                $val = $self->get_function($func)->($self, \$tag, $func);
+                $val = '' if ! defined $val;
+            }
+        } elsif ($#state != -1) {
+            next; # skip any parsing if we are looking at a block
         } elsif (my $_ref = $self->get_variable_ref(\$tag)) {
             die "Found trailing info during variable access \"$tag" if $tag;
             $val = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
         } else {
-            $copy =~ s/^\s+//;
-            $copy =~ s/\s+$//;
-            die "Not sure how to handle tag $copy";
+            $all =~ s/^\s+//;
+            $all =~ s/\s+$//;
+            die "Not sure how to handle tag $all";
         }
 
         $new .= $begin . $val;
     }
+
+    #die "Missing END tag while parsing $state[0][1] tag" if $#state != -1;
 
     return $pos ? $new . substr($_[0], $pos) : $_[0];
 }
@@ -485,16 +518,14 @@ sub get_function { $FUNCTIONS->{$_[1]} }
 ###----------------------------------------------------------------###
 
 sub func_BLOCK {
-    my ($self, $tag_ref) = @_;
+    my ($self, $tag_ref, $func, $body_ref) = @_;
     my $copy = $$tag_ref;
     my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => qr/\w+/o});
     die "Couldn't find a filename on INSERT/INCLUDE/PROCESS on $copy"
         if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
 
     my $block_name = $$ref;
-
-    use Data::Dumper;
-    print Dumper $self;
+    $self->{'BLOCKS'}->{$block_name} = $$body_ref;
     return '';
 }
 
@@ -521,6 +552,16 @@ sub func_DUMP {
     return $str;
 }
 
+sub func_IF {
+    my ($self, $tag_ref, $func, $body_ref) = @_;
+    my $ref = $self->get_variable_ref($tag_ref);
+    if (UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref) {
+        return $$body_ref;
+    } else {
+        return '';
+    }
+}
+
 sub func_INCLUDE {
     my ($self, $tag_ref) = @_;
 
@@ -541,10 +582,11 @@ sub func_INCLUDE {
 sub func_INSERT {
     my ($self, $tag_ref) = @_;
     my $copy = $$tag_ref;
-    my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => $QR_FILENAME});
+    my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => qr/$QR_FILENAME|\w+/});
     die "Couldn't find a filename on INSERT/INCLUDE/PROCESS on $copy"
         if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
 
+    return $self->{'BLOCKS'}->{$$ref} if $$ref =~ /^\w+$/;
     return $self->include_file($$ref);
 }
 
@@ -565,6 +607,7 @@ sub func_PROCESS {
         if $self->{'state'}->{'recurse'} >= $MAX_RECURSE;
 
     my $str = $self->func_INSERT($tag_ref);
+
     $str = $self->swap($str, $self->{'_swap'}); # restart the swap - passing it our current stash
 
     $self->{'state'}->{'recurse'} --;
