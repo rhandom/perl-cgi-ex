@@ -11,7 +11,10 @@ use vars qw(@INCLUDE_PATH
             $MAX_RECURSE
             $SPS
             $SPS_QR
+            $TRACE
             );
+use constant trace => $ENV{'TRACE_TEMPLATE'};
+use CGI::Ex::Dump;
 
 BEGIN {
     $START_TAG  ||= '[%';
@@ -110,22 +113,19 @@ sub swap {
     my $END   = quotemeta($self->{'END_TAG'}   || $END_TAG);
     my $new   = '';
     my $block = '';
-    my $pos   = 0;
-    my $ppos;
 
     my @args;
     my @var;
-    my ($in_tag, $in_block, $in_var, $in_func,
+    my ($in_tag, $in_block, $in_var, $in_args, $in_func,
         $post_chomp, $comment);
-    use CGI::Ex::Dump;
-    use constant trace => 1;
-    my $trace = '';
+    $TRACE = '';
 
     while (1) {
-        $ppos = $pos;
+
+        ### find the start tag
         if (! $in_tag) {
             if ($_[0] =~ /\G (.*?) $START ([\-\#]*) \s*/gcxs) {
-                $trace .= "Begin tag \"$&\"\n" if trace;
+                $TRACE .= "Begin tag \"$&\"\n" if trace;
                 my $pre_chomp = index($2, '-') != -1;
                 $comment      = index($2, '#') != -1;
                 $in_tag = 1;
@@ -140,14 +140,19 @@ sub swap {
                 $new .= $begin;
                 next;
             } else {
-                $trace .= "No tag found - ending parse\n" if trace;
+                $TRACE .= "No tag found - ending parse\n" if trace;
                 $new .= substr $_[0], pos($_[0]);
                 last;
             }
-        } elsif ($_[0] =~ /\G ([\-\#]*) $END /gcx) {
+        }
+
+        ### find an end tag
+        if ($_[0] =~ /\G ([\-\#]*) $END /gcx) {
             $in_tag = 0;
-            $trace .= "End of tag\n" if trace;
-            $pos = pos $_[0];
+            $TRACE .= "End of tag\n" if trace;
+            if ($in_args) {
+                die "End of tag found before closing paren";
+            }
             if ($in_var) {
                 $in_var = 0;
                 push @args, [@var];
@@ -166,29 +171,62 @@ sub swap {
             if ($#args != -1) {
                 my $args = $self->vivify_args(\@args);
                 undef @args;
-                return $args->[0];
+                $new .= $args->[0];
+                next;
             }
-        } elsif ($_[0] =~ /\G (\w+) \s*/gcx) {
-            $trace .= "Found a word \"$1\"\n" if trace;
-            if ($in_var) {
-                push @var, $1;
-            } elsif ($self->has_function($1)) {
+        }
+
+        ### find something looking like a word
+        if ($_[0] =~ /\G ([^\W\d]\w*) \s*/gcx) {
+            $TRACE .= "Found a word \"$1\"\n" if trace;
+            if ($self->has_function($1)) {
                 die "Already in function $in_func" if $in_func;
                 $in_func = $1;
                 next;
             } else {
                 $in_var = 1;
-                push @var, $1;
+                push @var, $1, [];
+            }
+
+        ### nested var
+        } elsif ($_[0] =~ /\G ([.|]) \s* (\w+) \s*/gcx) {
+            $TRACE .= "Nested variable \"$2\"\n" if trace;
+            if (! $in_var) {
+                die "Found a dot or pipe while not parsing a var";
+            }
+            push @var, $2, [];
+
+        ### number
+        } elsif ($_[0] =~ /\G (\d+|\d*\.\d+) \s* (?!\.)/gcx) {
+            if ($in_args) {
+                push @$in_args, $1, [];
+            }
+
+        ### argument looking things
+        } elsif ($_[0] =~ /\G \( \s*/gcx) {
+            $TRACE .= "Open paren\n" if trace;
+            if ($in_args) {
+                die "Can't handle nested args yet";
+            }
+            if ($in_var) {
+                $in_args = [];
+            } else {
+                die "bare parens not implemented";
+            }
+        } elsif ($_[0] =~ /\G \) \s*/gcx) {
+            $TRACE .= "Close parent\n" if trace;
+            if ($in_var) {
+                $var[-1] = $in_args;
+                $in_args = 0;
             }
         } else {
-            dex $in_var, $in_tag, $in_func, \@var, \@args, $trace, pos $_[0];
+            dex $in_var, $in_tag, $in_func, \@var, \@args, $TRACE, pos $_[0];
             dex substr($_[0], pos($_[0]));;
             die "Don't know what to do with that yet";
         }
     }
 
-    print $trace if trace;
-#            $begin =~ s/ (?:\n|^) [^\S\n]* \z //xm; # remove any leading whitespace on the same line
+    print "------------\n$TRACE------------\n" if trace;
 #            $_[0] =~ m/\G [^\S\n]* (?:\n?$|\n) /xg; # "remove" postpended whitespace on the same line (by updating pos)
     return $new;
 }
@@ -212,7 +250,9 @@ sub vivify_var {
     while ($#$var != -1) {
         my $name = shift @$var;
         my $args = shift @$var;
-        if (UNIVERSAL::isa($ref, 'HASH')) {
+        if (! defined $ref) {
+            next;
+        } elsif (UNIVERSAL::isa($ref, 'HASH')) {
             if (exists $ref->{$name}) {
                 $ref = $ref->{$name};
             } elsif (my $code = $self->hash_op($name)) {
@@ -220,8 +260,28 @@ sub vivify_var {
             } else {
                 $ref = undef;
             }
+        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+            if ($name =~ /^\d+$/ && $name <= $#$ref) {
+                $ref = $ref->[$name];
+            } elsif (my $code = $self->list_op($name)) {
+                $ref = $code->($ref, @{ $self->vivify_args($args) });
+            } else {
+                $ref = undef;
+            }
+        } elsif (! ref($ref) && defined($ref)) {
+            if (my $code = $self->scalar_op($name)) {
+                $ref = $code->($ref, @{ $self->vivify_args($args) });
+            } else {
+                $ref = undef;
+            }
+        }
+
+        if (UNIVERSAL::isa($ref, 'CODE')) {
+            $TRACE .= "In code\n" if trace;
+            $ref = $ref->(@{ $self->vivify_args($args) });
         }
     }
+
     return $ref;
 }
 
