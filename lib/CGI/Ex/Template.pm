@@ -252,6 +252,9 @@ sub vivify_var {
         my $args = shift @$var;
         if (! defined $ref) {
             next;
+        } elsif (UNIVERSAL::can($ref, $name)) {
+            my @results = $ref->$name(@{ $self->vivify_args($args) });
+            $ref = ($#results > 0) ? \@results : $results[0];
         } elsif (UNIVERSAL::isa($ref, 'HASH')) {
             if (exists $ref->{$name}) {
                 $ref = $ref->{$name};
@@ -278,7 +281,8 @@ sub vivify_var {
 
         if (UNIVERSAL::isa($ref, 'CODE')) {
             $TRACE .= "In code\n" if trace;
-            $ref = $ref->(@{ $self->vivify_args($args) });
+            my @results = $ref->(@{ $self->vivify_args($args) });
+            $ref = ($#results > 0) ? \@results : $results[0];
         }
     }
 
