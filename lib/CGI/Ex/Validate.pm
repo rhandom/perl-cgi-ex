@@ -638,7 +638,7 @@ sub check_type {
   ### the "username" portion of an email address
   } elsif ($type eq 'LOCAL_PART') {
     return 0 if ! defined($value) || ! length($value);
-    return 0 if $value =~ m/[^a-z0-9.\-\!\&]/;
+    return 0 if $value =~ m/[^a-z0-9.\-!&+]/;
     return 0 if $value =~ m/^[\.\-]/;
     return 0 if $value =~ m/[\.\-\&]$/;
     return 0 if $value =~ m/(\.\-|\-\.|\.\.)/;
@@ -1067,7 +1067,7 @@ __END__
 
 CGI::Ex::Validate - Yet another form validator - does good javascript too
 
-$Id: Validate.pm,v 1.87 2005-11-30 23:23:00 pauls Exp $
+$Id: Validate.pm,v 1.88 2005-12-21 19:13:34 pauls Exp $
 
 =head1 SYNOPSIS
 
