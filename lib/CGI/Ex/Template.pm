@@ -108,27 +108,36 @@ sub swap {
     local $self->{'_state'} = {};
     local $self->{'_swap'}  = $_[1] || {};
 
-    my $START = quotemeta($self->{'START_TAG'} || $START_TAG);
-    my $END   = quotemeta($self->{'END_TAG'}   || $END_TAG);
-    my $new   = '';
-    my $pos   = 0;
+    my $START = $self->{'START_TAG'} || $START_TAG;
+    my $END   = $self->{'END_TAG'}   || $END_TAG;
+    my $len_s = length $START;
+    my $len_e = length $END;
+
+    my $new = '';
     my @state;
 
-    while ($_[0] =~ m{\G(.*?)
-                       ($START
-                       (.*?)
-                       $END)
-                       }gxs) {
-        $pos = pos($_[0]);
-        my ($begin, $tag, $all) = ($1, $3, $2);
+    my $last = 0;
+    while (1) {
+        my $i = index($_[0], $START, $last);
+        last if $i == -1;
+        my $begin = substr($_[0], $last, $i - $last),
+        my $j = index($_[0], $END, $i + $len_s);
+        $last = $j + $len_e;
+        if ($j == -1) { # missing closing tag
+            $last = length($_[0]);
+            last;
+        }
+        my $tag = substr($_[0], $i + $len_s, $j - ($i + $len_s));
+
 
         ### take care of whitespace
         if ($tag =~ s/^-// || $self->{'PRE_CHOMP'}) {
             $begin =~ s/ (?:\n|^) [^\S\n]* \z //xm; # remove any leading whitespace on the same line
         }
         if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
-            $_[0] =~ m/\G [^\S\n]* (?:\n?$|\n) /xg; # "remove" postpended whitespace on the same line (by updating pos)
-            $pos = pos($_[0]);
+            local pos($_[0]) = $last;
+            # "remove" postpended whitespace on the same line (by updating skipping ahead)
+            $last += length($1) if $_[0] =~ m/\G ( [^\S\n]* (?:\n?$|\n) ) /xg;
         }
         $tag =~ s/^\s+//;
 
@@ -145,13 +154,13 @@ sub swap {
                     next if $#state != -1; # skip more parsing because we are parsing a block
                     $begin = '';
                     my ($begin_pos, $func, $tag) = @$s;
-                    my $body = substr($_[0], $begin_pos, $pos - length($all) - $begin_pos);
-                    my $a = length($all);
+                    my $all  = substr($_[0], $i + $len_s, $j - ($i + $len_s));
+                    my $body = substr($_[0], $begin_pos, $last - length($all) - $begin_pos);
                     $val = $self->get_function($func)->($self, \$tag, $func, \$body);
                     $val = '' if ! defined $val;
                 }
             } elsif ($REQ_END->{$func}) {
-                push @state, [$pos, $func, $tag];
+                push @state, [$last, $func, $tag];
                 next if $#state != 0; # wasn't the first item - we are still parsing a block
                 $val = '';
 
@@ -165,6 +174,7 @@ sub swap {
             die "Found trailing info during variable access \"$tag" if $tag;
             $val = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
         } else {
+            my $all  = substr($_[0], $i + $len_s, $j - ($i + $len_s));
             $all =~ s/^\s+//;
             $all =~ s/\s+$//;
             die "Not sure how to handle tag $all";
@@ -174,8 +184,7 @@ sub swap {
     }
 
     #die "Missing END tag while parsing $state[0][1] tag" if $#state != -1;
-
-    return $pos ? $new . substr($_[0], $pos) : $_[0];
+    return $last ? $new . substr($_[0], $last) : $_[0];
 }
 
 ###----------------------------------------------------------------###
