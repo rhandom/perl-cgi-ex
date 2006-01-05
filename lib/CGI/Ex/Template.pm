@@ -11,10 +11,7 @@ use vars qw(@INCLUDE_PATH
             $MAX_RECURSE
             $SPS
             $SPS_QR
-            $TRACE
             );
-use constant trace => $ENV{'TRACE_TEMPLATE'};
-use CGI::Ex::Dump;
 
 BEGIN {
     $START_TAG  ||= '[%';
@@ -108,185 +105,374 @@ sub new {
 sub swap {
     my $self = shift;
 
+    local $self->{'_state'} = {};
     local $self->{'_swap'}  = $_[1] || {};
+
     my $START = quotemeta($self->{'START_TAG'} || $START_TAG);
     my $END   = quotemeta($self->{'END_TAG'}   || $END_TAG);
     my $new   = '';
-    my $block = '';
+    my $pos   = 0;
+    my @state;
 
-    my @args;
-    my @var;
-    my ($in_tag, $in_block, $in_var, $in_args, $in_func,
-        $post_chomp, $comment);
-    $TRACE = '';
+    while ($_[0] =~ m{\G(.*?)
+                       ($START
+                       (.*?)
+                       $END)
+                       }gxs) {
+        $pos = pos($_[0]);
+        my ($begin, $tag, $all) = ($1, $3, $2);
 
-    while (1) {
+        ### take care of whitespace
+        if ($tag =~ s/^-// || $self->{'PRE_CHOMP'}) {
+            $begin =~ s/ (?:\n|^) [^\S\n]* \z //xm; # remove any leading whitespace on the same line
+        }
+        if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
+            $_[0] =~ m/\G [^\S\n]* (?:\n?$|\n) /xg; # "remove" postpended whitespace on the same line (by updating pos)
+            $pos = pos($_[0]);
+        }
+        $tag =~ s/^\s+//;
 
-        ### find the start tag
-        if (! $in_tag) {
-            if ($_[0] =~ /\G (.*?) $START ([\-\#]*) \s*/gcxs) {
-                $TRACE .= "Begin tag \"$&\"\n" if trace;
-                my $pre_chomp = index($2, '-') != -1;
-                $comment      = index($2, '#') != -1;
-                $in_tag = 1;
-                undef @args;
-                if ($in_block) {
+        ### look for functions or variables
+        my $val;
+        if ($tag =~ /^(\w+) (?: $|\s)/x
+            && ($self->has_function(my $func = $1))) {
+            $tag =~ s/^\w+\s*//;
+            if ($func eq 'END') {
+                if ($#state == -1) {
+                    die "Found an unmatched END tag";
+                } else {
+                    my $s = pop @state;
+                    next if $#state != -1; # skip more parsing because we are parsing a block
+                    $begin = '';
+                    my ($begin_pos, $func, $tag) = @$s;
+                    my $body = substr($_[0], $begin_pos, $pos - length($all) - $begin_pos);
+                    my $a = length($all);
+                    $val = $self->get_function($func)->($self, \$tag, $func, \$body);
+                    $val = '' if ! defined $val;
+                }
+            } elsif ($REQ_END->{$func}) {
+                push @state, [$pos, $func, $tag];
+                next if $#state != 0; # wasn't the first item - we are still parsing a block
+                $val = '';
+
+            } else {
+                $val = $self->get_function($func)->($self, \$tag, $func);
+                $val = '' if ! defined $val;
+            }
+        } elsif ($#state != -1) {
+            next; # skip any parsing if we are looking at a block
+        } elsif (my $_ref = $self->get_variable_ref(\$tag)) {
+            die "Found trailing info during variable access \"$tag" if $tag;
+            $val = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
+        } else {
+            $all =~ s/^\s+//;
+            $all =~ s/\s+$//;
+            die "Not sure how to handle tag $all";
+        }
+
+        $new .= $begin . $val;
+    }
+
+    #die "Missing END tag while parsing $state[0][1] tag" if $#state != -1;
+
+    return $pos ? $new . substr($_[0], $pos) : $_[0];
+}
+
+###----------------------------------------------------------------###
+
+sub get_variable_ref {
+    my $self    = shift;
+    my $str_ref = shift;
+    my $args    = shift || {};
+
+    ### allow hash various items to auto quote (such as hash constructors)
+    if ($args->{'auto_quote'}) {
+        my $quote_qr = $args->{'quote_qr'} || qr/\w+/;
+        if ($$str_ref =~ s{
+            ^(  \$\w+                    # $foo
+              | \$\{\s* [^\}]+ \s*\}     # ${foo.bar}
+              | $quote_qr                # whatever
+              )  (?: \s+ | \s* (?!\.) )  # end of string or not a dot
+          }{}x) {
+            my $str = $1;
+            $self->interpolate(\$str);
+            return \ $str;
+        }
+    }
+
+
+    ### determine our data source start point
+    my ($ref, $root, $set_ref, $set_name);
+    my $copy = $$str_ref; # retain for rollback
+
+    ### looks like an unquoted number
+    if ($copy =~ s/^ (-?(?:\d*\.\d+|\d+))//x) {
+        my $num = $1;
+        $ref = \ $num;
+        $copy =~ s/^\.(?!\.)//; # remove trailing . on a "string".length type construct - but allow 0..1
+
+    ### looks like an literal string
+    } elsif ($copy =~ s/^([\"\']) (|.*?[^\\]) \1 //xs) {
+        my $str = $2;
+        $self->interpolate(\$str) if $1 eq '"'; # ' doesn't interpolate
+        $ref = \ $str;
+        $copy =~ s/^\.(?!\.)//; # remove trailing . on a "string".length type construct - but allow 'a'..'z'
+
+    ### looks like an array constructor
+    } elsif ($copy =~ s/^\[\s*//) {
+        my @array;
+        my ($range, $_ref);
+        while (($range = $copy =~ s/^\.\.\s*//) || ($_ref = $self->get_variable_ref(\$copy))) {
+            push @array, $range ? "\0..\0" : UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
+            next if $copy =~ s/^,\s*//;
+        }
+        $copy =~ s/^\]\.?// || die "Unterminated array constructor in $$str_ref";
+        for (my $i = 0; $i <= $#array; $i++) {
+            next if $array[$i] ne "\0..\0";
+            my $range = do { local $^W; $i == 0 ? [] : [$array[$i - 1] .. $array[$i + 1]] };
+            splice @array, ($i == 0 ? 0 : $i - 1), ($i == 0 ? 2 : 3), @$range;
+            $i += ($#$range + 1) - ($i == 0 ? 2 : 3)
+        }
+        $ref = \@array;
+
+    ### looks like a hash constructor
+    } elsif ($copy =~ s/^\{\s*//) {
+        my %hash;
+        while (my $_ref = $self->get_variable_ref(\$copy, {auto_quote => 1})) {
+            my $key = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
+            $copy =~ s/^=>\s*// || die "Missing => in hash constructor in $$str_ref";
+            $_ref = $self->get_variable_ref(\$copy);
+            my $val = defined($_ref) ? UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref : undef;
+            $hash{$key} = $val;
+            next if $copy =~ s/^,\s*//;
+        }
+        $copy =~ s/^\}\.?// || die "Unterminated hash constructor in $$str_ref";
+        $ref = \%hash;
+
+    ### looks like a paren grouper
+    } elsif ($copy =~ s/^\(\s*//) {
+        local $self->{'_state'}->{'parse_math'}; # let grouping parens have their own math
+        $ref = $self->get_variable_ref(\$copy);
+        $copy =~ s/^\s*\)\.?//;
+
+    ### just use the swap
+    } else {
+        $ref = $root = $self->{'_swap'};
+    }
+
+
+    ### look for normal name element types
+    while (defined $ref) {
+
+        ### parse for arguments - one.two(arg1, arg2)
+        my @args;
+        if ($copy =~ s/^\(\s*//) {
+            local $self->{'_state'}->{'parse_math'}; # arguments can have their own math calculations
+            while (my $_ref = $self->get_variable_ref(\$copy)) {
+                push @args, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
+                next if $copy =~ s/^,\s*//;
+            }
+            $copy =~ s/^\)\.?// || die "Unterminated arg list in $$str_ref";
+        }
+
+        ### if the previously found ref was a code block - run it with any parsed args
+        if (UNIVERSAL::isa($ref, 'CODE')) {
+            my @results = $ref->(@args);
+            if ($#results > 0) {
+                $ref = \@results;
+            } elsif (defined(my $result = $results[0])) {
+                $ref = ref($result) ? $result : \ $result;
+            } else {
+                my $str = '';
+                $ref = \ $str;
+            }
+            next;
+        }
+
+        ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
+        if ($copy =~ s/^\$(\w+)(\.?)//
+            || $copy =~ s/^\$\{\s* ([^\}]+) \s*\}(\.?)//x) {
+            my ($var, $dot) = ($1, $2);
+            my $_ref = $self->get_variable_ref(\$var);
+            if (! $_ref || ! UNIVERSAL::isa($_ref, 'SCALAR')) {
+                die "Unknown variable \"$var\" in $$str_ref"; # TODO - allow
+            } elsif ($$_ref =~ /^\w+$/) {
+                $copy = $$_ref . $dot . $copy;
+            } else {
+                $ref = \ undef;
+                next;
+            }
+        }
+
+        ### walk down the normal line this.that.foo(blah).0.them
+        if ($copy =~ s/^(\w+)\.?//) {
+            my $name = $1;
+
+            ### current level looks like an object method calll
+            if (UNIVERSAL::can($ref, $name)) {
+                my $obj = $ref;
+                $ref = sub {
+                    my @results = $obj->$name(@_);
+                    if ($#results > 0) {
+                        return \@results;
+                    } else {
+                        my $result = $results[0];
+                        return ref($result) ? $result : \ $result;
+                    }
+                };
+                next;
+
+            ### current level looks like a hashref
+            } elsif (UNIVERSAL::isa($ref, 'HASH')) {
+                if (exists $ref->{$name}) {
+                    if ($args->{'return_set_ref'}) {
+                        $set_ref  = $ref;
+                        $set_name = $name;
+                    }
+                    $ref = ref($ref->{$name}) ? $ref->{$name} : \ $ref->{$name};
+                    next;
+                } elsif (my $code = $self->hash_op($name)) {
+                    my $hash = $ref;
+                    $ref = sub { $code->($hash, @_) };
+                    next;
+                } elsif ($args->{'return_set_ref'}) {
+                    $set_ref  = $ref;
+                    $set_name = $name;
+                    $ref = $ref->{$name} = {}; # AUTOVIVIFY
+                    next;
+                } else { # undef - no such key or virtual method
+                    $ref = \ undef;
                     next;
                 }
-                my $begin = $1;
-                if ($pre_chomp) {
-                    $begin =~ s/ (?:\n|^) [^\S\n]* \z //xm; # remove any leading whitespace on the same line
+
+            ### current level looks like an arrayref
+            } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+                if ($name =~ /^\d+/) { # index lookup
+                    if ($name > $#$ref) { # allow for out of bounds
+                        if ($args->{'return_set_ref'}) {
+                            $ref->[$name] = {}; # AUTOVIVIFY
+                        } else {
+                            $ref = \ undef;
+                            next;
+                        }
+                    }
+                    if ($args->{'return_set_ref'}) {
+                        $set_ref  = $ref;
+                        $set_name = $name;
+                    }
+                    $ref = ref($ref->[$name]) ? $ref->[$name] : \ $ref->[$name];
+                    next;
+                } elsif (my $code = $self->list_op($name)) { # virtual method
+                    my $array = $ref;
+                    $ref = sub { $code->($array, @_) };
+                    next;
+                } elsif ($args->{'return_set_ref'}) {
+                    die "Refusing to translate array to hash during set operation in $$str_ref";
+                } else { # undef - no such lookup
+                    $ref = \ undef;
+                    next;
                 }
-                $new .= $begin;
-                next;
-            } else {
-                $TRACE .= "No tag found - ending parse\n" if trace;
-                $new .= substr $_[0], pos($_[0]);
-                last;
+
+            ### looks like a normal variable
+            } elsif (UNIVERSAL::isa($ref, 'SCALAR')) {
+                if (! defined $$ref) {
+                    ### undefs gobble up the rest
+                    next;
+                } elsif (my $code = $self->scalar_op($name)) {
+                    my $scalar = $$ref;
+                    $ref = sub { $code->($scalar, @_) };
+                    next;
+                } elsif ($args->{'return_set_ref'}) {
+                    if (UNIVERSAL::isa($set_ref, 'HASH')) {
+                        $set_ref = $set_ref->{$set_name} = {};
+                        $ref     = $set_ref->{$name}     = {};
+                    } elsif (UNIVERSAL::isa($set_ref, 'ARRAY')) {
+                        $set_ref = $set_ref->[$set_name] = {};
+                        $ref     = $set_ref->{$name}     = {};
+                    }
+                    $set_name = $name;
+                    next;
+                } else {
+                    $ref = \ undef;
+                    next;
+                    #die "SCALAR virtual method not implemented ($$str_ref)";
+                }
             }
         }
 
-        ### find an end tag
-        if ($_[0] =~ /\G ([\-\#]*) $END /gcx) {
-            $in_tag = 0;
-            $TRACE .= "End of tag\n" if trace;
-            if ($in_args) {
-                die "End of tag found before closing paren";
-            }
-            if ($in_var) {
-                $in_var = 0;
-                push @args, [@var];
-                undef @var;
-            }
-            if ($in_block) {
-                next;
-            }
-            if (my $func = $in_func) {
-                $in_func = 0;
-                my $val = $self->get_function($func)->($self->vivify_args(\@args));
-                undef @args;
-                $new .= $val;
-                next;
-            }
-            if ($#args != -1) {
-                my $args = $self->vivify_args(\@args);
-                undef @args;
-                $new .= $args->[0];
-                next;
-            }
+        ### if we hit here - we were unable to parse more - so stop
+        last;
+    } # end of while
+
+
+    ### allow for math operators
+    if ($copy =~ s/^\s*(\*\*)\s*//
+        || $copy =~ s|^\s*([%*/+-])\s*||) {
+        my $op = $1;
+        my $is_top = ! $self->{'_state'}->{'parse_math'};
+        local $self->{'_state'}->{'parse_math'} = 1;
+
+        my $val  = UNIVERSAL::isa($ref, 'SCALAR')  ? do { local $^W; $$ref + 0 } : 0;
+        my $ref2 = $self->get_variable_ref(\$copy); # parsed with parse_math
+        my $val2 = $$ref2;
+
+        $val = "$val$op$val2";
+        if (! $is_top) {
+            $ref = \ $val; # return our built up string
+        } else {
+            $root = undef;
+            $val = ($val =~ m|^([\d\.%*/+-]+)$|) ? eval $1 : 0; # TODO - maybe not eval
+            $ref = \ $val;
         }
 
-        ### find something looking like a word
-        if ($_[0] =~ /\G ([^\W\d]\w*) \s*/gcx) {
-            $TRACE .= "Found a word \"$1\"\n" if trace;
-            if ($self->has_function($1)) {
-                die "Already in function $in_func" if $in_func;
-                $in_func = $1;
-                next;
+    ### if we are parsing math operations - turn non numbers into numbers
+    } elsif ($self->{'_state'}->{'parse_math'}) {
+        my $val = UNIVERSAL::isa($ref, 'SCALAR') ? do { local $^W; $$ref + 0 } : 0;
+        $ref = \ $val;
+
+    ### allow for boolean operators
+    } elsif ($copy =~ s/^\s*(&&|\|\|)\s*//) {
+        my $op       = $1;
+        my $bool = UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref;
+        if ($op eq '&&') {
+            if ($bool) {
+                $ref = $self->get_variable_ref(\$copy);
             } else {
-                $in_var = 1;
-                push @var, $1, [];
-            }
-
-        ### nested var
-        } elsif ($_[0] =~ /\G ([.|]) \s* (\w+) \s*/gcx) {
-            $TRACE .= "Nested variable \"$2\"\n" if trace;
-            if (! $in_var) {
-                die "Found a dot or pipe while not parsing a var";
-            }
-            push @var, $2, [];
-
-        ### number
-        } elsif ($_[0] =~ /\G (\d+|\d*\.\d+) \s* (?!\.)/gcx) {
-            if ($in_args) {
-                push @$in_args, $1, [];
-            }
-
-        ### argument looking things
-        } elsif ($_[0] =~ /\G \( \s*/gcx) {
-            $TRACE .= "Open paren\n" if trace;
-            if ($in_args) {
-                die "Can't handle nested args yet";
-            }
-            if ($in_var) {
-                $in_args = [];
-            } else {
-                die "bare parens not implemented";
-            }
-        } elsif ($_[0] =~ /\G \) \s*/gcx) {
-            $TRACE .= "Close parent\n" if trace;
-            if ($in_var) {
-                $var[-1] = $in_args;
-                $in_args = 0;
+                ### $ref stays as is
+                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
             }
         } else {
-            dex $in_var, $in_tag, $in_func, \@var, \@args, $TRACE, pos $_[0];
-            dex substr($_[0], pos($_[0]));;
-            die "Don't know what to do with that yet";
+            if ($bool) {
+                ### $ref stays as is
+                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
+            } else {
+                $ref = $self->get_variable_ref(\$copy);
+            }
         }
     }
 
-    print "------------\n$TRACE------------\n" if trace;
-#            $_[0] =~ m/\G [^\S\n]* (?:\n?$|\n) /xg; # "remove" postpended whitespace on the same line (by updating pos)
-    return $new;
-}
 
+    ### we didn't find a variable - return nothing
+    return if $root && $ref == $root;
 
-sub vivify_args {
-    my ($self, $args) = @_;
-    return [map {$self->vivify_var($_)} @$args];
-}
+    ### finalize the changes
+    $copy =~ s/^\s+//;
+    $$str_ref = $copy;
 
-sub vivify_var {
-    my ($self, $var) = @_;
-    my $ref;
-    if (! ref $var) {
-        return $var; # looks like a num or a quoted string
-    } elsif (! ref $var->[0]) {
-        $ref = $self->{'_swap'};
+    ### allow for custom undefined
+    if (UNIVERSAL::isa($ref, 'SCALAR') && ! defined $$ref) {
+        my $str = $self->undefined($$str_ref);
+        $str = '' if ! defined $str;
+        $ref = \ $str;
+
+    ### if we are setting - return the accessor info
+    } elsif ($args->{'return_set_ref'}) {
+        return [$set_ref, $set_name];
+
+    ### normal variable access
     } else {
-        shift @$var; # remove args if the first thing was a data structure
+        return $ref;
     }
-    while ($#$var != -1) {
-        my $name = shift @$var;
-        my $args = shift @$var;
-        if (! defined $ref) {
-            next;
-        } elsif (UNIVERSAL::can($ref, $name)) {
-            my @results = $ref->$name(@{ $self->vivify_args($args) });
-            $ref = ($#results > 0) ? \@results : $results[0];
-        } elsif (UNIVERSAL::isa($ref, 'HASH')) {
-            if (exists $ref->{$name}) {
-                $ref = $ref->{$name};
-            } elsif (my $code = $self->hash_op($name)) {
-                $ref = $code->($ref, @{ $self->vivify_args($args) });
-            } else {
-                $ref = undef;
-            }
-        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ /^\d+$/ && $name <= $#$ref) {
-                $ref = $ref->[$name];
-            } elsif (my $code = $self->list_op($name)) {
-                $ref = $code->($ref, @{ $self->vivify_args($args) });
-            } else {
-                $ref = undef;
-            }
-        } elsif (! ref($ref) && defined($ref)) {
-            if (my $code = $self->scalar_op($name)) {
-                $ref = $code->($ref, @{ $self->vivify_args($args) });
-            } else {
-                $ref = undef;
-            }
-        }
-
-        if (UNIVERSAL::isa($ref, 'CODE')) {
-            $TRACE .= "In code\n" if trace;
-            my @results = $ref->(@{ $self->vivify_args($args) });
-            $ref = ($#results > 0) ? \@results : $results[0];
-        }
-    }
-
-    return $ref;
 }
 
 ###----------------------------------------------------------------###
