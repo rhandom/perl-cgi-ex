@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 189 - ($is_tt ? 21 : 0);
+use Test::More tests => 190 - ($is_tt ? 21 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -230,6 +230,7 @@ process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo %]" => 'hi ONE there', {one => 'ONE'});
 process_ok("[% IF 1 %]Yes[% END %]" => 'Yes');
 process_ok("[% IF 0 %]Yes[% END %]" => '');
+process_ok("[% BLOCK foo %]hi [% IF 1 %]Yes[% END %] there[% END %]<<[% PROCESS foo %]>>" => '<<hi Yes there>>');
 
 ###----------------------------------------------------------------###
 ### chomping
