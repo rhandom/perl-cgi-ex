@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 188 - ($is_tt ? 21 : 0);
+use Test::More tests => 189 - ($is_tt ? 21 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -26,6 +26,7 @@ sub process_ok { # process the value
     ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
     my $line = (caller)[2];
     warn "#   process_ok called at line $line.\n" if ! $ok;
+    exit if ! $ok;
 }
 
 {
@@ -226,6 +227,7 @@ process_ok("[% BLOCK foo %][% END %]" => '');
 process_ok("[% BLOCK foo %]hi there[% END %]" => '');
 process_ok("[% BLOCK foo %][% BLOCK foo %][% END %][% END %]" => '');
 process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
+process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo %]" => 'hi ONE there', {one => 'ONE'});
 process_ok("[% IF 1 %]Yes[% END %]" => 'Yes');
 process_ok("[% IF 0 %]Yes[% END %]" => '');
 
