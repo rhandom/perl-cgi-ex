@@ -1,5 +1,6 @@
 package CGI::Ex::Template;
 
+use CGI::Ex::Dump qw(debug);
 use strict;
 use vars qw(@INCLUDE_PATH
             $START_TAG
@@ -115,11 +116,15 @@ sub swap {
 
     my $new = '';
     my @state;
+    my @tree;
+    my @tstate;
 
     my $last = 0;
     while (1) {
+        ### look through the string using index
         my $i = index($_[0], $START, $last);
         last if $i == -1;
+        push @tree, ['text', $last, $i] if $last != $i;
         my $begin = substr($_[0], $last, $i - $last),
         my $j = index($_[0], $END, $i + $len_s);
         $last = $j + $len_e;
@@ -128,16 +133,18 @@ sub swap {
             last;
         }
         my $tag = substr($_[0], $i + $len_s, $j - ($i + $len_s));
-
+        my $level = [undef , $i + $len_s, $j, 0, 0];
 
         ### take care of whitespace
         if ($tag =~ s/^-// || $self->{'PRE_CHOMP'}) {
             $begin =~ s/ (?:\n|^) [^\S\n]* \z //xm; # remove any leading whitespace on the same line
+            $level->[3] = 1;
         }
         if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
             local pos($_[0]) = $last;
             # "remove" postpended whitespace on the same line (by updating skipping ahead)
             $last += length($1) if $_[0] =~ m/\G ( [^\S\n]* (?:\n?$|\n) ) /xg;
+            $level->[4] = 1;
         }
         $tag =~ s/^\s+//;
 
@@ -146,7 +153,17 @@ sub swap {
         if ($tag =~ /^(\w+) (?: $|\s)/x
             && ($self->has_function(my $func = $1))) {
             $tag =~ s/^\w+\s*//;
+            $level->[0] = 'directive';
+            $level->[5] = $func;
+            $level->[6] = $tag;
+            push @tree, $level;
             if ($func eq 'END') {
+                if ($#tstate == -1) {
+                    die "Found an unmatched END tag";
+                } else {
+                    my $s = pop @tstate;
+                    $s->[7] = $i + $len_s;
+                }
                 if ($#state == -1) {
                     die "Found an unmatched END tag";
                 } else {
@@ -159,19 +176,25 @@ sub swap {
                     $val = '' if ! defined $val;
                 }
             } elsif ($REQ_END->{$func}) {
+                $level->[7] = -1;
+                push @tstate, $level;
+
                 push @state, [$last, $func, $tag];
                 next if $#state != 0; # wasn't the first item - we are still parsing a block
                 $val = '';
+
 
             } else {
                 $val = $self->get_function($func)->($self, \$tag, $func);
                 $val = '' if ! defined $val;
             }
-        } elsif ($#state != -1) {
-            next; # skip any parsing if we are looking at a block
         } elsif (my $_ref = $self->get_variable_ref(\$tag)) {
             die "Found trailing info during variable access \"$tag" if $tag;
             $val = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
+            $level->[0] = 'variable';
+            $level->[5] = $val;
+            push @tree, $level;
+            $val = $begin = '' if $#state != -1;
         } else {
             my $all  = substr($_[0], $i + $len_s, $j - ($i + $len_s));
             $all =~ s/^\s+//;
@@ -183,7 +206,41 @@ sub swap {
     }
 
     #die "Missing END tag while parsing $state[0][1] tag" if $#state != -1;
-    return $last ? $new . substr($_[0], $last) : $_[0];
+    return $_[0] if ! $last;
+    push @tree, ['text', $last, length($_[0])] if $last != length($_[0]);
+#    debug \@tree;
+    my $new2 = $self->execute_tree(\@tree, \$_[0]);
+
+    $new .= substr($_[0], $last);
+#    debug $new, $new2;
+    return $new
+}
+
+sub execute_tree {
+    my ($self, $tree, $template_ref) = @_;
+    my $str = '';
+    while (my $node = shift @$tree) {
+        if ($node->[0] eq 'text') {
+            $str .= substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
+        } elsif ($node->[0] eq 'directive') {
+            my $func = $node->[5];
+            my $tag  = $node->[6];
+            my $val;
+            if ($node->[7]) {
+                my @subtree; # optimize
+                push @subtree, shift(@$tree) while $#$tree != -1 && $node->[7] != ($tree->[0]->[1] || 0);
+                shift @$tree;
+                $val = $self->get_function($func)->($self, \$tag, $func, \@subtree, $template_ref);
+            } else {
+                $val = $self->get_function($func)->($self, \$tag, $func, $template_ref);
+            }
+            $val = '' if ! defined $val;
+            $str .= $val;
+        } elsif ($node->[0] eq 'variable') {
+            $str .= $node->[5];
+        }
+    }
+    return $str;
 }
 
 ###----------------------------------------------------------------###
@@ -533,7 +590,11 @@ sub func_BLOCK {
         if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
 
     my $block_name = $$ref;
-    $self->{'BLOCKS'}->{$block_name} = $$body_ref;
+    if (UNIVERSAL::isa($body_ref, 'SCALAR')) {
+        $self->{'BLOCKS'}->{$block_name} =  $$body_ref;
+    } else {
+        $self->{'_blocks'}->{$block_name} = $body_ref;
+    }
     return '';
 }
 
@@ -561,24 +622,24 @@ sub func_DUMP {
 }
 
 sub func_IF {
-    my ($self, $tag_ref, $func, $body_ref) = @_;
+    my ($self, $tag_ref, $func, $body_ref, $template_ref) = @_;
     my $ref = $self->get_variable_ref($tag_ref);
     if (UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref) {
-        return $$body_ref;
+        return UNIVERSAL::isa($body_ref, 'SCALAR') ? $$body_ref : $self->execute_tree($body_ref, $template_ref);
     } else {
         return '';
     }
 }
 
 sub func_INCLUDE {
-    my ($self, $tag_ref) = @_;
+    my ($self, $tag_ref, $func, $template_ref) = @_;
 
     ### localize the swap
     my $swap = $self->{'_swap'};
     my @keys  = keys %$swap;
     local @$swap{@keys} = values %$swap; # note that we are only "cloning" one level deep
 
-    my $str = $self->func_PROCESS($tag_ref);
+    my $str = $self->func_PROCESS($tag_ref, $func, $template_ref);
 
     ### kill added keys
     my %keys = map {$_ => 1} @keys;
@@ -588,14 +649,24 @@ sub func_INCLUDE {
 }
 
 sub func_INSERT {
-    my ($self, $tag_ref) = @_;
+    my ($self, $tag_ref, $func, $template_ref) = @_;
     my $copy = $$tag_ref;
     my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => qr/$QR_FILENAME|\w+/});
     die "Couldn't find a filename on INSERT/INCLUDE/PROCESS on $copy"
         if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
 
-    return $self->{'BLOCKS'}->{$$ref} if $$ref =~ /^\w+$/;
-    return $self->include_file($$ref);
+    if ($$ref =~ /^\w+$/) {
+        if (! $template_ref) {
+            my $body_ref = $self->{'BLOCKS'}->{$$ref};
+            return defined($body_ref) ? $body_ref : '';
+        } else {
+            my $body_ref = $self->{'_blocks'}->{$$ref};
+            my $s = $self->execute_tree($body_ref, $template_ref);
+            return $s;
+        }
+    } else {
+        return $self->include_file($$ref);
+    }
 }
 
 sub func_GET {
@@ -607,14 +678,14 @@ sub func_GET {
 }
 
 sub func_PROCESS {
-    my ($self, $tag_ref) = @_;
+    my ($self, $tag_ref, $func, $template_ref) = @_;
 
     $self->{'state'}->{'recurse'} ||= 0;
     $self->{'state'}->{'recurse'} ++;
     die "MAX_RECURSE $MAX_RECURSE reached during INCLUDE/PROCESS on $$tag_ref"
         if $self->{'state'}->{'recurse'} >= $MAX_RECURSE;
 
-    my $str = $self->func_INSERT($tag_ref);
+    my $str = $self->func_INSERT($tag_ref, $func, $template_ref);
 
     $str = $self->swap($str, $self->{'_swap'}); # restart the swap - passing it our current stash
 
