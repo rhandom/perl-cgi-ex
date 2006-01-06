@@ -154,8 +154,7 @@ sub swap {
                     next if $#state != -1; # skip more parsing because we are parsing a block
                     $begin = '';
                     my ($begin_pos, $func, $tag) = @$s;
-                    my $all  = substr($_[0], $i + $len_s, $j - ($i + $len_s));
-                    my $body = substr($_[0], $begin_pos, $last - length($all) - $begin_pos);
+                    my $body = substr($_[0], $begin_pos, $i - $begin_pos);
                     $val = $self->get_function($func)->($self, \$tag, $func, \$body);
                     $val = '' if ! defined $val;
                 }
