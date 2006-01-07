@@ -213,16 +213,26 @@ sub swap {
 
     $new .= substr($_[0], $last);
 #    debug $new, $new2;
-    return $new
+    return $new;
 }
 
 sub execute_tree {
     my ($self, $tree, $template_ref) = @_;
     my $str = '';
+    my $post_chomp;
     while (my $node = shift @$tree) {
         if ($node->[0] eq 'text') {
-            $str .= substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
-        } elsif ($node->[0] eq 'directive') {
+            my $pre_chomp = $tree->[0] && $tree->[0]->[3];
+
+            my $txt = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
+
+            $txt =~ s/ (?:\n|^) [^\S\n]* \z //xm if $pre_chomp; # remove any leading whitespace on the same line
+            $txt =~ m/ ( [^\S\n]* (?:\n?$|\n) ) /xg if $post_chomp;
+
+            $str .= $txt;
+        }
+        $post_chomp = $node->[4];
+        if ($node->[0] eq 'directive') {
             my $func = $node->[5];
             my $tag  = $node->[6];
             my $val;
