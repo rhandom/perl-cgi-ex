@@ -9,15 +9,11 @@ use vars qw(@INCLUDE_PATH
             $DIRECTIVES
             $QR_FILENAME
             $MAX_RECURSE
-            $SPS
-            $SPS_QR
             );
 
 BEGIN {
     $START_TAG  ||= '[%';
     $END_TAG    ||= '%]';
-    $SPS = chr(186);
-    $SPS_QR = qr/$SPS(\d+)$SPS/;
 
     ### list out the virtual methods
     $SCALAR_OPS = {
@@ -176,10 +172,9 @@ sub parse_tree {
         $tag =~ s/^\s+//;
 
         ### look for functions or variables
-        if ($tag =~ /^(\w+) (?: $|\s)/x
-            && ($DIRECTIVES->{(my $func = $1)})) {
+        if ($tag =~ /^(\w+) (?: $|\s)/x && $DIRECTIVES->{$1}) {
+            my $func = $level->[0] = $1;
             $tag =~ s/^\w+\s*//;
-            $level->[0] = $func;
             push @tree, $level;
             if ($func eq 'END') {
                 if ($#tstate == -1) {
@@ -307,8 +302,6 @@ sub parse_variable {
             @pieces = grep {defined && length} @pieces;
             if ($#pieces == -1) {
                 push @var, \ '';
-            } elsif ($#pieces == 0) {
-                push @var, ref($pieces[0]) ? $pieces[0] : \ $pieces[0];
             } else {
                 push @var, \ ['concat', map {ref($_) ? $_ : [\$_, 0]} @pieces];
             }
@@ -415,23 +408,51 @@ sub parse_variable {
 }
 
 sub vivify_variable {
-    my ($self, $var) = @_;
-    my $ref = shift @$var;
+    my $self = shift;
+    my $var  = shift;
+    my $ARGS = shift || {};
+
+    ### determine the top level of this particular variable access
+    my $ref  = shift @$var;
+    my $args = shift @$var;
     if (ref $ref) {
         if (ref($ref) eq 'SCALAR') {
+            return if $ARGS->{'set_var'};
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') {
+            return if $ARGS->{'set_var'};
             $ref = $self->run_operator($$ref);
         } else {
             $ref = $self->vivify_variable($ref);
-            $ref = $self->{'_swap'}->{$ref} if defined $ref;
+            if (defined $ref) {
+                if ($ARGS->{'set_var'}) {
+                    if ($#$var == -1) {
+                        $self->{'_swap'}->{$ref} = $ARGS->{'var_val'};
+                        return;
+                    } else {
+                        $self->{'_swap'}->{$ref} ||= {};
+                    }
+                }
+                $ref = $self->{'_swap'}->{$ref};
+            } else {
+                return if $ARGS->{'set_var'};
+            }
         }
     } else {
+        if ($ARGS->{'set_var'}) {
+            if ($#$var == -1) {
+                $self->{'_swap'}->{$ref} = $ARGS->{'var_val'};
+                return;
+            } else {
+                $self->{'_swap'}->{$ref} ||= {};
+            }
+        }
         $ref = $self->{'_swap'}->{$ref};
     }
 
-    my $args = shift @$var;
+    ### let the top level thing be a code block
     if (UNIVERSAL::isa($ref, 'CODE')) {
+        return if $ARGS->{'set_var'} && $#$var == -1;
         my @results = $ref->($args ? $self->vivify_args($args) : ());
         $ref = ($#results > 0) ? \@results : $results[0];
     }
@@ -516,6 +537,12 @@ sub run_operator {
     my $op = shift @$tree;
     if ($op eq 'concat') {
         return join "", grep {defined} $self->vivify_args($tree);
+    } elsif ($op eq 'arrayref') {
+        return [$self->vivify_args($tree)];
+    } elsif ($op eq 'hashref') {
+        my @args = $self->vivify_args($tree);
+        push @args, undef if ! ($#args % 2);
+        return {@args};
     } else {
         die "Un-implemented operation $op";
     }
@@ -706,25 +733,32 @@ sub parse_PROCESS {
 
 sub parse_SET {
     my ($self, $tag_ref) = @_;
+    my @SET;
     my $copy = $$tag_ref;
     while (length $$tag_ref) {
-        my $set = $self->get_variable_ref($tag_ref, {return_set_ref => 1});
+        my $set = $self->parse_variable($tag_ref);
         die "Couldn't find variable on SET on $copy" if ! $set;
         my $val;
-        if ($$tag_ref =~ s/^=\s*//) {
-            my $val_ref = $self->get_variable_ref($tag_ref);
-            $val = UNIVERSAL::isa($val_ref, 'SCALAR') ? $$val_ref : $val_ref;
+        if ($$tag_ref =~ s{ ^ = \s* }{}x) {
+            $val = $self->parse_variable($tag_ref);
         } else {
-            $val = '';
+            $val = undef;
         }
-        $$tag_ref =~ s/^;\s*//;
+        $$tag_ref =~ s{ ^ ; \s*}{}x;
+        push @SET, [$set, $val];
+    }
+    return \@SET;
+}
 
-        my ($ref, $name) = @$set;
-        if (UNIVERSAL::isa($ref, 'HASH')) {
-            $ref->{$name} = $val;
-        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            $ref->[$name] = $val;
-        }
+sub play_SET {
+    my ($self, $set) = @_;
+    foreach (@$set) {
+        my ($set, $val) = @$_;
+        $val = defined($val) ? $self->vivify_variable($val) : '';
+        $self->vivify_variable($set, {
+            set_var => 1,
+            var_val => $val,
+        });
     }
     return '';
 }
