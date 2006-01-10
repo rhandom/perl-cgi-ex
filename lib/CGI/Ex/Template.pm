@@ -135,6 +135,14 @@ sub swap {
     local $self->{'_state'} = {};
     local $self->{'_swap'}  = $_[1] || {};
 
+    my $tree = $self->parse_tree(\$_[0]);
+    return defined($tree) ? $self->execute_tree($tree, \$_[0]) : $_[0];
+}
+
+sub parse_tree {
+    my $self    = shift;
+    my $str_ref = shift;
+
     my $START = $self->{'START_TAG'} || $START_TAG;
     my $END   = $self->{'END_TAG'}   || $END_TAG;
     my $len_s = length $START;
@@ -145,17 +153,17 @@ sub swap {
     my $last = 0;
     while (1) {
         ### look through the string using index
-        my $i = index($_[0], $START, $last);
+        my $i = index($$str_ref, $START, $last);
         last if $i == -1;
         push @tree, ['TEXT', $last, $i] if $last != $i;
-        my $begin = substr($_[0], $last, $i - $last),
-        my $j = index($_[0], $END, $i + $len_s);
+        my $begin = substr($$str_ref, $last, $i - $last),
+        my $j = index($$str_ref, $END, $i + $len_s);
         $last = $j + $len_e;
         if ($j == -1) { # missing closing tag
-            $last = length($_[0]);
+            $last = length($$str_ref);
             last;
         }
-        my $tag = substr($_[0], $i + $len_s, $j - ($i + $len_s));
+        my $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
         my $level = [undef , $i + $len_s, $j, 0, 0];
 
         ### take care of whitespace
@@ -195,20 +203,18 @@ sub swap {
             push @tree, $level;
 
         } else {
-            my $all  = substr($_[0], $i + $len_s, $j - ($i + $len_s));
+            my $all  = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $all =~ s/^\s+//;
             $all =~ s/\s+$//;
             die "Not sure how to handle tag $all";
         }
     }
 
-    #die "Missing END tag while parsing $state[0][1] tag" if $#state != -1;
-    return $_[0] if $#tree == -1;
-    push @tree, ['TEXT', $last, length($_[0])] if $last != length($_[0]);
-#    debug \@tree;
-    my $new2 = $self->execute_tree(\@tree, \$_[0]);
+    return undef if $#tree == -1;
 
-    return $new2;
+    push @tree, ['TEXT', $last, length($$str_ref)] if $last != length($$str_ref);
+
+    return \@tree;
 }
 
 sub execute_tree {
@@ -286,21 +292,26 @@ sub parse_variable {
 
     ### allow for literal strings
     } elsif ($copy =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* }{}xs) {
-        my @pieces = split m{ (\$\w+\b | \$\{ [^\}]+ \}) }x, $2;
-        foreach my $piece (@pieces) {
-            if ($piece =~ m{ ^ \$ (\w+) $ }x
-                || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
-                my $name = $1;
-                $piece = $self->parse_variable(\$name);
-            }
-        }
-        @pieces = grep {defined && length} @pieces;
-        if ($#pieces == -1) {
-            push @var, \ '';
-        } elsif ($#pieces == 0) {
-            push @var, ref($pieces[0]) ? $pieces[0] : \ $pieces[0];
+        if ($1 eq "'") { # no interpolation on single quoted strings
+            my $str = $2;
+            push @var, \$str;
         } else {
-            push @var, \ ['concat', map {ref($_) ? $_ : [\$_, 0]} @pieces];
+            my @pieces = split m{ (\$\w+\b | \$\{ [^\}]+ \}) }x, $2;
+            foreach my $piece (@pieces) {
+                if ($piece =~ m{ ^ \$ (\w+) $ }x
+                    || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
+                    my $name = $1;
+                    $piece = $self->parse_variable(\$name);
+                }
+            }
+            @pieces = grep {defined && length} @pieces;
+            if ($#pieces == -1) {
+                push @var, \ '';
+            } elsif ($#pieces == 0) {
+                push @var, ref($pieces[0]) ? $pieces[0] : \ $pieces[0];
+            } else {
+                push @var, \ ['concat', map {ref($_) ? $_ : [\$_, 0]} @pieces];
+            }
         }
 
     ### looks like an array constructor
@@ -421,7 +432,7 @@ sub vivify_variable {
 
     my $args = shift @$var;
     if (UNIVERSAL::isa($ref, 'CODE')) {
-        my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
+        my @results = $ref->($args ? $self->vivify_args($args) : ());
         $ref = ($#results > 0) ? \@results : $results[0];
     }
 
@@ -431,8 +442,22 @@ sub vivify_variable {
         my $name         = shift @$var;
         my $args         = shift @$var;
 
+        if (ref $name) {
+            if (ref($name) eq 'SCALAR') {
+                die "Shouldn't get a SCALAR during a vivify on chain";
+            } elsif (ref($name) eq 'REF') {
+                die "Shouldn't get a REF during a vivify on chain";
+            } else {
+                $name = $self->vivify_variable($name);
+                if (! defined $name) {
+                    $ref = undef;
+                    next;
+                }
+            }
+        }
+
         if (UNIVERSAL::can($ref, $name)) {
-            my @results = $ref->$name($args ? @{ $self->vivify_args($args) } : ());
+            my @results = $ref->$name($args ? $self->vivify_args($args) : ());
             $ref = ($#results > 0) ? \@results : $results[0];
             next;
 
@@ -440,7 +465,7 @@ sub vivify_variable {
             if ($was_dot_call && exists($ref->{$name}) ) {
                 $ref = $ref->{$name};
             } elsif (my $code = $self->hash_op($name)) {
-                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
                 next;
             } else {
                 $ref = undef;
@@ -451,7 +476,7 @@ sub vivify_variable {
             if ($name =~ /^\d+$/ && $name <= $#$ref) {
                 $ref = $ref->[$name];
             } elsif (my $code = $self->list_op($name)) {
-                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
                 next;
             } else {
                 $ref = undef;
@@ -460,7 +485,7 @@ sub vivify_variable {
 
         } elsif (! ref($ref) && defined($ref)) {
             if (my $code = $self->scalar_op($name)) {
-                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
                 next;
             } else {
                 $ref = undef;
@@ -469,7 +494,7 @@ sub vivify_variable {
         }
 
         if (UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
+            my @results = $ref->($args ? $self->vivify_args($args) : ());
             $ref = ($#results > 0) ? \@results : $results[0];
         }
 
@@ -481,11 +506,20 @@ sub vivify_variable {
 
 sub vivify_args {
     my ($self, $args) = @_;
-    return [map {$self->vivify_variable($_)} @$args];
+    return map {$self->vivify_variable($_)} @$args;
 }
 
-
 ###----------------------------------------------------------------###
+
+sub run_operator {
+    my ($self, $tree) = @_;
+    my $op = shift @$tree;
+    if ($op eq 'concat') {
+        return join "", grep {defined} $self->vivify_args($tree);
+    } else {
+        die "Un-implemented operation $op";
+    }
+}
 
 #    ### allow for math operators
 #    if ($copy =~ s/^\s*(\*\*)\s*//
