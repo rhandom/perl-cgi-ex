@@ -71,47 +71,47 @@ BEGIN {
 
     $DIRECTIVES = {
         BLOCK   => {
-            parse => \&parse_BLOCK,
-            exect => \&exect_BLOCK,
-            end   => 1,
+            parse   => \&parse_BLOCK,
+            play    => \&play_BLOCK,
+            end     => 1,
         },
         CALL    => {
             parse => \&parse_CALL,
-            exect => \&exect_CALL,
+            play  => \&play_CALL,
         },
         DEFAULT => {
             parse => \&parse_DEFAULT,
-            exect => \&exect_DEFAULT,
+            play  => \&play_DEFAULT,
         },
         DUMP    => {
             parse => \&parse_DUMP,
-            exect => \&exect_DUMP,
+            play  => \&play_DUMP,
         },
         END     => 1, # builtin that should never be called
         GET     => {
             parse => \&parse_GET,
-            exect => \&exect_GET,
+            play  => \&play_GET,
         },
         IF      => {
             parse => \&parse_IF,
-            exect => \&exect_IF,
+            play  => \&play_IF,
             end   => 1,
         },
         INCLUDE => {
             parse => \&parse_INCLUDE,
-            exect => \&exect_INCLUDE,
+            play  => \&play_INCLUDE,
         },
         INSERT  => {
             parse => \&parse_INSERT,
-            exect => \&exect_INSERT,
+            play  => \&play_INSERT,
         },
         SET     => {
             parse => \&parse_SET,
-            exect => \&exect_SET,
+            play  => \&play_SET,
         },
         PROCESS => {
             parse => \&parse_PROCESS,
-            exect => \&exect_PROCESS,
+            play  => \&play_PROCESS,
         },
     };
 
@@ -147,7 +147,7 @@ sub swap {
         ### look through the string using index
         my $i = index($_[0], $START, $last);
         last if $i == -1;
-        push @tree, ['text', $last, $i] if $last != $i;
+        push @tree, ['TEXT', $last, $i] if $last != $i;
         my $begin = substr($_[0], $last, $i - $last),
         my $j = index($_[0], $END, $i + $len_s);
         $last = $j + $len_e;
@@ -171,26 +171,26 @@ sub swap {
         if ($tag =~ /^(\w+) (?: $|\s)/x
             && ($DIRECTIVES->{(my $func = $1)})) {
             $tag =~ s/^\w+\s*//;
-            $level->[0] = 'directive';
-            $level->[5] = $func;
-            $level->[6] = $tag;
+            $level->[0] = $func;
             push @tree, $level;
             if ($func eq 'END') {
                 if ($#tstate == -1) {
                     die "Found an unmatched END tag";
                 } else {
                     my $s = pop @tstate;
-                    $s->[7] = $i + $len_s;
+                    $s->[6] = $i + $len_s;
                 }
-
-            } elsif ($DIRECTIVES->{$func}->{'end'}) {
-                $level->[7] = -1;
+                next;
+            }
+            $level->[5] = $DIRECTIVES->{$func}->{'parse'}->($self, \$tag);
+            if ($DIRECTIVES->{$func}->{'end'}) {
+                $level->[6] = -1;
                 push @tstate, $level;
             }
 
         } elsif (my $var = $self->parse_variable(\$tag)) {
             die "Found trailing info during variable access \"$tag" if $tag;
-            $level->[0] = 'variable';
+            $level->[0] = 'GET';
             $level->[5] = $var;
             push @tree, $level;
 
@@ -204,7 +204,7 @@ sub swap {
 
     #die "Missing END tag while parsing $state[0][1] tag" if $#state != -1;
     return $_[0] if $#tree == -1;
-    push @tree, ['text', $last, length($_[0])] if $last != length($_[0]);
+    push @tree, ['TEXT', $last, length($_[0])] if $last != length($_[0]);
 #    debug \@tree;
     my $new2 = $self->execute_tree(\@tree, \$_[0]);
 
@@ -215,36 +215,37 @@ sub execute_tree {
     my ($self, $tree, $template_ref) = @_;
     my $str = '';
     my $post_chomp;
+    # node contains (0: DIRECTIVE,
+    #                1: start_index,
+    #                2: end_index,
+    #                3: pre_chomp,
+    #                4: post_chomp,
+    #                5: parsed tag,
+    #                6: end block location
     while (my $node = shift @$tree) {
-        if ($node->[0] eq 'text') {
+        $post_chomp = $node->[4];
+        my $val;
+        if ($node->[0] eq 'TEXT') {
             my $pre_chomp = $tree->[0] && $tree->[0]->[3];
 
-            my $txt = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
+            $val = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
 
-            $txt =~ s/ (?:\n|^) [^\S\n]* \z //xm if $pre_chomp; # remove any leading whitespace on the same line
-            $txt =~ m/ ( [^\S\n]* (?:\n?$|\n) ) /xg if $post_chomp;
+            $val =~ s/ (?:\n|^) [^\S\n]* \z //xm if $pre_chomp; # remove any leading whitespace on the same line
+            $val =~ m/ ( [^\S\n]* (?:\n?$|\n) ) /xg if $post_chomp;
 
-            $str .= $txt;
+        ### had an end block
+        } elsif ($node->[6]) {
+            my @subtree; # optimize
+            push @subtree, shift(@$tree) while $#$tree != -1 && $node->[6] != ($tree->[0]->[1] || 0);
+            shift @$tree;
+            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[5], $node->[0], \@subtree, $template_ref);
+
+        ### normal directive
+        } else {
+            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[5], $node->[0], $template_ref);
         }
-        $post_chomp = $node->[4];
-        if ($node->[0] eq 'directive') {
-            my $func = $node->[5];
-            my $tag  = $node->[6];
-            my $val;
-            if ($node->[7]) {
-                my @subtree; # optimize
-                push @subtree, shift(@$tree) while $#$tree != -1 && $node->[7] != ($tree->[0]->[1] || 0);
-                shift @$tree;
-                $val = $self->get_function($func)->($self, \$tag, $func, \@subtree, $template_ref);
-            } else {
-                $val = $self->get_function($func)->($self, \$tag, $func, $template_ref);
-            }
-            $val = '' if ! defined $val;
-            $str .= $val;
-        } elsif ($node->[0] eq 'variable') {
-            my $var = UNIVERSAL::isa($node->[5], 'SCALAR') ? ${ $node->[5] } : $self->vivify_var($node->[5]);
-            $str .= $var;
-        }
+
+        $str .= $val if defined $val;
     }
     return $str;
 }
@@ -299,7 +300,7 @@ sub parse_variable {
         } elsif ($#pieces == 0) {
             push @var, ref($pieces[0]) ? $pieces[0] : \ $pieces[0];
         } else {
-            push @var, [['concat', map {ref($_) ? $_ : [\$_, 0]} @pieces]];
+            push @var, \ ['concat', map {ref($_) ? $_ : [\$_, 0]} @pieces];
         }
 
     ### looks like an array constructor
@@ -310,7 +311,7 @@ sub parse_variable {
             $copy =~ s{ ^ , \s* }{}x;
         }
         $copy =~ s{ ^ \] \s* }{}x || die "Missing close \] on \"$copy\"";
-        push @var, [$arrayref];
+        push @var, \ $arrayref;
 
     ### looks like a hash constructor
     } elsif ($copy =~ s{ ^ \{ \s* }{}x) {
@@ -322,7 +323,7 @@ sub parse_variable {
             $copy =~ s{ ^ , \s* }{}x;
         }
         $copy =~ s{ ^ \} \s* }{}x || die "Missing close \} on \"$copy\"";
-        push @var, [$hashref];
+        push @var, \ $hashref;
 
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* }{}x) {
@@ -394,7 +395,7 @@ sub parse_variable {
         my $op   = $1;
         my $var1 = [@var];
         my $var2 = $self->parse_variable(\$copy);
-        @var = ([[$op, $var1, $var2]], 0);
+        @var = (\ [$op, $var1, $var2], 0);
     }
 
     #debug \@var, $copy;
@@ -402,375 +403,135 @@ sub parse_variable {
     return \@var;
 }
 
-sub vivify_args {
-    my ($self, $args) = @_;
-    return [map {$self->vivify_var($_)} @$args];
-}
-
-sub vivify_var {
+sub vivify_variable {
     my ($self, $var) = @_;
-    my $ref;
-    if (! ref $var) {
-        return $var; # looks like a num or a quoted string
-    } elsif (! ref $var->[0]) {
-        $ref = $self->{'_swap'};
+    my $ref = shift @$var;
+    if (ref $ref) {
+        if (ref($ref) eq 'SCALAR') {
+            $ref = $$ref;
+        } elsif (ref($ref) eq 'REF') {
+            $ref = $self->run_operator($$ref);
+        } else {
+            $ref = $self->vivify_variable($ref);
+            $ref = $self->{'_swap'}->{$ref} if defined $ref;
+        }
     } else {
-        shift @$var; # remove args if the first thing was a data structure
+        $ref = $self->{'_swap'}->{$ref};
     }
-    while ($#$var != -1) {
-        my $name = shift @$var;
-        my $args = shift @$var;
-        if (! defined $ref) {
-            next;
-        } elsif (UNIVERSAL::can($ref, $name)) {
-            my @results = $ref->$name(@{ $self->vivify_args($args) });
+
+    my $args = shift @$var;
+    if (UNIVERSAL::isa($ref, 'CODE')) {
+        my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
+        $ref = ($#results > 0) ? \@results : $results[0];
+    }
+
+    ### vivify the chained levels
+    while (defined $ref && $#$var != -1) {
+        my $was_dot_call = shift(@$var) eq '.';
+        my $name         = shift @$var;
+        my $args         = shift @$var;
+
+        if (UNIVERSAL::can($ref, $name)) {
+            my @results = $ref->$name($args ? @{ $self->vivify_args($args) } : ());
             $ref = ($#results > 0) ? \@results : $results[0];
+            next;
+
         } elsif (UNIVERSAL::isa($ref, 'HASH')) {
-            if (exists $ref->{$name}) {
+            if ($was_dot_call && exists($ref->{$name}) ) {
                 $ref = $ref->{$name};
             } elsif (my $code = $self->hash_op($name)) {
-                $ref = $code->($ref, @{ $self->vivify_args($args) });
+                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                next;
             } else {
                 $ref = undef;
+                next;
             }
+
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
             if ($name =~ /^\d+$/ && $name <= $#$ref) {
                 $ref = $ref->[$name];
             } elsif (my $code = $self->list_op($name)) {
-                $ref = $code->($ref, @{ $self->vivify_args($args) });
+                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                next;
             } else {
                 $ref = undef;
+                next;
             }
+
         } elsif (! ref($ref) && defined($ref)) {
             if (my $code = $self->scalar_op($name)) {
-                $ref = $code->($ref, @{ $self->vivify_args($args) });
+                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                next;
             } else {
                 $ref = undef;
+                next;
             }
         }
 
         if (UNIVERSAL::isa($ref, 'CODE')) {
-#            $TRACE .= "In code\n" if trace;
-            my @results = $ref->(@{ $self->vivify_args($args) });
+            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
             $ref = ($#results > 0) ? \@results : $results[0];
         }
+
     }
 
+#    debug $ref;
     return $ref;
 }
 
-###----------------------------------------------------------------###
-
-sub get_variable_ref {
-    my $self    = shift;
-    my $str_ref = shift;
-    my $args    = shift || {};
-
-    ### allow hash various items to auto quote (such as hash constructors)
-    if ($args->{'auto_quote'}) {
-        my $quote_qr = $args->{'quote_qr'} || qr/\w+/;
-        if ($$str_ref =~ s{
-            ^(  \$\w+                    # $foo
-              | \$\{\s* [^\}]+ \s*\}     # ${foo.bar}
-              | $quote_qr                # whatever
-              )  (?: \s+ | \s* (?!\.) )  # end of string or not a dot
-          }{}x) {
-            my $str = $1;
-            $self->interpolate(\$str);
-            return \ $str;
-        }
-    }
-
-
-    ### determine our data source start point
-    my ($ref, $root, $set_ref, $set_name);
-    my $copy = $$str_ref; # retain for rollback
-
-    ### looks like an unquoted number
-    if ($copy =~ s/^ (-?(?:\d*\.\d+|\d+))//x) {
-        my $num = $1;
-        $ref = \ $num;
-        $copy =~ s/^\.(?!\.)//; # remove trailing . on a "string".length type construct - but allow 0..1
-
-    ### looks like an literal string
-    } elsif ($copy =~ s/^([\"\']) (|.*?[^\\]) \1 //xs) {
-        my $str = $2;
-        $self->interpolate(\$str) if $1 eq '"'; # ' doesn't interpolate
-        $ref = \ $str;
-        $copy =~ s/^\.(?!\.)//; # remove trailing . on a "string".length type construct - but allow 'a'..'z'
-
-    ### looks like an array constructor
-    } elsif ($copy =~ s/^\[\s*//) {
-        my @array;
-        my ($range, $_ref);
-        while (($range = $copy =~ s/^\.\.\s*//) || ($_ref = $self->get_variable_ref(\$copy))) {
-            push @array, $range ? "\0..\0" : UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
-            next if $copy =~ s/^,\s*//;
-        }
-        $copy =~ s/^\]\.?// || die "Unterminated array constructor in $$str_ref";
-        for (my $i = 0; $i <= $#array; $i++) {
-            next if $array[$i] ne "\0..\0";
-            my $range = do { local $^W; $i == 0 ? [] : [$array[$i - 1] .. $array[$i + 1]] };
-            splice @array, ($i == 0 ? 0 : $i - 1), ($i == 0 ? 2 : 3), @$range;
-            $i += ($#$range + 1) - ($i == 0 ? 2 : 3)
-        }
-        $ref = \@array;
-
-    ### looks like a hash constructor
-    } elsif ($copy =~ s/^\{\s*//) {
-        my %hash;
-        while (my $_ref = $self->get_variable_ref(\$copy, {auto_quote => 1})) {
-            my $key = UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : "$_ref";
-            $copy =~ s/^=>\s*// || die "Missing => in hash constructor in $$str_ref";
-            $_ref = $self->get_variable_ref(\$copy);
-            my $val = defined($_ref) ? UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref : undef;
-            $hash{$key} = $val;
-            next if $copy =~ s/^,\s*//;
-        }
-        $copy =~ s/^\}\.?// || die "Unterminated hash constructor in $$str_ref";
-        $ref = \%hash;
-
-    ### looks like a paren grouper
-    } elsif ($copy =~ s/^\(\s*//) {
-        local $self->{'_state'}->{'parse_math'}; # let grouping parens have their own math
-        $ref = $self->get_variable_ref(\$copy);
-        $copy =~ s/^\s*\)\.?//;
-
-    ### just use the swap
-    } else {
-        $ref = $root = $self->{'_swap'};
-    }
-
-
-    ### look for normal name element types
-    while (defined $ref) {
-
-        ### parse for arguments - one.two(arg1, arg2)
-        my @args;
-        if ($copy =~ s/^\(\s*//) {
-            local $self->{'_state'}->{'parse_math'}; # arguments can have their own math calculations
-            while (my $_ref = $self->get_variable_ref(\$copy)) {
-                push @args, UNIVERSAL::isa($_ref, 'SCALAR') ? $$_ref : $_ref;
-                next if $copy =~ s/^,\s*//;
-            }
-            $copy =~ s/^\)\.?// || die "Unterminated arg list in $$str_ref";
-        }
-
-        ### if the previously found ref was a code block - run it with any parsed args
-        if (UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->(@args);
-            if ($#results > 0) {
-                $ref = \@results;
-            } elsif (defined(my $result = $results[0])) {
-                $ref = ref($result) ? $result : \ $result;
-            } else {
-                my $str = '';
-                $ref = \ $str;
-            }
-            next;
-        }
-
-        ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
-        if ($copy =~ s/^\$(\w+)(\.?)//
-            || $copy =~ s/^\$\{\s* ([^\}]+) \s*\}(\.?)//x) {
-            my ($var, $dot) = ($1, $2);
-            my $_ref = $self->get_variable_ref(\$var);
-            if (! $_ref || ! UNIVERSAL::isa($_ref, 'SCALAR')) {
-                die "Unknown variable \"$var\" in $$str_ref"; # TODO - allow
-            } elsif ($$_ref =~ /^\w+$/) {
-                $copy = $$_ref . $dot . $copy;
-            } else {
-                $ref = \ undef;
-                next;
-            }
-        }
-
-        ### walk down the normal line this.that.foo(blah).0.them
-        if ($copy =~ s/^(\w+)\.?//) {
-            my $name = $1;
-
-            ### current level looks like an object method calll
-            if (UNIVERSAL::can($ref, $name)) {
-                my $obj = $ref;
-                $ref = sub {
-                    my @results = $obj->$name(@_);
-                    if ($#results > 0) {
-                        return \@results;
-                    } else {
-                        my $result = $results[0];
-                        return ref($result) ? $result : \ $result;
-                    }
-                };
-                next;
-
-            ### current level looks like a hashref
-            } elsif (UNIVERSAL::isa($ref, 'HASH')) {
-                if (exists $ref->{$name}) {
-                    if ($args->{'return_set_ref'}) {
-                        $set_ref  = $ref;
-                        $set_name = $name;
-                    }
-                    $ref = ref($ref->{$name}) ? $ref->{$name} : \ $ref->{$name};
-                    next;
-                } elsif (my $code = $self->hash_op($name)) {
-                    my $hash = $ref;
-                    $ref = sub { $code->($hash, @_) };
-                    next;
-                } elsif ($args->{'return_set_ref'}) {
-                    $set_ref  = $ref;
-                    $set_name = $name;
-                    $ref = $ref->{$name} = {}; # AUTOVIVIFY
-                    next;
-                } else { # undef - no such key or virtual method
-                    $ref = \ undef;
-                    next;
-                }
-
-            ### current level looks like an arrayref
-            } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-                if ($name =~ /^\d+/) { # index lookup
-                    if ($name > $#$ref) { # allow for out of bounds
-                        if ($args->{'return_set_ref'}) {
-                            $ref->[$name] = {}; # AUTOVIVIFY
-                        } else {
-                            $ref = \ undef;
-                            next;
-                        }
-                    }
-                    if ($args->{'return_set_ref'}) {
-                        $set_ref  = $ref;
-                        $set_name = $name;
-                    }
-                    $ref = ref($ref->[$name]) ? $ref->[$name] : \ $ref->[$name];
-                    next;
-                } elsif (my $code = $self->list_op($name)) { # virtual method
-                    my $array = $ref;
-                    $ref = sub { $code->($array, @_) };
-                    next;
-                } elsif ($args->{'return_set_ref'}) {
-                    die "Refusing to translate array to hash during set operation in $$str_ref";
-                } else { # undef - no such lookup
-                    $ref = \ undef;
-                    next;
-                }
-
-            ### looks like a normal variable
-            } elsif (UNIVERSAL::isa($ref, 'SCALAR')) {
-                if (! defined $$ref) {
-                    ### undefs gobble up the rest
-                    next;
-                } elsif (my $code = $self->scalar_op($name)) {
-                    my $scalar = $$ref;
-                    $ref = sub { $code->($scalar, @_) };
-                    next;
-                } elsif ($args->{'return_set_ref'}) {
-                    if (UNIVERSAL::isa($set_ref, 'HASH')) {
-                        $set_ref = $set_ref->{$set_name} = {};
-                        $ref     = $set_ref->{$name}     = {};
-                    } elsif (UNIVERSAL::isa($set_ref, 'ARRAY')) {
-                        $set_ref = $set_ref->[$set_name] = {};
-                        $ref     = $set_ref->{$name}     = {};
-                    }
-                    $set_name = $name;
-                    next;
-                } else {
-                    $ref = \ undef;
-                    next;
-                    #die "SCALAR virtual method not implemented ($$str_ref)";
-                }
-            }
-        }
-
-        ### if we hit here - we were unable to parse more - so stop
-        last;
-    } # end of while
-
-
-    ### allow for math operators
-    if ($copy =~ s/^\s*(\*\*)\s*//
-        || $copy =~ s|^\s*([%*/+-])\s*||) {
-        my $op = $1;
-        my $is_top = ! $self->{'_state'}->{'parse_math'};
-        local $self->{'_state'}->{'parse_math'} = 1;
-
-        my $val  = UNIVERSAL::isa($ref, 'SCALAR')  ? do { local $^W; $$ref + 0 } : 0;
-        my $ref2 = $self->get_variable_ref(\$copy); # parsed with parse_math
-        my $val2 = $$ref2;
-
-        $val = "$val$op$val2";
-        if (! $is_top) {
-            $ref = \ $val; # return our built up string
-        } else {
-            $root = undef;
-            $val = ($val =~ m|^([\d\.%*/+-]+)$|) ? eval $1 : 0; # TODO - maybe not eval
-            $ref = \ $val;
-        }
-
-    ### if we are parsing math operations - turn non numbers into numbers
-    } elsif ($self->{'_state'}->{'parse_math'}) {
-        my $val = UNIVERSAL::isa($ref, 'SCALAR') ? do { local $^W; $$ref + 0 } : 0;
-        $ref = \ $val;
-
-    ### allow for boolean operators
-    } elsif ($copy =~ s/^\s*(&&|\|\|)\s*//) {
-        my $op       = $1;
-        my $bool = UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref;
-        if ($op eq '&&') {
-            if ($bool) {
-                $ref = $self->get_variable_ref(\$copy);
-            } else {
-                ### $ref stays as is
-                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
-            }
-        } else {
-            if ($bool) {
-                ### $ref stays as is
-                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
-            } else {
-                $ref = $self->get_variable_ref(\$copy);
-            }
-        }
-    }
-
-
-    ### we didn't find a variable - return nothing
-    return if $root && $ref == $root;
-
-    ### finalize the changes
-    $copy =~ s/^\s+//;
-    $$str_ref = $copy;
-
-    ### allow for custom undefined
-    if (UNIVERSAL::isa($ref, 'SCALAR') && ! defined $$ref) {
-        my $str = $self->undefined($$str_ref);
-        $str = '' if ! defined $str;
-        $ref = \ $str;
-
-    ### if we are setting - return the accessor info
-    } elsif ($args->{'return_set_ref'}) {
-        return [$set_ref, $set_name];
-
-    ### normal variable access
-    } else {
-        return $ref;
-    }
+sub vivify_args {
+    my ($self, $args) = @_;
+    return [map {$self->vivify_variable($_)} @$args];
 }
+
 
 ###----------------------------------------------------------------###
 
-sub interpolate {
-    my ($self, $str_ref) = @_;
-    my $copy;
-    $$str_ref =~ s/\$(\w+)/$self->_get_interp_value($1)/egs;
-    $$str_ref =~ s/\$\{\s* ([^\}]+) \s*\}/$self->_get_interp_value($1)/egsx;
-}
-
-sub _get_interp_value {
-    my ($self, $name) = @_;
-    my $ref = $self->get_variable_ref(\$name);
-    die "Couldn't find interpolation value in $name" if ! $ref;
-    return UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
-}
+#    ### allow for math operators
+#    if ($copy =~ s/^\s*(\*\*)\s*//
+#        || $copy =~ s|^\s*([%*/+-])\s*||) {
+#        my $op = $1;
+#        my $is_top = ! $self->{'_state'}->{'parse_math'};
+#        local $self->{'_state'}->{'parse_math'} = 1;
+#
+#        my $val  = UNIVERSAL::isa($ref, 'SCALAR')  ? do { local $^W; $$ref + 0 } : 0;
+#        my $ref2 = $self->get_variable_ref(\$copy); # parsed with parse_math
+#        my $val2 = $$ref2;
+#
+#        $val = "$val$op$val2";
+#        if (! $is_top) {
+#            $ref = \ $val; # return our built up string
+#        } else {
+#            $root = undef;
+#            $val = ($val =~ m|^([\d\.%*/+-]+)$|) ? eval $1 : 0; # TODO - maybe not eval
+#            $ref = \ $val;
+#        }
+#
+#    ### if we are parsing math operations - turn non numbers into numbers
+#    } elsif ($self->{'_state'}->{'parse_math'}) {
+#        my $val = UNIVERSAL::isa($ref, 'SCALAR') ? do { local $^W; $$ref + 0 } : 0;
+#        $ref = \ $val;
+#
+#    ### allow for boolean operators
+#    } elsif ($copy =~ s/^\s*(&&|\|\|)\s*//) {
+#        my $op       = $1;
+#        my $bool = UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref;
+#        if ($op eq '&&') {
+#            if ($bool) {
+#                $ref = $self->get_variable_ref(\$copy);
+#            } else {
+#                ### $ref stays as is
+#                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
+#            }
+#        } else {
+#            if ($bool) {
+#                ### $ref stays as is
+#                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
+#            } else {
+#                $ref = $self->get_variable_ref(\$copy);
+#            }
+#        }
+#    }
 
 ###----------------------------------------------------------------###
 
@@ -790,9 +551,6 @@ sub hash_op {
     my ($self, $name) = @_;
     return $HASH_OPS->{$name};
 }
-
-sub get_function { $DIRECTIVES->{$_[1]}->{'parse'} }
-
 
 ###----------------------------------------------------------------###
 
@@ -886,9 +644,14 @@ sub parse_INSERT {
 sub parse_GET {
     my ($self, $tag_ref) = @_;
     my $copy = $$tag_ref;
-    my $ref = $self->get_variable_ref($tag_ref);
+    my $ref = $self->parse_variable($tag_ref);
     die "Couldn't find variable on GET on $copy" if ! $ref;
-    return UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : "$ref";
+    return $ref;
+}
+
+sub play_GET {
+    my ($self, $ref) = @_;
+    return $self->vivify_variable($ref);
 }
 
 sub parse_PROCESS {
@@ -1091,17 +854,17 @@ CGI::Ex::Template - Beginning interface to Templating systems - for they are man
     "one"              [ \"one", 0 ]
     2.34               [ \2.34,  0 ]
     "one"|length       [ \"one", 0, '|', 'length', 0 ]
-    "one $a two"       [ [[ 'concat', [\ 'one ', 0], ['a', 0], [\ ' two', 0 ] ]], 0 ]
-    [0,1,2]            [ [[ 'arrayref', [\0, 0], [\1, 0], [\2, 0] ]], 0 ]
-    [0,1,2].size       [ [[ 'arrayref', [\0, 0], [\1, 0], [\2, 0] ]], 0, '.', 'size', 0 ]
-    ['a', a, $a ]      [ [[ 'arrayref', [\ 'a', 0], ['a', 0], [['a', 0], 0] ]], 0]
-    {a  => 'b'}        [ [[ 'hashref',  [\ 'a', 0], [\ 'b', 0] ]], 0 ]
-    {a  => 'b'}.size   [ [[ 'hashref',  [\ 'a', 0], [\ 'b', 0] ]], 0, '.', 'size', 0 ]
-    {$a => b}          [ [[ 'hashref',  ['a', 0], ['b', 0] ]], 0 ]
-    a + b              [ [[ '+', ['a', 0], ['b', 0] ]], 0 ]
-    a * (b + c)        [ [[ '*', ['a', 0], [ [['+', ['b', 0], ['c', 0]]], 0 ]]], 0 ]
-    (a + b)            [ [[ '+', ['a', 0], ['b', 0] ]], 0 ]
-    (a + b) * c        [ [[ '*', [ [[ '+', ['a', 0], ['b', 0] ]], 0 ], ['c', 0] ]], 0 ]
+    "one $a two"       [ \ [ 'concat', [\ 'one ', 0], ['a', 0], [\ ' two', 0 ] ], 0 ]
+    [0,1,2]            [ \ [ 'arrayref', [\0, 0], [\1, 0], [\2, 0] ], 0 ]
+    [0,1,2].size       [ \ [ 'arrayref', [\0, 0], [\1, 0], [\2, 0] ], 0, '.', 'size', 0 ]
+    ['a', a, $a ]      [ \ [ 'arrayref', [\ 'a', 0], ['a', 0], [['a', 0], 0] ], 0]
+    {a  => 'b'}        [ \ [ 'hashref',  [\ 'a', 0], [\ 'b', 0] ], 0 ]
+    {a  => 'b'}.size   [ \ [ 'hashref',  [\ 'a', 0], [\ 'b', 0] ], 0, '.', 'size', 0 ]
+    {$a => b}          [ \ [ 'hashref',  ['a', 0], ['b', 0] ], 0 ]
+    a + b              [ \ [ '+', ['a', 0], ['b', 0] ], 0 ]
+    a * (b + c)        [ \ [ '*', ['a', 0], [ \ ['+', ['b', 0], ['c', 0]], 0 ]], 0 ]
+    (a + b)            [ \ [ '+', ['a', 0], ['b', 0] ]], 0 ]
+    (a + b) * c        [ \ [ '*', [ \ [ '+', ['a', 0], ['b', 0] ], 0 ], ['c', 0] ], 0 ]
 
 =head1 AUTHORS
 
