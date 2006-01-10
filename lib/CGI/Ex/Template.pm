@@ -483,38 +483,58 @@ sub vivify_variable {
             next;
 
         } elsif (UNIVERSAL::isa($ref, 'HASH')) {
-            if ($was_dot_call && exists($ref->{$name}) ) {
+            if ($ARGS->{'set_var'}) {
+                if ($#$var == -1) {
+                    $ref->{$name} = $ARGS->{'var_val'};
+                    return;
+                } else {
+                    $ref = $ref->{$name} ||= {};
+                    next;
+                }
+            } elsif ($was_dot_call && exists($ref->{$name}) ) {
                 $ref = $ref->{$name};
             } elsif (my $code = $self->hash_op($name)) {
+                return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
                 next;
             } else {
                 $ref = undef;
-                next;
             }
 
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ /^\d+$/ && $name <= $#$ref) {
-                $ref = $ref->[$name];
+            if ($name =~ /^\d+$/) {
+                if ($ARGS->{'set_var'}) {
+                    if ($#$var == -1) {
+                        $ref->[$name] = $ARGS->{'var_val'};
+                        return;
+                    } else {
+                        $ref = $ref->[$name] ||= {};
+                        next;
+                    }
+                } elsif ($name <= $#$ref) {
+                    $ref = $ref->[$name];
+                } else {
+                    $ref = undef;
+                }
             } elsif (my $code = $self->list_op($name)) {
+                return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
                 next;
             } else {
                 $ref = undef;
-                next;
             }
 
         } elsif (! ref($ref) && defined($ref)) {
             if (my $code = $self->scalar_op($name)) {
+                return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
                 next;
             } else {
                 $ref = undef;
-                next;
             }
         }
 
-        if (UNIVERSAL::isa($ref, 'CODE')) {
+        if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
             my @results = $ref->($args ? $self->vivify_args($args) : ());
             $ref = ($#results > 0) ? \@results : $results[0];
         }
@@ -547,52 +567,6 @@ sub run_operator {
         die "Un-implemented operation $op";
     }
 }
-
-#    ### allow for math operators
-#    if ($copy =~ s/^\s*(\*\*)\s*//
-#        || $copy =~ s|^\s*([%*/+-])\s*||) {
-#        my $op = $1;
-#        my $is_top = ! $self->{'_state'}->{'parse_math'};
-#        local $self->{'_state'}->{'parse_math'} = 1;
-#
-#        my $val  = UNIVERSAL::isa($ref, 'SCALAR')  ? do { local $^W; $$ref + 0 } : 0;
-#        my $ref2 = $self->get_variable_ref(\$copy); # parsed with parse_math
-#        my $val2 = $$ref2;
-#
-#        $val = "$val$op$val2";
-#        if (! $is_top) {
-#            $ref = \ $val; # return our built up string
-#        } else {
-#            $root = undef;
-#            $val = ($val =~ m|^([\d\.%*/+-]+)$|) ? eval $1 : 0; # TODO - maybe not eval
-#            $ref = \ $val;
-#        }
-#
-#    ### if we are parsing math operations - turn non numbers into numbers
-#    } elsif ($self->{'_state'}->{'parse_math'}) {
-#        my $val = UNIVERSAL::isa($ref, 'SCALAR') ? do { local $^W; $$ref + 0 } : 0;
-#        $ref = \ $val;
-#
-#    ### allow for boolean operators
-#    } elsif ($copy =~ s/^\s*(&&|\|\|)\s*//) {
-#        my $op       = $1;
-#        my $bool = UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref;
-#        if ($op eq '&&') {
-#            if ($bool) {
-#                $ref = $self->get_variable_ref(\$copy);
-#            } else {
-#                ### $ref stays as is
-#                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
-#            }
-#        } else {
-#            if ($bool) {
-#                ### $ref stays as is
-#                $self->get_variable_ref(\$copy); # TODO - we want to short circuit - not call things that don't need to be
-#            } else {
-#                $ref = $self->get_variable_ref(\$copy);
-#            }
-#        }
-#    }
 
 ###----------------------------------------------------------------###
 
