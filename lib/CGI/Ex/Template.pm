@@ -182,6 +182,7 @@ sub swap {
 sub parse_tree {
     my $self    = shift;
     my $str_ref = shift;
+    return [] if ! $str_ref || ! defined $$str_ref;
 
     my $START = $self->{'START_TAG'} || $START_TAG;
     my $END   = $self->{'END_TAG'}   || $END_TAG;
@@ -241,7 +242,7 @@ sub parse_tree {
                     my $start_index = $parent_level->[4] = $i + $len_s;
                     my $j = $#tree;
                     for ( ; $j >= 0; $j--) {
-                        last if $tree[$j]->[4] == $start_index;
+                        last if defined($tree[$j]->[4]) && $tree[$j]->[4] == $start_index;
                     }
                     my @sub_tree = splice @tree, $j + 1, $#tree - ($j + 1), (); # remove from main tree - but store
                     my $storage = $parent_level->[5] ||= [];
@@ -536,7 +537,7 @@ sub vivify_variable {
                 return if $ARGS->{'set_var'};
             }
         }
-    } else {
+    } elsif (defined $ref) {
         if ($ARGS->{'set_var'}) {
             if ($#$var <= $i) {
                 $self->{'_swap'}->{$ref} = $ARGS->{'var_val'};
@@ -679,7 +680,7 @@ sub play_operator {
         return '';
     } else{
         my ($one, $two) = $self->vivify_args($tree);
-        if ($op eq '..') {        return [$one .. $two] }
+        if ($op eq '..') {        return [($one||0) .. ($two||0)] }
         elsif ($op eq '+') {      return $one +  $two }
         elsif ($op eq '-') {      return $one -  $two }
         elsif ($op eq '*') {      return $one *  $two }
@@ -947,6 +948,7 @@ sub play_PROCESS {
 
     my $str = eval { $self->include_file($filename) };
     die $@ if $@ && $filename !~ /^\w+$/;
+    return if ! defined $str;
 
     local $self->{'_parsed_tree'} = $self->{'no_cache'} ? undef : $self->{'_documents'}->{$filename};
 
@@ -954,7 +956,7 @@ sub play_PROCESS {
 
     $self->{'state'}->{'recurse'} --;
 
-    $$out_ref .= $str;
+    $$out_ref .= $str if defined $str;
     return;
 }
 
