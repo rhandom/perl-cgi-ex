@@ -9,6 +9,7 @@ use vars qw(@INCLUDE_PATH
             $DIRECTIVES
             $QR_FILENAME
             $MAX_RECURSE
+            $PRECEDENCE
             );
 
 BEGIN {
@@ -110,6 +111,22 @@ BEGIN {
             play  => \&play_PROCESS,
         },
     };
+
+    $PRECEDENCE = {qw(**  99   ^  99   pow 99
+                      !   95
+                      *   90   /  90   div 90   %  90   mod    90
+                      +   85   -  85   _   85   ~  85   concat 85
+                      <   80   >  80   <=  80   >= 80
+                      lt  80   gt 80   le  80   ge 80
+                      ==  75   != 75   eq  75   ne 75
+                      &&  70
+                      ||  65
+                      ..  60
+                      not 55
+                      and 50
+                      or  45
+                      hashref 1 arrayref 1
+                      )};
 
     $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)* }x;
     $MAX_RECURSE = 50;
@@ -414,7 +431,7 @@ sub parse_variable {
             local $self->{'_state'}->{'operator_precedence'} = 1;
             my $var1 = [@var];
             my $var2 = $self->parse_variable(\$copy);
-            if ($self->operator_precedence($last_op, $op)) {
+            if ($last_op && $self->operator_precedence($last_op, $op)) {
                 my @var1 = @$last_var;
                 @$last_var = (\ [$op, \@var1, $var2], 0);
             } else {
@@ -432,9 +449,9 @@ sub parse_variable {
 
 sub operator_precedence {
     my ($self, $op1, $op2) = @_;
-    return 1 if $op2 eq '*' && $op1 eq '+';
-    return 1 if $op2 eq '**' && $op1 eq '+';
-    return 1 if $op2 eq '**' && $op1 eq '*';
+    my $val1 = $PRECEDENCE->{$op1} || 0;
+    my $val2 = $PRECEDENCE->{$op2} || 0;
+    return $val2 > $val1;
 }
 
 sub vivify_variable {
