@@ -1,11 +1,14 @@
-        * Version 1.15 is done
+1.15
         * Allow for step to be automatically untainted during loop
         * Fix base_dir_rel to work with "" as the dir
+        * Bug fixes in CGI::Ex::Fill
+        * Better perldoc in CGI::Ex::Fill
+        * DProfd CGI::Ex::Conf for improvements
+        * DProfd CGI::Ex::Validate for improvements
+        * Added conf_read and conf_write methods for Conf
+        * Added CGI::Ex::Template and test suites
 
-
-2005-02-28  Paul Seamons  <cgi_ex@seamons.com>
-
-        * Version 1.14 is done
+1.14   2005-02-28
         * Bug fix in validate (OR's were not working)
         * Allow for checking for package existence without require in App
         * Add hash_swap
@@ -15,37 +18,29 @@
         * Allow for untaint in CGI::Ex::Validate
         * Allow for !field in equals of CGI::Ex::Validate
         * Allow for return of names in CGI::Ex::Validate
-        * All CGI::Ex to work better with CGI/mod_perl1/mod_perl2
+        * Allow CGI::Ex to work better with CGI/mod_perl1/mod_perl2
         * Fix required => 0 in javascript
 
-2004-12-02  Paul Seamons  <cgi_ex@seamons.com>
-
-        * Version 1.13 is done
+1.13   2004-12-02
         * Show more App perldoc examples
         * Fix some App path bugs
         * Add more app hooks
         * Cleanup app code
         * Allow for Conf to write to each of the types
 
-2004-11-010  Paul Seamons  <cgi_ex@seamons.com>
-
-        * Version 1.12 is done
+1.12   2004-11-10
         * Show more App perldoc examples
         * Fix some App path bugs
         * Change some App method names
         * Allow for App js_validation
         * Allow for App validation redirection
 
-2004-11-08  Paul Seamons  <cgi_ex@seamons.com>
-
-        * Version 1.11 is done
+1.11   2004-11-08
         * Let file path dependent tests succeed
         * Allow for next current and previous steps in App
         * Couple of warn cleans in App
 
-2004-11-05  Paul Seamons  <cgi_ex@seamons.com>
-
-        * Version 1.10 is done
+1.10   2004-11-05
         * Make CGI::Ex::App->print really work with Template
         * Fix very large javascript variable swapping bug
         * Numerous upgrades to App
@@ -53,9 +48,7 @@
         * Allow validate to populate what_was_validated array
         * Allow for App to cleanup crossed references
 
-2004-04-23  Paul Seamons  <cgi_ex@seamons.com>
-
-        * Version 1.00 is done
+1.00   2004-04-23
         * Added set_path method
         * Added Auth module
         * Fix validate.js for select-multiple
@@ -63,9 +56,7 @@
         * Add min_in_set and max_in_set types for validate
         * Add default for validate (sets default value)
 
-2004-03-22  Paul Seamons  <cgi_ex@seamons.com>
-
-        * Version 0.99 is done
+0.99   2004-03-22
         * Allow swap_template to be called with one argument
         * Added extended examples in t/samples/cgi_ex_*
         * Remove dependency on CGI::Util (doesn't exists on some perls)
@@ -73,34 +64,26 @@
         * Added set_form
         * Updated tests
 
-2004-03-19  Paul Seamons  <cgi_ex@seamons.com>
-
-        * Version 0.98 is done
+0.98   2004-03-19
         * Multiple fixes in Fill module
         * Updates on perldocs (thanks to Simon Bellwood for bug reports)
         * Addition of Dump (debug) module
         * Addition of Die module
         * Addition of App module
 
-2004-03-05  Paul Seamons  <cgi_ex@seamons.com>
-
+0.97   2004-03-05
         * Allow for custom_js type
         * Fix unshift, shift, and push in ie 5.0
         * Fix type CC in validate.js
         * Allow for duplicate field definitions
 
-2003-11-26  Paul Seamons  <cgi_ex@seamons.com>
-
-	* Version 0.96 is done
+0.96   2003-11-26
 	* Fix for pos not resetting in CGI::Ex::Fill
         * Fix for general items set in self not being passed to generate_js
         * Workaround for yaml_load.js |- not properly trimming whitespace
 
-2003-11-26  Paul Seamons  <cgi_ex@seamons.com>
-
-	* Version 0.94 is done
+0.94   2003-11-26
 	* Javascript functionality is in.
 
-2003-11-01  Paul Seamons  <cgi_ex@seamons.com>
-
+0.0    2003-11-01
 	* Version 0.0 checked in
