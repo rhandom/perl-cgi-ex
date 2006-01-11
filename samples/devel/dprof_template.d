@@ -1,5 +1,5 @@
 # -*-perl-*-
-# run with perl -d:DProf $0
+# run with perl -d:DProf $0 ; dprofpp
 
 use strict;
 use POSIX qw(tmpnam);
@@ -11,6 +11,8 @@ END { rmtree $tt_cache_dir };
 mkdir $tt_cache_dir, 0755;
 
 my $cet = CGI::Ex::Template->new(ABSOLUTE => 1);
+#use Template;
+#my $cet = Template->new(ABSOLUTE => 1);
 
 ###----------------------------------------------------------------###
 
@@ -25,7 +27,8 @@ my $swap = {
     cet   => $cet,
 };
 
-my $txt  = "[% one %]\n";
+#my $txt  = "[% one %]\n";
+my $txt  = ((" "x1000)."[% one %]\n")x100;
 
 my $file = \$txt;
 
@@ -44,4 +47,4 @@ sub cet {
     return $out;
 }
 
-cet() for 1 .. 30_000;
+cet() for 1 .. 500;
