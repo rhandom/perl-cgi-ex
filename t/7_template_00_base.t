@@ -2,13 +2,13 @@
 
 use vars qw($module $is_tt);
 BEGIN {
-    $module = 'CGI::Ex::Template';
-    #$module = 'Template';
+    $module = 'CGI::Ex::Template'; #0.15user 0.00system 0:00.28elapsed 57%CPU
+    #$module = 'Template';         #0.72user 0.00system 0:01.16elapsed 63%CPU
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => 223 - ($is_tt ? 18 : 0);
+use Test::More tests => 235 - ($is_tt ? 18 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -320,10 +320,26 @@ process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% LAST %][% END %
 
 
 ###----------------------------------------------------------------###
-### stop
+### stop, return, clear
 
 process_ok("[% STOP %]" => '');
 process_ok("One[% STOP %]Two" => 'One');
-process_ok("[% BLOCK foo %]One[% STOP %]Two[% END %][% PROCESS foo %]" => 'One');
+process_ok("[% BLOCK foo %]One[% STOP %]Two[% END %]First[% PROCESS foo %]Last" => 'FirstOne');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% STOP %][% END %][% END %]" => '1');
 process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% STOP %][% END %][% f %][% END %]" => '');
+
+process_ok("[% RETURN %]" => '');
+process_ok("One[% RETURN %]Two" => 'One');
+process_ok("[% BLOCK foo %]One[% RETURN %]Two[% END %]First[% PROCESS foo %]Last" => 'FirstOneLast');
+process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% RETURN %][% END %][% END %]" => '1');
+process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% RETURN %][% END %][% f %][% END %]" => '');
+
+process_ok("[% CLEAR %]" => '');
+process_ok("One[% CLEAR %]Two" => 'Two');
+process_ok("[% BLOCK foo %]One[% CLEAR %]Two[% END %]First[% PROCESS foo %]Last" => 'FirstTwoLast');
+process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% CLEAR %][% END %][% END %]" => '23');
+process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% CLEAR %][% END %][% f %][% END %]" => '123');
+process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.last %][% CLEAR %][% END %][% END %]" => '');
+process_ok("[% FOREACH f = [1..3] %][% IF loop.last %][% CLEAR %][% END %][% f %][% END %]" => '3');
+
+
