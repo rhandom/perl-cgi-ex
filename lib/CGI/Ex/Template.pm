@@ -185,7 +185,7 @@ sub parse_tree {
                 }
                 next;
             }
-            $level->[5] = $DIRECTIVES->{$func}->{'parse'}->($self, \$tag);
+            $level->[5] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag) };
             if ($DIRECTIVES->{$func}->{'end'}) {
                 $level->[6] = -1;
                 push @tstate, $level;
@@ -411,24 +411,25 @@ sub vivify_variable {
     my $self = shift;
     my $var  = shift;
     my $ARGS = shift || {};
+    my $i    = 0;
 
     ### determine the top level of this particular variable access
-    my $ref  = shift @$var;
-    my $args = shift @$var;
+    my $ref  = $var->[$i++];
+    my $args = $var->[$i++];
     if (ref $ref) {
         if (ref($ref) eq 'SCALAR') {
             return if $ARGS->{'set_var'};
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') {
             return if $ARGS->{'set_var'};
-            my $return_flat = $ARGS->{'list_context'} && ${$ref}->[0] eq '..' && $#$var == -1;
+            my $return_flat = $ARGS->{'list_context'} && ${$ref}->[0] eq '..' && $#$var <= $i;
             $ref = $self->play_operator($$ref);
             return @$ref if $return_flat;
         } else {
             $ref = $self->vivify_variable($ref);
             if (defined $ref) {
                 if ($ARGS->{'set_var'}) {
-                    if ($#$var == -1) {
+                    if ($#$var <= $i) {
                         $self->{'_swap'}->{$ref} = $ARGS->{'var_val'};
                         return;
                     } else {
@@ -442,7 +443,7 @@ sub vivify_variable {
         }
     } else {
         if ($ARGS->{'set_var'}) {
-            if ($#$var == -1) {
+            if ($#$var <= $i) {
                 $self->{'_swap'}->{$ref} = $ARGS->{'var_val'};
                 return;
             } else {
@@ -454,16 +455,16 @@ sub vivify_variable {
 
     ### let the top level thing be a code block
     if (UNIVERSAL::isa($ref, 'CODE')) {
-        return if $ARGS->{'set_var'} && $#$var == -1;
+        return if $ARGS->{'set_var'} && $#$var <= $i;
         my @results = $ref->($args ? $self->vivify_args($args) : ());
         $ref = ($#results > 0) ? \@results : $results[0];
     }
 
     ### vivify the chained levels
-    while (defined $ref && $#$var != -1) {
-        my $was_dot_call = shift(@$var) eq '.';
-        my $name         = shift @$var;
-        my $args         = shift @$var;
+    while (defined $ref && $#$var > $i) {
+        my $was_dot_call = $var->[$i++] eq '.';
+        my $name         = $var->[$i++];
+        my $args         = $var->[$i++];
 
         if (ref $name) {
             if (ref($name) eq 'SCALAR') {
@@ -486,7 +487,7 @@ sub vivify_variable {
 
         } elsif (UNIVERSAL::isa($ref, 'HASH')) {
             if ($ARGS->{'set_var'}) {
-                if ($#$var == -1) {
+                if ($#$var <= $i) {
                     $ref->{$name} = $ARGS->{'var_val'};
                     return;
                 } else {
@@ -506,7 +507,7 @@ sub vivify_variable {
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
             if ($name =~ /^\d+$/) {
                 if ($ARGS->{'set_var'}) {
-                    if ($#$var == -1) {
+                    if ($#$var <= $i) {
                         $ref->[$name] = $ARGS->{'var_val'};
                         return;
                     } else {
@@ -618,14 +619,28 @@ sub parse_BLOCK {
 }
 
 
-sub parse_CALL { &parse_GET; '' }
+sub parse_CALL { &parse_GET }
+
+sub play_CALL { &play_GET; '' }
 
 sub parse_DEFAULT {
     my ($self, $tag_ref) = @_;
-    my $copy = $$tag_ref;
-    my $str = $self->parse_GET($tag_ref);
-    if (! $str) {
-        $self->parse_SET(\$copy);
+    return $self->parse_SET($tag_ref);
+}
+
+sub play_DEFAULT {
+    my ($self, $set) = @_;
+    foreach (@$set) {
+        my ($set, $default) = @$_;
+        next if ! $set;
+        my $val = $self->vivify_variable($set);
+        if (! $val) {
+            $default = defined($default) ? $self->vivify_variable($default) : '';
+            $self->vivify_variable($set, {
+                set_var => 1,
+                var_val => $default,
+            });
+        }
     }
     return '';
 }
