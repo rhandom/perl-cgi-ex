@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 191 - ($is_tt ? 17 : 0);
+use Test::More tests => 222 - ($is_tt ? 18 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -189,7 +189,7 @@ process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [1,1..0..10] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [1..10, 21..30] %][% foo.12 %]" => 23)         if ! $is_tt;
-process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => '');
+process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => ''); # TODO - more consistent
 process_ok("[% SET foo = [100..] bar = 7 %][% bar %][% foo.0 %]" => 7)  if ! $is_tt;
 process_ok("[% SET foo = ['a'..'z'] %][% foo.6 %]" => 'g');
 process_ok("[% SET foo = ['z'..'a'] %][% foo.6 %]" => '');
@@ -283,3 +283,46 @@ process_ok("[% IF 1 %]Yes[% END %]" => 'Yes');
 process_ok("[% IF 0 %]Yes[% END %]" => '');
 process_ok("[% BLOCK foo %]hi [% IF 1 %]Yes[% END %] there[% END %]<<[% PROCESS foo %]>>" => '<<hi Yes there>>');
 
+###----------------------------------------------------------------###
+### comments
+
+process_ok("[%# one %]" => '', {one => 'ONE'});
+process_ok("[%#\n one %]" => '', {one => 'ONE'});
+process_ok("[%-#\n one %]" => '', {one => 'ONE'})     if ! $is_tt;
+process_ok("[% #\n one %]" => 'ONE', {one => 'ONE'});
+process_ok("[%# BLOCK one %]" => '');
+process_ok("[%# BLOCK one %]two" => 'two');
+process_ok("[%# BLOCK one %]two[% END %]" => '');
+process_ok("[%# BLOCK one %]two[% END %]three" => '');
+
+###----------------------------------------------------------------###
+### foreach, next, last
+
+process_ok("[% FOREACH foo %]" => '');
+process_ok("[% FOREACH foo %][% END %]" => '');
+process_ok("[% FOREACH foo %]bar[% END %]" => '');
+process_ok("[% FOREACH foo %]bar[% END %]" => 'bar', {foo => 1});
+process_ok("[% FOREACH f IN foo %]bar[% f %][% END %]" => 'bar1bar2', {foo => [1,2]});
+process_ok("[% FOREACH f = foo %]bar[% f %][% END %]" => 'bar1bar2', {foo => [1,2]});
+process_ok("[% FOREACH f = [1,2] %]bar[% f %][% END %]" => 'bar1bar2');
+process_ok("[% FOREACH f = [1..3] %]bar[% f %][% END %]" => 'bar1bar2bar3');
+process_ok("[% FOREACH f = [{a=>'A'},{a=>'B'}] %]bar[% f.a %][% END %]" => 'barAbarB');
+process_ok("[% FOREACH [{a=>'A'},{a=>'B'}] %]bar[% a %][% END %]" => 'barAbarB');
+process_ok("[% FOREACH [{a=>'A'},{a=>'B'}] %]bar[% a %][% END %][% a %]" => 'barAbarB');
+process_ok("[% FOREACH [1] %][% SET a = 1 %][% END %][% a %]" => '');
+process_ok("[% FOREACH f = [1..3] %][% loop.count %]/[% loop.size %] [% END %]" => '1/3 2/3 3/3 ');
+process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% f %][% END %][% END %]" => '1');
+process_ok("[% FOREACH f = [1..3] %][% IF loop.last %][% f %][% END %][% END %]" => '3');
+process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% NEXT %][% END %][% f %][% END %]" => '23');
+process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% LAST %][% END %][% f %][% END %]" => '');
+process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% NEXT %][% END %][% END %]" => '123');
+process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% LAST %][% END %][% END %]" => '1');
+
+
+###----------------------------------------------------------------###
+### stop
+
+process_ok("[% STOP %]" => '');
+process_ok("One[% STOP %]Two" => 'One');
+process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% STOP %][% END %][% END %]" => '1');
+process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% STOP %][% END %][% f %][% END %]" => '');
