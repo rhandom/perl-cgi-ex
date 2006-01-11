@@ -19,13 +19,13 @@ END { rmdir $test_dir }
 mkdir $test_dir, 0755;
 ok(-d $test_dir, "Got a test dir up and running");
 
-my $obj = $module->new(ABSOLUTE => 1, INCLUDE_PATH => $test_dir);
 
 sub process_ok { # process the value
     my $str  = shift;
     my $test = shift;
     my $args = shift;
     my $out  = '';
+    my $obj = $module->new(ABSOLUTE => 1, INCLUDE_PATH => $test_dir);
     $obj->process(\$str, $args, \$out);
     my $ok = $out eq $test;
     ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
@@ -43,20 +43,20 @@ close $fh;
 ###
 my $bar_template = "$test_dir/bar.tt";
 END { unlink $bar_template };
-open(my $fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
+open($fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
 print $fh "BAR";
 close $fh;
 
 my $baz_template = "$test_dir/baz.tt";
 END { unlink $baz_template };
-open(my $fh, ">$baz_template") || die "Couldn't open $baz_template: $!";
+open($fh, ">$baz_template") || die "Couldn't open $baz_template: $!";
 print $fh "[% SET baz = 42 %][% baz %][% bing %]";
 close $fh;
 
 ###
 my $wrap_template = "$test_dir/wrap.tt";
 END { unlink $wrap_template };
-open(my $fh, ">$wrap_template") || die "Couldn't open $wrap_template: $!";
+open($fh, ">$wrap_template") || die "Couldn't open $wrap_template: $!";
 print $fh "Hi[% content %]there";
 close $fh;
 
