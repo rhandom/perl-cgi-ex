@@ -731,7 +731,10 @@ sub print {
   my ($self, $step, $swap, $fill) = @_;
 
   ### get a filename relative to base_dir_abs
-  my $file = $self->run_hook('file_print', $step);
+  my $file = eval { $self->run_hook('file_print', $step) };
+  if ($@ && $@ =~ /BASE_DIR_ABS not set/i) {
+    die "Error while looking for template file on step \"$step\": $@";
+  }
 
   my $out = $self->run_hook('swap_template', $step, undef, $file, $swap);
 
@@ -741,21 +744,11 @@ sub print {
 }
 
 sub print_out {
-  my $self = shift;
-  my $step = shift;
-  my $out  = shift;
+  my ($self, $step, $out) = @_;
 
   ### now print
   $self->cgix->print_content_type();
   print $out;
-}
-
-sub template_args {
-  my $self = shift;
-  my $step = shift;
-  return {
-    INCLUDE_PATH => $self->base_dir_abs,
-  };
 }
 
 sub swap_template {
@@ -778,6 +771,14 @@ sub fill_template {
 
   ### fill in any forms
   $self->cgix->fill($outref, $fill);
+}
+
+sub template_args {
+  my $self = shift;
+  my $step = shift;
+  return {
+    INCLUDE_PATH => $self->base_dir_abs,
+  };
 }
 
 sub base_dir_rel {
@@ -950,13 +951,15 @@ sub validate {
   return 1;
 }
 
-### allow for using ConfUtil instead of yaml
 sub hash_validation {
   my $self = shift;
   my $step = shift;
   return $self->{hash_validation}->{$step} ||= do {
     my $hash;
-    my $file = $self->run_hook('file_val', $step);
+    my $file = eval { $self->run_hook('file_val', $step) };
+    if ($@ && $@ =~ /BASE_DIR_ABS not set/i) {
+      die "Error while looking for validation on step \"$step\": $@";
+    }
 
     ### allow for returning the validation hash in the filename
     ### a scalar ref means it is a yaml document to be read by get_validation
