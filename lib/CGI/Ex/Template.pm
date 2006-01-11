@@ -314,7 +314,7 @@ sub parse_variable {
             push @$arrayref, $var;
             $copy =~ s{ ^ , \s* }{}x;
         }
-        $copy =~ s{ ^ \] \s* }{}x || die "Missing close \] on \"$copy\"";
+        $copy =~ s{ ^ \] \s* }{}x || die "Missing close \] on \"$copy\" $$str_ref";
         push @var, \ $arrayref;
 
     ### looks like a hash constructor
@@ -359,7 +359,7 @@ sub parse_variable {
     }
 
     ### allow for nested items
-    while ($copy =~ s{ ^ ([\.\|]) \s* }{}x) {
+    while ($copy =~ s{ ^ ( \.(?!\.) | \|(?!\|) ) \s* }{}x) {
         push @var, $1;
 
         ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
@@ -371,7 +371,7 @@ sub parse_variable {
         } elsif ($copy =~ s{ ^ (\w+) \s* }{}x) {
             push @var, $1;
         } else {
-            die "Not sure how to continue parsing on \"$copy\"";
+            die "Not sure how to continue parsing on \"$copy\" ($$str_ref)";
         }
 
         ### looks for args for the nested item
@@ -390,12 +390,12 @@ sub parse_variable {
     }
 
     ### allow for all "operators"
-    if ($copy =~ s{ ^ ( &&  | \|\| | \*\* |
+    if ($copy =~ s{ ^ ( &&  | \|\| | \*\* | \.\. |
                         and | or   | pow  |
                         >=  | >    | <=   | <  | == | != |
                         ge  | gt   | le   | lt | eq | ne |
-                        concat | mod | not | arrayref | hashref |
-                        [_~+\-*%\^!] ) \s* }{}x) {
+                        concat | mod | not | arrayref | hashref | _\b |
+                        [~+\-*%\^!] ) \s* }{}x) {
         my $op   = $1;
         my $var1 = [@var];
         my $var2 = $self->parse_variable(\$copy);
@@ -421,7 +421,9 @@ sub vivify_variable {
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') {
             return if $ARGS->{'set_var'};
-            $ref = $self->run_operator($$ref);
+            my $return_flat = $ARGS->{'list_context'} && ${$ref}->[0] eq '..' && $#$var == -1;
+            $ref = $self->play_operator($$ref);
+            return @$ref if $return_flat;
         } else {
             $ref = $self->vivify_variable($ref);
             if (defined $ref) {
@@ -541,28 +543,38 @@ sub vivify_variable {
 
     }
 
-#    debug $ref;
+    #debug $ref;
     return $ref;
 }
 
 sub vivify_args {
-    my ($self, $args) = @_;
-    return map {$self->vivify_variable($_)} @$args;
+    my $self = shift;
+    my $vars = shift;
+    my $args = shift || {};
+    return map {$self->vivify_variable($_, $args)} @$vars;
 }
 
 ###----------------------------------------------------------------###
 
-sub run_operator {
-    my ($self, $tree) = @_;
+sub play_operator {
+    my $self = shift;
+    my $tree = shift;
+    my $args = shift || {};
+
     my $op = shift @$tree;
     if ($op eq 'concat') {
         return join "", grep {defined} $self->vivify_args($tree);
     } elsif ($op eq 'arrayref') {
-        return [$self->vivify_args($tree)];
+        my @vals = $self->vivify_args($tree, {list_context => 1});
+        return [@vals];
     } elsif ($op eq 'hashref') {
         my @args = $self->vivify_args($tree);
         push @args, undef if ! ($#args % 2);
         return {@args};
+    } elsif ($op eq '..') {
+        my $from = defined($tree->[0]) ? $self->vivify_variable($tree->[0]) : undef;
+        my $to   = defined($tree->[1]) ? $self->vivify_variable($tree->[1]) : undef;
+        return [$from .. $to];
     } else {
         die "Un-implemented operation $op";
     }
