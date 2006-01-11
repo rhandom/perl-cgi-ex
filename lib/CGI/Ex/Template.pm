@@ -111,15 +111,20 @@ BEGIN {
         },
         LAST    => { control => 1 },
         NEXT    => { control => 1 },
+        PROCESS => {
+            parse => \&parse_PROCESS,
+            play  => \&play_PROCESS,
+        },
         RETURN  => { control => 1 },
         SET     => {
             parse => \&parse_SET,
             play  => \&play_SET,
         },
         STOP    => { control => 1 },
-        PROCESS => {
-            parse => \&parse_PROCESS,
-            play  => \&play_PROCESS,
+        WRAPPER => {
+            parse => \&parse_WRAPPER,
+            play  => \&play_WRAPPER,
+            end   => 1,
         },
     };
 
@@ -184,7 +189,7 @@ sub parse_tree {
     my $len_e = length $END;
 
     my @tree;
-    my @tstate;
+    my @state;
     my $last = 0;
     my $post_chomp = 0;
     while (1) {
@@ -227,12 +232,12 @@ sub parse_tree {
             $tag =~ s/^\w+\s*//;
             push @tree, $level;
             if ($func eq 'END') {
-                if ($#tstate == -1) {
+                if ($#state == -1) {
                     eval { die "Found an unmatched END tag" };
                     return []; # return an empty parse tree
                 } else {
                     ### store any child nodes into the parent node
-                    my $parent_level = pop @tstate;
+                    my $parent_level = pop @state;
                     my $start_index = $parent_level->[4] = $i + $len_s;
                     my $j = $#tree;
                     for ( ; $j >= 0; $j--) {
@@ -247,7 +252,7 @@ sub parse_tree {
             if ($DIRECTIVES->{$func}->{'end'}) {
                 $level->[4] = -1;
                 $level->[5] = [];
-                push @tstate, $level;
+                push @state, $level;
             } elsif ($DIRECTIVES->{$func}->{'control'}) {
                 next;
             }
@@ -271,7 +276,11 @@ sub parse_tree {
         }
     }
 
-    return undef if $#tree == -1;
+    if ($#state >  -1) {
+        eval { die "Missing END for ".$state[-1]->[0] };
+        return [];
+    }
+    return undef if $#tree  == -1;
 
     push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
 
@@ -785,14 +794,14 @@ sub play_IF {
 sub parse_INCLUDE { $DIRECTIVES->{'PROCESS'}->{'parse'}->(@_) }
 
 sub play_INCLUDE {
-    my ($self, $tag_ref, $node, $template_ref) = @_;
+    my ($self, $tag_ref, $node, $template_ref, $out_ref) = @_;
 
     ### localize the swap
     my $swap = $self->{'_swap'};
     my @keys  = keys %$swap;
     local @$swap{@keys} = values %$swap; # note that we are only "cloning" one level deep
 
-    my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $template_ref);
+    my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $template_ref, $out_ref);
 
     ### kill added keys
     my %keys = map {$_ => 1} @keys;
@@ -975,6 +984,21 @@ sub play_SET {
         });
     }
     return;
+}
+
+sub parse_WRAPPER { $DIRECTIVES->{'INCLUDE'}->{'parse'}->(@_) }
+
+sub play_WRAPPER {
+    my ($self, $var, $node, $template_ref, $out_ref) = @_;
+    my $sub_tree = $node->[5] || return;
+
+    local $self->{'_swap'}->{'content'} = sub {
+        my $out = '';
+        $self->execute_tree($sub_tree, $template_ref, \$out);
+        return $out;
+    };
+
+    return $DIRECTIVES->{'INCLUDE'}->{'play'}->(@_)
 }
 
 ###----------------------------------------------------------------###
