@@ -28,7 +28,7 @@ $str = "<html>([% foo %]) <br>
 ([% baz %]) <br>
 ([% this %]) </html>";
 $cgix->swap_template(\$str);
-print $str;
+
 ok($str eq "<html>(bar) <br>
 (wow) <br>
 (wee) </html>");
