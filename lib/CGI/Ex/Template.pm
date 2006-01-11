@@ -148,7 +148,10 @@ sub swap {
     local $self->{'_state'} = {};
     local $self->{'_swap'}  = $_[1] || {};
 
-    my $tree = $self->parse_tree(\$_[0]);
+    my $tree = $self->{'_parsed_tree'} || $self->parse_tree(\$_[0]);
+    if (my $file = $self->{'_store_tree'}) {
+        $self->{'_documents'}->{$file} = $tree;
+    }
     return defined($tree) ? $self->execute_tree($tree, \$_[0]) : $_[0];
 }
 
@@ -181,7 +184,7 @@ sub parse_tree {
 
         ### take care of whitespace
         if ($tag =~ s/^-// || $self->{'PRE_CHOMP'}) {
-            $level->[3] = 1;
+            $tree[-1]->[3] = 1;
             $level->[1] ++;
         }
         if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
@@ -252,10 +255,10 @@ sub execute_tree {
     #                4: post_chomp,
     #                5: parsed tag,
     #                6: end block location
-    while (my $node = shift @$tree) {
+    for my $node (@$tree) {
         my $val;
         if ($node->[0] eq 'TEXT') {
-            my $pre_chomp = $tree->[0] && $tree->[0]->[3];
+            my $pre_chomp = $node->[3];
 
             $val = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
 
@@ -814,6 +817,8 @@ sub play_PROCESS {
     my $str = eval { $self->include_file($filename) };
     die $@ if $@ && $filename !~ /^\w+$/;
 
+    local $self->{'_parsed_tree'} = $self->{'no_cache'} ? undef : $self->{'_documents'}->{$filename};
+
     $str = $self->swap($str, $self->{'_swap'}); # restart the swap - passing it our current stash
 
     $self->{'state'}->{'recurse'} --;
@@ -895,6 +900,7 @@ sub process {
 
     ### get the content
     my $content;
+    my $store_tree;
     if (ref $in) {
         if (UNIVERSAL::isa($in, 'SCALAR')) { # reference to a string
             $content = $$in;
@@ -905,6 +911,10 @@ sub process {
             $content = <$in>;
         }
     } else {
+        if (! $self->{'no_cache'}) {
+            $self->{'_parsed_tree'} = $self->{'_documents'}->{$in};
+            $self->{'_store_tree'}  = $in;
+        }
         $content = $self->include_file($in);
     }
 
