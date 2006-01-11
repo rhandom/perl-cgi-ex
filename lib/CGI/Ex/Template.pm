@@ -85,6 +85,11 @@ BEGIN {
             play  => \&play_DUMP,
         },
         END     => 1, # builtin that should never be called
+        FOREACH => {
+            parse => \&parse_FOREACH,
+            play  => \&play_FOREACH,
+            end   => 1,
+        },
         GET     => {
             parse => \&parse_GET,
             play  => \&play_GET,
@@ -167,11 +172,12 @@ sub parse_tree {
     my @tree;
     my @tstate;
     my $last = 0;
+    my $post_chomp = 0;
     while (1) {
         ### look through the string using index
         my $i = index($$str_ref, $START, $last);
         last if $i == -1;
-        push @tree, ['TEXT', $last, $i] if $last != $i;
+        push @tree, ['TEXT', $last, $i, [0, $post_chomp]] if $last != $i;
         my $begin = substr($$str_ref, $last, $i - $last),
         my $j = index($$str_ref, $END, $i + $len_s);
         $last = $j + $len_e;
@@ -180,18 +186,26 @@ sub parse_tree {
             last;
         }
         my $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
-        my $level = [undef , $i + $len_s, $j, 0, 0];
+        my $level = [undef , $i + $len_s, $j];
 
         ### take care of whitespace
-        if ($tag =~ s/^-// || $self->{'PRE_CHOMP'}) {
-            $tree[-1]->[3] = 1;
+        if ($tag =~ s/^(\#?)-/$1/ || $self->{'PRE_CHOMP'}) {
+            $tree[-1]->[3]->[0] = 1 if $tree[-1] && $tree[-1]->[0] eq 'TEXT';
             $level->[1] ++;
         }
         if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
-            $level->[4] = 1;
+            $post_chomp = 1;
             $level->[2] --;
+        } else {
+            $post_chomp = 0;
         }
-        $tag =~ s/^\s+//;
+        if ($tag =~ /^\#/) { # leading # means to comment the entire section
+            $level->[0] = 'COMMENT';
+            push @tree, $level;
+            next;
+        }
+        $tag =~ s{ (?<! \\) \# .* $ }{}xmg; # remove trailing comments
+        $tag =~ s{ ^ \s+ }{}x;
 
         ### look for functions or variables
         if ($tag =~ /^(\w+) (?: $|\s)/x && $DIRECTIVES->{$1}) {
@@ -200,46 +214,50 @@ sub parse_tree {
             push @tree, $level;
             if ($func eq 'END') {
                 if ($#tstate == -1) {
-                    die "Found an unmatched END tag";
+                    eval { die "Found an unmatched END tag" };
+                    return []; # return an empty parse tree
                 } else {
                     ### store any child nodes into the parent node
                     my $parent_level = pop @tstate;
-                    my $start_index = $parent_level->[6] = $i + $len_s;
+                    my $start_index = $parent_level->[4] = $i + $len_s;
                     my $j = $#tree;
                     for ( ; $j >= 0; $j--) {
-                        last if $tree[$j]->[6] == $start_index;
+                        last if $tree[$j]->[4] == $start_index;
                     }
                     my @sub_tree = splice @tree, $j + 1, $#tree - ($j + 1), (); # remove from main tree - but store
-                    my $storage = $parent_level->[7] ||= [];
+                    my $storage = $parent_level->[5] ||= [];
                     @$storage = @sub_tree;
                 }
                 next;
             }
             if ($DIRECTIVES->{$func}->{'end'}) {
-                $level->[6] = -1;
-                $level->[7] = [];
+                $level->[4] = -1;
+                $level->[5] = [];
                 push @tstate, $level;
             }
-            $level->[5] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
-            die $@ if $@ && $@ !~ /missing/i;
+            $level->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
+            if ($@) {
+                die if $@ !~ /missing/i;
+                eval { die $@ };
+            }
 
         } elsif (my $var = $self->parse_variable(\$tag)) {
             die "Found trailing info during variable access \"$tag" if $tag;
             $level->[0] = 'GET';
-            $level->[5] = $var;
+            $level->[3] = $var;
             push @tree, $level;
 
         } else {
             my $all  = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $all =~ s/^\s+//;
             $all =~ s/\s+$//;
-            die "Not sure how to handle tag $all";
+            die "Not sure how to handle tag \"$all\"";
         }
     }
 
     return undef if $#tree == -1;
 
-    push @tree, ['TEXT', $last, length($$str_ref)] if $last != length($$str_ref);
+    push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
 
     return \@tree;
 }
@@ -247,32 +265,26 @@ sub parse_tree {
 sub execute_tree {
     my ($self, $tree, $template_ref) = @_;
     my $str = '';
-    my $post_chomp;
     # node contains (0: DIRECTIVE,
     #                1: start_index,
     #                2: end_index,
-    #                3: pre_chomp,
-    #                4: post_chomp,
-    #                5: parsed tag,
+    #                3: parsed tag details,
     #                6: end block location
+    #                7: sub_tree for end blocks
     for my $node (@$tree) {
         my $val;
         if ($node->[0] eq 'TEXT') {
-            my $pre_chomp = $node->[3];
-
             $val = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
 
-            $val =~ s{ (?:\n|^) [^\S\n]* \z }{}xm   if $pre_chomp; # remove any leading whitespace on the same line
-            $val =~ s{ \G [^\S\n]* (?:\n?$|\n) }{}x if $post_chomp;
+            $val =~ s{ (?:\n|^) [^\S\n]* \z }{}xm   if $node->[3]->[0]; # pre_chomp
+            $val =~ s{ \G [^\S\n]* (?:\n?$|\n) }{}x if $node->[3]->[1]; # post_chomp
 
-        } elsif ($node->[0] eq 'END') {
-            $post_chomp = $node->[4];
+        } elsif ($node->[0] eq 'END' || $node->[0] eq 'COMMENT') {
             next;
 
         ### normal directive
         } else {
-            $post_chomp = $node->[4];
-            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[5], $node, $template_ref);
+            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $template_ref);
 
         }
 
@@ -290,7 +302,7 @@ sub parse_variable {
 
     ### allow for custom auto_quoting (such as hash constructors)
     if (my $quote_qr = $args->{'auto_quote'}) {
-        if ($$str_ref =~ s{ ^ ($quote_qr) \s* (?! [\.\|]) }{}x) { # auto-quoted - not followed by a chained operator
+        if ($$str_ref =~ s{ ^ ($quote_qr) \s* (?! \.) }{}x) { # auto-quoted - not followed by a dot
             my $str = $1;
             return [\$str, 0];
         } elsif ($$str_ref =~ s{ ^ \$ (\w+) \b \s* }{}x # auto-quoted dollars
@@ -653,6 +665,7 @@ sub play_operator {
             return $args[-1];
         }
     }
+    debug $op;
     die "Un-implemented operation $op";
 }
 
@@ -678,8 +691,8 @@ sub hash_op {
 ###----------------------------------------------------------------###
 
 sub parse_BLOCK {
-    my ($self, $tag_ref, $func, $tree_level) = @_;
-    my $block = $tree_level->[7] ||= []; # create a location that can be occupied with the parsed tree
+    my ($self, $tag_ref, $func, $node) = @_;
+    my $block = $node->[5] ||= []; # create a location that can be occupied with the parsed tree
 
     if ($$tag_ref =~ s{ ^ (\w+) \s* (?! [\.\|]) }{}x) {
         $self->{'BLOCKS'}->{$1} = $block; # store an named reference here
@@ -690,9 +703,9 @@ sub parse_BLOCK {
 
 sub play_BLOCK { '' }
 
-sub parse_CALL { &parse_GET }
+sub parse_CALL { $DIRECTIVES->{'GET'}->{'parse'}->(@_) }
 
-sub play_CALL { &play_GET; '' }
+sub play_CALL { $DIRECTIVES->{'GET'}->{'play'}->(@_); '' }
 
 sub parse_DEFAULT {
     my ($self, $tag_ref) = @_;
@@ -737,14 +750,14 @@ sub play_IF {
     my ($self, $var, $node, $template_ref) = @_;
     my $val = $self->vivify_variable($var);
     if ($val) {
-        my $body_ref = $node->[7] ||= [];
+        my $body_ref = $node->[5] ||= [];
         return $self->execute_tree($body_ref, $template_ref);
     } else {
         return '';
     }
 }
 
-sub parse_INCLUDE { &parse_PROCESS }
+sub parse_INCLUDE { $DIRECTIVES->{'PROCESS'}->{'parse'}->(@_) }
 
 sub play_INCLUDE {
     my ($self, $tag_ref, $node, $template_ref) = @_;
@@ -775,6 +788,41 @@ sub play_INSERT {
     my $filename = $self->vivify_variable($var);
 
     return $self->include_file($filename);
+}
+
+sub parse_FOREACH {
+    my ($self, $tag_ref) = @_;
+    my $items = $self->parse_variable($tag_ref);
+    my $var;
+    if ($tag_ref =~ s{ ^ (= | IN\b) \s* }{}x) {
+        $var = $items;
+        $items = $self->parse_variable($tag_ref);
+    }
+    return [$var, $items];
+}
+
+sub play_FOREACH {
+    my ($self, $ref, $node, $template_ref) = @_;
+    my ($var, $items) = @$ref;
+    $items = $self->vivify_variable($items);
+    return '' if ! defined $items;
+    $items = [$items] if ! UNIVERSAL::isa($items, 'ARRAY');
+    my $sub_tree = $node->[5];
+    my $prev_val = defined($var) ? $self->vivify_variable($var) : undef;
+    debug $items, $sub_tree;
+    my $str = '';
+    foreach my $item (@$items) {
+        $self->vivify_variable($var, {
+            set_var => 1,
+            var_val => $item,
+        }) if defined $var;
+        $str .= $self->execute_tree($sub_tree, $template_ref);
+    }
+    $self->vivify_variable($var, {
+        set_var => 1,
+        var_val => $prev_val,
+    }) if defined $var;
+    return $str;
 }
 
 sub parse_GET {
