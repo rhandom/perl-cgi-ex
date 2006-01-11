@@ -18,8 +18,7 @@ use vars qw($VERSION
             $PREFERRED_FILL_MODULE
             $PREFERRED_CGI_MODULE
             $PREFERRED_CGI_REQUIRED
-            $TEMPLATE_OPEN
-            $TEMPLATE_CLOSE
+            $PREFERRED_TEMPLATE_MODULE
             $AUTOLOAD
             $DEBUG_LOCATION_BOUNCE
             @EXPORT @EXPORT_OK
@@ -28,10 +27,9 @@ use base qw(Exporter);
 
 BEGIN {
     $VERSION               = '1.14';
-    $PREFERRED_FILL_MODULE ||= '';
-    $PREFERRED_CGI_MODULE  ||= 'CGI';
-    $TEMPLATE_OPEN         ||= qr/\[%\s*/;
-    $TEMPLATE_CLOSE        ||= qr/\s*%\]/;
+    $PREFERRED_FILL_MODULE     ||= '';
+    $PREFERRED_CGI_MODULE      ||= 'CGI';
+    $PREFERRED_TEMPLATE_MODULE ||= 'CGI::Ex::Template';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
                     get_cookies
@@ -40,9 +38,6 @@ BEGIN {
                     content_typed
                     set_cookie
                     );
-    if ($ENV{'MOD_PERL'}) {
-        require $PREFERRED_CGI_MODULE;
-    }
 }
 
 ###----------------------------------------------------------------###
@@ -665,84 +660,33 @@ sub conf_read {
 
 ###----------------------------------------------------------------###
 
-### This is intended as a simple yet strong subroutine to swap
-### in tags to a document.  It is intended to be very basic
-### for those who may not want the full features of a Templating
-### system such as Template::Toolkit (even though they should
-### investigate them because they are pretty nice)
 sub swap_template {
   my $self = shift || die "Sub \"swap_template\" must be called as a method";
   my $str  = shift;
-  return $str if ! $str;
-  my $ref  = ref($str) ? $str : \$str;
-
-  ### basic - allow for passing a hash, or object, or code ref
   my $form = shift;
+  my $args = shift || {};
   $form = $self if ! $form && ref($self);
-  $form = $self->get_form() if UNIVERSAL::isa($form, __PACKAGE__);
+  $form = $self->get_form if UNIVERSAL::isa($form, __PACKAGE__);
 
-  my $get_form_value;
-  if (UNIVERSAL::isa($form, 'HASH')) {
-    $get_form_value = sub {
-      my $key = shift;
-      return defined($form->{$key}) ? $form->{$key} : '';
-    };
-  } elsif (my $meth = UNIVERSAL::can($form, 'param')) {
-    $get_form_value = sub {
-      my $key = shift;
-      my $val = $form->$meth($key);
-      return defined($val) ? $val : '';
-    };
-  } elsif (UNIVERSAL::isa($form, 'CODE')) {
-    $get_form_value = sub {
-      my $key = shift;
-      my $val = &{ $form }($key);
-      return defined($val) ? $val : '';
-    };
+  my ($ref, $return) = ref($str) ? ($str, 0) : (\$str, 1);
+
+  ### look up the module
+  my $module = $PREFERRED_TEMPLATE_MODULE;
+  my $pkg = "$module.pm";
+  $pkg =~ s|::|/|g;
+  require $pkg;
+
+  ### swap it
+  my $out = '';
+  $module->new->process($ref, $form, \$out);
+
+  if (! $return) {
+      $$ref = $out;
+      return 1;
   } else {
-    die "Not sure how to use $form passed to swap_template_tags";
+      return $out;
   }
-
-  ### now do the swap
-  $$ref =~ s{$TEMPLATE_OPEN \b (\w+) ((?:\.\w+)*) \b $TEMPLATE_CLOSE}{
-    if (! $2) {
-      &$get_form_value($1);
-    } else {
-      my @extra = split(/\./, substr($2,1));
-      my $ref   = &$get_form_value($1);
-      my $val;
-      while (defined(my $key = shift(@extra))) {
-        if (UNIVERSAL::isa($ref, 'HASH')) {
-          if (! exists($ref->{$key}) || ! defined($ref->{$key})) {
-            $val = '';
-            last;
-          }
-          $ref = $ref->{$key};
-        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-          if (! exists($ref->[$key]) || ! defined($ref->[$key])) {
-            $val = '';
-            last;
-          }
-          $ref = $ref->[$key];
-        } else {
-          $val = '';
-          last;
-        }
-      }
-      if (! defined($val)) {
-        if ($#extra == -1) {
-          $val = $ref;
-        }
-        $val = '' if ! defined($val);
-      }
-      $val; # return of the swap
-    }
-  }xeg;
-
-  return ref($str) ? 1 : $$ref;
 }
-
-###----------------------------------------------------------------###
 
 1;
 
