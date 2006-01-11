@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 222 - ($is_tt ? 18 : 0);
+use Test::More tests => 223 - ($is_tt ? 18 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -324,5 +324,6 @@ process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% LAST %][% END %
 
 process_ok("[% STOP %]" => '');
 process_ok("One[% STOP %]Two" => 'One');
+process_ok("[% BLOCK foo %]One[% STOP %]Two[% END %][% PROCESS foo %]" => 'One');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% STOP %][% END %][% END %]" => '1');
 process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% STOP %][% END %][% f %][% END %]" => '');
