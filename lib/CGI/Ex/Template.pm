@@ -72,10 +72,12 @@ BEGIN {
             play    => \&play_BLOCK,
             end     => 1,
         },
+        BREAK   => { control => 1 },
         CALL    => {
             parse => \&parse_CALL,
             play  => \&play_CALL,
         },
+        CLEAR   => { control => 1 },
         DEFAULT => {
             parse => \&parse_DEFAULT,
             play  => \&play_DEFAULT,
@@ -107,10 +109,14 @@ BEGIN {
             parse => \&parse_INSERT,
             play  => \&play_INSERT,
         },
+        LAST    => { control => 1 },
+        NEXT    => { control => 1 },
+        RETURN  => { control => 1 },
         SET     => {
             parse => \&parse_SET,
             play  => \&play_SET,
         },
+        STOP    => { control => 1 },
         PROCESS => {
             parse => \&parse_PROCESS,
             play  => \&play_PROCESS,
@@ -157,7 +163,15 @@ sub swap {
     if (my $file = $self->{'_store_tree'}) {
         $self->{'_documents'}->{$file} = $tree;
     }
-    return defined($tree) ? $self->execute_tree($tree, \$_[0]) : $_[0];
+    return $_[0] if ! defined $tree;
+
+    my $out = '';
+    eval { $self->execute_tree($tree, \$_[0], \$out) };
+    if ($@) {
+        die $@ if ! UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException');
+    }
+
+    return $out;
 }
 
 sub parse_tree {
@@ -234,6 +248,8 @@ sub parse_tree {
                 $level->[4] = -1;
                 $level->[5] = [];
                 push @tstate, $level;
+            } elsif ($DIRECTIVES->{$func}->{'control'}) {
+                next;
             }
             $level->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
             if ($@) {
@@ -263,8 +279,8 @@ sub parse_tree {
 }
 
 sub execute_tree {
-    my ($self, $tree, $template_ref) = @_;
-    my $str = '';
+    my ($self, $tree, $template_ref, $out_ref) = @_;
+
     # node contains (0: DIRECTIVE,
     #                1: start_index,
     #                2: end_index,
@@ -279,18 +295,26 @@ sub execute_tree {
             $val =~ s{ (?:\n|^) [^\S\n]* \z }{}xm   if $node->[3]->[0]; # pre_chomp
             $val =~ s{ \G [^\S\n]* (?:\n?$|\n) }{}x if $node->[3]->[1]; # post_chomp
 
+        ### allow for the null directives
         } elsif ($node->[0] eq 'END' || $node->[0] eq 'COMMENT') {
             next;
 
+        ### allow for control directives
+        } elsif ($DIRECTIVES->{$node->[0]}->{'control'}) {
+            if ($node->[0] eq 'CLEAR') {
+                $$out_ref = '';
+                next;
+            }
+            die bless [$node->[0]], 'CGI::Ex::Template::ControlException';
+
         ### normal directive
         } else {
-            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $template_ref);
-
+            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $template_ref, $out_ref);
+            next if ! defined $val;
         }
 
-        $str .= $val if defined $val;
+        $$out_ref .= $val;
     }
-    return $str;
 }
 
 ###----------------------------------------------------------------###
@@ -694,18 +718,20 @@ sub parse_BLOCK {
     my ($self, $tag_ref, $func, $node) = @_;
     my $block = $node->[5] ||= []; # create a location that can be occupied with the parsed tree
 
+    my $name = '';
     if ($$tag_ref =~ s{ ^ (\w+) \s* (?! [\.\|]) }{}x) {
-        $self->{'BLOCKS'}->{$1} = $block; # store an named reference here
+        $name = $1;
+        $self->{'BLOCKS'}->{$name} = $block; # store a named reference here
     }
 
-    return '';
+    return $name;
 }
 
-sub play_BLOCK { '' }
+sub play_BLOCK { return }
 
 sub parse_CALL { $DIRECTIVES->{'GET'}->{'parse'}->(@_) }
 
-sub play_CALL { $DIRECTIVES->{'GET'}->{'play'}->(@_); '' }
+sub play_CALL { $DIRECTIVES->{'GET'}->{'play'}->(@_); return }
 
 sub parse_DEFAULT {
     my ($self, $tag_ref) = @_;
@@ -726,7 +752,7 @@ sub play_DEFAULT {
             });
         }
     }
-    return '';
+    return;
 }
 
 sub parse_DUMP {
@@ -747,14 +773,13 @@ sub parse_IF {
 }
 
 sub play_IF {
-    my ($self, $var, $node, $template_ref) = @_;
+    my ($self, $var, $node, $template_ref, $out_ref) = @_;
     my $val = $self->vivify_variable($var);
     if ($val) {
         my $body_ref = $node->[5] ||= [];
-        return $self->execute_tree($body_ref, $template_ref);
-    } else {
-        return '';
+        $self->execute_tree($body_ref, $template_ref, $out_ref);
     }
+    return;
 }
 
 sub parse_INCLUDE { $DIRECTIVES->{'PROCESS'}->{'parse'}->(@_) }
@@ -794,35 +819,72 @@ sub parse_FOREACH {
     my ($self, $tag_ref) = @_;
     my $items = $self->parse_variable($tag_ref);
     my $var;
-    if ($tag_ref =~ s{ ^ (= | IN\b) \s* }{}x) {
-        $var = $items;
+    if ($$tag_ref =~ s{ ^ (= | IN\b) \s* }{}x) {
+        $var = [@$items];
         $items = $self->parse_variable($tag_ref);
     }
     return [$var, $items];
 }
 
 sub play_FOREACH {
-    my ($self, $ref, $node, $template_ref) = @_;
+    my ($self, $ref, $node, $template_ref, $out_ref) = @_;
+
+    ### get the items - make sure it is an arrayref
     my ($var, $items) = @$ref;
     $items = $self->vivify_variable($items);
     return '' if ! defined $items;
-    $items = [$items] if ! UNIVERSAL::isa($items, 'ARRAY');
-    my $sub_tree = $node->[5];
+    my $set_loop;
+    if (! UNIVERSAL::isa$items, 'CGI::Ex::Template::Iterator') {
+        $items = CGI::Ex::Template::Iterator->new($items);
+        $set_loop = 1;
+    }
+
     my $prev_val = defined($var) ? $self->vivify_variable($var) : undef;
-    debug $items, $sub_tree;
-    my $str = '';
-    foreach my $item (@$items) {
-        $self->vivify_variable($var, {
-            set_var => 1,
-            var_val => $item,
-        }) if defined $var;
-        $str .= $self->execute_tree($sub_tree, $template_ref);
+    my $sub_tree = $node->[5];
+
+    ### iterate use the iterator object
+    my $vals = $items->items;
+    foreach (my $i = $items->index; $i <= $#$vals; $items->index(++ $i)) {
+        my $item = $vals->[$i];
+
+        ### localize variable access for the foreach
+        my $stash = $self->{'_swap'};
+        my @keys  = keys %$stash;
+        local @$stash{@keys} = values %$stash;
+
+        $stash->{'loop'} = $items if $set_loop;
+
+        ### update vars as needed
+        if (defined $var) {
+            $self->vivify_variable($var, {
+                set_var => 1,
+                var_val => $item,
+            });
+        } elsif (ref($item) eq 'HASH') {
+            @$stash{keys %$item} = values %$item;
+        }
+
+        ### execute the sub tree
+        eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
+        if ($@) {
+            if (UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException')) {
+                next if $@->[0] =~ /NEXT/;
+                last if $@->[0] =~ /LAST/;
+            }
+            die $@;
+        }
+
+
+        ### remove items added to stash during this run
+        my %keys = map {$_ => 1} @keys;
+        delete @$stash{grep {!$keys{$_}} keys %$stash};
     }
     $self->vivify_variable($var, {
         set_var => 1,
         var_val => $prev_val,
     }) if defined $var;
-    return $str;
+
+    return undef;
 }
 
 sub parse_GET {
@@ -845,9 +907,9 @@ sub parse_PROCESS {
 }
 
 sub play_PROCESS {
-    my ($self, $var, $node, $template_ref) = @_;
+    my ($self, $var, $node, $template_ref, $out_ref) = @_;
 
-    return '' if ! $var;
+    return undef if ! $var;
     my $filename = $self->vivify_variable($var);
 
     $self->{'state'}->{'recurse'} ||= 0;
@@ -859,7 +921,15 @@ sub play_PROCESS {
 
     ### see if the filename is an existing block name
     if (my $body_ref = $self->{'BLOCKS'}->{$filename}) {
-        return $self->execute_tree($body_ref, $template_ref);
+        my $out = '';
+        eval { $self->execute_tree($body_ref, $template_ref, \$out) };
+        $$out_ref .= $out;
+        if ($@) {
+            die $@ if ! UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException');
+            die $@ if $@->[0] !~ /RETURN/;
+        } else {
+            return;
+        }
     }
 
     my $str = eval { $self->include_file($filename) };
@@ -870,7 +940,9 @@ sub play_PROCESS {
     $str = $self->swap($str, $self->{'_swap'}); # restart the swap - passing it our current stash
 
     $self->{'state'}->{'recurse'} --;
-    return $str;
+
+    $$out_ref .= $str;
+    return;
 }
 
 sub parse_SET {
@@ -902,7 +974,7 @@ sub play_SET {
             var_val => $val,
         });
     }
-    return '';
+    return;
 }
 
 ###----------------------------------------------------------------###
@@ -1010,6 +1082,47 @@ sub process {
     }
 
     return 1;
+}
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::Iterator;
+
+sub new {
+    my ($class, $items) = @_;
+    $items = [] if ! defined $items;
+    $items = [$items] if ! UNIVERSAL::isa($items, 'ARRAY');
+    return bless {items => $items, i => 0}, $class;
+}
+
+sub items { shift->{'items'} }
+
+sub index {
+    my $self = shift;
+    $self->{'i'} = shift if $#_ == 0;
+    return $self->{'i'};
+}
+
+sub max { $#{ shift->items } }
+
+sub size { shift->max + 1 }
+
+sub count { shift->index + 1 }
+
+sub first { (shift->index == 0) || 0 }
+
+sub last { my $self = shift; return ($self->index == $self->max) || 0 }
+
+sub prev {
+    my $self = shift;
+    return undef if $self->index == -1;
+    return $self->items->[$self->index - 1];
+}
+
+sub next {
+    my $self = shift;
+    return undef if $self->index >= $self->max;
+    return $self->items->[$self->index + 1];
 }
 
 ###----------------------------------------------------------------###
