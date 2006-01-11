@@ -180,16 +180,26 @@ sub parse_tree {
                 if ($#tstate == -1) {
                     die "Found an unmatched END tag";
                 } else {
-                    my $s = pop @tstate;
-                    $s->[6] = $i + $len_s;
+                    ### store any child nodes into the parent node
+                    my $parent_level = pop @tstate;
+                    my $start_index = $parent_level->[6] = $i + $len_s;
+                    my $j = $#tree;
+                    for ( ; $j >= 0; $j--) {
+                        last if $tree[$j]->[6] == $start_index;
+                    }
+                    my @sub_tree = splice @tree, $j + 1, $#tree - ($j + 1), (); # remove from main tree - but store
+                    my $storage = $parent_level->[7] ||= [];
+                    @$storage = @sub_tree;
                 }
                 next;
             }
-            $level->[5] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag) };
             if ($DIRECTIVES->{$func}->{'end'}) {
                 $level->[6] = -1;
+                $level->[7] = [];
                 push @tstate, $level;
             }
+            $level->[5] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
+            die $@ if $@ && $@ !~ /missing/i;
 
         } elsif (my $var = $self->parse_variable(\$tag)) {
             die "Found trailing info during variable access \"$tag" if $tag;
@@ -234,16 +244,13 @@ sub execute_tree {
             $val =~ s/ (?:\n|^) [^\S\n]* \z //xm if $pre_chomp; # remove any leading whitespace on the same line
             $val =~ m/ ( [^\S\n]* (?:\n?$|\n) ) /xg if $post_chomp;
 
-        ### had an end block
-        } elsif ($node->[6]) {
-            my @subtree; # optimize
-            push @subtree, shift(@$tree) while $#$tree != -1 && $node->[6] != ($tree->[0]->[1] || 0);
-            shift @$tree;
-            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[5], $node->[0], \@subtree, $template_ref);
+        } elsif ($node->[0] eq 'END') {
+            next;
 
         ### normal directive
         } else {
             $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[5], $node->[0], $template_ref);
+
         }
 
         $str .= $val if defined $val;
@@ -603,21 +610,17 @@ sub hash_op {
 ###----------------------------------------------------------------###
 
 sub parse_BLOCK {
-    my ($self, $tag_ref, $func, $body_ref) = @_;
-    my $copy = $$tag_ref;
-    my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => qr/\w+/o});
-    die "Couldn't find a filename on INSERT/INCLUDE/PROCESS on $copy"
-        if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
+    my ($self, $tag_ref, $func, $tree_level) = @_;
+    my $block = $tree_level->[7] ||= []; # create a location that can be occupied with the parsed tree
 
-    my $block_name = $$ref;
-    if (UNIVERSAL::isa($body_ref, 'SCALAR')) {
-        $self->{'BLOCKS'}->{$block_name} =  $$body_ref;
-    } else {
-        $self->{'_blocks'}->{$block_name} = $body_ref;
+    if ($$tag_ref =~ s{ ^ (\w+) \s* (?! [\.\|]) }{}x) {
+        $self->{'BLOCKS'}->{$1} = $block; # store an named reference here
     }
+
     return '';
 }
 
+sub play_BLOCK { '' }
 
 sub parse_CALL { &parse_GET }
 
@@ -683,24 +686,17 @@ sub parse_INCLUDE {
 }
 
 sub parse_INSERT {
-    my ($self, $tag_ref, $func, $template_ref) = @_;
-    my $copy = $$tag_ref;
-    my $ref = $self->get_variable_ref($tag_ref, {auto_quote => 1, quote_qr => qr/$QR_FILENAME|\w+/});
-    die "Couldn't find a filename on INSERT/INCLUDE/PROCESS on $copy"
-        if ! $ref || ! UNIVERSAL::isa($ref, 'SCALAR') || ! length($$ref);
+    my ($self, $tag_ref) = @_;
+    my $ref = $self->parse_variable($tag_ref, {auto_quote => $QR_FILENAME});
+    return $ref;
+}
 
-    if ($$ref =~ /^\w+$/) {
-        if (! $template_ref) {
-            my $body_ref = $self->{'BLOCKS'}->{$$ref};
-            return defined($body_ref) ? $body_ref : '';
-        } else {
-            my $body_ref = $self->{'_blocks'}->{$$ref};
-            my $s = $self->execute_tree($body_ref, $template_ref);
-            return $s;
-        }
-    } else {
-        return $self->include_file($$ref);
-    }
+sub play_INSERT {
+    my ($self, $var, $func) = @_;
+    return '' if ! $var;
+    my $filename = $self->vivify_variable($var);
+
+    return $self->include_file($filename);
 }
 
 sub parse_GET {
@@ -717,14 +713,29 @@ sub play_GET {
 }
 
 sub parse_PROCESS {
-    my ($self, $tag_ref, $func, $template_ref) = @_;
+    my ($self, $tag_ref, $func) = @_;
+    my $ref = $self->parse_variable($tag_ref, {auto_quote => qr/$QR_FILENAME|\w+/});
+    return $ref;
+}
+
+sub play_PROCESS {
+    my ($self, $var, $func, $template_ref) = @_;
+
+    return '' if ! $var;
+    my $filename = $self->vivify_variable($var);
 
     $self->{'state'}->{'recurse'} ||= 0;
     $self->{'state'}->{'recurse'} ++;
-    die "MAX_RECURSE $MAX_RECURSE reached during INCLUDE/PROCESS on $$tag_ref"
+    die "MAX_RECURSE $MAX_RECURSE reached during $func on $filename"
         if $self->{'state'}->{'recurse'} >= $MAX_RECURSE;
 
-    my $str = $self->parse_INSERT($tag_ref, $func, $template_ref);
+    ### see if the filename is an existing block name
+    if (my $body_ref = $self->{'BLOCKS'}->{$filename}) {
+        return $self->execute_tree($body_ref, $template_ref);
+    }
+
+    my $str = eval { $self->include_file($filename) };
+    die $@ if $@ && $filename !~ /^\w+$/;
 
     $str = $self->swap($str, $self->{'_swap'}); # restart the swap - passing it our current stash
 
