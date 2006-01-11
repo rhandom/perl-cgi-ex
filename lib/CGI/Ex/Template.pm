@@ -165,9 +165,11 @@ sub parse_tree {
         ### take care of whitespace
         if ($tag =~ s/^-// || $self->{'PRE_CHOMP'}) {
             $level->[3] = 1;
+            $level->[1] ++;
         }
         if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
             $level->[4] = 1;
+            $level->[2] --;
         }
         $tag =~ s/^\s+//;
 
@@ -234,21 +236,24 @@ sub execute_tree {
     #                5: parsed tag,
     #                6: end block location
     while (my $node = shift @$tree) {
-        $post_chomp = $node->[4];
         my $val;
         if ($node->[0] eq 'TEXT') {
             my $pre_chomp = $tree->[0] && $tree->[0]->[3];
 
             $val = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
+            debug $val;
+            $val =~ s{ (?:\n|^) [^\S\n]* \z }{}xm   if $pre_chomp; # remove any leading whitespace on the same line
+            $val =~ s{ \G [^\S\n]* (?:\n?$|\n) }{}x if $post_chomp;
 
-            $val =~ s/ (?:\n|^) [^\S\n]* \z //xm if $pre_chomp; # remove any leading whitespace on the same line
-            $val =~ m/ ( [^\S\n]* (?:\n?$|\n) ) /xg if $post_chomp;
+            debug $val;
 
         } elsif ($node->[0] eq 'END') {
+            $post_chomp = $node->[4];
             next;
 
         ### normal directive
         } else {
+            $post_chomp = $node->[4];
             $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[5], $node, $template_ref);
 
         }
@@ -338,6 +343,7 @@ sub parse_variable {
 
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* }{}x) {
+        local $self->{'_state'}->{'operator_precedence'} = 0; # allow parens to have their own precedence
         my $var = $self->parse_variable(\$copy);
         $copy =~ s{ ^ \) \s* }{}x || die "Missing close \) on \"$copy\"";
         @var = @$var;
@@ -397,16 +403,28 @@ sub parse_variable {
     }
 
     ### allow for all "operators"
-    if ($copy =~ s{ ^ ( &&  | \|\| | \*\* | \.\. |
-                        and | or   | pow  |
-                        >=  | >    | <=   | <  | == | != |
-                        ge  | gt   | le   | lt | eq | ne |
-                        concat | mod | not | arrayref | hashref | _\b |
-                        [~+\-*%\^!] ) \s* }{}x) {
-        my $op   = $1;
-        my $var1 = [@var];
-        my $var2 = $self->parse_variable(\$copy);
-        @var = (\ [$op, $var1, $var2], 0);
+    if (! $self->{'_state'}->{'operator_precedence'}) {
+        my $last_op;
+        my $last_var;
+        while ($copy =~ s{ ^ ( &&  | \|\| | \*\* | /   | \.\. |
+                               and | or   | pow  | div |
+                               >=  | >    | <=   | <   | == | != |
+                               ge  | gt   | le   | lt  | eq | ne |
+                               concat | mod | not | arrayref | hashref | _\b |
+                               [~+\-*%\^!] ) \s* }{}x) {
+            my $op   = $1;
+            local $self->{'_state'}->{'operator_precedence'} = 1;
+            my $var1 = [@var];
+            my $var2 = $self->parse_variable(\$copy);
+            if ($self->operator_precedence($last_op, $op)) {
+                my @var1 = @$last_var;
+                @$last_var = (\ [$op, \@var1, $var2], 0);
+            } else {
+                @var = (\ [$op, $var1, $var2], 0);
+            }
+            $last_var = $var2;
+            $last_op  = $op;
+        }
     }
 
     #debug \@var, $copy;
@@ -414,11 +432,19 @@ sub parse_variable {
     return \@var;
 }
 
+sub operator_precedence {
+    my ($self, $op1, $op2) = @_;
+    return 1 if $op2 eq '*' && $op1 eq '+';
+    return 1 if $op2 eq '**' && $op1 eq '+';
+    return 1 if $op2 eq '**' && $op1 eq '*';
+}
+
 sub vivify_variable {
     my $self = shift;
     my $var  = shift;
     my $ARGS = shift || {};
     my $i    = 0;
+    my $generated_list;
 
     ### determine the top level of this particular variable access
     my $ref  = $var->[$i++];
@@ -429,9 +455,8 @@ sub vivify_variable {
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') {
             return if $ARGS->{'set_var'};
-            my $return_flat = $ARGS->{'list_context'} && ${$ref}->[0] eq '..' && $#$var <= $i;
             $ref = $self->play_operator($$ref);
-            return @$ref if $return_flat;
+            $generated_list = 1;
         } else {
             $ref = $self->vivify_variable($ref);
             if (defined $ref) {
@@ -552,6 +577,10 @@ sub vivify_variable {
     }
 
     #debug $ref;
+
+    if ($ARGS->{'list_context'} && $generated_list && UNIVERSAL::isa($ref, 'ARRAY')) {
+        return @$ref;
+    }
     return $ref;
 }
 
@@ -579,13 +608,23 @@ sub play_operator {
         my @args = $self->vivify_args($tree);
         push @args, undef if ! ($#args % 2);
         return {@args};
-    } elsif ($op eq '..') {
-        my $from = defined($tree->[0]) ? $self->vivify_variable($tree->[0]) : undef;
-        my $to   = defined($tree->[1]) ? $self->vivify_variable($tree->[1]) : undef;
-        return [$from .. $to];
-    } else {
-        die "Un-implemented operation $op";
+    } else{
+        my @args = $self->vivify_args($tree);
+        if ($op eq '..') {
+            return [$args[0] .. $args[1]];
+        } elsif ($op eq '+') {
+            return $args[0] + $args[1];
+        } elsif ($op eq '-') {
+            return $args[0] - $args[1];
+        } elsif ($op eq '*') {
+            return $args[0] * $args[1];
+        } elsif ($op eq '/' || $op eq 'div') {
+            return $args[0] / $args[1];
+        } elsif ($op eq '**' || $op eq 'pow') {
+            return $args[0] ** $args[1];
+        }
     }
+    die "Un-implemented operation $op";
 }
 
 ###----------------------------------------------------------------###
