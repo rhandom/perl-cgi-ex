@@ -2,7 +2,7 @@
 
 use Test;
 
-BEGIN {plan tests => 4};
+BEGIN {plan tests => 5};
 
 use CGI::Ex;
 ok(1);
