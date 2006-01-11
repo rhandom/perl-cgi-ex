@@ -249,7 +249,7 @@ sub execute_tree {
 
         ### normal directive
         } else {
-            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[5], $node->[0], $template_ref);
+            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[5], $node, $template_ref);
 
         }
 
@@ -628,7 +628,7 @@ sub play_CALL { &play_GET; '' }
 
 sub parse_DEFAULT {
     my ($self, $tag_ref) = @_;
-    return $self->parse_SET($tag_ref);
+    return $DIRECTIVES->{'SET'}->{'parse'}->($self, $tag_ref);
 }
 
 sub play_DEFAULT {
@@ -651,32 +651,40 @@ sub play_DEFAULT {
 sub parse_DUMP {
     my ($self, $tag_ref) = @_;
     my $copy = $$tag_ref;
-    my $ref = $self->get_variable_ref($tag_ref);
+    my $ref = $self->parse_variable($tag_ref);
+    my $val = $self->vivify_variable($ref);
     require Data::Dumper;
-    my $str = Data::Dumper::Dumper(UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref);
+    my $str = Data::Dumper::Dumper($val);
     $str =~ s/\$VAR1/$copy/g;
     return $str;
 }
 
 sub parse_IF {
-    my ($self, $tag_ref, $func, $body_ref, $template_ref) = @_;
-    my $ref = $self->get_variable_ref($tag_ref);
-    if (UNIVERSAL::isa($ref, 'SCALAR') ? $$ref : $ref) {
-        return UNIVERSAL::isa($body_ref, 'SCALAR') ? $$body_ref : $self->execute_tree($body_ref, $template_ref);
+    my ($self, $tag_ref) = @_;
+    my $ref = $self->parse_variable($tag_ref);
+    return $ref;
+}
+
+sub play_IF {
+    my ($self, $var, $node, $template_ref) = @_;
+    my $val = $self->vivify_variable($var);
+    if ($val) {
+        my $body_ref = $node->[7] ||= [];
+        return $self->execute_tree($body_ref, $template_ref);
     } else {
         return '';
     }
 }
 
 sub parse_INCLUDE {
-    my ($self, $tag_ref, $func, $template_ref) = @_;
+    my ($self, $tag_ref, $node, $template_ref) = @_;
 
     ### localize the swap
     my $swap = $self->{'_swap'};
     my @keys  = keys %$swap;
     local @$swap{@keys} = values %$swap; # note that we are only "cloning" one level deep
 
-    my $str = $self->parse_PROCESS($tag_ref, $func, $template_ref);
+    my $str = $DIRECTIVES->{'PROCESS'}->{'parse'}->($self, $tag_ref, $node, $template_ref);
 
     ### kill added keys
     my %keys = map {$_ => 1} @keys;
@@ -692,7 +700,7 @@ sub parse_INSERT {
 }
 
 sub play_INSERT {
-    my ($self, $var, $func) = @_;
+    my ($self, $var) = @_;
     return '' if ! $var;
     my $filename = $self->vivify_variable($var);
 
@@ -713,21 +721,23 @@ sub play_GET {
 }
 
 sub parse_PROCESS {
-    my ($self, $tag_ref, $func) = @_;
+    my ($self, $tag_ref) = @_;
     my $ref = $self->parse_variable($tag_ref, {auto_quote => qr/$QR_FILENAME|\w+/});
     return $ref;
 }
 
 sub play_PROCESS {
-    my ($self, $var, $func, $template_ref) = @_;
+    my ($self, $var, $node, $template_ref) = @_;
 
     return '' if ! $var;
     my $filename = $self->vivify_variable($var);
 
     $self->{'state'}->{'recurse'} ||= 0;
     $self->{'state'}->{'recurse'} ++;
-    die "MAX_RECURSE $MAX_RECURSE reached during $func on $filename"
-        if $self->{'state'}->{'recurse'} >= $MAX_RECURSE;
+    if ($self->{'state'}->{'recurse'} >= $MAX_RECURSE) {
+        my $func = $node->[0];
+        die "MAX_RECURSE $MAX_RECURSE reached during $func on $filename";
+    }
 
     ### see if the filename is an existing block name
     if (my $body_ref = $self->{'BLOCKS'}->{$filename}) {
