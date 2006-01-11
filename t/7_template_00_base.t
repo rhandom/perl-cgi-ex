@@ -8,19 +8,18 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 190 - ($is_tt ? 21 : 0);
+use Test::More tests => 191 - ($is_tt ? 17 : 0);
 use Data::Dumper qw(Dumper);
 
 
 use_ok($module);
-
-my $obj = $module->new(ABSOLUTE => 1);
 
 sub process_ok { # process the value
     my $str  = shift;
     my $test = shift;
     my $args = shift;
     my $out  = '';
+    my $obj = $module->new(ABSOLUTE => 1);
     $obj->process(\$str, $args, \$out);
     my $ok = $out eq $test;
     ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
@@ -186,11 +185,11 @@ process_ok("[% SET name = 'two' %][% SET foo.\${name}.foo = 3 %][% foo.two.foo %
 process_ok("[% SET foo = [1..10] %][% foo.6 %]" => 7);
 process_ok("[% SET foo = [10..1] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [-10..-1] %][% foo.6 %]" => -4);
-process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => '')               if ! $is_tt;
-process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => '')               if ! $is_tt;
-process_ok("[% SET foo = [1,1..0..10] %][% foo.6 %]" => '')             if ! $is_tt;
+process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => '');
+process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => '');
+process_ok("[% SET foo = [1,1..0..10] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [1..10, 21..30] %][% foo.12 %]" => 23)         if ! $is_tt;
-process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => '') if ! $is_tt;
+process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => '');
 process_ok("[% SET foo = [100..] bar = 7 %][% bar %][% foo.0 %]" => 7)  if ! $is_tt;
 process_ok("[% SET foo = ['a'..'z'] %][% foo.6 %]" => 'g');
 process_ok("[% SET foo = ['z'..'a'] %][% foo.6 %]" => '');
@@ -218,20 +217,6 @@ process_ok("[% 'This is a string'.length %]" => 16) if ! $is_tt;
 process_ok("[% 123.length %]" => 3) if ! $is_tt;
 process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
 process_ok("[% -123.2.length %]" => 6) if ! $is_tt;
-
-###----------------------------------------------------------------###
-### blocks
-
-process_ok("[% PROCESS foo %]" => '');
-process_ok("[% BLOCK foo %]" => '');
-process_ok("[% BLOCK foo %][% END %]" => '');
-process_ok("[% BLOCK foo %]hi there[% END %]" => '');
-process_ok("[% BLOCK foo %][% BLOCK foo %][% END %][% END %]" => '');
-process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
-process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo %]" => 'hi ONE there', {one => 'ONE'});
-process_ok("[% IF 1 %]Yes[% END %]" => 'Yes');
-process_ok("[% IF 0 %]Yes[% END %]" => '');
-process_ok("[% BLOCK foo %]hi [% IF 1 %]Yes[% END %] there[% END %]<<[% PROCESS foo %]>>" => '<<hi Yes there>>');
 
 ###----------------------------------------------------------------###
 ### chomping
@@ -282,3 +267,19 @@ process_ok("[% 0 && 6 %]" => 0);
 process_ok("[% 0 && 0 %]" => 0);
 
 process_ok("[% 5 + (0 || 5) %]" => 10);
+
+###----------------------------------------------------------------###
+### blocks
+
+process_ok("[% PROCESS foo %]" => '');
+process_ok("[% BLOCK foo %]" => '');
+process_ok("[% BLOCK foo %][% END %]" => '');
+process_ok("[% BLOCK foo %]hi there[% END %]" => '');
+process_ok("[% BLOCK foo %][% BLOCK foo %][% END %][% END %]" => '');
+process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
+process_ok("[% PROCESS foo %][% BLOCK foo %]hi there[% END %]" => 'hi there');
+process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo %]" => 'hi ONE there', {one => 'ONE'});
+process_ok("[% IF 1 %]Yes[% END %]" => 'Yes');
+process_ok("[% IF 0 %]Yes[% END %]" => '');
+process_ok("[% BLOCK foo %]hi [% IF 1 %]Yes[% END %] there[% END %]<<[% PROCESS foo %]>>" => '<<hi Yes there>>');
+
