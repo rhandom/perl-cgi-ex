@@ -26,6 +26,7 @@ sub process_ok { # process the value
     ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
     my $line = (caller)[2];
     warn "#   process_ok called at line $line.\n" if ! $ok;
+    print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
     exit if ! $ok;
 }
 
@@ -185,15 +186,15 @@ process_ok("[% SET name = 'two' %][% SET foo.\${name}.foo = 3 %][% foo.two.foo %
 process_ok("[% SET foo = [1..10] %][% foo.6 %]" => 7);
 process_ok("[% SET foo = [10..1] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [-10..-1] %][% foo.6 %]" => -4);
-process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => 7)               if ! $is_tt;
-process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => 7)               if ! $is_tt;
-process_ok("[% SET foo = [1,1..0..10] %][% foo.6 %]" => 7)             if ! $is_tt;
-process_ok("[% SET foo = [1..10, 21..30] %][% foo.12 %]" => 23)        if ! $is_tt;
-process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => 7) if ! $is_tt;
-process_ok("[% SET foo = [100..] bar = 7 %][% bar %][% foo.0 %]" => 7) if ! $is_tt;
+process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => '')               if ! $is_tt;
+process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => '')               if ! $is_tt;
+process_ok("[% SET foo = [1,1..0..10] %][% foo.6 %]" => '')             if ! $is_tt;
+process_ok("[% SET foo = [1..10, 21..30] %][% foo.12 %]" => 23)         if ! $is_tt;
+process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => '') if ! $is_tt;
+process_ok("[% SET foo = [100..] bar = 7 %][% bar %][% foo.0 %]" => 7)  if ! $is_tt;
 process_ok("[% SET foo = ['a'..'z'] %][% foo.6 %]" => 'g');
 process_ok("[% SET foo = ['z'..'a'] %][% foo.6 %]" => '');
-process_ok("[% SET foo = ['a'..'z'].reverse %][% foo.6 %]" => 't')     if ! $is_tt;
+process_ok("[% SET foo = ['a'..'z'].reverse %][% foo.6 %]" => 't')      if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### CALL and DEFAULT
