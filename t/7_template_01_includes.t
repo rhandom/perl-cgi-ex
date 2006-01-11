@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 23 - ($is_tt ? 4 : 0);
+use Test::More tests => 25 - ($is_tt ? 6 : 0);
 use Data::Dumper qw(Dumper);
 
 use_ok($module);
@@ -53,6 +53,13 @@ open(my $fh, ">$baz_template") || die "Couldn't open $baz_template: $!";
 print $fh "[% SET baz = 42 %][% baz %][% bing %]";
 close $fh;
 
+###
+my $wrap_template = "$test_dir/wrap.tt";
+END { unlink $wrap_template };
+open(my $fh, ">$wrap_template") || die "Couldn't open $wrap_template: $!";
+print $fh "Hi[% content %]there";
+close $fh;
+
 ###----------------------------------------------------------------###
 ### INSERT
 
@@ -87,3 +94,9 @@ process_ok("([% SET file = 'bar' %][% PROCESS \"\$file.tt\" %])" => '(BAR)') if 
 process_ok("([% PROCESS baz.tt %])" => '(42)');
 process_ok("([% PROCESS baz.tt %])[% baz %]" => '(42)42');
 process_ok("[% SET baz = 21 %]([% PROCESS baz.tt %])[% baz %]" => '(42)42');
+
+###----------------------------------------------------------------###
+### WRAPPER
+
+process_ok("([% WRAPPER wrap.tt %])" => '');
+process_ok("([% WRAPPER wrap.tt %] one [% END %])" => '(Hi one there)');
