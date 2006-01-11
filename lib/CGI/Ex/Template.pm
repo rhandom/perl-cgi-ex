@@ -662,7 +662,7 @@ sub play_operator {
     my $args = shift || {};
 
     my $op = shift @$tree;
-    if ($op eq 'concat') {
+    if ($op eq 'concat' || $op eq '~' || $op eq '_') {
         return join "", grep {defined} $self->vivify_args($tree);
     } elsif ($op eq 'arrayref') {
         my @vals = $self->vivify_args($tree, {list_context => 1});
@@ -678,25 +678,29 @@ sub play_operator {
         }
         return '';
     } else{
-        my @args = $self->vivify_args($tree);
-        if ($op eq '..') {
-            return [$args[0] .. $args[1]];
-        } elsif ($op eq '+') {
-            return $args[0] + $args[1];
-        } elsif ($op eq '-') {
-            return $args[0] - $args[1];
-        } elsif ($op eq '*') {
-            return $args[0] * $args[1];
-        } elsif ($op eq '/' || $op eq 'div') {
-            return $args[0] / $args[1];
-        } elsif ($op eq '**' || $op eq 'pow') {
-            return $args[0] ** $args[1];
-        } elsif ($op eq '&&' || $op eq 'and') {
-            for (@args) {
-                return 0 if ! $_;
-            }
-            return $args[-1];
-        }
+        my ($one, $two) = $self->vivify_args($tree);
+        if ($op eq '..') {        return [$one .. $two] }
+        elsif ($op eq '+') {      return $one +  $two }
+        elsif ($op eq '-') {      return $one -  $two }
+        elsif ($op eq '*') {      return $one *  $two }
+        elsif ($op eq '/'
+               || $op eq 'div') { return $one /  $two }
+        elsif ($op eq '**'
+               || $op eq 'pow') { return $one ** $two }
+        elsif ($op eq '&&'
+               || $op eq 'and') { return $one && $two }
+        elsif ($op eq '==') {     return $one >= $two }
+        elsif ($op eq '!=') {     return $one != $two }
+        elsif ($op eq '<')  {     return $one <  $two }
+        elsif ($op eq '>')  {     return $one >  $two }
+        elsif ($op eq '<=') {     return $one <= $two }
+        elsif ($op eq '>=') {     return $one >= $two }
+        elsif ($op eq 'eq') {     return $one eq $two }
+        elsif ($op eq 'ne') {     return $one ne $two }
+        elsif ($op eq 'lt') {     return $one lt $two }
+        elsif ($op eq 'gt') {     return $one gt $two }
+        elsif ($op eq 'le') {     return $one le $two }
+        elsif ($op eq 'ge') {     return $one ge $two }
     }
     debug $op;
     die "Un-implemented operation $op";
