@@ -148,7 +148,7 @@ sub swap {
     local $self->{'_state'} = {};
     local $self->{'_swap'}  = $_[1] || {};
 
-    my $tree = $self->{'_parsed_tree'} || $self->parse_tree(\$_[0]);
+    my $tree = delete($self->{'_parsed_tree'}) || $self->parse_tree(\$_[0]);
     if (my $file = $self->{'_store_tree'}) {
         $self->{'_documents'}->{$file} = $tree;
     }
