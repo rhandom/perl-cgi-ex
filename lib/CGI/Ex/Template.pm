@@ -241,11 +241,9 @@ sub execute_tree {
             my $pre_chomp = $tree->[0] && $tree->[0]->[3];
 
             $val = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
-            debug $val;
+
             $val =~ s{ (?:\n|^) [^\S\n]* \z }{}xm   if $pre_chomp; # remove any leading whitespace on the same line
             $val =~ s{ \G [^\S\n]* (?:\n?$|\n) }{}x if $post_chomp;
-
-            debug $val;
 
         } elsif ($node->[0] eq 'END') {
             $post_chomp = $node->[4];
@@ -608,6 +606,12 @@ sub play_operator {
         my @args = $self->vivify_args($tree);
         push @args, undef if ! ($#args % 2);
         return {@args};
+    } elsif ($op eq '||' || $op eq 'or') {
+        for my $node (@$tree) {
+            my $var = $self->vivify_variable($node);
+            return $var if $var;
+        }
+        return '';
     } else{
         my @args = $self->vivify_args($tree);
         if ($op eq '..') {
@@ -622,6 +626,11 @@ sub play_operator {
             return $args[0] / $args[1];
         } elsif ($op eq '**' || $op eq 'pow') {
             return $args[0] ** $args[1];
+        } elsif ($op eq '&&' || $op eq 'and') {
+            for (@args) {
+                return 0 if ! $_;
+            }
+            return $args[-1];
         }
     }
     die "Un-implemented operation $op";
@@ -715,7 +724,9 @@ sub play_IF {
     }
 }
 
-sub parse_INCLUDE {
+sub parse_INCLUDE { &parse_PROCESS }
+
+sub play_INCLUDE {
     my ($self, $tag_ref, $node, $template_ref) = @_;
 
     ### localize the swap
@@ -723,7 +734,7 @@ sub parse_INCLUDE {
     my @keys  = keys %$swap;
     local @$swap{@keys} = values %$swap; # note that we are only "cloning" one level deep
 
-    my $str = $DIRECTIVES->{'PROCESS'}->{'parse'}->($self, $tag_ref, $node, $template_ref);
+    my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $template_ref);
 
     ### kill added keys
     my %keys = map {$_ => 1} @keys;
