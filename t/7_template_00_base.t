@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 256 - ($is_tt ? 27 : 0);
+use Test::More tests => 275 - ($is_tt ? 34 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -190,7 +190,7 @@ process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [1,1..0..10] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [1..10, 21..30] %][% foo.12 %]" => 23)         if ! $is_tt;
-process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => ''); # TODO - more consistent
+process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => '');
 process_ok("[% SET foo = [100..] bar = 7 %][% bar %][% foo.0 %]" => 7)  if ! $is_tt;
 process_ok("[% SET foo = ['a'..'z'] %][% foo.6 %]" => 'g');
 process_ok("[% SET foo = ['z'..'a'] %][% foo.6 %]" => '');
@@ -215,7 +215,7 @@ process_ok("[% CALL foo %]" => '',   {foo => sub {$t++; 'hi'}});
 ok($t == 3, "CALL method actually called var");
 
 ###----------------------------------------------------------------###
-### virtual methods
+### virtual methods / filters
 
 process_ok("[% [0 .. 10].reverse.1 %]" => 9) if ! $is_tt;
 process_ok("[% {a => 'A'}.a %]" => 'A') if ! $is_tt;
@@ -223,6 +223,30 @@ process_ok("[% 'This is a string'.length %]" => 16) if ! $is_tt;
 process_ok("[% 123.length %]" => 3) if ! $is_tt;
 process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
 process_ok("[% -123.2.length %]" => 6) if ! $is_tt;
+
+process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
+process_ok("[% n.repeat(0) %]" => '',   {n => 1});
+process_ok("[% n.repeat(1) %]" => '1',  {n => 1});
+process_ok("[% n.repeat(2) %]" => '11', {n => 1});
+process_ok("[% n.repeat(2,'|') %]" => '1|1', {n => 1}) if ! $is_tt;
+
+process_ok("[% n.size %]", => 'SIZE', {n => {size => 'SIZE', a => 'A'}});
+process_ok("[% n|size %]", => '2',    {n => {size => 'SIZE', a => 'A'}}) if ! $is_tt; # tt2 | is alias for FILTER
+
+process_ok("[% n FILTER size %]", => '1', {n => {size => 'SIZE', a => 'A'}}) if ! $is_tt; # tt2 doesn't have size
+
+process_ok("[% n FILTER repeat %]" => '1',     {n => 1});
+process_ok("[% n FILTER repeat(0) %]" => '',   {n => 1});
+process_ok("[% n FILTER repeat(1) %]" => '1',  {n => 1});
+process_ok("[% n FILTER repeat(2) %]" => '11', {n => 1});
+process_ok("[% n FILTER repeat(2,'|') %]" => '1|1', {n => 1}) if ! $is_tt;
+
+process_ok("[% n FILTER echo = repeat(2) %][% n FILTER echo %]" => '1111', {n => 1});
+process_ok("[% n FILTER echo = repeat(2) %][% n | echo %]" => '1111', {n => 1});
+process_ok("[% n FILTER echo = repeat(2) %][% n|echo.length %]" => '112', {n => 1}) if ! $is_tt;
+process_ok("[% n FILTER echo = repeat(2) %][% n FILTER \$foo %]" => '1111', {n => 1, foo => 'echo'});
+process_ok("[% n FILTER echo = repeat(2) %][% n | \$foo %]" => '1111', {n => 1, foo => 'echo'});
+process_ok("[% n FILTER echo = repeat(2) %][% n|\$foo.length %]" => '112', {n => 1, foo => 'echo'}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### chomping
