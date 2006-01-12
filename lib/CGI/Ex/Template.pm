@@ -189,24 +189,35 @@ sub parse_tree {
     my $len_s = length $START;
     my $len_e = length $END;
 
-    my @tree;
-    my @state;
-    my $last = 0;
-    my $post_chomp = 0;
+    my @tree;           # the parsed tree
+    my @state;          # maintain block levels
+    my $i = 0;          # start index
+    my $j = 0;          # end index
+    my $last = 0;       # previous end index
+    my $post_chomp = 0; # previous post_chomp setting
+    my $continue;       # multiple directives in the same tag
+    my $tag;
+    my $level;
     while (1) {
+        ### continue looking for information in a semi-colon delimited tag
+        if ($continue) {
+            $i = $j - length $tag;
+            $level = [undef, $i, $j];
+
         ### look through the string using index
-        my $i = index($$str_ref, $START, $last);
-        last if $i == -1;
-        push @tree, ['TEXT', $last, $i, [0, $post_chomp]] if $last != $i;
-        my $begin = substr($$str_ref, $last, $i - $last),
-        my $j = index($$str_ref, $END, $i + $len_s);
-        $last = $j + $len_e;
-        if ($j == -1) { # missing closing tag
-            $last = length($$str_ref);
-            last;
+        } else {
+            $i = index($$str_ref, $START, $last);
+            last if $i == -1;
+            push @tree, ['TEXT', $last, $i, [0, $post_chomp]] if $last != $i;
+            $j = index($$str_ref, $END, $i + $len_s);
+            $last = $j + $len_e;
+            if ($j == -1) { # missing closing tag
+                $last = length($$str_ref);
+                last;
+            }
+            $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
+            $level = [undef, $i + $len_s, $j];
         }
-        my $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
-        my $level = [undef , $i + $len_s, $j];
 
         ### take care of whitespace
         if ($tag =~ s/^(\#?)-/$1/ || $self->{'PRE_CHOMP'}) {
@@ -226,11 +237,15 @@ sub parse_tree {
         }
         $tag =~ s{ (?<! \\) \# .* $ }{}xmg; # remove trailing comments
         $tag =~ s{ ^ \s+ }{}x;
+        if (! length $tag) {
+            $continue = undef;
+            next;
+        }
 
-        ### look for functions or variables
-        if ($tag =~ /^(\w+) (?: $|\s)/x && $DIRECTIVES->{$1}) {
+        ### look for DIRECTIVES
+        if ($tag =~ /^(\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}) {
             my $func = $level->[0] = $1;
-            $tag =~ s/^\w+\s*//;
+            $tag =~ s{ ^ \w+ \s* }{}x;
             push @tree, $level;
             if ($func eq 'END') {
                 if ($#state == -1) {
@@ -248,19 +263,19 @@ sub parse_tree {
                     my $storage = $parent_level->[5] ||= [];
                     @$storage = @sub_tree;
                 }
-                next;
-            }
-            if ($DIRECTIVES->{$func}->{'end'}) {
-                $level->[4] = -1;
-                $level->[5] = [];
-                push @state, $level;
             } elsif ($DIRECTIVES->{$func}->{'control'}) {
-                next;
-            }
-            $level->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
-            if ($@) {
-                die if $@ !~ /missing/i;
-                eval { die $@ };
+                # do nothing
+            } else {
+                if ($DIRECTIVES->{$func}->{'end'}) {
+                    $level->[4] = -1;
+                    $level->[5] = [];
+                    push @state, $level;
+                }
+                $level->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
+                if ($@) {
+                    die if $@ !~ /missing/i;
+                    eval { die $@ };
+                }
             }
 
         ### allow for bare variable getting and setting
@@ -278,7 +293,7 @@ sub parse_tree {
                 $level->[0] = 'SET';
                 $level->[3] = $SET;
             } else {
-                die "Found trailing info during variable access \"$tag" if $tag;
+                #die "Found trailing info during variable access \"$tag" if $tag;
                 $level->[0] = 'GET';
                 $level->[3] = $var;
             }
@@ -289,6 +304,9 @@ sub parse_tree {
             $all =~ s/\s+$//;
             die "Not sure how to handle tag \"$all\"";
         }
+
+        ### look for more directives in the tag
+        $continue = $tag =~ s{ ^ ; \s* }{}x;
     }
 
     if ($#state >  -1) {
@@ -298,6 +316,7 @@ sub parse_tree {
     return undef if $#tree  == -1;
 
     push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
+    #debug \@tree;
 
     return \@tree;
 }
@@ -676,7 +695,8 @@ sub play_operator {
     my $tree = shift;
     my $args = shift || {};
 
-    my $op = shift @$tree;
+    my $op = $tree->[0];
+    $tree = [@$tree[1..$#$tree]];
     if ($op eq 'concat' || $op eq '~' || $op eq '_') {
         return join "", grep {defined} $self->vivify_args($tree);
     } elsif ($op eq 'arrayref') {

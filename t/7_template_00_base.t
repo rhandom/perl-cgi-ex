@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 239 - ($is_tt ? 18 : 0);
+use Test::More tests => 245 - ($is_tt ? 18 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -124,6 +124,7 @@ process_ok("[% foo.\$name.baz %]" => '', {name => 'bar', bar => {baz => 7}});
 
 process_ok("[% \"hi\" %]" => 'hi');
 process_ok("[% 'hi' %]" => 'hi');
+process_ok("[% \"\$foo\" %]"   => '7', {foo => 7});
 process_ok("[% \"hi \$foo\" %]"   => 'hi 7', {foo => 7});
 process_ok("[% \"hi \${foo}\" %]" => 'hi 7', {foo => 7});
 process_ok("[% 'hi \$foo' %]"   => 'hi $foo', {foo => 7});
@@ -263,6 +264,10 @@ process_ok("[% SET foo = 1 %][% foo + 2 %]" => 3);
 process_ok("[% SET foo = 1 %][% (foo + 2) %]" => 3);
 
 ###----------------------------------------------------------------###
+### string operations
+
+
+###----------------------------------------------------------------###
 ### boolean operations
 
 process_ok("[% 5 && 6 %]" => 6);
@@ -347,4 +352,11 @@ process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% CLEAR %][% END %][% f 
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.last %][% CLEAR %][% END %][% END %]" => '');
 process_ok("[% FOREACH f = [1..3] %][% IF loop.last %][% CLEAR %][% END %][% f %][% END %]" => '3');
 
+###----------------------------------------------------------------###
+### multiple-directives
 
+process_ok("[% GET foo; GET foo %]" => '11', {foo => 1});
+process_ok('[% FOREACH f = [1..3]; 1; END %]' => '111');
+process_ok('[% FOREACH f = [1..3]; f; END %]' => '123');
+process_ok('[% FOREACH f = [1..3]; "$f"; END %]' => '123');
+process_ok('[% FOREACH f = [1..3]; f + 1; END %]' => '234');
