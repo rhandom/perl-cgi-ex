@@ -27,6 +27,13 @@ BEGIN {
             return [$str =~ /$pat/g] if $global;
             return [$str =~ /$pat/ ];
         },
+        repeat  => sub {
+            my ($str, $n, $join) = @_;
+            return if ! length $str;
+            $n = 1 if ! defined($n) || ! length $n;
+            $join = '' if ! defined $join;
+            return join $join, ($str) x $n;
+        },
         replace => sub {
             my ($str, $pat, $replace) = @_;
             return undef if ! defined $str || ! defined $pat;
@@ -87,6 +94,12 @@ BEGIN {
             play   => \&play_DUMP,
         },
         END     => 1, # builtin that should never be called
+        FILTER  => {
+            parse  => \&parse_FILTER,
+            play   => \&play_FILTER,
+            end    => 1,
+            postop => 1,
+        },
         FOREACH => {
             parse  => \&parse_FOREACH,
             play   => \&play_FOREACH,
@@ -277,8 +290,11 @@ sub parse_tree {
                 }
                 $level->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
                 if ($@) {
-                    die if $@ !~ /missing/i;
-                    eval { die $@ };
+                    if ($@ =~ /missing/i) {
+                        eval { die $@ };
+                        return [];
+                    }
+                    die $@;
                 }
                 $postop->[6] = $level if $postop;
             }
@@ -318,6 +334,7 @@ sub parse_tree {
             $continue = 1;
             $postop   = $level;
         } else {
+            die "Found trailing info \"$tag\"" if length $tag;
             $continue = undef;
             $postop   = undef;
         }
@@ -615,6 +632,7 @@ sub vivify_variable {
     }
 
     ### vivify the chained levels
+    my $seen_filters;
     while (defined $ref && $#$var > $i) {
         my $was_dot_call = $var->[$i++] eq '.';
         my $name         = $var->[$i++];
@@ -686,6 +704,14 @@ sub vivify_variable {
                 return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
                 next;
+            } elsif (my $filter = $self->{'FILTERS'}->{$name}) {
+                $seen_filters ||= {};
+                if ($seen_filters->{$name} ++) {
+                    $ref = undef;
+                    next;
+                }
+                $var = ['|', @$filter, splice(@$var, $i)];
+                $i = 0;
             } else {
                 $ref = undef;
             }
@@ -888,6 +914,38 @@ sub play_INSERT {
     return $self->include_file($filename);
 }
 
+sub parse_FILTER {
+    my ($self, $tag_ref) = @_;
+    my $name = '';
+    if ($$tag_ref =~ s{ ^ ([^\W\d]\w*) \s* = \s* }{}x) {
+        $name = $1;
+    }
+
+    my $filter = $self->parse_variable($tag_ref) || [];
+
+    return [$name, $filter];
+}
+
+sub play_FILTER {
+    my ($self, $ref, $node, $template_ref, $out_ref) = @_;
+    my ($name, $filter) = @$ref;
+
+    return '' if $#$filter == -1;
+
+    $self->{'FILTERS'}->{$name} = $filter if length $name;
+
+    my $sub_tree = $node->[5];
+
+    ### play the block
+    my $out = '';
+    eval { $self->execute_tree($sub_tree, $template_ref, \$out) };
+    die $@ if $@ && ! UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException');
+
+    my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
+
+    return $DIRECTIVES->{'GET'}->{'play'}->($self, $var, $node, $template_ref, $out_ref);
+}
+
 sub parse_FOREACH {
     my ($self, $tag_ref) = @_;
     my $items = $self->parse_variable($tag_ref);
@@ -907,7 +965,7 @@ sub play_FOREACH {
     $items = $self->vivify_variable($items);
     return '' if ! defined $items;
     my $set_loop;
-    if (! UNIVERSAL::isa$items, 'CGI::Ex::Template::Iterator') {
+    if (! UNIVERSAL::isa($items, 'CGI::Ex::Template::Iterator')) {
         $items = CGI::Ex::Template::Iterator->new($items);
         $set_loop = 1;
     }
@@ -970,7 +1028,8 @@ sub parse_GET {
 
 sub play_GET {
     my ($self, $ref) = @_;
-    return $self->vivify_variable($ref);
+    my $var = $self->vivify_variable($ref);
+    return ref($var) ? '' : $var;
 }
 
 sub parse_PROCESS {
