@@ -552,8 +552,8 @@ sub vivify_variable {
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') {
             return if $ARGS->{'set_var'};
+            $generated_list = 1 if ${ $ref }->[0] eq '..';
             $ref = $self->play_operator($$ref);
-            $generated_list = 1;
         } else {
             $ref = $self->vivify_variable($ref);
             if (defined $ref) {
