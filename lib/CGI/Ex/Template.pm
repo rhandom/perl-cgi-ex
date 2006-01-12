@@ -68,63 +68,65 @@ BEGIN {
 
     $DIRECTIVES = {
         BLOCK   => {
-            parse   => \&parse_BLOCK,
-            play    => \&play_BLOCK,
-            end     => 1,
+            parse  => \&parse_BLOCK,
+            play   => \&play_BLOCK,
+            end    => 1,
         },
         BREAK   => { control => 1 },
         CALL    => {
-            parse => \&parse_CALL,
-            play  => \&play_CALL,
+            parse  => \&parse_CALL,
+            play   => \&play_CALL,
         },
         CLEAR   => { control => 1 },
         DEFAULT => {
-            parse => \&parse_DEFAULT,
-            play  => \&play_DEFAULT,
+            parse  => \&parse_DEFAULT,
+            play   => \&play_DEFAULT,
         },
         DUMP    => {
-            parse => \&parse_DUMP,
-            play  => \&play_DUMP,
+            parse  => \&parse_DUMP,
+            play   => \&play_DUMP,
         },
         END     => 1, # builtin that should never be called
         FOREACH => {
-            parse => \&parse_FOREACH,
-            play  => \&play_FOREACH,
-            end   => 1,
+            parse  => \&parse_FOREACH,
+            play   => \&play_FOREACH,
+            end    => 1,
+            postop => 1,
         },
         GET     => {
-            parse => \&parse_GET,
-            play  => \&play_GET,
+            parse  => \&parse_GET,
+            play   => \&play_GET,
         },
         IF      => {
-            parse => \&parse_IF,
-            play  => \&play_IF,
-            end   => 1,
+            parse  => \&parse_IF,
+            play   => \&play_IF,
+            end    => 1,
+            postop => 1,
         },
         INCLUDE => {
-            parse => \&parse_INCLUDE,
-            play  => \&play_INCLUDE,
+            parse  => \&parse_INCLUDE,
+            play   => \&play_INCLUDE,
         },
         INSERT  => {
-            parse => \&parse_INSERT,
-            play  => \&play_INSERT,
+            parse  => \&parse_INSERT,
+            play   => \&play_INSERT,
         },
         LAST    => { control => 1 },
         NEXT    => { control => 1 },
         PROCESS => {
-            parse => \&parse_PROCESS,
-            play  => \&play_PROCESS,
+            parse  => \&parse_PROCESS,
+            play   => \&play_PROCESS,
         },
         RETURN  => { control => 1 },
         SET     => {
-            parse => \&parse_SET,
-            play  => \&play_SET,
+            parse  => \&parse_SET,
+            play   => \&play_SET,
         },
         STOP    => { control => 1 },
         WRAPPER => {
-            parse => \&parse_WRAPPER,
-            play  => \&play_WRAPPER,
-            end   => 1,
+            parse  => \&parse_WRAPPER,
+            play   => \&play_WRAPPER,
+            end    => 1,
         },
     };
 
@@ -196,6 +198,7 @@ sub parse_tree {
     my $last = 0;       # previous end index
     my $post_chomp = 0; # previous post_chomp setting
     my $continue;       # multiple directives in the same tag
+    my $postop;
     my $tag;
     my $level;
     while (1) {
@@ -238,7 +241,8 @@ sub parse_tree {
         $tag =~ s{ (?<! \\) \# .* $ }{}xmg; # remove trailing comments
         $tag =~ s{ ^ \s+ }{}x;
         if (! length $tag) {
-            $continue = undef;
+            undef $continue;
+            undef $postop;
             next;
         }
 
@@ -246,7 +250,7 @@ sub parse_tree {
         if ($tag =~ /^(\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}) {
             my $func = $level->[0] = $1;
             $tag =~ s{ ^ \w+ \s* }{}x;
-            push @tree, $level;
+            push @tree, $level if ! $postop;
             if ($func eq 'END') {
                 if ($#state == -1) {
                     eval { die "Found an unmatched END tag" };
@@ -266,7 +270,7 @@ sub parse_tree {
             } elsif ($DIRECTIVES->{$func}->{'control'}) {
                 # do nothing
             } else {
-                if ($DIRECTIVES->{$func}->{'end'}) {
+                if ($DIRECTIVES->{$func}->{'end'} && ! $postop) {
                     $level->[4] = -1;
                     $level->[5] = [];
                     push @state, $level;
@@ -276,6 +280,7 @@ sub parse_tree {
                     die if $@ !~ /missing/i;
                     eval { die $@ };
                 }
+                $postop->[6] = $level if $postop;
             }
 
         ### allow for bare variable getting and setting
@@ -306,7 +311,16 @@ sub parse_tree {
         }
 
         ### look for more directives in the tag
-        $continue = $tag =~ s{ ^ ; \s* }{}x;
+        if ($tag =~ s{ ^ ; \s* }{}x) {
+            $continue = 1;
+            $postop   = undef;
+        } elsif ($tag =~ / ^ (\w+) \s /x && $DIRECTIVES->{$1} && $DIRECTIVES->{$1}->{'postop'}) {
+            $continue = 1;
+            $postop   = $level;
+        } else {
+            $continue = undef;
+            $postop   = undef;
+        }
     }
 
     if ($#state >  -1) {
@@ -316,7 +330,7 @@ sub parse_tree {
     return undef if $#tree  == -1;
 
     push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
-    #debug \@tree;
+#    debug \@tree;
 
     return \@tree;
 }
@@ -330,16 +344,27 @@ sub execute_tree {
     #                3: parsed tag details,
     #                6: end block location
     #                7: sub_tree for end blocks
+    my $val;
     for my $node (@$tree) {
-        my $val;
         if ($node->[0] eq 'TEXT') {
             $val = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
 
             $val =~ s{ (?:\n|^) [^\S\n]* \z }{}xm   if $node->[3]->[0]; # pre_chomp
             $val =~ s{ \G [^\S\n]* (?:\n?$|\n) }{}x if $node->[3]->[1]; # post_chomp
+            $$out_ref .= $val;
+            next;
+        }
+
+        ### had a post operator - turn it inside out - TODO - we should do this to the original tree
+        if ($node->[6]) {
+            while (my $post_node = delete $node->[6]) {
+                $post_node->[5] = [$node];
+                $node = $post_node;
+            }
+        }
 
         ### allow for the null directives
-        } elsif ($node->[0] eq 'END' || $node->[0] eq 'COMMENT') {
+        if ($node->[0] eq 'END' || $node->[0] eq 'COMMENT') {
             next;
 
         ### allow for control directives
