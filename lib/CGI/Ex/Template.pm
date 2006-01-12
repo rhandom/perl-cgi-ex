@@ -263,11 +263,25 @@ sub parse_tree {
                 eval { die $@ };
             }
 
+        ### allow for bare variable getting and setting
         } elsif (my $var = $self->parse_variable(\$tag)) {
-            die "Found trailing info during variable access \"$tag" if $tag;
-            $level->[0] = 'GET';
-            $level->[3] = $var;
             push @tree, $level;
+            if ($tag =~ s{ ^ = \s* }{}x) {
+                my $val = $self->parse_variable(\$tag);
+                $tag =~ s{ ^ ; \s* }{}x;
+                my $SET = eval { $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, 'SET', $level) } || [];
+                if ($@) {
+                    die if $@ !~ /missing/i;
+                    eval { die $@ };
+                }
+                unshift @$SET, [$var, $val];
+                $level->[0] = 'SET';
+                $level->[3] = $SET;
+            } else {
+                die "Found trailing info during variable access \"$tag" if $tag;
+                $level->[0] = 'GET';
+                $level->[3] = $var;
+            }
 
         } else {
             my $all  = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
