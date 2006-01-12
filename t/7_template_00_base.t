@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 245 - ($is_tt ? 18 : 0);
+use Test::More tests => 256 - ($is_tt ? 27 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -360,3 +360,20 @@ process_ok('[% FOREACH f = [1..3]; 1; END %]' => '111');
 process_ok('[% FOREACH f = [1..3]; f; END %]' => '123');
 process_ok('[% FOREACH f = [1..3]; "$f"; END %]' => '123');
 process_ok('[% FOREACH f = [1..3]; f + 1; END %]' => '234');
+
+###----------------------------------------------------------------###
+### post opererator
+
+process_ok("[% GET foo IF 1 %]" => '1', {foo => 1});
+process_ok("[% f FOREACH f = [1..3] %]" => '123');
+
+process_ok("2[% GET foo IF 1 IF 2 %]" => '21', {foo => 1})      if ! $is_tt;
+process_ok("2[% GET foo IF 1 IF 0 %]" => '2',  {foo => 1})      if ! $is_tt;
+process_ok("[% f FOREACH f = [1..3] IF 1 %]" => '123')          if ! $is_tt;
+process_ok("[% f FOREACH f = [1..3] IF 0 %]" => '')             if ! $is_tt;
+process_ok("[% f FOREACH f = g FOREACH g = [1..3] %]" => '123') if ! $is_tt;
+process_ok("[% f FOREACH f = g.a FOREACH g = [{a=>1}, {a=>2}, {a=>3}] %]" => '123') if ! $is_tt;
+process_ok("[% f FOREACH f = a FOREACH [{a=>1}, {a=>2}, {a=>3}] %]" => '123')       if ! $is_tt;
+
+process_ok("[% FOREACH f = [1..3] IF 1 %]([% f %])[% END %]" => '(1)(2)(3)')        if ! $is_tt;
+process_ok("[% FOREACH f = [1..3] IF 0 %]([% f %])[% END %]" => '')                 if ! $is_tt;
