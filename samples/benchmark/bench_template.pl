@@ -35,10 +35,10 @@ my $swap = {
 
 #my $txt  = ((" "x1000)."[% one %]\n")x10;
 #my $txt  = ((" "x1000)."[% one %]\n")x100;
-my $txt = ((" "x10)."[% one %]\n")x1000;
+#my $txt = ((" "x10)."[% one %]\n")x1000;
 #my $txt  = "[% one %]"x20;
 #my $txt  = "([% 1 + 2 %])";
-#my $txt   = "[% one %]";
+my $txt   = "[% one %]";
 #my $txt   = "[% SET one = 2 %]";
 #my $txt   = "[% c.d.0 %]";
 
@@ -76,15 +76,10 @@ sub str_TT {
     return $out;
 }
 
-sub file_TT_cache {
+sub file_TT_cache_new {
     my $out = '';
-    $tt2->process($file2, $swap, \$out);
-    return $out;
-}
-
-sub str_TT_cache {
-    my $out = '';
-    $tt2->process($file, $swap, \$out);
+    my $t = Template->new(ABSOLUTE => 1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
+    $t->process($file2, $swap, \$out);
     return $out;
 }
 
@@ -134,7 +129,6 @@ for (1..10) {
     die "file_CET didn't match"     if file_CET()     ne str_TT();
     die "str_CET didn't match"      if str_CET()      ne str_TT();
     die "str_CET_swap didn't match" if str_CET_swap() ne str_TT();
-#    die "str_CET_old  didn't match" if str_CET_old()  ne str_TT();
 }
 
 ###----------------------------------------------------------------###
@@ -144,8 +138,7 @@ cmpthese timethese (-2, {
     str_TT_n    => \&str_TT_new,
     file_TT     => \&file_TT,
     str_TT      => \&str_TT,
-#    file_TT_cch => \&file_TT_cache,
-#    str_TT_cch  => \&str_TT_cache,
+    file_TT_c_n => \&file_TT_cache_new,
 
     file_CET_n   => \&file_CET_new,
     str_CET_n    => \&str_CET_new,
