@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 235 - ($is_tt ? 18 : 0);
+use Test::More tests => 239 - ($is_tt ? 18 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -194,6 +194,11 @@ process_ok("[% SET foo = [100..] bar = 7 %][% bar %][% foo.0 %]" => 7)  if ! $is
 process_ok("[% SET foo = ['a'..'z'] %][% foo.6 %]" => 'g');
 process_ok("[% SET foo = ['z'..'a'] %][% foo.6 %]" => '');
 process_ok("[% SET foo = ['a'..'z'].reverse %][% foo.6 %]" => 't')      if ! $is_tt;
+
+process_ok("[% foo = 1 %][% foo %]" => '1');
+process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
+process_ok("[% foo = 1 ; bar = 2 %][% foo %][% bar %]" => '12');
+process_ok("[% foo.bar = 2 %][% foo.bar %]" => '2');
 
 ###----------------------------------------------------------------###
 ### CALL and DEFAULT
