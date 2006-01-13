@@ -9,7 +9,8 @@ use vars qw(@INCLUDE_PATH
             $DIRECTIVES
             $QR_FILENAME
             $MAX_RECURSE
-            $PRECEDENCE
+            $OP_PRECEDENCE
+            $OP_QR
             );
 
 BEGIN {
@@ -143,21 +144,30 @@ BEGIN {
         },
     };
 
-    $PRECEDENCE = {qw(**  99   ^  99   pow 99
-                      !   95
-                      *   90   /  90   div 90   %  90   mod    90
-                      +   85   -  85   _   85   ~  85   concat 85
-                      <   80   >  80   <=  80   >= 80
-                      lt  80   gt 80   le  80   ge 80
-                      ==  75   != 75   eq  75   ne 75
-                      &&  70
-                      ||  65
-                      ..  60
-                      not 55
-                      and 50
-                      or  45
-                      hashref 1 arrayref 1
-                      )};
+    $OP_PRECEDENCE = {qw(**  99   ^  99   pow 99
+                         !   95
+                         *   90   /  90   div 90   %  90   mod    90
+                         +   85   -  85   _   85   ~  85   concat 85
+                         <   80   >  80   <=  80   >= 80
+                         lt  80   gt 80   le  80   ge 80
+                         ==  75   != 75   eq  75   ne 75
+                         &&  70
+                         ||  65
+                         ..  60
+                         ?   55   :  55
+                         not 50
+                         and 45
+                         or  40
+                         hashref 1 arrayref 1
+                         )};
+    sub _op_qr { # no mixed \w\W operators
+        my @ops = sort keys %{ shift() };
+        my $chrs = join '|', map {quotemeta $_} grep {/^\W{2,}$/} @ops;
+        my $chr  = join '',  map {quotemeta $_} grep {/^\W$/} @ops;
+        my $word = join '|', grep {/^\w+$/} @ops;
+        return "$chrs|[$chr]|$word";
+    }
+    $OP_QR = _op_qr($OP_PRECEDENCE);
 
     $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)* }x;
     $MAX_RECURSE = 50;
@@ -334,6 +344,7 @@ sub parse_tree {
             $continue = 1;
             $postop   = $level;
         } else {
+            debug $level if length $tag;
             die "Found trailing info \"$tag\"" if length $tag;
             $continue = undef;
             $postop   = undef;
@@ -460,6 +471,7 @@ sub parse_variable {
 
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* }{}x) {
+        local $self->{'_state'}->{'operator_precedence'} = 0; # reset presedence
         my $arrayref = ['arrayref'];
         while (my $var = $self->parse_variable(\$copy)) {
             push @$arrayref, $var;
@@ -470,6 +482,7 @@ sub parse_variable {
 
     ### looks like a hash constructor
     } elsif ($copy =~ s{ ^ \{ \s* }{}x) {
+        local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
         my $hashref = ['hashref'];
         while (my $key = $self->parse_variable(\$copy, {auto_quote => qr/\w+/})) {
             $copy =~ s{ ^ => \s* }{}x;
@@ -482,7 +495,7 @@ sub parse_variable {
 
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* }{}x) {
-        local $self->{'_state'}->{'operator_precedence'} = 0; # allow parens to have their own precedence
+        local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
         my $var = $self->parse_variable(\$copy);
         $copy =~ s{ ^ \) \s* }{}x || die "Missing close \) on \"$copy\"";
         @var = @$var;
@@ -499,6 +512,7 @@ sub parse_variable {
 
     ### looks for args for the initial
     if ($copy =~ s{ ^ \( \s* }{}x) {
+        local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
         my @args;
         while (my $var = $self->parse_variable(\$copy)) {
             push @args, $var;
@@ -528,6 +542,7 @@ sub parse_variable {
 
         ### looks for args for the nested item
         if ($copy =~ s{ ^ \( \s* }{}x) {
+            local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
             my @args;
             while (my $var = $self->parse_variable(\$copy)) {
                 push @args, $var;
@@ -545,36 +560,41 @@ sub parse_variable {
     if (! $self->{'_state'}->{'operator_precedence'}) {
         my $last_op;
         my $last_var;
-        while ($copy =~ s{ ^ ( &&  | \|\| | \*\* | /   | \.\. |
-                               and | or   | pow  | div |
-                               >=  | >    | <=   | <   | == | != |
-                               ge  | gt   | le   | lt  | eq | ne |
-                               concat | mod | not | arrayref | hashref | _\b |
-                               [~+\-*%\^!] ) \s* }{}x) {
-            my $op   = $1;
+        my $q_s;
+        while ($copy =~ s{ ^ ($OP_QR) \s* }{}ox) {
             local $self->{'_state'}->{'operator_precedence'} = 1;
+            my $op   = $1;
             my $var1 = [@var];
             my $var2 = $self->parse_variable(\$copy);
-            if ($last_op && $self->operator_precedence($last_op, $op)) {
+            $self->{n} ++;
+            if ($op eq ':') {
+                if ($q_s && (my $node = pop @$q_s)) {
+                    push @$node, $var2;
+                }
+                next;
+            } elsif ($last_op && ($self->operator_precedence($last_op, $op)
+                                  || ($op eq '?' && $last_op eq '?'))) {
                 my @var1 = @$last_var;
                 @$last_var = (\ [$op, \@var1, $var2], 0);
+                push @{ $q_s ||= [] }, ${ $last_var->[0] } if $op eq '?';
             } else {
                 @var = (\ [$op, $var1, $var2], 0);
+                push @{ $q_s ||= [] }, ${ $var[0] } if $op eq '?';
             }
             $last_var = $var2;
             $last_op  = $op;
-        }
+         }
     }
 
-    #debug \@var, $copy;
+#    debug \@var, $copy;
     $$str_ref = $copy; # commit the changes
     return \@var;
 }
 
 sub operator_precedence {
     my ($self, $op1, $op2) = @_;
-    my $val1 = $PRECEDENCE->{$op1} || 0;
-    my $val2 = $PRECEDENCE->{$op2} || 0;
+    my $val1 = $OP_PRECEDENCE->{$op1} || 0;
+    my $val2 = $OP_PRECEDENCE->{$op2} || 0;
     return $val2 > $val1;
 }
 
@@ -763,6 +783,12 @@ sub play_operator {
             return $var if $var;
         }
         return '';
+    } elsif ($op eq '?') {
+        if ($self->vivify_variable($tree->[0])) {
+            return $tree->[1] ? $self->vivify_variable($tree->[1]) : undef;
+        } else {
+            return $tree->[2] ? $self->vivify_variable($tree->[2]) : undef;
+        }
     } else{
         my ($one, $two) = $self->vivify_args($tree);
         if ($op eq '..') {        return [($one||0) .. ($two||0)] }
