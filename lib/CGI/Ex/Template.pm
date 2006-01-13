@@ -558,32 +558,25 @@ sub parse_variable {
 
     ### allow for all "operators"
     if (! $self->{'_state'}->{'operator_precedence'}) {
-        my $last_op;
-        my $last_var;
-        my $q_s;
+        my $tree;
+        my $found;
         while ($copy =~ s{ ^ ($OP_QR) \s* }{}ox) {
             local $self->{'_state'}->{'operator_precedence'} = 1;
             my $op   = $1;
-            my $var1 = [@var];
             my $var2 = $self->parse_variable(\$copy);
-            $self->{n} ++;
-            if ($op eq ':') {
-                if ($q_s && (my $node = pop @$q_s)) {
-                    push @$node, $var2;
-                }
-                next;
-            } elsif ($last_op && ($self->operator_precedence($last_op, $op)
-                                  || ($op eq '?' && $last_op eq '?'))) {
-                my @var1 = @$last_var;
-                @$last_var = (\ [$op, \@var1, $var2], 0);
-                push @{ $q_s ||= [] }, ${ $last_var->[0] } if $op eq '?';
+            push (@{ $tree ||= [] }, $op, $var2);
+            $found->{$op} = $OP_PRECEDENCE->{$op};
+        }
+
+        ### if we found operators - tree the nodes by operator precedence
+        if ($tree) {
+            if ($#$tree == 1) { # keep simple things fast
+                @var = (\ [$tree->[0], [@var], $tree->[1]], 0);
             } else {
-                @var = (\ [$op, $var1, $var2], 0);
-                push @{ $q_s ||= [] }, ${ $var[0] } if $op eq '?';
+                unshift @$tree, [@var];
+                @var = @{ $self->apply_precedence($tree, $found) };
             }
-            $last_var = $var2;
-            $last_op  = $op;
-         }
+        }
     }
 
 #    debug \@var, $copy;
@@ -591,11 +584,35 @@ sub parse_variable {
     return \@var;
 }
 
-sub operator_precedence {
-    my ($self, $op1, $op2) = @_;
-    my $val1 = $OP_PRECEDENCE->{$op1} || 0;
-    my $val2 = $OP_PRECEDENCE->{$op2} || 0;
-    return $val2 > $val1;
+sub apply_precedence {
+    my ($self, $tree, $found) = @_;
+
+    my @var;
+    my $trees;
+    for my $op (sort {$found->{$a} <=> $found->{$b}} keys %$found) {
+        local $found->{$op}; # TODO - handle ?:
+        my @trees;
+        for (my $i = 0; $i <= $#$tree; $i ++) {
+            next if $tree->[$i] ne $op;
+            push @trees, [splice @$tree, 0, $i, ()];
+            shift @$tree;
+            $i = -1;
+        }
+        next if $#trees == -1;
+        push @trees, $tree if $#$tree != -1;
+        for (@trees) {
+            if ($#$_ == 0) {
+                $_ = $_->[0];
+            } elsif ($#$_ == 2) {
+                $_ = [ \ [ $_->[1], $_->[0], $_->[2] ], 0 ];
+            } else {
+                $_ = $self->apply_precedence($_, $found);
+            }
+        }
+        return [ \ [ $op, @trees ], 0 ];
+    }
+
+    die "Couldn't apply precedence";
 }
 
 sub vivify_variable {
