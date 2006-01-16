@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 275 - ($is_tt ? 34 : 0);
+use Test::More tests => 290 - ($is_tt ? 36 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -302,10 +302,25 @@ process_ok("[% 0 && 0 %]" => 0);
 
 process_ok("[% 5 + (0 || 5) %]" => 10);
 
+
 process_ok("[% 1 ? 2 : 3 %]" => '2');
 process_ok("[% 0 ? 2 : 3 %]" => '3');
 process_ok("[% 0 ? (1 ? 2 : 3) : 4 %]" => '4');
 process_ok("[% 0 ? 1 ? 2 : 3 : 4 %]" => '4');
+
+process_ok("[% t = 1 || 0 ? 3 : 4 %][% t %]" => 3);
+process_ok("[% t = 0 or 1 ? 3 : 4 %][% t %]" => 3);
+process_ok("[% t = 1 or 0 ? 3 : 4 %][% t %]" => 1) if ! $is_tt;
+
+process_ok("[% 0 ? 2 : 3 %]" => '3');
+process_ok("[% 1 ? 2 : 3 %]" => '2');
+process_ok("[% 0 ? 1 ? 2 : 3 : 4 %]" => '4');
+process_ok("[% t = 0 ? 1 ? [1..4] : [2..4] : [3..4] %][% t.0 %]" => '3');
+process_ok("[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]" => '0');
+process_ok("[% t = 0 or 0 ? 0 : 1 or 2 ? 2 : 3 %][% t %]" => '1') if ! $is_tt;
+process_ok("[% t = 0 or 0 ? 0 : 0 or 2 ? 2 : 3 %][% t %]" => '2');
+
+process_ok("[% 0 ? 1 ? 1 + 2 * 3 : 1 + 2 * 4 : 1 + 2 * 5 %]" => '11');
 
 ###----------------------------------------------------------------###
 ### blocks
