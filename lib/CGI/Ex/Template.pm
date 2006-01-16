@@ -570,7 +570,7 @@ sub parse_variable {
 
         ### if we found operators - tree the nodes by operator precedence
         if ($tree) {
-            if ($#$tree == 1) { # keep simple things fast
+            if ($#$tree == 1) { # only one operator - keep simple things fast
                 @var = (\ [$tree->[0], [@var], $tree->[1]], 0);
             } else {
                 unshift @$tree, [@var];
@@ -589,27 +589,45 @@ sub apply_precedence {
 
     my @var;
     my $trees;
+    local $found->{':'};
+    delete $found->{':'};
     for my $op (sort {$found->{$a} <=> $found->{$b}} keys %$found) {
         local $found->{$op}; # TODO - handle ?:
+        delete $found->{$op};
         my @trees;
+        my @queue;
         for (my $i = 0; $i <= $#$tree; $i ++) {
-            next if $tree->[$i] ne $op;
-            push @trees, [splice @$tree, 0, $i, ()];
-            shift @$tree;
+            next if $tree->[$i] ne $op && ($op ne '?' || $tree->[$i] ne ':');
+            push @trees, [splice @$tree, 0, $i, ()]; # everything up to the operator
+            push @queue, $tree->[0] if $op eq '?';
+            shift @$tree; # pull off the operator
             $i = -1;
         }
         next if $#trees == -1;
-        push @trees, $tree if $#$tree != -1;
+        push @trees, $tree if $#$tree != -1; # elements after last operator
         for (@trees) {
             if ($#$_ == 0) {
-                $_ = $_->[0];
+                $_ = $_->[0]; # single item - its not a tree
             } elsif ($#$_ == 2) {
-                $_ = [ \ [ $_->[1], $_->[0], $_->[2] ], 0 ];
+                $_ = [ \ [ $_->[1], $_->[0], $_->[2] ], 0 ]; # single operator - put it straight on
             } else {
-                $_ = $self->apply_precedence($_, $found);
+                $_ = $self->apply_precedence($_, $found); # more complicated - recurse
             }
         }
-        return [ \ [ $op, @trees ], 0 ];
+
+        return [ \ [ $op, @trees ], 0 ] if $#queue <= 1;
+
+        ### reorder complex trinary - rare case
+        while ($#queue >= 1) {
+            for (my $i = $#queue; $i >= 0; $i --) {
+                next if $queue[$i] ne '?';
+                splice @queue, $i, 2, (); # remove the pair of operators
+                my $op = [ \ ['?', @trees[$i .. $i + 2] ], 0 ];
+                splice @trees, $i, 3, $op;
+            }
+        }
+        return $trees[0]; # at this point the trinary has been reduced to a single operator
+
     }
 
     die "Couldn't apply precedence";
