@@ -3,8 +3,6 @@ package CGI::Ex::Template;
 use CGI::Ex::Dump qw(debug);
 use strict;
 use vars qw(@INCLUDE_PATH
-            $START_TAG
-            $END_TAG
             $SCALAR_OPS $HASH_OPS $LIST_OPS
             $DIRECTIVES
             $QR_FILENAME
@@ -13,11 +11,19 @@ use vars qw(@INCLUDE_PATH
             $OP_TRINARY
             $OP_FUNC
             $OP_QR
+            $TAGS
             );
 
 BEGIN {
-    $START_TAG  ||= '[%';
-    $END_TAG    ||= '%]';
+    $TAGS ||= {
+        template => ['[%',   '%]'],  # default
+        metatext => ['%%',   '%%'],  # Text::MetaText
+        star     => ['[*',   '*]'],  # TT alternate
+        php      => ['<?',   '?>'],  # PHP
+        asp      => ['<%',   '%>'],  # ASP
+        mason    => ['<%',   '>'],   # HTML::Mason
+        html     => ['<!--', '-->'], # HTML comments
+    };
 
     ### list out the virtual methods
     $SCALAR_OPS = {
@@ -96,7 +102,7 @@ BEGIN {
             parse  => \&parse_DUMP,
             play   => \&play_DUMP,
         },
-        END     => 1, # builtin that should never be called
+        END     => 1, # builtin that cannot be overridden
         FILTER  => {
             parse  => \&parse_FILTER,
             play   => \&play_FILTER,
@@ -139,6 +145,7 @@ BEGIN {
             play   => \&play_SET,
         },
         STOP    => { control => 1 },
+        TAGS    => 1, # builtin that cannot be overridden
         WRAPPER => {
             parse  => \&parse_WRAPPER,
             play   => \&play_WRAPPER,
@@ -212,8 +219,9 @@ sub parse_tree {
     my $str_ref = shift;
     return [] if ! $str_ref || ! defined $$str_ref;
 
-    my $START = $self->{'START_TAG'} || $START_TAG;
-    my $END   = $self->{'END_TAG'}   || $END_TAG;
+    my $STYLE = $self->{'TAG_STYLE'} || 'template';
+    my $START = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
+    my $END   = $self->{'END_TAG'}   || $TAGS->{$STYLE}->[1];
     my $len_s = length $START;
     my $len_e = length $END;
 
@@ -273,7 +281,7 @@ sub parse_tree {
         }
 
         ### look for DIRECTIVES
-        if ($tag =~ /^(\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}) {
+        if ($tag =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}) {
             my $func = $level->[0] = $1;
             $tag =~ s{ ^ \w+ \s* }{}x;
             push @tree, $level if ! $postop;
@@ -293,6 +301,16 @@ sub parse_tree {
                     my $storage = $parent_level->[5] ||= [];
                     @$storage = @sub_tree;
                 }
+            } elsif ($func eq 'TAGS') {
+                if ($tag =~ / ^ (\w+) /x && $TAGS->{$1}) {
+                    $tag =~ s{ ^ (\w+) \s* }{}x;
+                    ($START, $END) = @{ $TAGS->{$1} };
+                } elsif ($tag =~ s{ ^ (\S+) \s+ (\S+) \s* }{}x) {
+                    ($START, $END) = ($1, $2);
+                }
+                $len_s = length $START;
+                $len_e = length $END;
+
             } elsif ($DIRECTIVES->{$func}->{'control'}) {
                 # do nothing
             } else {
@@ -395,7 +413,7 @@ sub execute_tree {
         }
 
         ### allow for the null directives
-        if ($node->[0] eq 'END' || $node->[0] eq 'COMMENT') {
+        if ($node->[0] eq 'END' || $node->[0] eq 'COMMENT' || $node->[0] eq 'TAGS') {
             next;
 
         ### allow for control directives
