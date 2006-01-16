@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 290 - ($is_tt ? 36 : 0);
+use Test::More tests => 297 - ($is_tt ? 40 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -186,9 +186,9 @@ process_ok("[% SET name = 'two' %][% SET foo.\${name}.foo = 3 %][% foo.two.foo %
 process_ok("[% SET foo = [1..10] %][% foo.6 %]" => 7);
 process_ok("[% SET foo = [10..1] %][% foo.6 %]" => '');
 process_ok("[% SET foo = [-10..-1] %][% foo.6 %]" => -4);
-process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => '');
-process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => '');
-process_ok("[% SET foo = [1,1..0..10] %][% foo.6 %]" => '');
+process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => '7') if ! $is_tt;
+process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => '7') if ! $is_tt;
+process_ok("[% SET foo = [1,1..0..10] %][% foo.6 %]" => '6') if ! $is_tt;
 process_ok("[% SET foo = [1..10, 21..30] %][% foo.12 %]" => 23)         if ! $is_tt;
 process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => '');
 process_ok("[% SET foo = [100..] bar = 7 %][% bar %][% foo.0 %]" => 7)  if ! $is_tt;
@@ -272,6 +272,7 @@ process_ok("[% foo -%] \n " => ' ');
 ### math operations
 
 process_ok("[% 1 + 2 %]" => 3);
+process_ok("[% 1 + 2 + 3 %]" => 6);
 process_ok("[% (1 + 2) %]" => 3);
 process_ok("[% 2 - 1 %]" => 1);
 process_ok("[% -1 + 2 %]" => 1);
@@ -421,3 +422,13 @@ process_ok("[% f FOREACH f = a FOREACH [{a=>1}, {a=>2}, {a=>3}] %]" => '123')   
 
 process_ok("[% FOREACH f = [1..3] IF 1 %]([% f %])[% END %]" => '(1)(2)(3)')        if ! $is_tt;
 process_ok("[% FOREACH f = [1..3] IF 0 %]([% f %])[% END %]" => '')                 if ! $is_tt;
+
+###----------------------------------------------------------------###
+### tags
+
+process_ok("[% TAGS html %]<!-- 1 + 2 -->" => '3');
+process_ok("[% TAGS <!-- --> %]<!-- 1 + 2 -->" => '3');
+process_ok("[% TAGS html %] <!--- 1 + 2 -->" => '3');
+process_ok("[% TAGS html %]<!-- 1 + 2 ---> " => '3') if ! $is_tt;
+process_ok("[% TAGS html %]<!-- 1 + 2 --->\n" => '3');
+process_ok("[% BLOCK foo %][% TAGS html %]<!-- 1 + 2 -->[% END %][% PROCESS foo %] [% 1 + 2 %]" => '');
