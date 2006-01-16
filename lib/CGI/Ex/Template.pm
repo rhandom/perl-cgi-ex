@@ -9,7 +9,9 @@ use vars qw(@INCLUDE_PATH
             $DIRECTIVES
             $QR_FILENAME
             $MAX_RECURSE
-            $OP_PRECEDENCE
+            $OPERATORS
+            $OP_TRINARY
+            $OP_FUNC
             $OP_QR
             );
 
@@ -144,30 +146,31 @@ BEGIN {
         },
     };
 
-    $OP_PRECEDENCE = {qw(**  99   ^  99   pow 99
-                         !   95
-                         *   90   /  90   div 90   %  90   mod    90
-                         +   85   -  85   _   85   ~  85   concat 85
-                         <   80   >  80   <=  80   >= 80
-                         lt  80   gt 80   le  80   ge 80
-                         ==  75   != 75   eq  75   ne 75
-                         &&  70
-                         ||  65
-                         ..  60
-                         ?   55   :  55
-                         not 50
-                         and 45
-                         or  40
-                         hashref 1 arrayref 1
-                         )};
+    $OPERATORS ||= {qw(**  99   ^  99   pow 99
+                     !   95
+                     *   90   /  90   div 90   %  90   mod    90
+                     +   85   -  85   _   85   ~  85   concat 85
+                     <   80   >  80   <=  80   >= 80
+                     lt  80   gt 80   le  80   ge 80
+                     ==  75   != 75   eq  75   ne 75
+                     &&  70
+                     ||  65
+                     ..  60
+                     ?   55
+                     not 50
+                     and 45
+                     or  40
+                     hashref 1 arrayref 1
+                     )};
+    $OP_TRINARY ||= {'?' => ':'};
+    $OP_FUNC    ||= {};
     sub _op_qr { # no mixed \w\W operators
-        my @ops = sort keys %{ shift() };
-        my $chrs = join '|', map {quotemeta $_} grep {/^\W{2,}$/} @ops;
-        my $chr  = join '',  map {quotemeta $_} grep {/^\W$/} @ops;
-        my $word = join '|', grep {/^\w+$/} @ops;
+        my $chrs = join '|', map {quotemeta $_} grep {/^\W{2,}$/} @_;
+        my $chr  = join '',  map {quotemeta $_} grep {/^\W$/} @_;
+        my $word = join '|', grep {/^\w+$/} @_;
         return "$chrs|[$chr]|$word";
     }
-    $OP_QR = _op_qr($OP_PRECEDENCE);
+    $OP_QR ||= _op_qr(sort(keys(%$OPERATORS), values(%$OP_TRINARY)));
 
     $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)* }x;
     $MAX_RECURSE = 50;
@@ -565,7 +568,7 @@ sub parse_variable {
             my $op   = $1;
             my $var2 = $self->parse_variable(\$copy);
             push (@{ $tree ||= [] }, $op, $var2);
-            $found->{$op} = $OP_PRECEDENCE->{$op};
+            $found->{$op} = $OPERATORS->{$op} if exists $OPERATORS->{$op};
         }
 
         ### if we found operators - tree the nodes by operator precedence
@@ -589,17 +592,15 @@ sub apply_precedence {
 
     my @var;
     my $trees;
-    local $found->{':'};
-    delete $found->{':'};
     for my $op (sort {$found->{$a} <=> $found->{$b}} keys %$found) {
-        local $found->{$op}; # TODO - handle ?:
+        local $found->{$op};
         delete $found->{$op};
         my @trees;
-        my @queue;
+        my @trinary;
         for (my $i = 0; $i <= $#$tree; $i ++) {
-            next if $tree->[$i] ne $op && ($op ne '?' || $tree->[$i] ne ':');
+            next if $tree->[$i] ne $op && (! exists $OP_TRINARY->{$op} || $OP_TRINARY->{$op} ne $tree->[$i]);
             push @trees, [splice @$tree, 0, $i, ()]; # everything up to the operator
-            push @queue, $tree->[0] if $op eq '?';
+            push @trinary, $tree->[0] if exists $OP_TRINARY->{$op};
             shift @$tree; # pull off the operator
             $i = -1;
         }
@@ -615,15 +616,16 @@ sub apply_precedence {
             }
         }
 
-        return [ \ [ $op, @trees ], 0 ] if $#queue <= 1;
+        return [ \ [ $op, @trees ], 0 ] if $#trinary <= 1;
 
         ### reorder complex trinary - rare case
-        while ($#queue >= 1) {
-            for (my $i = $#queue; $i >= 0; $i --) {
-                next if $queue[$i] ne '?';
-                splice @queue, $i, 2, (); # remove the pair of operators
-                my $op = [ \ ['?', @trees[$i .. $i + 2] ], 0 ];
-                splice @trees, $i, 3, $op;
+        while ($#trinary >= 1) {
+            ### if we look - starting from the back the first lead trinary op will always be next to its matching op
+            for (my $i = $#trinary; $i >= 0; $i --) {
+                next if ! exists $OP_TRINARY->{$trinary[$i]};
+                my ($op, $op2) = splice @trinary, $i, 2, (); # remove the pair of operators
+                my $node = [ \ [$op, @trees[$i .. $i + 2] ], 0 ];
+                splice @trees, $i, 3, $node;
             }
         }
         return $trees[0]; # at this point the trinary has been reduced to a single operator
@@ -800,9 +802,15 @@ sub play_operator {
     my $self = shift;
     my $tree = shift;
     my $args = shift || {};
-
     my $op = $tree->[0];
     $tree = [@$tree[1..$#$tree]];
+
+    ### allow for operator function override
+    if (exists $OP_FUNC->{$op}) {
+        return $OP_FUNC->{$op}->($self, $op, $tree, $args);
+    }
+
+    ### do constructors and short-circuitable operators
     if ($op eq 'concat' || $op eq '~' || $op eq '_') {
         return join "", grep {defined} $self->vivify_args($tree);
     } elsif ($op eq 'arrayref') {
@@ -812,44 +820,55 @@ sub play_operator {
         my @args = $self->vivify_args($tree);
         push @args, undef if ! ($#args % 2);
         return {@args};
-    } elsif ($op eq '||' || $op eq 'or') {
-        for my $node (@$tree) {
-            my $var = $self->vivify_variable($node);
-            return $var if $var;
-        }
-        return '';
     } elsif ($op eq '?') {
         if ($self->vivify_variable($tree->[0])) {
             return $tree->[1] ? $self->vivify_variable($tree->[1]) : undef;
         } else {
             return $tree->[2] ? $self->vivify_variable($tree->[2]) : undef;
         }
-    } else{
-        my ($one, $two) = $self->vivify_args($tree);
-        if ($op eq '..') {        return [($one||0) .. ($two||0)] }
-        elsif ($op eq '+') {      return $one +  $two }
-        elsif ($op eq '-') {      return $one -  $two }
-        elsif ($op eq '*') {      return $one *  $two }
-        elsif ($op eq '/'
-               || $op eq 'div') { return $one /  $two }
-        elsif ($op eq '**'
-               || $op eq 'pow') { return $one ** $two }
-        elsif ($op eq '&&'
-               || $op eq 'and') { return $one && $two }
-        elsif ($op eq '==') {     return $one >= $two }
-        elsif ($op eq '!=') {     return $one != $two }
-        elsif ($op eq '<')  {     return $one <  $two }
-        elsif ($op eq '>')  {     return $one >  $two }
-        elsif ($op eq '<=') {     return $one <= $two }
-        elsif ($op eq '>=') {     return $one >= $two }
-        elsif ($op eq 'eq') {     return $one eq $two }
-        elsif ($op eq 'ne') {     return $one ne $two }
-        elsif ($op eq 'lt') {     return $one lt $two }
-        elsif ($op eq 'gt') {     return $one gt $two }
-        elsif ($op eq 'le') {     return $one le $two }
-        elsif ($op eq 'ge') {     return $one ge $two }
+    } elsif ($op eq '||' || $op eq 'or') {
+        for my $node (@$tree) {
+            my $var = $self->vivify_variable($node);
+            return $var if $var;
+        }
+        return '';
+    } elsif ($op eq '&&' || $op eq 'and') {
+        my $var;
+        for my $node (@$tree) {
+            $var = $self->vivify_variable($node);
+            return 0 if ! $var;
+        }
+        return $var;
     }
-    debug $op;
+
+    ### equality operators
+    local $^W = 0;
+    my $n = $self->vivify_variable($tree->[0]);
+    $tree = [@$tree[1..$#$tree]];
+    if ($op eq '==')    { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n == $_) }; return 1 }
+    elsif ($op eq '!=') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n != $_) }; return 1 }
+    elsif ($op eq 'eq') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n eq $_) }; return 1 }
+    elsif ($op eq 'ne') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n ne $_) }; return 1 }
+    elsif ($op eq '<')  { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n <  $_); $n = $_ }; return 1 }
+    elsif ($op eq '>')  { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n >  $_); $n = $_ }; return 1 }
+    elsif ($op eq '<=') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n <= $_); $n = $_ }; return 1 }
+    elsif ($op eq '>=') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n >= $_); $n = $_ }; return 1 }
+    elsif ($op eq 'lt') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n lt $_); $n = $_ }; return 1 }
+    elsif ($op eq 'gt') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n gt $_); $n = $_ }; return 1 }
+    elsif ($op eq 'le') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n le $_); $n = $_ }; return 1 }
+    elsif ($op eq 'ge') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n ge $_); $n = $_ }; return 1 }
+
+    ### numeric operators
+    my @args = $self->vivify_args($tree);
+    if ($op eq '..')        { return [($n||0) .. ($args[-1]||0)] }
+    elsif ($op eq '+')      { $n +=  $_ for @args; return $n }
+    elsif ($op eq '-')      { $n -=  $_ for @args; return $n }
+    elsif ($op eq '*')      { $n *=  $_ for @args; return $n }
+    elsif ($op eq '/'
+           || $op eq 'div') { $n /=  $_ for @args; return $n }
+    elsif ($op eq '**'
+           || $op eq 'pow') { $n **= $_ for @args; return $n }
+
     die "Un-implemented operation $op";
 }
 
