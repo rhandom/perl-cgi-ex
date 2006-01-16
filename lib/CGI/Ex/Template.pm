@@ -3,15 +3,16 @@ package CGI::Ex::Template;
 use CGI::Ex::Dump qw(debug);
 use strict;
 use vars qw(@INCLUDE_PATH
+            $TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS
             $DIRECTIVES
-            $QR_FILENAME
-            $MAX_RECURSE
             $OPERATORS
             $OP_TRINARY
             $OP_FUNC
             $OP_QR
-            $TAGS
+            $QR_FILENAME
+            $MAX_RECURSE
+            $WHILE_MAX
             );
 
 BEGIN {
@@ -146,6 +147,12 @@ BEGIN {
         },
         STOP    => { control => 1 },
         TAGS    => 1, # builtin that cannot be overridden
+        WHILE => {
+            parse  => \&parse_WHILE,
+            play   => \&play_WHILE,
+            end    => 1,
+            postop => 1,
+        },
         WRAPPER => {
             parse  => \&parse_WRAPPER,
             play   => \&play_WRAPPER,
@@ -181,6 +188,7 @@ BEGIN {
 
     $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)* }x;
     $MAX_RECURSE = 50;
+    $WHILE_MAX   = 1000;
 };
 
 ###----------------------------------------------------------------###
@@ -1206,6 +1214,78 @@ sub play_SET {
         });
     }
     return;
+}
+
+sub parse_WHILE {
+    my ($self, $tag_ref) = @_;
+    my $copy = $$tag_ref;
+    my $var;
+    my $var2;
+    if ($copy =~ s{ ^ \( \s* }{}x
+        && ($var = $self->parse_variable(\$copy))
+        && $copy =~ s{ ^ = \s* }{}x) {
+        $var2 = $self->parse_variable(\$copy);
+        $copy =~ s{ ^ \) \s* }{}x || die "Missing close \")\"";
+        $$tag_ref = $copy;
+    } else {
+        $var2 = $self->parse_variable($tag_ref);
+    }
+    return [$var, $var2];
+}
+
+sub play_WHILE {
+    my ($self, $ref, $node, $template_ref, $out_ref) = @_;
+
+    ### get the items - make sure it is an arrayref
+    my ($var, $var2) = @$ref;
+    return '' if ! defined $var2;
+
+    my $prev_val = defined($var) ? $self->vivify_variable($var) : undef;
+
+    my $sub_tree = $node->[5];
+
+    ### iterate use the iterator object
+    my $max = $WHILE_MAX;
+    while (--$max > 0) {
+
+        my $value = $self->vivify_variable($var2);
+        last if ! $value;
+
+        ### update vars as needed
+        if (defined $var) {
+            $self->vivify_variable($var, {
+                set_var => 1,
+                var_val => $value,
+            });
+        }
+
+        ### localize variable access for the loop
+        my $stash = $self->{'_swap'};
+        my @keys  = keys %$stash;
+        local @$stash{@keys} = values %$stash;
+
+        ### execute the sub tree
+        eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
+        if ($@) {
+            if (UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException')) {
+                next if $@->[0] =~ /NEXT/;
+                last if $@->[0] =~ /LAST/;
+            }
+            die $@;
+        }
+
+        ### remove items added to stash during this run
+        my %keys = map {$_ => 1} @keys;
+        delete @$stash{grep {!$keys{$_}} keys %$stash};
+
+    }
+
+    $self->vivify_variable($var, {
+        set_var => 1,
+        var_val => $prev_val,
+    }) if defined $var;
+
+    return undef;
 }
 
 sub parse_WRAPPER { $DIRECTIVES->{'INCLUDE'}->{'parse'}->(@_) }
