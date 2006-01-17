@@ -105,6 +105,11 @@ BEGIN {
             play  => sub {},
             continue_block => {SWITCH => 1, CASE => 1},
         },
+        CATCH   => {
+            parse => \&parse_CATCH,
+            play  => sub {},
+            continue_block => {TRY => 1, CATCH => 1},
+        },
         CLEAR   => { control => 1 },
         COMMENT => {
             parse  => sub {},
@@ -183,6 +188,15 @@ BEGIN {
             block  => 1,
         },
         TAGS    => {}, # builtin that cannot be overridden
+        THROW   => {
+            parse  => \&parse_THROW,
+            play   => \&play_THROW,
+        },
+        TRY     => {
+            parse  => sub {},
+            play   => \&play_TRY,
+            block  => 1,
+        },
         WHILE => {
             parse  => \&parse_WHILE,
             play   => \&play_WHILE,
@@ -307,8 +321,9 @@ sub swap {
     my $err = $@;
 
     die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
-    $err->str_ref(\$_[0]) if UNIVERSAL::can($err, 'str_ref') && ! $err->str_ref;
+    $err->str_ref(\$_[0]);
     eval { die $err };
+    return '' if $err->type !~ /STOP|RETURN/;
     return $out; # some directives may get us here - but still contain content
 }
 
@@ -1060,6 +1075,15 @@ sub parse_CASE {
     return $self->parse_variable($tag_ref);
 }
 
+sub parse_CATCH {
+    my ($self, $tag_ref) = @_;
+    my $name;
+    if ($$tag_ref =~ s/ ^ (\w+) \s* //x) {
+        $name = $1;
+    }
+    return $name;
+}
+
 sub parse_DEFAULT {
     my ($self, $tag_ref) = @_;
     return $DIRECTIVES->{'SET'}->{'parse'}->($self, $tag_ref);
@@ -1367,12 +1391,12 @@ sub play_SWITCH {
 
         my $val2 = $self->vivify_variable($var);
         $val2 = [$val2] if ! UNIVERSAL::isa($val2, 'ARRAY');
-        for my $test (@$val2) {
+        for my $test (@$val2) { # find matching values
             next if ! defined $val && defined $test;
             next if defined $val && ! defined $test;
-            if ($val ne $test) {
-                next if $val  !~ /^-(?: \d*\.\d+ | \d+)$/x;
-                next if $test !~ /^-(?: \d*\.\d+ | \d+)$/x;
+            if ($val ne $test) { # check string wise first - then numerical
+                next if $val  !~ /^ -? (?: \d*\.\d+ | \d+) $/x;
+                next if $test !~ /^ -? (?: \d*\.\d+ | \d+) $/x;
                 next if $val != $test;
             }
 
@@ -1387,6 +1411,48 @@ sub play_SWITCH {
     }
 
     return;
+}
+
+sub parse_THROW {
+    my ($self, $tag_ref) = @_;
+    my $name;
+    if ($$tag_ref =~ s/ ^ (\w+) \s* //x) {
+        $name = $1;
+    }
+    my $msg  = $self->parse_variable($tag_ref);
+    return [$name, $msg];
+}
+
+sub play_THROW {
+    my ($self, $ref, $node) = @_;
+    my ($name, $info) = @$ref;
+    die $self->exception($name, $info, $node);
+}
+
+sub play_TRY {
+    my ($self, $foo, $node, $template_ref, $out_ref) = @_;
+
+    my $body_ref = $node->[5];
+    eval { $self->execute_tree($body_ref, $template_ref, $out_ref) };
+
+    return if ! $@;
+    my $err = $@;
+
+    if (! $node->[6]) {
+        $$out_ref = ''; # hack;
+        die $self->exception('parse.missing', "Missing CATCH block", $node);
+    }
+
+    while ($node = $node->[6]) { # CATCH
+        my $name = $node->[3];
+        if (! defined($name) || ! length($name) || $name eq $err->type) {
+            my $body_ref = $node->[5] ||= [];
+            $self->execute_tree($body_ref, $template_ref, $out_ref);
+            return;
+        }
+    }
+
+    die $err;
 }
 
 sub parse_WHILE {
