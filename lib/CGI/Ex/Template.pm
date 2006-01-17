@@ -1259,11 +1259,6 @@ sub play_WHILE {
             });
         }
 
-        ### localize variable access for the loop
-        my $stash = $self->{'_swap'};
-        my @keys  = keys %$stash;
-        local @$stash{@keys} = values %$stash;
-
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
         if ($@) {
@@ -1273,11 +1268,6 @@ sub play_WHILE {
             }
             die $@;
         }
-
-        ### remove items added to stash during this run
-        my %keys = map {$_ => 1} @keys;
-        delete @$stash{grep {!$keys{$_}} keys %$stash};
-
     }
 
     $self->vivify_variable($var, {
