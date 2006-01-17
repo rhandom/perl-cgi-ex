@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 304 - ($is_tt ? 40 : 0);
+use Test::More tests => 308 - ($is_tt ? 40 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -289,10 +289,6 @@ process_ok("[% SET foo = 1 %][% foo + 2 %]" => 3);
 process_ok("[% SET foo = 1 %][% (foo + 2) %]" => 3);
 
 ###----------------------------------------------------------------###
-### string operations
-
-
-###----------------------------------------------------------------###
 ### boolean operations
 
 process_ok("[% 5 && 6 %]" => 6);
@@ -334,9 +330,17 @@ process_ok("[% BLOCK foo %][% BLOCK foo %][% END %][% END %]" => '');
 process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
 process_ok("[% PROCESS foo %][% BLOCK foo %]hi there[% END %]" => 'hi there');
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo %]" => 'hi ONE there', {one => 'ONE'});
+process_ok("[% BLOCK foo %]hi [% IF 1 %]Yes[% END %] there[% END %]<<[% PROCESS foo %]>>" => '<<hi Yes there>>');
+
+###----------------------------------------------------------------###
+### if/unless/elsif/else
+
 process_ok("[% IF 1 %]Yes[% END %]" => 'Yes');
 process_ok("[% IF 0 %]Yes[% END %]" => '');
-process_ok("[% BLOCK foo %]hi [% IF 1 %]Yes[% END %] there[% END %]<<[% PROCESS foo %]>>" => '<<hi Yes there>>');
+process_ok("[% IF 0 %]Yes[% ELSE %]No[% END %]" => 'No');
+process_ok("[% IF 0 %]Yes[% ELSIF 1 %]No[% END %]" => 'No');
+process_ok("[% IF 0 %]Yes[% ELSIF 0 %]No[% END %]" => '');
+process_ok("[% IF 0 %]Yes[% ELSIF 0 %]No[% ELSE %]hmm[% END %]" => 'hmm');
 
 ###----------------------------------------------------------------###
 ### comments
