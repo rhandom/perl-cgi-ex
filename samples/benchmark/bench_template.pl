@@ -17,6 +17,7 @@ my $tt1 = Template->new(ABSOLUTE => 1);
 my $tt2 = Template->new(ABSOLUTE => 1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
 
 my $cet = CGI::Ex::Template->new(ABSOLUTE => 1);
+my $cetc = CGI::Ex::Template->new(ABSOLUTE => 1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
 #my $cet2 = CGI::Ex::Template2->new(ABSOLUTE => 1);
 
 
@@ -27,20 +28,29 @@ my $swap = {
     two   => "TWO",
     three => "THREE",
     a_var => "a",
-    hash  => {a => 1, b => 2, c => { d => ["hmm"] }},
+    hash  => {a => 1, b => 2, c => { d => [{hee => ["hmm"]}] }},
     array => [qw(A B C D E a A)],
     code  => sub {"($_[0])"},
     cet   => $cet,
 };
 
-#my $txt  = ((" "x1000)."[% one %]\n")x10;
-#my $txt  = ((" "x1000)."[% one %]\n")x100;
-#my $txt = ((" "x10)."[% one %]\n")x1000;
-#my $txt  = "[% one %]"x20;
-#my $txt  = "([% 1 + 2 %])";
-my $txt   = "[% one %]";
-#my $txt   = "[% SET one = 2 %]";
-#my $txt   = "[% c.d.0 %]";
+                                                           # version 1.81
+#my $txt = ((" "x1000)."[% one %]\n")x10;                  #   45%
+#my $txt = ((" "x1000)."[% one %]\n")x100;                 #   14%
+my $txt = ((" "x10)."[% one %]\n")x1000;                  #  -14%
+#my $txt = "[% one %]"x20;                                 #   44%
+#my $txt = "([% 1 + 2 %])";                                #   75%
+#my $txt = "[% one %]";                                    #  253%
+#my $txt = "[% SET one = 2 %]";                            #  196%
+#my $txt = "[% SET one = [0..30] %]";                      #   42%
+#my $txt = "[% c.d.0.hee.0 %]";                            #  280%
+#my $txt = ((" "x10)."[% c.d.0.hee.0 %]\n")x1000;          #   62%
+#my $txt = "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]"; #   73%
+#my $txt = "[% IF 1 %]Two[% END %]";                       #  180%
+#my $txt = "[% FOREACH i = [0..10] %][% i %][% END %]";    #  -38%
+#my $txt = "[% FOREACH i = [0..100] %][% i %][% END %]";   #  -58%
+#my $txt = "[%f=10%][%WHILE f%][%f=f-1%][% f %][% END %]"; #  ?
+#my $txt = "[% BLOCK foo %]Hi[% END %][% PROCESS foo %]";  #  199%
 
 my $file  = \$txt;
 my $file2 = $tt_cache_dir .'/template.txt';
@@ -112,8 +122,15 @@ sub str_CET {
 }
 
 sub str_CET_swap {
-    my $txt = $cet->swap($$file, $swap);
+    my $txt = $cet->swap($file, $swap);
     return $txt;
+}
+
+sub file_CET_cache_new {
+    my $out = '';
+    my $t = CGI::Ex::Template->new(ABSOLUTE => 1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
+    $t->process($file2, $swap, \$out);
+    return $out;
 }
 
 #sub str_CET_old {
@@ -126,9 +143,9 @@ sub str_CET_swap {
 
 ### check out put - and also allow for caching
 for (1..10) {
-    die "file_CET didn't match"     if file_CET()     ne str_TT();
-    die "str_CET didn't match"      if str_CET()      ne str_TT();
-    die "str_CET_swap didn't match" if str_CET_swap() ne str_TT();
+    die "file_CET didn't match "     if file_CET()     ne str_TT();
+    die "str_CET didn't match "      if str_CET()      ne str_TT();
+    die "str_CET_swap didn't match " if str_CET_swap() ne str_TT();
 }
 
 ###----------------------------------------------------------------###
@@ -140,12 +157,13 @@ cmpthese timethese (-2, {
     str_TT      => \&str_TT,
     file_TT_c_n => \&file_TT_cache_new,
 
-    file_CET_n   => \&file_CET_new,
-    str_CET_n    => \&str_CET_new,
-    file_CET     => \&file_CET,
-    str_CET      => \&str_CET,
-    str_CET_sw   => \&str_CET_swap,
-#    str_CET_o    => \&str_CET_old,
+    file_CT_n   => \&file_CET_new,
+    str_CT_n    => \&str_CET_new,
+    file_CT     => \&file_CET,
+    str_CT      => \&str_CET,
+    str_CT_sw   => \&str_CET_swap,
+    file_CT_c_n => \&file_CET_cache_new,
+#    str_CT_o    => \&str_CET_old,
 });
 
 
