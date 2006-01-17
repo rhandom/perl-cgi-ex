@@ -100,6 +100,11 @@ BEGIN {
             parse  => \&parse_CALL,
             play   => \&play_CALL,
         },
+        CASE    => {
+            parse => \&parse_CASE,
+            play  => sub {},
+            continue_block => {SWITCH => 1, CASE => 1},
+        },
         CLEAR   => { control => 1 },
         COMMENT => {
             parse  => sub {},
@@ -127,6 +132,12 @@ BEGIN {
         FILTER  => {
             parse  => \&parse_FILTER,
             play   => \&play_FILTER,
+            block  => 1,
+            postop => 1,
+        },
+        FOR     => {
+            parse  => \&parse_FOREACH,
+            play   => \&play_FOREACH,
             block  => 1,
             postop => 1,
         },
@@ -166,6 +177,11 @@ BEGIN {
             play   => \&play_SET,
         },
         STOP    => { control => 1 },
+        SWITCH  => {
+            parse  => \&parse_SWITCH,
+            play   => \&play_SWITCH,
+            block  => 1,
+        },
         TAGS    => {}, # builtin that cannot be overridden
         WHILE => {
             parse  => \&parse_WHILE,
@@ -290,7 +306,7 @@ sub swap {
     ### handle exceptions
     my $err = $@;
 
-    $err = $self->exception('unknown', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
+    die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
     $err->str_ref(\$_[0]) if UNIVERSAL::can($err, 'str_ref') && ! $err->str_ref;
     eval { die $err };
     return $out; # some directives may get us here - but still contain content
@@ -341,15 +357,15 @@ sub parse_tree {
         }
 
         ### take care of whitespace
-        if ($tag =~ s/^(\#?)-/$1/ || $self->{'PRE_CHOMP'}) {
+        if ($tag =~ s/^(\#?)-/$1/ || ($self->{'PRE_CHOMP'} && $tag !~ s/^(\#?)\+/$1/)) {
             $tree[-1]->[3]->[0] = 1 if $tree[-1] && $tree[-1]->[0] eq 'TEXT';
             $level->[1] ++;
         }
-        if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
+        if ($tag =~ s/-$// || ($self->{'POST_CHOMP'} && $tag !~ s/\+$//)) {
             $post_chomp = 1;
             $level->[2] --;
         } else {
-            $post_chomp = 0;
+            $post_chomp = $self->{'POST_CHOMP'};
         }
         if ($tag =~ /^\#/) { # leading # means to comment the entire section
             $level->[0] = 'COMMENT';
@@ -1038,6 +1054,12 @@ sub parse_CALL { $DIRECTIVES->{'GET'}->{'parse'}->(@_) }
 
 sub play_CALL { $DIRECTIVES->{'GET'}->{'play'}->(@_); return }
 
+sub parse_CASE {
+    my ($self, $tag_ref) = @_;
+    return if $$tag_ref =~ s{ ^ DEFAULT \s* }{}x;
+    return $self->parse_variable($tag_ref);
+}
+
 sub parse_DEFAULT {
     my ($self, $tag_ref) = @_;
     return $DIRECTIVES->{'SET'}->{'parse'}->($self, $tag_ref);
@@ -1071,71 +1093,6 @@ sub parse_DUMP {
     return $str;
 }
 
-sub parse_IF {
-    my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_variable($tag_ref);
-    return $ref;
-}
-
-sub play_IF {
-    my ($self, $var, $node, $template_ref, $out_ref) = @_;
-
-    my $val = $self->vivify_variable($var);
-    if ($val) {
-        my $body_ref = $node->[5] ||= [];
-        $self->execute_tree($body_ref, $template_ref, $out_ref);
-        return;
-    }
-
-    while ($node = $node->[6]) { # ELSE, ELSIF's
-        if ($node->[0] eq 'ELSE') {
-            my $body_ref = $node->[5] ||= [];
-            $self->execute_tree($body_ref, $template_ref, $out_ref);
-            return;
-        }
-        my $var = $node->[3];
-        my $val = $self->vivify_variable($var);
-        if ($val) {
-            my $body_ref = $node->[5] ||= [];
-            $self->execute_tree($body_ref, $template_ref, $out_ref);
-            return;
-        }
-    }
-    return;
-}
-
-sub parse_INCLUDE { $DIRECTIVES->{'PROCESS'}->{'parse'}->(@_) }
-
-sub play_INCLUDE {
-    my ($self, $tag_ref, $node, $template_ref, $out_ref) = @_;
-
-    ### localize the swap
-    my $swap = $self->{'_swap'};
-    my @keys  = keys %$swap;
-    local @$swap{@keys} = values %$swap; # note that we are only "cloning" one level deep
-
-    my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $template_ref, $out_ref);
-
-    ### kill added keys
-    my %keys = map {$_ => 1} @keys;
-    delete @$swap{grep {!$keys{$_}} keys %$swap};
-
-    return $str;
-}
-
-sub parse_INSERT {
-    my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_variable($tag_ref, {auto_quote => $QR_FILENAME});
-    return $ref;
-}
-
-sub play_INSERT {
-    my ($self, $var) = @_;
-    return '' if ! $var;
-    my $filename = $self->vivify_variable($var);
-
-    return $self->include_file($filename);
-}
 
 sub parse_FILTER {
     my ($self, $tag_ref) = @_;
@@ -1243,9 +1200,8 @@ sub play_FOREACH {
 
 sub parse_GET {
     my ($self, $tag_ref) = @_;
-    my $copy = $$tag_ref;
     my $ref = $self->parse_variable($tag_ref);
-    die "Couldn't find variable on GET on $copy" if ! $ref;
+    die $self->exception('parse', "Missing variable name") if ! $ref;
     return $ref;
 }
 
@@ -1253,6 +1209,72 @@ sub play_GET {
     my ($self, $ref) = @_;
     my $var = $self->vivify_variable($ref);
     return ref($var) ? '' : $var;
+}
+
+sub parse_IF {
+    my ($self, $tag_ref) = @_;
+    my $ref = $self->parse_variable($tag_ref);
+    return $ref;
+}
+
+sub play_IF {
+    my ($self, $var, $node, $template_ref, $out_ref) = @_;
+
+    my $val = $self->vivify_variable($var);
+    if ($val) {
+        my $body_ref = $node->[5] ||= [];
+        $self->execute_tree($body_ref, $template_ref, $out_ref);
+        return;
+    }
+
+    while ($node = $node->[6]) { # ELSE, ELSIF's
+        if ($node->[0] eq 'ELSE') {
+            my $body_ref = $node->[5] ||= [];
+            $self->execute_tree($body_ref, $template_ref, $out_ref);
+            return;
+        }
+        my $var = $node->[3];
+        my $val = $self->vivify_variable($var);
+        if ($val) {
+            my $body_ref = $node->[5] ||= [];
+            $self->execute_tree($body_ref, $template_ref, $out_ref);
+            return;
+        }
+    }
+    return;
+}
+
+sub parse_INCLUDE { $DIRECTIVES->{'PROCESS'}->{'parse'}->(@_) }
+
+sub play_INCLUDE {
+    my ($self, $tag_ref, $node, $template_ref, $out_ref) = @_;
+
+    ### localize the swap
+    my $swap = $self->{'_swap'};
+    my @keys  = keys %$swap;
+    local @$swap{@keys} = values %$swap; # note that we are only "cloning" one level deep
+
+    my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $template_ref, $out_ref);
+
+    ### kill added keys
+    my %keys = map {$_ => 1} @keys;
+    delete @$swap{grep {!$keys{$_}} keys %$swap};
+
+    return $str;
+}
+
+sub parse_INSERT {
+    my ($self, $tag_ref) = @_;
+    my $ref = $self->parse_variable($tag_ref, {auto_quote => $QR_FILENAME});
+    return $ref;
+}
+
+sub play_INSERT {
+    my ($self, $var) = @_;
+    return '' if ! $var;
+    my $filename = $self->vivify_variable($var);
+
+    return $self->include_file($filename);
 }
 
 sub parse_PROCESS {
@@ -1323,6 +1345,47 @@ sub play_SET {
             var_val => $val,
         });
     }
+    return;
+}
+
+sub parse_SWITCH { $DIRECTIVES->{'GET'}->{'parse'}->(@_) }
+
+sub play_SWITCH {
+    my ($self, $var, $node, $template_ref, $out_ref) = @_;
+
+    my $val = $self->vivify_variable($var);
+    $val = '' if ! defined $val;
+    ### $node->[5] is thrown away
+
+    my $default;
+    while ($node = $node->[6]) { # CASES
+        my $var = $node->[3];
+        if (! $var) {
+            $default = $node->[5];
+            next;
+        }
+
+        my $val2 = $self->vivify_variable($var);
+        $val2 = [$val2] if ! UNIVERSAL::isa($val2, 'ARRAY');
+        for my $test (@$val2) {
+            next if ! defined $val && defined $test;
+            next if defined $val && ! defined $test;
+            if ($val ne $test) {
+                next if $val  !~ /^-(?: \d*\.\d+ | \d+)$/x;
+                next if $test !~ /^-(?: \d*\.\d+ | \d+)$/x;
+                next if $val != $test;
+            }
+
+            my $body_ref = $node->[5] ||= [];
+            $self->execute_tree($body_ref, $template_ref, $out_ref);
+            return;
+        }
+    }
+
+    if ($default) {
+        $self->execute_tree($default, $template_ref, $out_ref);
+    }
+
     return;
 }
 
@@ -1418,10 +1481,10 @@ sub include_path {
 sub include_filename {
     my ($self, $file) = @_;
     if ($file =~ m|^/|) {
-        die "ABSOLUTE paths disabled" if ! $self->{'ABSOLUTE'};
+        die $self->exception('file', "$file ABSOLUTE paths disabled") if ! $self->{'ABSOLUTE'};
         return $file if -e $file;
     } elsif ($file =~ m|^\./|) {
-        die "RELATIVE paths disabled" if ! $self->{'RELATIVE'};
+        die $self->exception('file', "$file RELATIVE paths disabled") if ! $self->{'RELATIVE'};
         return $file if -e $file;
     } else {
         my $paths = $self->include_path;
@@ -1430,13 +1493,13 @@ sub include_filename {
             return "$path/$file" if -e "$path/$file";
         }
     }
-    die "Couldn't find \"$file\" in INCLUDE_PATH";
+    die $self->exception('file', "$file not found");
 }
 
 sub include_file {
     my ($self, $file) = @_;
     my $full = $self->include_filename($file);
-    open(my $fh, "<$full") || die "Couldn't open $file for reading: $!";
+    open(my $fh, "<$full") || die $self->exception('file', "$file couldn't be opened: $!");
     read $fh, my $txt, -s $full;
     return $txt;
 }
@@ -1489,16 +1552,16 @@ sub process {
     } elsif ($out) { # should be a filename
         my $file;
         if ($out =~ m|^/|) {
-            die "ABSOLUTE paths disabled" if ! $self->{'ABSOLUTE'};
+            die $self->exception('file', "ABSOLUTE paths disabled") if ! $self->{'ABSOLUTE'};
             $file = $out;
         } elsif ($out =~ m|^\./|) {
-            die "RELATIVE paths disabled" if ! $self->{'RELATIVE'};
+            die $self->exception('file', "RELATIVE paths disabled") if ! $self->{'RELATIVE'};
             $file = $out;
         } else {
-            die "OUTPUT_PATH not set" if ! $self->{'OUTPUT_PATH'};
+            die $self->exception('file', "OUTPUT_PATH not set") if ! $self->{'OUTPUT_PATH'};
             $file = $self->{'OUTPUT_PATH'} . '/' . $out;
         }
-        open(my $fh, ">$file") || die "Couldn't open \"$out\" for writing: $!";
+        open(my $fh, ">$file") || die $self->exception('file', "$out couldn't be opened for writing: $!");
         print $fh $content;
     } else {
         print $content;
