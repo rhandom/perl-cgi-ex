@@ -227,23 +227,23 @@ sub swap {
     local $self->{'_state'} = {};
     local $self->{'_swap'}  = $_[1] || {};
 
-    my $tree = delete($self->{'_parsed_tree'}) || eval { $self->parse_tree(\$_[0]) };
-    if (my $err = $@) {
-        $err->str_ref(\$_[0]) if UNIVERSAL::can($err, 'str_ref') && ! $err->str_ref;
-        eval { die $err };
-        return '';
-    } elsif (my $file = $self->{'_store_tree'}) {
-        $self->{'_documents'}->{$file} = $tree;
-    }
-    return $_[0] if ! defined $tree;
-
     my $out = '';
-    eval { $self->execute_tree($tree, \$_[0], \$out) };
-    if ($@) {
-        die $@ if ! UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception');
-    }
+    eval {
+        my $tree = delete($self->{'_parsed_tree'}) || $self->parse_tree(\$_[0]);
+        if (my $file = $self->{'_store_tree'}) {
+            $self->{'_documents'}->{$file} = $tree;
+        }
+        return $_[0] if ! defined $tree;
 
-    return $out;
+        $self->execute_tree($tree, \$_[0], \$out);
+    };
+    return $out if ! $@;
+
+    my $err = $@;
+    $err = $self->exception('unknown', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
+    $err->str_ref(\$_[0]) if UNIVERSAL::can($err, 'str_ref') && ! $err->str_ref;
+    eval { die $err };
+    return $out; # some directives may get us here - but still contain content
 }
 
 sub parse_tree {
@@ -458,7 +458,7 @@ sub execute_tree {
             next;
         }
 
-        ### had a post operator - turn it inside out - TODO - we should probably do this to the original tree
+        ### had a post operator - turn it inside out - TODO - it would be nice to do this to the original tree
         if ($node->[7]) {
             while (my $post_node = delete $node->[7]) {
                 $post_node->[5] = [$node];
@@ -481,10 +481,9 @@ sub execute_tree {
         ### normal directive
         } else {
             $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $template_ref, $out_ref);
-            next if ! defined $val;
+            $$out_ref .= $val if defined $val;
         }
 
-        $$out_ref .= $val;
     }
 }
 
@@ -1416,6 +1415,15 @@ sub process {
     } else {
         if (! $self->{'no_cache'}) {
             $self->{'_parsed_tree'} = $self->{'_documents'}->{$in};
+            if (! $self->{'_parsed_tree'} && $self->{'COMPILE_DIR'} && $self->{'COMPILE_EXT'}) {
+                my $file = $self->{'COMPILE_DIR'} .'/'. $in . $self->{'COMPILE_EXT'} .'.sto';
+                if (-e $file && -M _ == -M $in) {
+                    require Storable;
+                    $self->{'_parsed_tree'} = Storable::retrieve($file);
+                } else {
+                    $self->{'_cache_file'} = $file;
+                }
+            }
             $self->{'_store_tree'}  = $in;
         }
         $content = $self->include_file($in);
@@ -1434,6 +1442,18 @@ sub process {
     my %keys = map {$_ => 1} @keys;
     delete @$stash{grep {!$keys{$_}} keys %$stash};
 
+    if (my $file = delete $self->{'_cache_file'}) {
+        my $dir = $file;
+        $dir =~ s|/[^/]+$||;
+        if (! -d $dir) {
+            require File::Path;
+            File::Path::mkpath($dir);
+        }
+        require Storable;
+        Storable::store($self->{'_documents'}->{$in}, $file);
+        my $mtime = (stat $in)[9];
+        utime $mtime, $mtime, $file;
+    }
 
     ### put it back out
     if (ref $out) {
