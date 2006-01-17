@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 297 - ($is_tt ? 40 : 0);
+use Test::More tests => 304 - ($is_tt ? 40 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -373,6 +373,16 @@ process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% LAST %][% END %][% f %
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% NEXT %][% END %][% END %]" => '123');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% LAST %][% END %][% END %]" => '1');
 
+###----------------------------------------------------------------###
+### while
+
+process_ok("[% WHILE foo %]" => '');
+process_ok("[% WHILE foo %][% END %]" => '');
+process_ok("[% WHILE (foo = foo - 1) %][% END %]" => '');
+process_ok("[% WHILE (foo = foo - 1) %][% foo %][% END %]" => '21', {foo => 3});
+process_ok("[% WHILE foo %][% foo %][% foo = foo - 1 %][% END %]" => '321', {foo => 3});
+
+process_ok("[% WHILE 1 %][% foo %][% foo = foo - 1 %][% LAST IF foo == 1 %][% END %]" => '32', {foo => 3});
 
 ###----------------------------------------------------------------###
 ### stop, return, clear
@@ -422,6 +432,8 @@ process_ok("[% f FOREACH f = a FOREACH [{a=>1}, {a=>2}, {a=>3}] %]" => '123')   
 
 process_ok("[% FOREACH f = [1..3] IF 1 %]([% f %])[% END %]" => '(1)(2)(3)')        if ! $is_tt;
 process_ok("[% FOREACH f = [1..3] IF 0 %]([% f %])[% END %]" => '')                 if ! $is_tt;
+
+process_ok("[% BLOCK bar %][% foo %][% foo = foo - 1 %][% END %][% PROCESS bar WHILE foo %]" => '321', {foo => 3});
 
 ###----------------------------------------------------------------###
 ### tags
