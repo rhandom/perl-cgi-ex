@@ -1,5 +1,11 @@
 package CGI::Ex::Template;
 
+=head1
+
+CGI::Ex::Template - Lightweight TT2 parser
+
+=cut
+
 use CGI::Ex::Dump qw(debug);
 use strict;
 use vars qw(@INCLUDE_PATH
@@ -22,7 +28,7 @@ BEGIN {
         star     => ['[*',   '*]'],  # TT alternate
         php      => ['<?',   '?>'],  # PHP
         asp      => ['<%',   '%>'],  # ASP
-        mason    => ['<%',   '>'],   # HTML::Mason
+        mason    => ['<%',   '>' ],  # HTML::Mason
         html     => ['<!--', '-->'], # HTML comments
     };
 
@@ -87,7 +93,7 @@ BEGIN {
         BLOCK   => {
             parse  => \&parse_BLOCK,
             play   => \&play_BLOCK,
-            end    => 1,
+            block  => 1,
         },
         BREAK   => { control => 1 },
         CALL    => {
@@ -95,6 +101,10 @@ BEGIN {
             play   => \&play_CALL,
         },
         CLEAR   => { control => 1 },
+        COMMENT => {
+            parse  => sub {},
+            play   => sub {},
+        },
         DEFAULT => {
             parse  => \&parse_DEFAULT,
             play   => \&play_DEFAULT,
@@ -103,17 +113,27 @@ BEGIN {
             parse  => \&parse_DUMP,
             play   => \&play_DUMP,
         },
-        END     => 1, # builtin that cannot be overridden
+        ELSE    => {
+            parse => sub {},
+            play  => sub {},
+            continue_block => {IF => 1, ELSIF => 1, UNLESS => 1},
+        },
+        ELSIF   => {
+            parse => \&parse_IF,
+            play  => sub {},
+            continue_block => {IF => 1, ELSIF => 1, UNLESS => 1},
+        },
+        END     => {}, # builtin that cannot be overridden
         FILTER  => {
             parse  => \&parse_FILTER,
             play   => \&play_FILTER,
-            end    => 1,
+            block  => 1,
             postop => 1,
         },
         FOREACH => {
             parse  => \&parse_FOREACH,
             play   => \&play_FOREACH,
-            end    => 1,
+            block  => 1,
             postop => 1,
         },
         GET     => {
@@ -123,7 +143,7 @@ BEGIN {
         IF      => {
             parse  => \&parse_IF,
             play   => \&play_IF,
-            end    => 1,
+            block  => 1,
             postop => 1,
         },
         INCLUDE => {
@@ -146,17 +166,17 @@ BEGIN {
             play   => \&play_SET,
         },
         STOP    => { control => 1 },
-        TAGS    => 1, # builtin that cannot be overridden
+        TAGS    => {}, # builtin that cannot be overridden
         WHILE => {
             parse  => \&parse_WHILE,
             play   => \&play_WHILE,
-            end    => 1,
+            block  => 1,
             postop => 1,
         },
         WRAPPER => {
             parse  => \&parse_WRAPPER,
             play   => \&play_WRAPPER,
-            end    => 1,
+            block  => 1,
         },
     };
 
@@ -207,8 +227,12 @@ sub swap {
     local $self->{'_state'} = {};
     local $self->{'_swap'}  = $_[1] || {};
 
-    my $tree = delete($self->{'_parsed_tree'}) || $self->parse_tree(\$_[0]);
-    if (my $file = $self->{'_store_tree'}) {
+    my $tree = delete($self->{'_parsed_tree'}) || eval { $self->parse_tree(\$_[0]) };
+    if (my $err = $@) {
+        $err->str_ref(\$_[0]) if UNIVERSAL::can($err, 'str_ref') && ! $err->str_ref;
+        eval { die $err };
+        return '';
+    } elsif (my $file = $self->{'_store_tree'}) {
         $self->{'_documents'}->{$file} = $tree;
     }
     return $_[0] if ! defined $tree;
@@ -216,7 +240,7 @@ sub swap {
     my $out = '';
     eval { $self->execute_tree($tree, \$_[0], \$out) };
     if ($@) {
-        die $@ if ! UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException');
+        die $@ if ! UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception');
     }
 
     return $out;
@@ -293,9 +317,9 @@ sub parse_tree {
             my $func = $level->[0] = $1;
             $tag =~ s{ ^ \w+ \s* }{}x;
             push @tree, $level if ! $postop;
-            if ($func eq 'END') {
+            if ($func eq 'END' || $DIRECTIVES->{$func}->{'continue_block'}) {
                 if ($#state == -1) {
-                    eval { die "Found an unmatched END tag" };
+                    eval { die $self->exception('parse', "Found an $func while not in a block", $level) };
                     return []; # return an empty parse tree
                 } else {
                     ### store any child nodes into the parent node
@@ -308,6 +332,22 @@ sub parse_tree {
                     my @sub_tree = splice @tree, $j + 1, $#tree - ($j + 1), (); # remove from main tree - but store
                     my $storage = $parent_level->[5] ||= [];
                     @$storage = @sub_tree;
+
+                    if ($DIRECTIVES->{$func}->{'continue_block'}) {
+                        my $parent_type = $parent_level->[0];
+                        if (! $DIRECTIVES->{$func}->{'continue_block'}->{$parent_type}) {
+                            die $self->exception('parse', "Found unmatched nested block", $level, 0);
+                        }
+                        $level->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
+                        if ($@) {
+                            $@->node($level) if UNIVERSAL::can($@, 'node') && ! $@->node;
+                            die $@;
+                        }
+                        $level->[4] = -1;
+                        $level->[5] = [];
+                        push @state, $level;
+                        $parent_level->[6] = $level;
+                    }
                 }
             } elsif ($func eq 'TAGS') {
                 if ($tag =~ / ^ (\w+) /x && $TAGS->{$1}) {
@@ -322,36 +362,35 @@ sub parse_tree {
             } elsif ($DIRECTIVES->{$func}->{'control'}) {
                 # do nothing
             } else {
-                if ($DIRECTIVES->{$func}->{'end'} && ! $postop) {
+                if ($DIRECTIVES->{$func}->{'block'} && ! $postop) {
                     $level->[4] = -1;
                     $level->[5] = [];
                     push @state, $level;
                 }
                 $level->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
-                if ($@) {
-                    if ($@ =~ /missing/i) {
-                        eval { die $@ };
-                        return [];
-                    }
-                    die $@;
+                if (my $err = $@) {
+                    $err->node($level) if UNIVERSAL::can($err, 'node') && ! $err->node;
+                    die $err;
                 }
-                $postop->[6] = $level if $postop;
+                $postop->[7] = $level if $postop;
             }
 
         ### allow for bare variable getting and setting
         } elsif (my $var = $self->parse_variable(\$tag)) {
             push @tree, $level;
             if ($tag =~ s{ ^ = \s* }{}x) {
-                my $val = $self->parse_variable(\$tag);
-                $tag =~ s{ ^ ; \s* }{}x;
-                my $SET = eval { $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, 'SET', $level) } || [];
+                eval {
+                    my $val = $self->parse_variable(\$tag);
+                    $tag =~ s{ ^ ; \s* }{}x;
+                    my $SET = $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, 'SET', $level) || [];
+                    unshift @$SET, [$var, $val];
+                    $level->[0] = 'SET';
+                    $level->[3] = $SET;
+                };
                 if ($@) {
-                    die if $@ !~ /missing/i;
-                    eval { die $@ };
+                    $@->node($level) if UNIVERSAL::can($@, 'node') && ! $@->node;
+                    die $@;
                 }
-                unshift @$SET, [$var, $val];
-                $level->[0] = 'SET';
-                $level->[3] = $SET;
             } else {
                 #die "Found trailing info during variable access \"$tag" if $tag;
                 $level->[0] = 'GET';
@@ -381,8 +420,7 @@ sub parse_tree {
     }
 
     if ($#state >  -1) {
-        eval { die "Missing END for ".$state[-1]->[0] };
-        return [];
+        die $self->exception('parse.missing.end', "Missing END", $state[-1], 0);
     }
     return undef if $#tree  == -1;
 
@@ -392,6 +430,12 @@ sub parse_tree {
     return \@tree;
 }
 
+sub exception {
+    my $self = shift;
+    my $pkg  = $self->{'exception_package'} || 'CGI::Ex::Template::Exception';
+    return $pkg->new(@_);
+}
+
 sub execute_tree {
     my ($self, $tree, $template_ref, $out_ref) = @_;
 
@@ -399,8 +443,10 @@ sub execute_tree {
     #                1: start_index,
     #                2: end_index,
     #                3: parsed tag details,
-    #                6: end block location
-    #                7: sub_tree for end blocks
+    #                4: start position marker for matching END directives
+    #                5: sub tree for block types
+    #                6: continuation sub trees for some block types
+    #                7: post operations holder
     my $val;
     for my $node (@$tree) {
         if ($node->[0] eq 'TEXT') {
@@ -412,16 +458,16 @@ sub execute_tree {
             next;
         }
 
-        ### had a post operator - turn it inside out - TODO - we should do this to the original tree
-        if ($node->[6]) {
-            while (my $post_node = delete $node->[6]) {
+        ### had a post operator - turn it inside out - TODO - we should probably do this to the original tree
+        if ($node->[7]) {
+            while (my $post_node = delete $node->[7]) {
                 $post_node->[5] = [$node];
                 $node = $post_node;
             }
         }
 
         ### allow for the null directives
-        if ($node->[0] eq 'END' || $node->[0] eq 'COMMENT' || $node->[0] eq 'TAGS') {
+        if ($node->[0] eq 'END' || $node->[0] eq 'TAGS') {
             next;
 
         ### allow for control directives
@@ -430,7 +476,7 @@ sub execute_tree {
                 $$out_ref = '';
                 next;
             }
-            die bless [$node->[0]], 'CGI::Ex::Template::ControlException';
+            die $self->exception($node->[0], 'Control exception', $node);
 
         ### normal directive
         } else {
@@ -459,7 +505,6 @@ sub parse_variable {
             my $name = $1;
             return [$name, 0];
         }
-
     }
 
     my @var;
@@ -506,7 +551,8 @@ sub parse_variable {
             push @$arrayref, $var;
             $copy =~ s{ ^ , \s* }{}x;
         }
-        $copy =~ s{ ^ \] \s* }{}x || die "Missing close \] on \"$copy\" $$str_ref";
+        $copy =~ s{ ^ \] \s* }{}x || die $self->exception('parse.missing.square', "Missing close \]", undef,
+                                                          length($$str_ref) - length($copy));
         push @var, \ $arrayref;
 
     ### looks like a hash constructor
@@ -519,14 +565,16 @@ sub parse_variable {
             push @$hashref, $key, $val;
             $copy =~ s{ ^ , \s* }{}x;
         }
-        $copy =~ s{ ^ \} \s* }{}x || die "Missing close \} on \"$copy\"";
+        $copy =~ s{ ^ \} \s* }{}x || die $self->exception('parse.missing.curly', "Missing close \}", undef,
+                                                          length($$str_ref) - length($copy));
         push @var, \ $hashref;
 
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* }{}x) {
         local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
         my $var = $self->parse_variable(\$copy);
-        $copy =~ s{ ^ \) \s* }{}x || die "Missing close \) on \"$copy\"";
+        $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
+                                                          length($$str_ref) - length($copy));
         @var = @$var;
         pop(@var); # pull off the trailing args of the paren group
 
@@ -547,7 +595,8 @@ sub parse_variable {
             push @args, $var;
             $copy =~ s{ ^ , \s* }{}x;
         }
-        $copy =~ s{ ^ \) \s* }{}x || die "Missing close \) on \"$copy\"";
+        $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
+                                                          length($$str_ref) - length($copy));
         push @var, \@args;
     } else {
         push @var, 0;
@@ -577,7 +626,8 @@ sub parse_variable {
                 push @args, $var;
                 $copy =~ s{ ^ , \s* }{}x;
             }
-            $copy =~ s{ ^ \) \s* }{}x || die "Missing close \) on \"$copy\"";
+            $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
+                                                              length($$str_ref) - length($copy));
             push @var, \@args;
         } else {
             push @var, 0;
@@ -979,10 +1029,27 @@ sub parse_IF {
 
 sub play_IF {
     my ($self, $var, $node, $template_ref, $out_ref) = @_;
+
     my $val = $self->vivify_variable($var);
     if ($val) {
         my $body_ref = $node->[5] ||= [];
         $self->execute_tree($body_ref, $template_ref, $out_ref);
+        return;
+    }
+
+    while ($node = $node->[6]) { # ELSE, ELSIF's
+        if ($node->[0] eq 'ELSE') {
+            my $body_ref = $node->[5] ||= [];
+            $self->execute_tree($body_ref, $template_ref, $out_ref);
+            return;
+        }
+        my $var = $node->[3];
+        my $val = $self->vivify_variable($var);
+        if ($val) {
+            my $body_ref = $node->[5] ||= [];
+            $self->execute_tree($body_ref, $template_ref, $out_ref);
+            return;
+        }
     }
     return;
 }
@@ -1045,7 +1112,7 @@ sub play_FILTER {
     ### play the block
     my $out = '';
     eval { $self->execute_tree($sub_tree, $template_ref, \$out) };
-    die $@ if $@ && ! UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException');
+    die $@ if $@ && ! UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception');
 
     my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
 
@@ -1104,9 +1171,9 @@ sub play_FOREACH {
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
         if ($@) {
-            if (UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException')) {
+            if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
                 next if $@->[0] =~ /NEXT/;
-                last if $@->[0] =~ /LAST/;
+                last if $@->[0] =~ /LAST|BREAK/;
             }
             die $@;
         }
@@ -1163,7 +1230,7 @@ sub play_PROCESS {
         eval { $self->execute_tree($body_ref, $template_ref, \$out) };
         $$out_ref .= $out;
         if ($@) {
-            die $@ if ! UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException');
+            die $@ if ! UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception');
             die $@ if $@->[0] !~ /RETURN/;
         } else {
             return;
@@ -1262,9 +1329,9 @@ sub play_WHILE {
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
         if ($@) {
-            if (UNIVERSAL::isa($@, 'CGI::Ex::Template::ControlException')) {
+            if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
                 next if $@->[0] =~ /NEXT/;
-                last if $@->[0] =~ /LAST/;
+                last if $@->[0] =~ /LAST|BREAK/;
             }
             die $@;
         }
@@ -1398,6 +1465,45 @@ sub process {
     }
 
     return 1;
+}
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::Exception;
+
+use overload '""' => \&as_string;
+use overload bool => sub { defined shift };
+
+sub new {
+    my ($class, $type, $msg, $node, $pos, $str_ref) = @_;
+    return bless [$type, $msg, $node, $pos, $str_ref], $class;
+}
+
+sub type { shift->[0] }
+
+sub msg { shift->[1] || '' }
+
+sub node {
+    my $self = shift;
+    $self->[2] = shift if $#_ == 0;
+    $self->[2];
+}
+
+sub offset { shift->[3] || 0 }
+
+sub str_ref {
+    my $self = shift;
+    $self->[4] = shift if $#_ == 0;
+    $self->[4];
+}
+
+sub as_string {
+    my $self = shift;
+    my $msg  = $self->type .' - '. $self->msg;
+    if (my $node = $self->node) {
+        $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
+    }
+    return "$msg\n";
 }
 
 ###----------------------------------------------------------------###
