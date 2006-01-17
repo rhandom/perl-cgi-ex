@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 317 - ($is_tt ? 40 : 0);
+use Test::More tests => 327 - ($is_tt ? 42 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -461,3 +461,18 @@ process_ok("[% SWITCH 1 %][% CASE 1 %]bar[% END %]hi" => 'barhi');
 process_ok("[% SWITCH 1 %][% CASE foo %][% CASE 1 %]bar[% END %]hi" => 'barhi');
 process_ok("[% SWITCH 1 %][% CASE [1..10] %]bar[% END %]hi" => 'barhi');
 process_ok("[% SWITCH 11 %][% CASE [1..10] %]bar[% END %]hi" => 'hi');
+
+process_ok("[% SWITCH 1.0 %][% CASE [1..10] %]bar[% END %]hi" => 'barhi');
+process_ok("[% SWITCH '1.0' %][% CASE [1..10] %]bar[% END %]hi" => 'barhi') if ! $is_tt;
+
+###----------------------------------------------------------------###
+### try/throw/catch/final
+
+process_ok("[% TRY %][% END %]hi" => 'hi');
+process_ok("[% TRY %]Foo[% END %]hi" => 'Foohi');
+process_ok("[% TRY %]Foo[% THROW foo 'for fun' %]bar[% END %]hi" => '');
+process_ok("[% TRY %]Foo[% THROW foo 'for fun' %]bar[% CATCH %][% END %]hi" => 'Foohi') if ! $is_tt;
+process_ok("[% TRY %]Foo[% THROW foo 'for fun' %]bar[% CATCH %]there[% END %]hi" => 'Footherehi');
+process_ok("[% TRY %]Foo[% THROW foo 'for fun' %]bar[% CATCH foo %]there[% END %]hi" => 'Footherehi');
+process_ok("[% TRY %]Foo[% TRY %]Foo[% THROW foo 'for fun' %][% CATCH bar %]one[% END %][% CATCH %]two[% END %]hi" => 'FooFootwohi');
+process_ok("[% TRY %]Foo[% TRY %]Foo[% THROW foo 'for fun' %][% CATCH bar %]one[% END %][% CATCH s %]two[% END %]hi" => '');
