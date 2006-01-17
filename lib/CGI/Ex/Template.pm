@@ -323,7 +323,7 @@ sub swap {
     die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
     $err->str_ref(\$_[0]);
     eval { die $err };
-    return '' if $err->type !~ /STOP|RETURN/;
+    return '' if $err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/;
     return $out; # some directives may get us here - but still contain content
 }
 
