@@ -223,23 +223,73 @@ sub new {
 
 sub swap {
     my $self = shift;
-
+    my $file = shift;
+    my $tree;
+    my $str_ref;
+    local $self->{'_swap'}  = shift || {};
     local $self->{'_state'} = {};
-    local $self->{'_swap'}  = $_[1] || {};
 
+
+    ### look for cached components
+    my $store_file;
+    if (ref $file) {
+        $str_ref = $file;
+        undef $file;
+
+    } elsif ($self->{'_documents'}->{$file}) {
+        ($str_ref, $tree) = @{ $self->{'_documents'}->{$file} };
+
+    } else {
+        my $content = $self->include_file($file);
+        $str_ref = \$content;
+
+        if ($self->{'COMPILE_DIR'} && $self->{'COMPILE_EXT'}) {
+            $store_file = $self->{'COMPILE_DIR'} .'/'. $file . $self->{'COMPILE_EXT'} .'.sto';
+            if (-e $store_file && -M _ == -M $file) {
+                require Storable;
+                $tree = Storable::retrieve($store_file);
+                undef $store_file;
+            }
+        }
+    }
+
+
+    ### parse and execute
     my $out = '';
     eval {
-        my $tree = delete($self->{'_parsed_tree'}) || $self->parse_tree(\$_[0]);
-        if (my $file = $self->{'_store_tree'}) {
-            $self->{'_documents'}->{$file} = $tree;
+        $tree ||= $self->parse_tree($str_ref) || [];
+        if ($#$tree == -1) {
+            $out = $$str_ref;
+        } else {
+            $self->execute_tree($tree, $str_ref, \$out);
         }
-        return $_[0] if ! defined $tree;
-
-        $self->execute_tree($tree, \$_[0], \$out);
     };
+
+    if ($file && ! $self->{'no_cache'}) {
+        $self->{'_documents'}->{$file} ||= [$str_ref, $tree];
+    }
+
+
+    ### save a cache as asked
+    if ($store_file && $tree) {
+        my $dir = $store_file;
+        $dir =~ s|/[^/]+$||;
+        if (! -d $dir) {
+            require File::Path;
+            File::Path::mkpath($dir);
+        }
+        require Storable;
+        Storable::store($tree, $store_file);
+        my $mtime = (stat $file)[9];
+        utime $mtime, $mtime, $store_file;
+    }
+
+    ### all good
     return $out if ! $@;
 
+    ### handle exceptions
     my $err = $@;
+
     $err = $self->exception('unknown', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
     $err->str_ref(\$_[0]) if UNIVERSAL::can($err, 'str_ref') && ! $err->str_ref;
     eval { die $err };
@@ -249,7 +299,9 @@ sub swap {
 sub parse_tree {
     my $self    = shift;
     my $str_ref = shift;
-    return [] if ! $str_ref || ! defined $$str_ref;
+    if (! $str_ref || ! defined $$str_ref) {
+        die $self->exception('parse.no_string', "No string or undefined during parse");
+    }
 
     my $STYLE = $self->{'TAG_STYLE'} || 'template';
     my $START = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
@@ -319,8 +371,7 @@ sub parse_tree {
             push @tree, $level if ! $postop;
             if ($func eq 'END' || $DIRECTIVES->{$func}->{'continue_block'}) {
                 if ($#state == -1) {
-                    eval { die $self->exception('parse', "Found an $func while not in a block", $level) };
-                    return []; # return an empty parse tree
+                    die $self->exception('parse', "Found an $func while not in a block", $level);
                 } else {
                     ### store any child nodes into the parent node
                     my $parent_level = pop @state;
@@ -1229,20 +1280,13 @@ sub play_PROCESS {
         eval { $self->execute_tree($body_ref, $template_ref, \$out) };
         $$out_ref .= $out;
         if ($@) {
-            die $@ if ! UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception');
-            die $@ if $@->[0] !~ /RETURN/;
-        } else {
-            return;
+            my $err = $@;
+            die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
         }
+        return;
     }
 
-    my $str = eval { $self->include_file($filename) };
-    die $@ if $@ && $filename !~ /^\w+$/;
-    return if ! defined $str;
-
-    local $self->{'_parsed_tree'} = $self->{'no_cache'} ? undef : $self->{'_documents'}->{$filename};
-
-    $str = $self->swap($str, $self->{'_swap'}); # restart the swap - passing it our current stash
+    my $str = $self->swap($filename, $self->{'_swap'}); # restart the swap - passing it our current stash
 
     $self->{'state'}->{'recurse'} --;
 
@@ -1402,31 +1446,20 @@ sub process {
 
     ### get the content
     my $content;
-    my $store_tree;
     if (ref $in) {
         if (UNIVERSAL::isa($in, 'SCALAR')) { # reference to a string
-            $content = $$in;
+            $content = $in;
         } elsif (UNIVERSAL::isa($in, 'CODE')) {
             $content = $in->();
+            $content = \$content;
         } else { # should be a file handle
             local $/ = undef;
             $content = <$in>;
+            $content = \$content;
         }
     } else {
-        if (! $self->{'no_cache'}) {
-            $self->{'_parsed_tree'} = $self->{'_documents'}->{$in};
-            if (! $self->{'_parsed_tree'} && $self->{'COMPILE_DIR'} && $self->{'COMPILE_EXT'}) {
-                my $file = $self->{'COMPILE_DIR'} .'/'. $in . $self->{'COMPILE_EXT'} .'.sto';
-                if (-e $file && -M _ == -M $in) {
-                    require Storable;
-                    $self->{'_parsed_tree'} = Storable::retrieve($file);
-                } else {
-                    $self->{'_cache_file'} = $file;
-                }
-            }
-            $self->{'_store_tree'}  = $in;
-        }
-        $content = $self->include_file($in);
+        ### should be a filename
+        $content = $in;
     }
 
     ### localize the stash
@@ -1441,19 +1474,6 @@ sub process {
     ### remove items added to stash
     my %keys = map {$_ => 1} @keys;
     delete @$stash{grep {!$keys{$_}} keys %$stash};
-
-    if (my $file = delete $self->{'_cache_file'}) {
-        my $dir = $file;
-        $dir =~ s|/[^/]+$||;
-        if (! -d $dir) {
-            require File::Path;
-            File::Path::mkpath($dir);
-        }
-        require Storable;
-        Storable::store($self->{'_documents'}->{$in}, $file);
-        my $mtime = (stat $in)[9];
-        utime $mtime, $mtime, $file;
-    }
 
     ### put it back out
     if (ref $out) {
