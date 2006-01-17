@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 308 - ($is_tt ? 40 : 0);
+use Test::More tests => 317 - ($is_tt ? 40 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -448,3 +448,16 @@ process_ok("[% TAGS html %] <!--- 1 + 2 -->" => '3');
 process_ok("[% TAGS html %]<!-- 1 + 2 ---> " => '3') if ! $is_tt;
 process_ok("[% TAGS html %]<!-- 1 + 2 --->\n" => '3');
 process_ok("[% BLOCK foo %][% TAGS html %]<!-- 1 + 2 -->[% END %][% PROCESS foo %] [% 1 + 2 %]" => '');
+
+###----------------------------------------------------------------###
+### switch
+
+process_ok("[% SWITCH 1 %][% END %]hi" => 'hi');
+process_ok("[% SWITCH 1 %][% CASE %]bar[% END %]hi" => 'barhi');
+process_ok("[% SWITCH 1 %]Pre[% CASE %]bar[% END %]hi" => 'barhi');
+process_ok("[% SWITCH 1 %][% CASE DEFAULT %]bar[% END %]hi" => 'barhi');
+process_ok("[% SWITCH 1 %][% CASE 0 %]bar[% END %]hi" => 'hi');
+process_ok("[% SWITCH 1 %][% CASE 1 %]bar[% END %]hi" => 'barhi');
+process_ok("[% SWITCH 1 %][% CASE foo %][% CASE 1 %]bar[% END %]hi" => 'barhi');
+process_ok("[% SWITCH 1 %][% CASE [1..10] %]bar[% END %]hi" => 'barhi');
+process_ok("[% SWITCH 11 %][% CASE [1..10] %]bar[% END %]hi" => 'hi');
