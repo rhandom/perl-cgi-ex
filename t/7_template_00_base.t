@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 327 - ($is_tt ? 42 : 0);
+use Test::More tests => 328 - ($is_tt ? 42 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -476,3 +476,4 @@ process_ok("[% TRY %]Foo[% THROW foo 'for fun' %]bar[% CATCH %]there[% END %]hi"
 process_ok("[% TRY %]Foo[% THROW foo 'for fun' %]bar[% CATCH foo %]there[% END %]hi" => 'Footherehi');
 process_ok("[% TRY %]Foo[% TRY %]Foo[% THROW foo 'for fun' %][% CATCH bar %]one[% END %][% CATCH %]two[% END %]hi" => 'FooFootwohi');
 process_ok("[% TRY %]Foo[% TRY %]Foo[% THROW foo 'for fun' %][% CATCH bar %]one[% END %][% CATCH s %]two[% END %]hi" => '');
+process_ok("[% TRY %]Foo[% THROW foo.bar 'for fun' %][% CATCH foo %]one[% CATCH foo.bar %]two[% END %]hi" => 'Footwohi');
