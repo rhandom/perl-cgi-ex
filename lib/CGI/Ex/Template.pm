@@ -574,10 +574,10 @@ sub execute_tree {
 sub parse_variable {
     my $self    = shift;
     my $str_ref = shift;
-    my $args    = shift || {};
+    my $ARGS    = shift || {};
 
     ### allow for custom auto_quoting (such as hash constructors)
-    if (my $quote_qr = $args->{'auto_quote'}) {
+    if (my $quote_qr = $ARGS->{'auto_quote'}) {
         if ($$str_ref =~ s{ ^ ($quote_qr) \s* (?! \.) }{}x) { # auto-quoted - not followed by a dot
             my $str = $1;
             return [\$str, 0];
@@ -671,14 +671,10 @@ sub parse_variable {
     ### looks for args for the initial
     if ($copy =~ s{ ^ \( \s* }{}x) {
         local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
-        my @args;
-        while (my $var = $self->parse_variable(\$copy)) {
-            push @args, $var;
-            $copy =~ s{ ^ , \s* }{}x;
-        }
+        my $args = $self->parse_args(\$copy);
         $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
                                                           length($$str_ref) - length($copy));
-        push @var, \@args;
+        push @var, $args;
     } else {
         push @var, 0;
     }
@@ -702,14 +698,10 @@ sub parse_variable {
         ### looks for args for the nested item
         if ($copy =~ s{ ^ \( \s* }{}x) {
             local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
-            my @args;
-            while (my $var = $self->parse_variable(\$copy)) {
-                push @args, $var;
-                $copy =~ s{ ^ , \s* }{}x;
-            }
+            my $args = $self->parse_args(\$copy);
             $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
                                                               length($$str_ref) - length($copy));
-            push @var, \@args;
+            push @var, $args;
         } else {
             push @var, 0;
         }
@@ -946,6 +938,19 @@ sub vivify_variable {
     return $ref;
 }
 
+sub parse_args {
+    my $self    = shift;
+    my $str_ref = shift;
+    my $ARGS    = shift || {};
+
+    my @args;
+    while (my $var = $self->parse_variable($str_ref)) {
+        push @args, $var;
+        $$str_ref =~ s{ ^ , \s* }{}x;
+    }
+    return \@args;
+}
+
 sub vivify_args {
     my $self = shift;
     my $vars = shift;
@@ -1077,11 +1082,7 @@ sub parse_CASE {
 
 sub parse_CATCH {
     my ($self, $tag_ref) = @_;
-    my $name;
-    if ($$tag_ref =~ s/ ^ (\w+) \s* //x) {
-        $name = $1;
-    }
-    return $name;
+    return $self->parse_variable($tag_ref, {auto_quote => qr/\w+ (?: \.\w+)*/x});
 }
 
 sub parse_DEFAULT {
@@ -1414,11 +1415,9 @@ sub play_SWITCH {
 }
 
 sub parse_THROW {
-    my ($self, $tag_ref) = @_;
-    my $name;
-    if ($$tag_ref =~ s/ ^ (\w+) \s* //x) {
-        $name = $1;
-    }
+    my ($self, $tag_ref, $func, $node) = @_;
+    my $name = $self->parse_variable($tag_ref, {auto_quote => qr/\w+ (?: \.\w+)*/x});
+    die $self->exception('parse.missing', "Missing name in THROW", $node) if ! $name;
     my $msg  = $self->parse_variable($tag_ref);
     return [$name, $msg];
 }
@@ -1426,6 +1425,7 @@ sub parse_THROW {
 sub play_THROW {
     my ($self, $ref, $node) = @_;
     my ($name, $info) = @$ref;
+    $name = $self->vivify_variable($name);
     die $self->exception($name, $info, $node);
 }
 
@@ -1443,16 +1443,24 @@ sub play_TRY {
         die $self->exception('parse.missing', "Missing CATCH block", $node);
     }
 
+    my $body_ref;
+    my $last_found;
+    my $type = $err->type;
     while ($node = $node->[6]) { # CATCH
-        my $name = $node->[3];
-        if (! defined($name) || ! length($name) || $name eq $err->type) {
-            my $body_ref = $node->[5] ||= [];
-            $self->execute_tree($body_ref, $template_ref, $out_ref);
-            return;
+        my $name = $self->vivify_variable($node->[3]);
+        $name = '' if ! defined $name;
+        if ($type =~ / ^ \Q$name\E \b /x
+            && (! defined($last_found) || length($last_found) < length($name))) { # more specific wins
+            $body_ref   = $node->[5] || [];
+            $last_found = $name;
         }
     }
 
-    die $err;
+    die $err if ! $body_ref;
+
+    local $self->{'_swap'}->{'error'} = $err;
+    $self->execute_tree($body_ref, $template_ref, $out_ref);
+    return;
 }
 
 sub parse_WHILE {
