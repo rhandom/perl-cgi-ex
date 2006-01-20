@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 328 - ($is_tt ? 42 : 0);
+use Test::More tests => 329 - ($is_tt ? 42 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -376,6 +376,8 @@ process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% NEXT %][% END %][% f %
 process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% LAST %][% END %][% f %][% END %]" => '');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% NEXT %][% END %][% END %]" => '123');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% LAST %][% END %][% END %]" => '1');
+
+process_ok("[% foo = 1 %][% FOREACH [1..10] %][% foo %][% foo = 2 %][% END %]" => '1222222222');
 
 ###----------------------------------------------------------------###
 ### while
