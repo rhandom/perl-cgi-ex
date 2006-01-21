@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 334 - ($is_tt ? 43 : 0);
+use Test::More tests => 346 - ($is_tt ? 44 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -26,6 +26,7 @@ sub process_ok { # process the value
     my $line = (caller)[2];
     warn "#   process_ok called at line $line.\n" if ! $ok;
     print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
+    print $obj->error if ! $ok && $obj->can('error');
     exit if ! $ok;
 }
 
@@ -372,7 +373,6 @@ process_ok("[% FOREACH f = [1..3] %]bar[% f %][% END %]" => 'bar1bar2bar3');
 process_ok("[% FOREACH f = [{a=>'A'},{a=>'B'}] %]bar[% f.a %][% END %]" => 'barAbarB');
 process_ok("[% FOREACH [{a=>'A'},{a=>'B'}] %]bar[% a %][% END %]" => 'barAbarB');
 process_ok("[% FOREACH [{a=>'A'},{a=>'B'}] %]bar[% a %][% END %][% a %]" => 'barAbarB');
-process_ok("[% FOREACH [1] %][% SET a = 1 %][% END %][% a %]" => '');
 process_ok("[% FOREACH f = [1..3] %][% loop.count %]/[% loop.size %] [% END %]" => '1/3 2/3 3/3 ');
 process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% f %][% END %][% END %]" => '1');
 process_ok("[% FOREACH f = [1..3] %][% IF loop.last %][% f %][% END %][% END %]" => '3');
@@ -381,7 +381,24 @@ process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% LAST %][% END %][% f %
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% NEXT %][% END %][% END %]" => '123');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% LAST %][% END %][% END %]" => '1');
 
+### TT is not consistent in what is localized - well it is documented
+### if you set a variable in the FOREACH tag, then nothing in the loop gets localized
+### if you don't set a variable - everything gets localized
 process_ok("[% foo = 1 %][% FOREACH [1..10] %][% foo %][% foo = 2 %][% END %]" => '1222222222');
+process_ok("[% f = 1 %][% FOREACH i = [1..10] %][% i %][% f = 2 %][% END %][% f %]" => '123456789102');
+process_ok("[% f = 1 %][% FOREACH [1..10] %][% f = 2 %][% END %][% f %]" => '1');
+process_ok("[% f = 1 %][% FOREACH f = [1..10] %][% f %][% END %][% f %]" => '1234567891010');
+process_ok("[% FOREACH [1] %][% SET a = 1 %][% END %][% a %]" => '');
+process_ok("[% a %][% FOREACH [1] %][% SET a = 1 %][% END %][% a %]" => '');
+process_ok("[% a = 2 %][% FOREACH [1] %][% SET a = 1 %][% END %][% a %]" => '2');
+process_ok("[% a = 2 %][% FOREACH [1] %][% a = 1 %][% END %][% a %]" => '2');
+process_ok("[% a = 2 %][% FOREACH i = [1] %][% a = 1 %][% END %][% a %]" => '1');
+process_ok("[% FOREACH i = [1] %][% SET a = 1 %][% END %][% a %]" => '1');
+process_ok("[% f.b = 1 %][% FOREACH f.b = [1..10] %][% f.b %][% END %][% f.b %]" => '1234567891010') if ! $is_tt;
+process_ok("[% a = 1 %][% FOREACH [{a=>'A'},{a=>'B'}] %]bar[% a %][% END %][% a %]" => 'barAbarB1');
+process_ok("[% FOREACH [1..3] %][% loop.size %][% END %][% loop.size %]" => '333');
+process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '3333') if ! $is_tt;
+process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '3331') if $is_tt;
 
 ###----------------------------------------------------------------###
 ### while
