@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 329 - ($is_tt ? 42 : 0);
+use Test::More tests => 334 - ($is_tt ? 43 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -276,6 +276,10 @@ process_ok("[% 1 + 2 + 3 %]" => 6);
 process_ok("[% (1 + 2) %]" => 3);
 process_ok("[% 2 - 1 %]" => 1);
 process_ok("[% -1 + 2 %]" => 1);
+process_ok("[% -1+2 %]" => 1);
+process_ok("[% 2 - 1 %]" => 1);
+process_ok("[% 2-1 %]" => 1) if ! $is_tt;
+process_ok("[% 2 - -1 %]" => 3);
 process_ok("[% 4 * 2 %]" => 8);
 process_ok("[% 4 / 2 %]" => 2);
 process_ok("[% 2 ** 3 %]" => 8) if ! $is_tt;
@@ -389,6 +393,7 @@ process_ok("[% WHILE (foo = foo - 1) %][% foo %][% END %]" => '21', {foo => 3});
 process_ok("[% WHILE foo %][% foo %][% foo = foo - 1 %][% END %]" => '321', {foo => 3});
 
 process_ok("[% WHILE 1 %][% foo %][% foo = foo - 1 %][% LAST IF foo == 1 %][% END %]" => '32', {foo => 3});
+process_ok("[% f = 10; WHILE f; f = f - 1 ; f ; END %]" => '9876543210');
 
 ###----------------------------------------------------------------###
 ### stop, return, clear
