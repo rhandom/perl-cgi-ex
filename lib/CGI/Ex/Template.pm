@@ -1178,17 +1178,19 @@ sub play_FOREACH {
     my $prev_val = defined($var) ? $self->vivify_variable($var) : undef;
     my $sub_tree = $node->[5];
 
+    ### localize variable access for the foreach
+    my $stash = $self->{'_swap'};
+    my @keys  = keys %$stash;
+    my %keys = map {$_ => 1} @keys;
+    local @$stash{@keys} = values %$stash;
+    $stash->{'loop'} = $items if $set_loop;
+
     ### iterate use the iterator object
     my $vals = $items->items;
-    foreach (my $i = $items->index; $i <= $#$vals; $items->index(++ $i)) {
+    #foreach (my $i = $items->index; $i <= $#$vals; $items->index(++ $i)) {
+    foreach my $i ($items->index .. $#$vals) {
+        $items->index($i);
         my $item = $vals->[$i];
-
-        ### localize variable access for the foreach
-        my $stash = $self->{'_swap'};
-        my @keys  = keys %$stash;
-        local @$stash{@keys} = values %$stash;
-
-        $stash->{'loop'} = $items if $set_loop;
 
         ### update vars as needed
         if (defined $var) {
@@ -1207,14 +1209,16 @@ sub play_FOREACH {
                 next if $@->[0] =~ /NEXT/;
                 last if $@->[0] =~ /LAST|BREAK/;
             }
+            delete @$stash{grep {!$keys{$_}} keys %$stash};
             die $@;
         }
 
 
-        ### remove items added to stash during this run
-        my %keys = map {$_ => 1} @keys;
-        delete @$stash{grep {!$keys{$_}} keys %$stash};
     }
+
+    ### remove items added to stash during this run
+    delete @$stash{grep {!$keys{$_}} keys %$stash};
+
     $self->vivify_variable($var, {
         set_var => 1,
         var_val => $prev_val,
@@ -1314,9 +1318,9 @@ sub play_PROCESS {
     return undef if ! $var;
     my $filename = $self->vivify_variable($var);
 
-    $self->{'state'}->{'recurse'} ||= 0;
-    $self->{'state'}->{'recurse'} ++;
-    if ($self->{'state'}->{'recurse'} >= $MAX_RECURSE) {
+    $self->{'_state'}->{'recurse'} ||= 0;
+    $self->{'_state'}->{'recurse'} ++;
+    if ($self->{'_state'}->{'recurse'} >= $MAX_RECURSE) {
         my $func = $node->[0];
         die "MAX_RECURSE $MAX_RECURSE reached during $func on $filename";
     }
@@ -1330,12 +1334,13 @@ sub play_PROCESS {
             my $err = $@;
             die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
         }
+        $self->{'_state'}->{'recurse'} --;
         return;
     }
 
     my $str = $self->swap($filename, $self->{'_swap'}); # restart the swap - passing it our current stash
 
-    $self->{'state'}->{'recurse'} --;
+    $self->{'_state'}->{'recurse'} --;
 
     $$out_ref .= $str if defined $str;
     return;
@@ -1443,7 +1448,7 @@ sub play_TRY {
         die $self->exception('parse.missing', "Missing CATCH block", $node);
     }
 
-    my $body_ref;
+    my $catch_body_ref;
     my $last_found;
     my $type = $err->type;
     while ($node = $node->[6]) { # CATCH
@@ -1451,15 +1456,15 @@ sub play_TRY {
         $name = '' if ! defined $name;
         if ($type =~ / ^ \Q$name\E \b /x
             && (! defined($last_found) || length($last_found) < length($name))) { # more specific wins
-            $body_ref   = $node->[5] || [];
-            $last_found = $name;
+            $catch_body_ref = $node->[5] || [];
+            $last_found     = $name;
         }
     }
 
-    die $err if ! $body_ref;
+    die $err if ! $catch_body_ref;
 
     local $self->{'_swap'}->{'error'} = $err;
-    $self->execute_tree($body_ref, $template_ref, $out_ref);
+    $self->execute_tree($catch_body_ref, $template_ref, $out_ref);
     return;
 }
 
@@ -1531,12 +1536,10 @@ sub play_WRAPPER {
     my ($self, $var, $node, $template_ref, $out_ref) = @_;
     my $sub_tree = $node->[5] || return;
 
-    local $self->{'_swap'}->{'content'} = sub {
-        my $out = '';
-        $self->execute_tree($sub_tree, $template_ref, \$out);
-        return $out;
-    };
+    my $out = '';
+    $self->execute_tree($sub_tree, $template_ref, \$out);
 
+    local $self->{'_swap'}->{'content'} = $out;
     return $DIRECTIVES->{'INCLUDE'}->{'play'}->(@_)
 }
 
