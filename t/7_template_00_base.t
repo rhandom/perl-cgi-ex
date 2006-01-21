@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 346 - ($is_tt ? 44 : 0);
+use Test::More tests => 359 - ($is_tt ? 44 : 0);
 use Data::Dumper qw(Dumper);
 
 
@@ -336,6 +336,12 @@ process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
 process_ok("[% PROCESS foo %][% BLOCK foo %]hi there[% END %]" => 'hi there');
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo %]" => 'hi ONE there', {one => 'ONE'});
 process_ok("[% BLOCK foo %]hi [% IF 1 %]Yes[% END %] there[% END %]<<[% PROCESS foo %]>>" => '<<hi Yes there>>');
+process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo one = 'two' %]" => 'hi two there');
+process_ok("[% BLOCK foo %]hi [% one.two %] there[% END %][% PROCESS foo one.two = 'two' %]" => 'hi two there');
+process_ok("[% BLOCK foo %]hi [% one.two %] there[% END %][% PROCESS foo + foo one.two = 'two' %]" => 'hi two there'x2);
+
+process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo one = 'two' %][% one %]" => 'hi two theretwo');
+process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% INCLUDE foo one = 'two' %][% one %]" => 'hi two there');
 
 ###----------------------------------------------------------------###
 ### if/unless/elsif/else
@@ -411,6 +417,13 @@ process_ok("[% WHILE foo %][% foo %][% foo = foo - 1 %][% END %]" => '321', {foo
 
 process_ok("[% WHILE 1 %][% foo %][% foo = foo - 1 %][% LAST IF foo == 1 %][% END %]" => '32', {foo => 3});
 process_ok("[% f = 10; WHILE f; f = f - 1 ; f ; END %]" => '9876543210');
+process_ok("[% f = 10; WHILE f; f = f - 1 ; f ; END ; f %]" => '98765432100');
+process_ok("[% f = 10 a = 2; WHILE f; f = f - 1 ; f ; a=3; END ; a%]" => '98765432103');
+
+process_ok("[% f = 10; WHILE (g=f); f = f - 1 ; f ; END %]" => '9876543210');
+process_ok("[% f = 10; WHILE (g=f); f = f - 1 ; f ; END ; f %]" => '98765432100');
+process_ok("[% f = 10 a = 2; WHILE (g=f); f = f - 1 ; f ; a=3; END ; a%]" => '98765432103');
+process_ok("[% f = 10 a = 2; WHILE (a=f); f = f - 1 ; f ; a=3; END ; a%]" => '98765432100');
 
 ###----------------------------------------------------------------###
 ### stop, return, clear
@@ -501,3 +514,9 @@ process_ok("[% TRY %]Foo[% THROW foo 'for fun' %]bar[% CATCH foo %]there[% END %
 process_ok("[% TRY %]Foo[% TRY %]Foo[% THROW foo 'for fun' %][% CATCH bar %]one[% END %][% CATCH %]two[% END %]hi" => 'FooFootwohi');
 process_ok("[% TRY %]Foo[% TRY %]Foo[% THROW foo 'for fun' %][% CATCH bar %]one[% END %][% CATCH s %]two[% END %]hi" => '');
 process_ok("[% TRY %]Foo[% THROW foo.bar 'for fun' %][% CATCH foo %]one[% CATCH foo.bar %]two[% END %]hi" => 'Footwohi');
+
+###----------------------------------------------------------------###
+### named args
+
+process_ok("[% foo(bar = 'one', baz = 'two') %]" => "barbazonetwo", {foo=>sub{my $n=$_[-1];join('',keys %$n, values %$n)}});
+process_ok("[%bar='ONE'%][% foo(\$bar = 'one') %]" => "ONEone", {foo=>sub{my $n=$_[-1];join('',keys %$n, values %$n)}});
