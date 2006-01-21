@@ -959,7 +959,7 @@ sub vivify_variable {
 
     #debug $ref;
 
-    if ($ARGS->{'list_context'} && $generated_list && UNIVERSAL::isa($ref, 'ARRAY')) {
+    if ($generated_list && $ARGS->{'list_context'} && UNIVERSAL::isa($ref, 'ARRAY')) {
         return @$ref;
     }
     return $ref;
@@ -1202,54 +1202,66 @@ sub play_FOREACH {
     my ($var, $items) = @$ref;
     $items = $self->vivify_variable($items);
     return '' if ! defined $items;
-    my $set_loop;
+
     if (! UNIVERSAL::isa($items, 'CGI::Ex::Template::Iterator')) {
         $items = CGI::Ex::Template::Iterator->new($items);
-        $set_loop = 1;
     }
 
-    my $prev_val = defined($var) ? $self->vivify_variable($var) : undef;
     my $sub_tree = $node->[5];
+    my $vals     = $items->items;
 
-    ### localize variable access for the foreach
-    my $swap = $self->{'_swap'};
-    local $self->{'_swap'} = my $copy = {%$swap};
-    $copy->{'loop'} = $items if $set_loop;
+    ### if the FOREACH tag sets a var - then nothing gets localized
+    if (defined $var) {
+        $self->{'_swap'}->{'loop'} = $items;
+        foreach my $i ($items->index .. $#$vals) {
+            $items->index($i);
+            my $item = $vals->[$i];
 
-    ### iterate use the iterator object
-    my $vals = $items->items;
-    #foreach (my $i = $items->index; $i <= $#$vals; $items->index(++ $i)) {
-    foreach my $i ($items->index .. $#$vals) {
-        $items->index($i);
-        my $item = $vals->[$i];
-
-        ### update vars as needed
-        if (defined $var) {
             $self->vivify_variable($var, {
                 set_var => 1,
                 var_val => $item,
             });
-        } elsif (ref($item) eq 'HASH') {
-            @$copy{keys %$item} = values %$item;
-        }
 
-        ### execute the sub tree
-        eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
-        if ($@) {
-            if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
-                next if $@->[0] =~ /NEXT/;
-                last if $@->[0] =~ /LAST|BREAK/;
+            ### execute the sub tree
+            eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
+            if ($@) {
+                if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
+                    next if $@->[0] =~ /NEXT/;
+                    last if $@->[0] =~ /LAST|BREAK/;
+                }
+                die $@;
             }
-            die $@;
         }
+    ### if the FOREACH tag doesn't set a var - then everything gets localized
+    } else {
 
+        ### localize variable access for the foreach
+        my $swap = $self->{'_swap'};
+        local $self->{'_swap'} = my $copy = {%$swap};
+        $copy->{'loop'} = $items;
+
+        ### iterate use the iterator object
+        #foreach (my $i = $items->index; $i <= $#$vals; $items->index(++ $i)) {
+        foreach my $i ($items->index .. $#$vals) {
+            $items->index($i);
+            my $item = $vals->[$i];
+
+            if (ref($item) eq 'HASH') {
+                @$copy{keys %$item} = values %$item;
+            }
+
+            ### execute the sub tree
+            eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
+            if ($@) {
+                if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
+                    next if $@->[0] =~ /NEXT/;
+                    last if $@->[0] =~ /LAST|BREAK/;
+                }
+                die $@;
+            }
+        }
 
     }
-
-    $self->vivify_variable($var, {
-        set_var => 1,
-        var_val => $prev_val,
-    }) if defined $var;
 
     return undef;
 }
@@ -1513,8 +1525,6 @@ sub play_WHILE {
     my ($var, $var2) = @$ref;
     return '' if ! defined $var2;
 
-    my $prev_val = defined($var) ? $self->vivify_variable($var) : undef;
-
     my $sub_tree = $node->[5];
 
     ### iterate use the iterator object
@@ -1522,13 +1532,13 @@ sub play_WHILE {
     while (--$max > 0) {
 
         my $value = $self->vivify_variable($var2);
-        last if ! $value;
-
         ### update vars as needed
         $self->vivify_variable($var, {
             set_var => 1,
             var_val => $value,
         }) if defined $var;
+
+        last if ! $value;
 
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
@@ -1540,11 +1550,6 @@ sub play_WHILE {
             die $@;
         }
     }
-
-    $self->vivify_variable($var, {
-        set_var => 1,
-        var_val => $prev_val,
-    }) if defined $var;
 
     return undef;
 }
@@ -1762,6 +1767,7 @@ CGI::Ex::Template - Beginning interface to Templating systems - for they are man
     Finish MACRO
     Finish META
     Argument parsing
+    Try to optimize FOREACH iterator
     Re-analize WHILE
     Fix compile_dir and compile_ext storage
     Allow for Interpolate
