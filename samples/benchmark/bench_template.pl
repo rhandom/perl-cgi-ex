@@ -33,24 +33,30 @@ my $swap = {
     code  => sub {"($_[0])"},
     cet   => $cet,
 };
+#$swap->{$_} = $_ for (1 .. 1000);
 
-                                                           # version 1.81
-#my $txt = ((" "x1000)."[% one %]\n")x10;                  #   45%
-#my $txt = ((" "x1000)."[% one %]\n")x100;                 #   14%
-my $txt = ((" "x10)."[% one %]\n")x1000;                  #  -14%
-#my $txt = "[% one %]"x20;                                 #   44%
-#my $txt = "([% 1 + 2 %])";                                #   75%
-#my $txt = "[% one %]";                                    #  253%
-#my $txt = "[% SET one = 2 %]";                            #  196%
-#my $txt = "[% SET one = [0..30] %]";                      #   42%
-#my $txt = "[% c.d.0.hee.0 %]";                            #  280%
-#my $txt = ((" "x10)."[% c.d.0.hee.0 %]\n")x1000;          #   62%
-#my $txt = "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]"; #   73%
-#my $txt = "[% IF 1 %]Two[% END %]";                       #  180%
-#my $txt = "[% FOREACH i = [0..10] %][% i %][% END %]";    #  -38%
-#my $txt = "[% FOREACH i = [0..100] %][% i %][% END %]";   #  -58%
-#my $txt = "[%f=10%][%WHILE f%][%f=f-1%][% f %][% END %]"; #  ?
-#my $txt = "[% BLOCK foo %]Hi[% END %][% PROCESS foo %]";  #  199%
+my $txt;
+                                                        # This percent is compiled (in memory) CET vs TT
+#$txt = ((" "x1000)."[% one %]\n")x10;                  #   69%
+#$txt = ((" "x1000)."[% one %]\n")x100;                 #   42%
+$txt = ((" "x10)."[% one %]\n")x1000;                  #   -6%
+#$txt = "[% one %]";                                    #  253%
+#$txt = "[% one %]"x20;                                 #   44%
+#$txt = "([% 1 + 2 %])";                                #   49%
+#$txt = "[% 1 + 2 + 3 + 5 + 6 + 8 %]";                  #   39%
+#$txt = "[% SET one = 2 %]";                            #  196%
+#$txt = "[% SET one = [0..30] %]";                      #   42%
+#$txt = "[% c.d.0.hee.0 %]";                            #  280%
+#$txt = ((" "x10)."[% c.d.0.hee.0 %]\n")x1000;          #   62%
+#$txt = "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]"; #   73%
+#$txt = "[% IF 1 %]Two[% END %]";                       #  180%
+#$txt = "[% FOREACH i = [0..10] %][% i %][% END %]";    #    8%
+#$txt = "[% FOREACH i = [0..100] %][% i %][% END %]";   #  -13%
+#$txt = "[%f=10%][%WHILE f%][%f=f- 1%][%f%][% END %]";  #  -20%
+#$txt = "[%f=10; WHILE f ; f = f - 1 ; f ; END %]";     #  -19%
+#$txt = "[%f=10; WHILE (g=f) ; f = f - 1 ; f ; END %]"; #   -9%
+#$txt = "[% BLOCK foo %]Hi[% END %][% PROCESS foo %]";  #  321%
+#$txt = "[% BLOCK foo %]Hi[% END %][% INCLUDE foo %]";  #  288%
 
 my $file  = \$txt;
 my $file2 = $tt_cache_dir .'/template.txt';
@@ -82,7 +88,7 @@ sub file_TT {
 
 sub str_TT {
     my $out = '';
-    $tt1->process($file, $swap, \$out);
+    $tt1->process($file, $swap, \$out) || debug $tt1->error;
     return $out;
 }
 
@@ -139,13 +145,20 @@ sub file_CET_cache_new {
 #    return $out;
 #}
 
-#debug file_CET(), file_CET(), str_TT();
+#debug file_CET(), str_TT();
+#debug $cet->parse_tree($file);
 
 ### check out put - and also allow for caching
-for (1..10) {
-    die "file_CET didn't match "     if file_CET()     ne str_TT();
-    die "str_CET didn't match "      if str_CET()      ne str_TT();
-    die "str_CET_swap didn't match " if str_CET_swap() ne str_TT();
+for (1..2) {
+    if (file_CET() ne str_TT()) {
+        debug $cet->parse_tree($file);
+        debug file_CET(), str_TT();
+        die "file_CET didn't match";
+    }
+    die "file_TT didn't match "            if file_TT()      ne str_TT();
+    die "str_CET didn't match "            if str_CET()      ne str_TT();
+    die "str_CET_swap didn't match "       if str_CET_swap() ne str_TT();
+    die "file_CET_cache_new didn't match " if file_CET_cache_new() ne str_TT();
 }
 
 ###----------------------------------------------------------------###
