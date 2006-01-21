@@ -541,14 +541,15 @@ sub execute_tree {
     #                5: sub tree for block types
     #                6: continuation sub trees for some block types
     #                7: post operations holder
-    my $val;
     for my $node (@$tree) {
         if ($node->[0] eq 'TEXT') {
-            $val = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
+            if (! defined $node->[5]) {
+                $node->[5] = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
 
-            $val =~ s{ (?:\n|^) [^\S\n]* \z }{}xm   if $node->[3]->[0]; # pre_chomp
-            $val =~ s{ \G [^\S\n]* (?:\n?$|\n) }{}x if $node->[3]->[1]; # post_chomp
-            $$out_ref .= $val;
+                $node->[5] =~ s{ (?:\n|^) [^\S\n]* \z }{}xm   if $node->[3]->[0]; # pre_chomp
+                $node->[5] =~ s{ \G [^\S\n]* (?:\n?$|\n) }{}x if $node->[3]->[1]; # post_chomp
+            }
+            $$out_ref .= $node->[5];
             next;
         }
 
@@ -574,7 +575,7 @@ sub execute_tree {
 
         ### normal directive
         } else {
-            $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $template_ref, $out_ref);
+            my $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $template_ref, $out_ref);
             $$out_ref .= $val if defined $val;
         }
 
@@ -1196,11 +1197,9 @@ sub play_FOREACH {
     my $sub_tree = $node->[5];
 
     ### localize variable access for the foreach
-    my $stash = $self->{'_swap'};
-    my @keys  = keys %$stash;
-    my %keys = map {$_ => 1} @keys;
-    local @$stash{@keys} = values %$stash;
-    $stash->{'loop'} = $items if $set_loop;
+    my $swap = $self->{'_swap'};
+    local $self->{'_swap'} = my $copy = {%$swap};
+    $copy->{'loop'} = $items if $set_loop;
 
     ### iterate use the iterator object
     my $vals = $items->items;
@@ -1216,7 +1215,7 @@ sub play_FOREACH {
                 var_val => $item,
             });
         } elsif (ref($item) eq 'HASH') {
-            @$stash{keys %$item} = values %$item;
+            @$copy{keys %$item} = values %$item;
         }
 
         ### execute the sub tree
@@ -1226,15 +1225,11 @@ sub play_FOREACH {
                 next if $@->[0] =~ /NEXT/;
                 last if $@->[0] =~ /LAST|BREAK/;
             }
-            delete @$stash{grep {!$keys{$_}} keys %$stash};
             die $@;
         }
 
 
     }
-
-    ### remove items added to stash during this run
-    delete @$stash{grep {!$keys{$_}} keys %$stash};
 
     $self->vivify_variable($var, {
         set_var => 1,
@@ -1297,14 +1292,9 @@ sub play_INCLUDE {
 
     ### localize the swap
     my $swap = $self->{'_swap'};
-    my @keys  = keys %$swap;
-    local @$swap{@keys} = values %$swap; # note that we are only "cloning" one level deep
+    local $self->{'_swap'} = {%$swap};
 
     my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $template_ref, $out_ref);
-
-    ### kill added keys
-    my %keys = map {$_ => 1} @keys;
-    delete @$swap{grep {!$keys{$_}} keys %$swap};
 
     return $str;
 }
@@ -1762,10 +1752,20 @@ CGI::Ex::Template - Beginning interface to Templating systems - for they are man
 
 =head1 TODO
 
+    Benchmark foreach
+    Benchmark text processing
+    Make the stash clone faster
     Finish USE
     Finish MACRO
     Finish META
     Argument parsing
+    Re-analize WHILE
+    Fix compile_dir and compile_ext storage
+    Allow for Interpolate
+    Get several test suites to pass
+    Add remaining filters
+    Add a pseudo context
+    Add a pseudo stash
 
 =head1 OPERATORS
 
