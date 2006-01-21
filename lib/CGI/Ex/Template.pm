@@ -472,7 +472,6 @@ sub parse_tree {
             if ($tag =~ s{ ^ = \s* }{}x) {
                 eval {
                     my $val = $self->parse_variable(\$tag);
-                    $tag =~ s{ ^ ; \s* }{}x;
                     my $SET = $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, 'SET', $level) || [];
                     unshift @$SET, [$var, $val];
                     $level->[0] = 'SET';
@@ -1358,15 +1357,13 @@ sub parse_SET {
     my @SET;
     my $copy = $$tag_ref;
     while (length $$tag_ref) {
-        my $set = $self->parse_variable($tag_ref);
-        die "Couldn't find variable on SET on $copy" if ! $set;
+        my $set = $self->parse_variable($tag_ref) || last;
         my $val;
         if ($$tag_ref =~ s{ ^ = \s* }{}x) {
             $val = $self->parse_variable($tag_ref);
         } else {
             $val = undef;
         }
-        $$tag_ref =~ s{ ^ ; \s*}{}x;
         push @SET, [$set, $val];
     }
     return \@SET;
@@ -1552,10 +1549,7 @@ sub play_WRAPPER {
 
 ###----------------------------------------------------------------###
 
-sub stash {
-    my $self = shift;
-    return $self->{'stash'} ||= {};
-}
+sub stash { shift->{'_swap'} ||= {} }
 
 sub include_path {
     my $self = shift;
@@ -1610,17 +1604,12 @@ sub process {
     }
 
     ### localize the stash
+    $swap ||= {};
     my $stash = $self->stash;
-    my @keys  = keys %$stash;
-    local @$stash{@keys} = values %$stash;
-    local @$stash{keys %$swap}  = values %$swap;
+    my $copy = {%$stash, %$swap};
 
     ### do the swap
-    $content = $self->swap($content, $stash);
-
-    ### remove items added to stash
-    my %keys = map {$_ => 1} @keys;
-    delete @$stash{grep {!$keys{$_}} keys %$stash};
+    $content = $self->swap($content, $copy);
 
     ### put it back out
     if (ref $out) {
@@ -1686,7 +1675,7 @@ sub str_ref {
 
 sub as_string {
     my $self = shift;
-    my $msg  = $self->type .' - '. $self->msg;
+    my $msg  = $self->type .' error - '. $self->msg;
     if (my $node = $self->node) {
         $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
     }
@@ -1754,7 +1743,6 @@ CGI::Ex::Template - Beginning interface to Templating systems - for they are man
 
     Benchmark foreach
     Benchmark text processing
-    Make the stash clone faster
     Finish USE
     Finish MACRO
     Finish META
@@ -1765,7 +1753,7 @@ CGI::Ex::Template - Beginning interface to Templating systems - for they are man
     Get several test suites to pass
     Add remaining filters
     Add a pseudo context
-    Add a pseudo stash
+    Add a pseudo stash (with get and set)
 
 =head1 OPERATORS
 
