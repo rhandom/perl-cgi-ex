@@ -467,7 +467,7 @@ sub parse_tree {
             }
 
         ### allow for bare variable getting and setting
-        } elsif (my $var = $self->parse_variable(\$tag)) {
+        } elsif (defined(my $var = $self->parse_variable(\$tag))) {
             push @tree, $level;
             if ($tag =~ s{ ^ = \s* }{}x) {
                 eval {
@@ -594,7 +594,8 @@ sub parse_variable {
     if (my $quote_qr = $ARGS->{'auto_quote'}) {
         if ($$str_ref =~ s{ ^ ($quote_qr) \s* (?! \.) }{}x) { # auto-quoted - not followed by a dot
             my $str = $1;
-            return [\$str, 0];
+            return $str;
+            #return [\$str, 0];
         } elsif ($$str_ref =~ s{ ^ \$ (\w+) \b \s* }{}x # auto-quoted dollars
                  || $$str_ref =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* }{}x) {
             my $name = $1;
@@ -604,6 +605,7 @@ sub parse_variable {
 
     my @var;
     my $copy = $$str_ref;
+    my $is_literal;
 
     ### allow for leading $foo or ${foo.bar} type constructs
     if ($copy =~ s{ ^ \$ (\w+) \b \s* }{}x
@@ -614,13 +616,15 @@ sub parse_variable {
     ### allow for numbers
     } elsif ($copy =~ s{ ^ (-? (?:\d*\.\d+ | \d+) ) \s* }{}x) {
         my $number = $1;
-        push @var, \$number;
+        push @var, \ $number;
+        $is_literal = 1;
 
     ### allow for literal strings
     } elsif ($copy =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* }{}xs) {
         if ($1 eq "'") { # no interpolation on single quoted strings
             my $str = $2;
-            push @var, \$str;
+            push @var, \ $str;
+            $is_literal = 1;
         } else {
             my @pieces = split m{ (\$\w+\b | \$\{ [^\}]+ \}) }x, $2;
             foreach my $piece (@pieces) {
@@ -633,8 +637,10 @@ sub parse_variable {
             @pieces = grep {defined && length} @pieces;
             if ($#pieces == -1) {
                 push @var, \ '';
+                $is_literal = 1;
             } else {
-                push @var, \ ['concat', map {ref($_) ? $_ : [\$_, 0]} @pieces];
+                #push @var, \ ['concat', map {ref($_) ? $_ : [\$_, 0]} @pieces];
+                push @var, \ ['concat', @pieces];
             }
         }
 
@@ -642,7 +648,7 @@ sub parse_variable {
     } elsif ($copy =~ s{ ^ \[ \s* }{}x) {
         local $self->{'_state'}->{'operator_precedence'} = 0; # reset presedence
         my $arrayref = ['arrayref'];
-        while (my $var = $self->parse_variable(\$copy)) {
+        while (defined(my $var = $self->parse_variable(\$copy))) {
             push @$arrayref, $var;
             $copy =~ s{ ^ , \s* }{}x;
         }
@@ -654,7 +660,7 @@ sub parse_variable {
     } elsif ($copy =~ s{ ^ \{ \s* }{}x) {
         local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
         my $hashref = ['hashref'];
-        while (my $key = $self->parse_variable(\$copy, {auto_quote => qr/\w+/})) {
+        while (defined(my $key = $self->parse_variable(\$copy, {auto_quote => qr/\w+/}))) {
             $copy =~ s{ ^ => \s* }{}x;
             my $val = $self->parse_variable(\$copy);
             push @$hashref, $key, $val;
@@ -722,6 +728,9 @@ sub parse_variable {
 
     }
 
+    ### begin derefing
+    my $var = ($is_literal && $#var == 1) ? ${ $var[0] } : \@var;
+
     ### allow for all "operators"
     if (! $self->{'_state'}->{'operator_precedence'}) {
         my $tree;
@@ -737,17 +746,17 @@ sub parse_variable {
         ### if we found operators - tree the nodes by operator precedence
         if ($tree) {
             if ($#$tree == 1) { # only one operator - keep simple things fast
-                @var = (\ [$tree->[0], [@var], $tree->[1]], 0);
+                $var = [\ [$tree->[0], $var, $tree->[1]], 0];
             } else {
-                unshift @$tree, [@var];
-                @var = @{ $self->apply_precedence($tree, $found) };
+                unshift @$tree, $var;
+                $var = $self->apply_precedence($tree, $found);
             }
         }
     }
 
-#    debug \@var, $copy;
+#    debug $var, $copy;
     $$str_ref = $copy; # commit the changes
-    return \@var;
+    return $var;
 }
 
 sub apply_precedence {
@@ -799,24 +808,28 @@ sub apply_precedence {
 }
 
 sub vivify_variable {
+    ### allow for the parse tree to store literals
+    return $_[1] if ! ref $_[1];
+
     my $self = shift;
     my $var  = shift;
     my $ARGS = shift || {};
     my $i    = 0;
     my $generated_list;
 
+
     ### determine the top level of this particular variable access
     my $ref  = $var->[$i++];
     my $args = $var->[$i++];
     if (ref $ref) {
-        if (ref($ref) eq 'SCALAR') {
+        if (ref($ref) eq 'SCALAR') { # a scalar literal
             return if $ARGS->{'set_var'};
             $ref = $$ref;
-        } elsif (ref($ref) eq 'REF') {
+        } elsif (ref($ref) eq 'REF') { # operator
             return if $ARGS->{'set_var'};
             $generated_list = 1 if ${ $ref }->[0] eq '..';
             $ref = $self->play_operator($$ref);
-        } else {
+        } else { # a named variable access (ie via $name.foo)
             $ref = $self->vivify_variable($ref);
             if (defined $ref) {
                 if ($ARGS->{'set_var'}) {
@@ -958,7 +971,7 @@ sub parse_args {
     my $ARGS    = shift || {};
 
     my @args;
-    while (my $var = $self->parse_variable($str_ref)) {
+    while (defined(my $var = $self->parse_variable($str_ref))) {
         push @args, $var;
         $$str_ref =~ s{ ^ , \s* }{}x;
     }
@@ -998,9 +1011,9 @@ sub play_operator {
         return {@args};
     } elsif ($op eq '?') {
         if ($self->vivify_variable($tree->[0])) {
-            return $tree->[1] ? $self->vivify_variable($tree->[1]) : undef;
+            return defined($tree->[1]) ? $self->vivify_variable($tree->[1]) : undef;
         } else {
-            return $tree->[2] ? $self->vivify_variable($tree->[2]) : undef;
+            return defined($tree->[2]) ? $self->vivify_variable($tree->[2]) : undef;
         }
     } elsif ($op eq '||' || $op eq 'or') {
         for my $node (@$tree) {
@@ -1113,7 +1126,7 @@ sub play_DEFAULT {
     my ($self, $set) = @_;
     foreach (@$set) {
         my ($set, $default) = @$_;
-        next if ! $set;
+        next if ! defined $set;
         my $val = $self->vivify_variable($set);
         if (! $val) {
             $default = defined($default) ? $self->vivify_variable($default) : '';
@@ -1145,7 +1158,8 @@ sub parse_FILTER {
         $name = $1;
     }
 
-    my $filter = $self->parse_variable($tag_ref) || [];
+    my $filter = $self->parse_variable($tag_ref);
+    $filter = '' if ! defined $filter;
 
     return [$name, $filter];
 }
@@ -1243,14 +1257,14 @@ sub play_FOREACH {
 sub parse_GET {
     my ($self, $tag_ref) = @_;
     my $ref = $self->parse_variable($tag_ref);
-    die $self->exception('parse', "Missing variable name") if ! $ref;
+    die $self->exception('parse', "Missing variable name") if ! defined $ref;
     return $ref;
 }
 
 sub play_GET {
     my ($self, $ref) = @_;
     my $var = $self->vivify_variable($ref);
-    return ref($var) ? '' : $var;
+    return ref($var) || ! defined($var) ? '' : $var;
 }
 
 sub parse_IF {
@@ -1323,7 +1337,7 @@ sub parse_PROCESS {
 sub play_PROCESS {
     my ($self, $var, $node, $template_ref, $out_ref) = @_;
 
-    return undef if ! $var;
+    return undef if ! defined $var;
     my $filename = $self->vivify_variable($var);
 
     $self->{'_state'}->{'recurse'} ||= 0;
@@ -1359,7 +1373,8 @@ sub parse_SET {
     my @SET;
     my $copy = $$tag_ref;
     while (length $$tag_ref) {
-        my $set = $self->parse_variable($tag_ref) || last;
+        my $set = $self->parse_variable($tag_ref);
+        last if ! defined $set;
         my $val;
         if ($$tag_ref =~ s{ ^ = \s* }{}x) {
             $val = $self->parse_variable($tag_ref);
@@ -1396,7 +1411,7 @@ sub play_SWITCH {
     my $default;
     while ($node = $node->[6]) { # CASES
         my $var = $node->[3];
-        if (! $var) {
+        if (! defined $var) {
             $default = $node->[5];
             next;
         }
@@ -1480,7 +1495,7 @@ sub parse_WHILE {
     my $var;
     my $var2;
     if ($copy =~ s{ ^ \( \s* }{}x
-        && ($var = $self->parse_variable(\$copy))
+        && defined($var = $self->parse_variable(\$copy))
         && $copy =~ s{ ^ = \s* }{}x) {
         $var2 = $self->parse_variable(\$copy);
         $copy =~ s{ ^ \) \s* }{}x || die "Missing close \")\"";
@@ -1510,12 +1525,10 @@ sub play_WHILE {
         last if ! $value;
 
         ### update vars as needed
-        if (defined $var) {
-            $self->vivify_variable($var, {
-                set_var => 1,
-                var_val => $value,
-            });
-        }
+        $self->vivify_variable($var, {
+            set_var => 1,
+            var_val => $value,
+        }) if defined $var;
 
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
@@ -1795,16 +1808,17 @@ CGI::Ex::Template - Beginning interface to Templating systems - for they are man
     one|two            [ 'one',  0, '|', 'two',  0 ]
     one.$two           [ 'one',  0, '.', ['two', 0 ] ]
     one.${two().three} [ 'one',  0, '.', ['two', [], '.', 'three', 0], 0]
-    "one"              [ \"one", 0 ]
-    2.34               [ \2.34,  0 ]
+    "one"              "one"
+    2.34               2.34
     "one"|length       [ \"one", 0, '|', 'length', 0 ]
     "one $a two"       [ \ [ 'concat', [\ 'one ', 0], ['a', 0], [\ ' two', 0 ] ], 0 ]
-    [0,1,2]            [ \ [ 'arrayref', [\0, 0], [\1, 0], [\2, 0] ], 0 ]
-    [0,1,2].size       [ \ [ 'arrayref', [\0, 0], [\1, 0], [\2, 0] ], 0, '.', 'size', 0 ]
-    ['a', a, $a ]      [ \ [ 'arrayref', [\ 'a', 0], ['a', 0], [['a', 0], 0] ], 0]
-    {a  => 'b'}        [ \ [ 'hashref',  [\ 'a', 0], [\ 'b', 0] ], 0 ]
-    {a  => 'b'}.size   [ \ [ 'hashref',  [\ 'a', 0], [\ 'b', 0] ], 0, '.', 'size', 0 ]
+    [0,1,2]            [ \ [ 'arrayref', 0, 1, 2 ], 0 ]
+    [0,1,2].size       [ \ [ 'arrayref', 0, 1, 2 ], 0, '.', 'size', 0 ]
+    ['a', a, $a ]      [ \ [ 'arrayref', 'a', ['a', 0], [['a', 0], 0] ], 0]
+    {a  => 'b'}        [ \ [ 'hashref',  'a', 'b' ], 0 ]
+    {a  => 'b'}.size   [ \ [ 'hashref',  'a', 'b' ], 0, '.', 'size', 0 ]
     {$a => b}          [ \ [ 'hashref',  ['a', 0], ['b', 0] ], 0 ]
+    1 + 2 + 3 + 4      [ \ [ '+', 1, 2, 3, 4 ], 0]
     a + b              [ \ [ '+', ['a', 0], ['b', 0] ], 0 ]
     a * (b + c)        [ \ [ '*', ['a', 0], [ \ ['+', ['b', 0], ['c', 0]], 0 ]], 0 ]
     (a + b)            [ \ [ '+', ['a', 0], ['b', 0] ]], 0 ]
