@@ -355,7 +355,7 @@ sub parse_tree {
     while (1) {
         ### continue looking for information in a semi-colon delimited tag
         if ($continue) {
-            $i = $j - length $tag;
+            $i = $continue;
             $level = [undef, $i, $j];
 
         ### look through the string using index
@@ -496,11 +496,13 @@ sub parse_tree {
 
         ### look for more directives in the tag
         if ($tag =~ s{ ^ ; \s* }{}x) {
-            $continue = 1;
-            $postop   = undef;
+            $continue   = $j - length $tag;
+            $postop     = undef;
+            $level->[2] = $continue;
         } elsif ($tag =~ / ^ (\w+) \s /x && $DIRECTIVES->{$1} && $DIRECTIVES->{$1}->{'postop'}) {
-            $continue = 1;
-            $postop   = $level;
+            $continue   = $j - length $tag;
+            $postop     = $level;
+            $level->[2] = $continue;
         } else {
             debug $level if length $tag;
             die "Found trailing info \"$tag\"" if length $tag;
