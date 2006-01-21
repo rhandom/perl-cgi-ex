@@ -969,12 +969,29 @@ sub parse_args {
     my $self    = shift;
     my $str_ref = shift;
     my $ARGS    = shift || {};
+    my $copy    = $$str_ref;
 
     my @args;
-    while (defined(my $var = $self->parse_variable($str_ref))) {
-        push @args, $var;
-        $$str_ref =~ s{ ^ , \s* }{}x;
+    my @named;
+    while (length $$str_ref) {
+        my $copy = $$str_ref;
+        if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr/\w+/}))
+            && $copy =~ s{ ^ = \s* }{}x) {
+            my $val = $self->parse_variable(\$copy);
+            $copy =~ s{ ^ , \s* }{}x;
+            push @named, $name, $val;
+            $$str_ref = $copy;
+        } elsif (defined(my $arg = $self->parse_variable($str_ref))) {
+            push @args, $arg;
+            $$str_ref =~ s{ ^ , \s* }{}x;
+        } else {
+            last;
+        }
     }
+
+    ### allow for named arguments to be added also
+    push @args, [\ ['hashref', @named], 0] if $#named != -1;
+
     return \@args;
 }
 
