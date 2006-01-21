@@ -94,6 +94,7 @@ BEGIN {
             parse  => \&parse_BLOCK,
             play   => \&play_BLOCK,
             block  => 1,
+            move_to_front => 1,
         },
         BREAK   => { control => 1 },
         CALL    => {
@@ -342,6 +343,7 @@ sub parse_tree {
 
     my @tree;           # the parsed tree
     my @state;          # maintain block levels
+    my @move_to_front;  # items that need to be declared first
     my $i = 0;          # start index
     my $j = 0;          # end index
     my $last = 0;       # previous end index
@@ -397,9 +399,13 @@ sub parse_tree {
 
         ### look for DIRECTIVES
         if ($tag =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}) {
+
+            ### store out this current node level
             my $func = $level->[0] = $1;
             $tag =~ s{ ^ \w+ \s* }{}x;
             push @tree, $level if ! $postop;
+
+            ### anything that behaves as a block ending
             if ($func eq 'END' || $DIRECTIVES->{$func}->{'continue_block'}) {
                 if ($#state == -1) {
                     die $self->exception('parse', "Found an $func while not in a block", $level);
@@ -414,6 +420,9 @@ sub parse_tree {
                     my @sub_tree = splice @tree, $j + 1, $#tree - ($j + 1), (); # remove from main tree - but store
                     my $storage = $parent_level->[5] ||= [];
                     @$storage = @sub_tree;
+                    if ($DIRECTIVES->{$parent_level->[0]}->{'move_to_front'}) {
+                        push @move_to_front, splice(@tree, -2, 2, ());
+                    }
 
                     if ($DIRECTIVES->{$func}->{'continue_block'}) {
                         my $parent_type = $parent_level->[0];
@@ -501,13 +510,16 @@ sub parse_tree {
         }
     }
 
+    if ($#move_to_front != -1) {
+        unshift @tree, @move_to_front;
+    }
+
     if ($#state >  -1) {
         die $self->exception('parse.missing.end', "Missing END", $state[-1], 0);
     }
     return undef if $#tree  == -1;
 
     push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
-#    debug \@tree;
 
     return \@tree;
 }
@@ -1056,19 +1068,24 @@ sub hash_op {
 ###----------------------------------------------------------------###
 
 sub parse_BLOCK {
-    my ($self, $tag_ref, $func, $node) = @_;
-    my $block = $node->[5] ||= []; # create a location that can be occupied with the parsed tree
+    my ($self, $tag_ref) = @_;
 
     my $name = '';
     if ($$tag_ref =~ s{ ^ (\w+) \s* (?! [\.\|]) }{}x) {
         $name = $1;
-        $self->{'BLOCKS'}->{$name} = $block; # store a named reference here
     }
 
     return $name;
 }
 
-sub play_BLOCK { return }
+sub play_BLOCK {
+    my ($self, $name, $node, $template_ref, $out_ref) = @_;
+
+    my $body_ref = $node->[5] || [];
+    $self->{'BLOCKS'}->{$name} = $body_ref; # store a named reference - but do nothing until something processes it
+
+    return;
+}
 
 sub parse_CALL { $DIRECTIVES->{'GET'}->{'parse'}->(@_) }
 
@@ -1742,6 +1759,13 @@ CGI::Ex::Template - Beginning interface to Templating systems - for they are man
   None yet.
 
 =head1 DESCRIPTION
+
+=head1 TODO
+
+    Finish USE
+    Finish MACRO
+    Finish META
+    Argument parsing
 
 =head1 OPERATORS
 
