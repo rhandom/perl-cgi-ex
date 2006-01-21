@@ -43,17 +43,18 @@ $txt = ((" "x10)."[% one %]\n")x1000;                  #   -6%
 #$txt = "[% one %]";                                    #  253%
 #$txt = "[% one %]"x20;                                 #   44%
 #$txt = "([% 1 + 2 %])";                                #   49%
-#$txt = "[% 1 + 2 + 3 + 5 + 6 + 8 %]";                  #   39%
+#$txt = "[% 1 + 2 + 3 + 5 + 6 + 8 %]";                  #  118%
 #$txt = "[% SET one = 2 %]";                            #  196%
 #$txt = "[% SET one = [0..30] %]";                      #   42%
 #$txt = "[% c.d.0.hee.0 %]";                            #  280%
 #$txt = ((" "x10)."[% c.d.0.hee.0 %]\n")x1000;          #   62%
-#$txt = "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]"; #   73%
+#$txt = "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]"; #  109%
 #$txt = "[% IF 1 %]Two[% END %]";                       #  180%
 #$txt = "[% FOREACH i = [0..10] %][% i %][% END %]";    #    8%
-#$txt = "[% FOREACH i = [0..100] %][% i %][% END %]";   #  -13%
-#$txt = "[%f=10%][%WHILE f%][%f=f- 1%][%f%][% END %]";  #  -20%
-#$txt = "[%f=10; WHILE f ; f = f - 1 ; f ; END %]";     #  -19%
+#$txt = "[%i=1 ; FOREACH i = [0..100] ; i ; END ; i%]"; #  -12%
+#$txt = "[%i=1 ; FOREACH [0..100] ; i ; END ; i %]";    #   11%
+#$txt = "[%f=10%][%WHILE f%][%f=f- 1%][%f%][% END %]";  #  -16%
+#$txt = "[%f=10; WHILE f ; f = f - 1 ; f ; END %]";     #  -16%
 #$txt = "[%f=10; WHILE (g=f) ; f = f - 1 ; f ; END %]"; #   -9%
 #$txt = "[% BLOCK foo %]Hi[% END %][% PROCESS foo %]";  #  321%
 #$txt = "[% BLOCK foo %]Hi[% END %][% INCLUDE foo %]";  #  288%
@@ -159,6 +160,7 @@ for (1..2) {
     die "str_CET didn't match "            if str_CET()      ne str_TT();
     die "str_CET_swap didn't match "       if str_CET_swap() ne str_TT();
     die "file_CET_cache_new didn't match " if file_CET_cache_new() ne str_TT();
+    die "file_TT_cache_new didn't match " if file_TT_cache_new() ne str_TT();
 }
 
 ###----------------------------------------------------------------###
