@@ -1342,41 +1342,70 @@ sub play_INSERT {
 
 sub parse_PROCESS {
     my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_variable($tag_ref, {auto_quote => qr/$QR_FILENAME|\w+/});
-    return $ref;
+    my $info = [[], []];
+    while (defined(my $filename = $self->parse_variable($tag_ref, {auto_quote => qr/$QR_FILENAME|\w+/}))) {
+        push @{$info->[0]}, $filename;
+        last if $$tag_ref !~ s{ ^ \+ \s* }{}x;
+    }
+
+    ### allow for post process variables
+    while (length $$tag_ref) {
+        last if $$tag_ref =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}; ### looks like a directive - we are done
+
+        my $var = $self->parse_variable($tag_ref);
+        last if ! defined $var;
+        if ($$tag_ref !~ s{ ^ = \s* }{}x) {
+            die $self->exception('parse.missing.equals', 'Missing equals while parsing args');
+        }
+        my $val = $self->parse_variable($tag_ref);
+        push @{$info->[1]}, [$var, $val];
+    }
+
+    return $info;
 }
 
 sub play_PROCESS {
-    my ($self, $var, $node, $template_ref, $out_ref) = @_;
+    my ($self, $info, $node, $template_ref, $out_ref) = @_;
 
-    return undef if ! defined $var;
-    my $filename = $self->vivify_variable($var);
+    my ($files, $args) = @$info;
 
     $self->{'_state'}->{'recurse'} ||= 0;
     $self->{'_state'}->{'recurse'} ++;
     if ($self->{'_state'}->{'recurse'} >= $MAX_RECURSE) {
         my $func = $node->[0];
-        die "MAX_RECURSE $MAX_RECURSE reached during $func on $filename";
+        die "MAX_RECURSE $MAX_RECURSE reached during $func";
     }
 
-    ### see if the filename is an existing block name
-    if (my $body_ref = $self->{'BLOCKS'}->{$filename}) {
-        my $out = '';
-        eval { $self->execute_tree($body_ref, $template_ref, \$out) };
-        $$out_ref .= $out;
-        if ($@) {
-            my $err = $@;
-            die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
+    ### set passed args
+    foreach (@$args) {
+        my ($key, $val) = @$_;
+        $self->vivify_variable($key, {
+            set_var => 1,
+            var_val => $val,
+        });
+    }
+
+    ### iterat on any passed block or filename
+    foreach my $ref (@$files) {
+        next if ! defined $ref;
+        my $filename = $self->vivify_variable($ref);
+
+        ### handle filenames that look like blocks
+        if (my $body_ref = $self->{'BLOCKS'}->{$filename}) {
+            my $out = '';
+            eval { $self->execute_tree($body_ref, $template_ref, \$out) };
+            $$out_ref .= $out;
+            if ($@) {
+                my $err = $@;
+                die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
+            }
+        } else {
+            my $str = $self->swap($filename, $self->{'_swap'}); # restart the swap - passing it our current stash
+            $$out_ref .= $str if defined $str;
         }
-        $self->{'_state'}->{'recurse'} --;
-        return;
     }
-
-    my $str = $self->swap($filename, $self->{'_swap'}); # restart the swap - passing it our current stash
 
     $self->{'_state'}->{'recurse'} --;
-
-    $$out_ref .= $str if defined $str;
     return;
 }
 
@@ -1532,6 +1561,7 @@ sub play_WHILE {
     while (--$max > 0) {
 
         my $value = $self->vivify_variable($var2);
+
         ### update vars as needed
         $self->vivify_variable($var, {
             set_var => 1,
