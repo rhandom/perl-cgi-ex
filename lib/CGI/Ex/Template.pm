@@ -2,7 +2,7 @@ package CGI::Ex::Template;
 
 =head1
 
-CGI::Ex::Template - Lightweight TT2 parser
+CGI::Ex::Template - Lightweight TT2/3 engine
 
 =cut
 
@@ -198,7 +198,11 @@ BEGIN {
             play   => \&play_TRY,
             block  => 1,
         },
-        WHILE => {
+        USE     => {
+            parse  => \&parse_USE,
+            play   => \&play_USE,
+        },
+        WHILE   => {
             parse  => \&parse_WHILE,
             play   => \&play_WHILE,
             block  => 1,
@@ -321,10 +325,12 @@ sub swap {
     ### handle exceptions
     my $err = $@;
 
-    die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
+    $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
     $err->str_ref(\$_[0]);
-    eval { die $err };
-    return '' if $err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/;
+    if ($err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/) {
+        eval { die $err };
+        return '';
+    }
     return $out; # some directives may get us here - but still contain content
 }
 
@@ -351,12 +357,12 @@ sub parse_tree {
     my $continue;       # multiple directives in the same tag
     my $postop;
     my $tag;
-    my $level;
+    my $node;
     while (1) {
         ### continue looking for information in a semi-colon delimited tag
         if ($continue) {
             $i = $continue;
-            $level = [undef, $i, $j];
+            $node = [undef, $i, $j];
 
         ### look through the string using index
         } else {
@@ -370,23 +376,23 @@ sub parse_tree {
                 last;
             }
             $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
-            $level = [undef, $i + $len_s, $j];
+            $node = [undef, $i + $len_s, $j];
         }
 
         ### take care of whitespace
         if ($tag =~ s/^(\#?)-/$1/ || ($self->{'PRE_CHOMP'} && $tag !~ s/^(\#?)\+/$1/)) {
             $tree[-1]->[3]->[0] = 1 if $tree[-1] && $tree[-1]->[0] eq 'TEXT';
-            $level->[1] ++;
+            $node->[1] ++;
         }
         if ($tag =~ s/-$// || ($self->{'POST_CHOMP'} && $tag !~ s/\+$//)) {
             $post_chomp = 1;
-            $level->[2] --;
+            $node->[2] --;
         } else {
-            $post_chomp = $self->{'POST_CHOMP'};
+            $post_chomp = $self->{'POST_CHOMP'} || 0;
         }
         if ($tag =~ /^\#/) { # leading # means to comment the entire section
-            $level->[0] = 'COMMENT';
-            push @tree, $level;
+            $node->[0] = 'COMMENT';
+            push @tree, $node;
             next;
         }
         $tag =~ s{ (?<! \\) \# .* $ }{}xmg; # remove trailing comments
@@ -401,43 +407,43 @@ sub parse_tree {
         if ($tag =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}) {
 
             ### store out this current node level
-            my $func = $level->[0] = $1;
+            my $func = $node->[0] = $1;
             $tag =~ s{ ^ \w+ \s* }{}x;
-            push @tree, $level if ! $postop;
+            push @tree, $node if ! $postop;
 
             ### anything that behaves as a block ending
             if ($func eq 'END' || $DIRECTIVES->{$func}->{'continue_block'}) {
                 if ($#state == -1) {
-                    die $self->exception('parse', "Found an $func while not in a block", $level);
+                    die $self->exception('parse', "Found an $func while not in a block", $node);
                 } else {
                     ### store any child nodes into the parent node
-                    my $parent_level = pop @state;
-                    my $start_index = $parent_level->[4] = $i + $len_s;
+                    my $parent_node = pop @state;
+                    my $start_index = $parent_node->[4] = $i + $len_s;
                     my $j = $#tree;
                     for ( ; $j >= 0; $j--) {
                         last if defined($tree[$j]->[4]) && $tree[$j]->[4] == $start_index;
                     }
                     my @sub_tree = splice @tree, $j + 1, $#tree - ($j + 1), (); # remove from main tree - but store
-                    my $storage = $parent_level->[5] ||= [];
+                    my $storage = $parent_node->[5] ||= [];
                     @$storage = @sub_tree;
-                    if ($DIRECTIVES->{$parent_level->[0]}->{'move_to_front'}) {
+                    if ($DIRECTIVES->{$parent_node->[0]}->{'move_to_front'}) {
                         push @move_to_front, splice(@tree, -2, 2, ());
                     }
 
                     if ($DIRECTIVES->{$func}->{'continue_block'}) {
-                        my $parent_type = $parent_level->[0];
+                        my $parent_type = $parent_node->[0];
                         if (! $DIRECTIVES->{$func}->{'continue_block'}->{$parent_type}) {
-                            die $self->exception('parse', "Found unmatched nested block", $level, 0);
+                            die $self->exception('parse', "Found unmatched nested block", $node, 0);
                         }
-                        $level->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
+                        $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $node) };
                         if ($@) {
-                            $@->node($level) if UNIVERSAL::can($@, 'node') && ! $@->node;
+                            $@->node($node) if UNIVERSAL::can($@, 'node') && ! $@->node;
                             die $@;
                         }
-                        $level->[4] = -1;
-                        $level->[5] = [];
-                        push @state, $level;
-                        $parent_level->[6] = $level;
+                        $node->[4] = -1;
+                        $node->[5] = [];
+                        push @state, $node;
+                        $parent_node->[6] = $node;
                     }
                 }
             } elsif ($func eq 'TAGS') {
@@ -454,58 +460,57 @@ sub parse_tree {
                 # do nothing
             } else {
                 if ($DIRECTIVES->{$func}->{'block'} && ! $postop) {
-                    $level->[4] = -1;
-                    $level->[5] = [];
-                    push @state, $level;
+                    $node->[4] = -1;
+                    $node->[5] = [];
+                    push @state, $node;
                 }
-                $level->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $level) };
+                $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $node) };
                 if (my $err = $@) {
-                    $err->node($level) if UNIVERSAL::can($err, 'node') && ! $err->node;
+                    $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
                 }
-                $postop->[7] = $level if $postop;
+                $postop->[7] = $node if $postop;
             }
 
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_variable(\$tag))) {
-            push @tree, $level;
+            push @tree, $node;
             if ($tag =~ s{ ^ = \s* }{}x) {
                 eval {
                     my $val = $self->parse_variable(\$tag);
-                    my $SET = $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, 'SET', $level) || [];
+                    my $SET = $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, 'SET', $node) || [];
                     unshift @$SET, [$var, $val];
-                    $level->[0] = 'SET';
-                    $level->[3] = $SET;
+                    $node->[0] = 'SET';
+                    $node->[3] = $SET;
                 };
                 if ($@) {
-                    $@->node($level) if UNIVERSAL::can($@, 'node') && ! $@->node;
+                    $@->node($node) if UNIVERSAL::can($@, 'node') && ! $@->node;
                     die $@;
                 }
             } else {
                 #die "Found trailing info during variable access \"$tag" if $tag;
-                $level->[0] = 'GET';
-                $level->[3] = $var;
+                $node->[0] = 'GET';
+                $node->[3] = $var;
             }
 
         } else {
             my $all  = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $all =~ s/^\s+//;
             $all =~ s/\s+$//;
-            die "Not sure how to handle tag \"$all\"";
+            die $self->exception('parse', "Not sure how to handle tag \"$all\"");
         }
 
         ### look for more directives in the tag
         if ($tag =~ s{ ^ ; \s* }{}x) {
             $continue   = $j - length $tag;
             $postop     = undef;
-            $level->[2] = $continue;
+            $node->[2] = $continue;
         } elsif ($tag =~ / ^ (\w+) \s /x && $DIRECTIVES->{$1} && $DIRECTIVES->{$1}->{'postop'}) {
             $continue   = $j - length $tag;
-            $postop     = $level;
-            $level->[2] = $continue;
+            $postop     = $node;
+            $node->[2] = $continue;
         } else {
-            debug $level if length $tag;
-            die "Found trailing info \"$tag\"" if length $tag;
+            die $self->exception('parse', "Found trailing info \"$tag\"", $node) if length $tag;
             $continue = undef;
             $postop   = undef;
         }
@@ -596,8 +601,8 @@ sub parse_variable {
             my $str = $1;
             return $str;
             #return [\$str, 0];
-        } elsif ($$str_ref =~ s{ ^ \$ (\w+) \b \s* }{}x # auto-quoted dollars
-                 || $$str_ref =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* }{}x) {
+        } elsif ($$str_ref =~ s{ ^ \$ (\w+) \s* (?! \.) }{}x # auto-quoted dollars
+                 || $$str_ref =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* (?! \.) }{}x) {
             my $name = $1;
             return [$name, 0];
         }
@@ -685,7 +690,7 @@ sub parse_variable {
 
     ### nothing to find - return failure
     } else {
-        return undef;
+        return;
     }
 
     ### looks for args for the initial
@@ -701,6 +706,7 @@ sub parse_variable {
 
     ### allow for nested items
     while ($copy =~ s{ ^ ( \.(?!\.) | \|(?!\|) ) \s* }{}x) {
+        return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
         push @var, $1;
 
         ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
@@ -736,6 +742,7 @@ sub parse_variable {
         my $tree;
         my $found;
         while ($copy =~ s{ ^ ($OP_QR) \s* }{}ox) {
+            return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
             local $self->{'_state'}->{'operator_precedence'} = 1;
             my $op   = $1;
             my $var2 = $self->parse_variable(\$copy);
@@ -1084,16 +1091,19 @@ sub undefined {''}
 
 sub scalar_op {
     my ($self, $name) = @_;
+    $SCALAR_OPS->{$name} = $_[2] if $#_ == 2;
     return $SCALAR_OPS->{$name};
 }
 
 sub list_op {
     my ($self, $name) = @_;
+    $LIST_OPS->{$name} = $_[2] if $#_ == 2;
     return $LIST_OPS->{$name};
 }
 
 sub hash_op {
     my ($self, $name) = @_;
+    $HASH_OPS->{$name} = $_[2] if $#_ == 2;
     return $HASH_OPS->{$name};
 }
 
@@ -1547,6 +1557,76 @@ sub play_TRY {
     return;
 }
 
+sub parse_USE {
+    my ($self, $tag_ref) = @_;
+
+    my $var;
+    my $copy = $$tag_ref;
+    if (defined(my $_var = $self->parse_variable(\$copy, {auto_quote => qr/\w+/}))
+        && $copy =~ s{ ^ = \s* }{}x) {
+        $var = $_var;
+        $$tag_ref = $copy;
+    }
+
+    $copy = $$tag_ref;
+    my $module = $self->parse_variable(\$copy, {auto_quote => qr/\w+ (?: (?:\.|::) \w+)*/x});
+    die $self->exception('parse', "Missing plugin name while parsing $$tag_ref") if ! defined $module;
+    $module =~ s/\./::/g;
+
+    my $args;
+    if ($copy =~ s{ ^ \( \s* }{}x) {
+        $args = $self->parse_args(\$copy);
+        $copy =~ s { ^ \) \s* }{}x || die $self->exception('parse.missing', "Missing close ')'");
+    }
+
+    $$tag_ref = $copy;
+    return [$var, $module, $args];
+}
+
+sub play_USE {
+    my ($self, $ref, $node, $template_ref, $out_ref) = @_;
+    my ($var, $module, $args) = @$ref;
+
+    ### get the stash storage location - default to the module
+    $var = $module if ! defined $var;
+    my @var = map {($_, 0, '.')} split /(?:\.|::)/, $var;
+    pop @var; # remove the trailing '.'
+
+    ### look for a plugin_base
+    my $base = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
+    my $package = "${base}::${module}";
+    my $require = "$package.pm";
+    $require =~ s|::|/|g;
+
+    ### try and load the module - fall back to bare module if allowed
+    my $obj;
+    if (eval {require $require}) {
+        my $shape   = $package->load;
+        my $context = bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
+        my @args    = $args ? $self->vivify_args($args) : ();
+        $obj = $shape->new($context, @args);
+    } elsif ($self->{'LOAD_PERL'}) {
+        my $require = "$module.pm";
+        $require =~ s|::|/|g;
+        if (eval {require $require}) {
+            my @args = $args ? $self->vivify_args($args) : ();
+            $obj = $module->new(@args);
+        }
+    }
+    if (! $obj) {
+        my $err = $@ || 'Unknown error while loading $module';
+        die $self->exception('plugin', $err);
+    }
+
+    ### all good
+    $self->vivify_variable(\@var, {
+        set_var => 1,
+        var_val => $obj,
+    });
+
+    return;
+}
+
 sub parse_WHILE {
     my ($self, $tag_ref) = @_;
     my $copy = $$tag_ref;
@@ -1677,6 +1757,7 @@ sub process {
 
     ### do the swap
     $content = $self->swap($content, $copy);
+    $self->{'error'} = $@;
 
     ### put it back out
     if (ref $out) {
@@ -1707,8 +1788,11 @@ sub process {
         print $content;
     }
 
+    return if $self->{'error'};
     return 1;
 }
+
+sub error { shift->{'error'} }
 
 ###----------------------------------------------------------------###
 
@@ -1746,7 +1830,8 @@ sub as_string {
     if (my $node = $self->node) {
         $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
     }
-    return "$msg\n";
+    $msg .= "\n" if $msg !~ /\n\z/;
+    return $msg;
 }
 
 ###----------------------------------------------------------------###
@@ -1792,13 +1877,95 @@ sub next {
 
 ###----------------------------------------------------------------###
 
+package CGI::Ex::Template::_Context;
+
+use vars qw($AUTOLOAD);
+
+sub _template { shift->{'_template'} || die "Missing _template" }
+
+sub insert { shift->_template->include_file(@_) }
+
+sub define_filter {
+    my ($self, $name, $filter, $is_dynamic) = @_;
+    ($filter, $is_dynamic) = @$filter if UNIVERSAL::isa($filter, 'ARRAY');
+    if ($is_dynamic) {
+        my $sub = $filter;
+        $filter = sub { $sub->($self, @_) };
+    }
+    $self->define_vmethod('scalar', $name, $filter);
+}
+
+sub define_vmethod {
+    my ($self, $type, $name, $sub) = @_;
+    if ($type =~ /scalar|item/i) {
+        $self->_template->scalar_op($name, $sub);
+    } elsif ($type =~ /array|list/i) {
+        $self->_template->list_op($name, $sub);
+    } elsif ($type =~ /hash/i) {
+        $self->_template->hash_op($name, $sub);
+    } else {
+        die "Invalid type vmethod type $type";
+    }
+    return 1;
+}
+
+sub throw {
+    my ($self, $type, $info) = @_;
+
+    if (UNIVERSAL::isa($type, $self->_template->{'exception_package'} || 'CGI::Ex::Template::Exception')) {
+	die $type;
+    } elsif (defined $info) {
+	die $self->_template->exception($type, $info);
+    } else {
+	die $self->_template->exception('undef', $type);
+    }
+}
+
+sub stash {
+    my $self = shift;
+    return $self->{'_stash'} ||= bless {'_context' => $self}, 'CGI::Ex::Template::_Stash';
+}
+
+sub AUTOLOAD { shift->throw('not_implemented', "The method $AUTOLOAD has not been implemented") }
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::_Stash;
+
+use vars qw($AUTOLOAD);
+
+sub _context { shift->{'_context'} || die "Missing _context" }
+
+sub define_vmethod { shift->_context->define_vmethod(@_) }
+
+sub throw { shift->_context->throw(@_) }
+
+sub get {
+    my ($self, $var) = @_;
+    if (! UNIVERSAL::isa($var, 'ARRAY')) {
+        $var = [map { s/\(.*$//; ($_, 0, '.')} split /\s*\.\s*/, $var];
+        pop @$var;
+    }
+    return $self->_context->_template->vivify_var($var);
+}
+
+sub set {
+    my ($self, $var, $val) = @_;
+    if (! UNIVERSAL::isa($var, 'ARRAY')) {
+        $var = [map { s/\(.*$//; ($_, 0, '.')} split /\s*\.\s*/, $var];
+        pop @$var;
+    }
+    $self->_context->_template->vivify_var($var, {set_var => 1, var_val => $val});
+    return 1;
+}
+
+sub AUTOLOAD { shift->throw('not_implemented', "The method $AUTOLOAD has not been implemented") }
+
+###----------------------------------------------------------------###
+
 1;
 
 __END__
-
-=head1 NAME
-
-CGI::Ex::Template - Beginning interface to Templating systems - for they are many
 
 =head1 SYNOPSIS
 
@@ -1810,18 +1977,12 @@ CGI::Ex::Template - Beginning interface to Templating systems - for they are man
 
     Benchmark foreach
     Benchmark text processing
-    Finish USE
     Finish MACRO
     Finish META
-    Argument parsing
-    Try to optimize FOREACH iterator
-    Re-analize WHILE
     Fix compile_dir and compile_ext storage
     Allow for Interpolate
     Get several test suites to pass
     Add remaining filters
-    Add a pseudo context
-    Add a pseudo stash (with get and set)
 
 =head1 OPERATORS
 
