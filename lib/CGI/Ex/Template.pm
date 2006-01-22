@@ -216,21 +216,21 @@ BEGIN {
     };
 
     $OPERATORS ||= {qw(**  99   ^  99   pow 99
-                     !   95
-                     *   90   /  90   div 90   %  90   mod    90
-                     +   85   -  85   _   85   ~  85   concat 85
-                     <   80   >  80   <=  80   >= 80
-                     lt  80   gt 80   le  80   ge 80
-                     ==  75   != 75   eq  75   ne 75
-                     &&  70
-                     ||  65
-                     ..  60
-                     ?   55
-                     not 50
-                     and 45
-                     or  40
-                     hashref 1 arrayref 1
-                     )};
+                       !   95
+                       *   90   /  90   div 90   %  90   mod    90
+                       +   85   -  85   _   85   ~  85   concat 85
+                       <   80   >  80   <=  80   >= 80
+                       lt  80   gt 80   le  80   ge 80
+                       ==  75   != 75   eq  75   ne 75
+                       &&  70
+                       ||  65
+                       ..  60
+                       ?   55
+                       not 50
+                       and 45
+                       or  40
+                       hashref 1 arrayref 1
+                       )};
     $OP_TRINARY ||= {'?' => ':'};
     $OP_FUNC    ||= {};
     sub _op_qr { # no mixed \w\W operators
@@ -278,8 +278,11 @@ sub swap {
         my $content = $self->include_file($file);
         $str_ref = \$content;
 
-        if ($self->{'COMPILE_DIR'} && $self->{'COMPILE_EXT'}) {
-            $store_file = $self->{'COMPILE_DIR'} .'/'. $file . $self->{'COMPILE_EXT'} .'.sto';
+        if ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'}) {
+            $store_file = $file . $self->{'COMPILE_EXT'} .'.sto' if $self->{'COMPILE_EXT'};
+            $store_file = ($self->{'COMPILE_DIR'})
+                ? $self->{'COMPILE_DIR'} .'/'. $store_file
+                : $self->include_file($file) . $self->{'COMPILE_EXT'} .'.sto';
             if (-e $store_file && -M _ == -M $file) {
                 require Storable;
                 $tree = Storable::retrieve($store_file);
@@ -1975,11 +1978,10 @@ __END__
 
 =head1 TODO
 
-    Benchmark foreach
     Benchmark text processing
     Finish MACRO
     Finish META
-    Fix compile_dir and compile_ext storage
+    Add FINAL
     Allow for Interpolate
     Get several test suites to pass
     Add remaining filters
