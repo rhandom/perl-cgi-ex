@@ -1886,83 +1886,9 @@ use vars qw($AUTOLOAD);
 
 sub _template { shift->{'_template'} || die "Missing _template" }
 
-sub insert { shift->_template->include_file(@_) }
+sub AUTOLOAD { shift->_template->exception('not_implemented', "The method $AUTOLOAD has not been implemented") }
 
-sub define_filter {
-    my ($self, $name, $filter, $is_dynamic) = @_;
-    ($filter, $is_dynamic) = @$filter if UNIVERSAL::isa($filter, 'ARRAY');
-    if ($is_dynamic) {
-        my $sub = $filter;
-        $filter = sub { $sub->($self, @_) };
-    }
-    $self->define_vmethod('scalar', $name, $filter);
-}
-
-sub define_vmethod {
-    my ($self, $type, $name, $sub) = @_;
-    if ($type =~ /scalar|item/i) {
-        $self->_template->scalar_op($name, $sub);
-    } elsif ($type =~ /array|list/i) {
-        $self->_template->list_op($name, $sub);
-    } elsif ($type =~ /hash/i) {
-        $self->_template->hash_op($name, $sub);
-    } else {
-        die "Invalid type vmethod type $type";
-    }
-    return 1;
-}
-
-sub throw {
-    my ($self, $type, $info) = @_;
-
-    if (UNIVERSAL::isa($type, $self->_template->{'exception_package'} || 'CGI::Ex::Template::Exception')) {
-	die $type;
-    } elsif (defined $info) {
-	die $self->_template->exception($type, $info);
-    } else {
-	die $self->_template->exception('undef', $type);
-    }
-}
-
-sub stash {
-    my $self = shift;
-    return $self->{'_stash'} ||= bless {'_context' => $self}, 'CGI::Ex::Template::_Stash';
-}
-
-sub AUTOLOAD { shift->throw('not_implemented', "The method $AUTOLOAD has not been implemented") }
-
-###----------------------------------------------------------------###
-
-package CGI::Ex::Template::_Stash;
-
-use vars qw($AUTOLOAD);
-
-sub _context { shift->{'_context'} || die "Missing _context" }
-
-sub define_vmethod { shift->_context->define_vmethod(@_) }
-
-sub throw { shift->_context->throw(@_) }
-
-sub get {
-    my ($self, $var) = @_;
-    if (! UNIVERSAL::isa($var, 'ARRAY')) {
-        $var = [map { s/\(.*$//; ($_, 0, '.')} split /\s*\.\s*/, $var];
-        pop @$var;
-    }
-    return $self->_context->_template->vivify_var($var);
-}
-
-sub set {
-    my ($self, $var, $val) = @_;
-    if (! UNIVERSAL::isa($var, 'ARRAY')) {
-        $var = [map { s/\(.*$//; ($_, 0, '.')} split /\s*\.\s*/, $var];
-        pop @$var;
-    }
-    $self->_context->_template->vivify_var($var, {set_var => 1, var_val => $val});
-    return 1;
-}
-
-sub AUTOLOAD { shift->throw('not_implemented', "The method $AUTOLOAD has not been implemented") }
+sub DESTROY {}
 
 ###----------------------------------------------------------------###
 
