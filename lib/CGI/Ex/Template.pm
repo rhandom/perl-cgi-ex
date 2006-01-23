@@ -195,6 +195,12 @@ BEGIN {
             play   => \&play_TRY,
             block  => 1,
         },
+        UNLESS  => {
+            parse  => \&parse_UNLESS,
+            play   => \&play_UNLESS,
+            block  => 1,
+            postop => 1,
+        },
         USE     => {
             parse  => \&parse_USE,
             play   => \&play_USE,
@@ -1605,6 +1611,13 @@ sub play_TRY {
     $self->execute_tree($catch_body_ref, $template_ref, $out_ref);
     return;
 }
+
+sub parse_UNLESS {
+    my $ref = $DIRECTIVES->{'IF'}->{'parse'}->(@_);
+    return [ \ [ '!', $ref ], 0 ];
+}
+
+sub play_UNLESS { return $DIRECTIVES->{'IF'}->{'play'}->(@_) }
 
 sub parse_USE {
     my ($self, $tag_ref) = @_;
