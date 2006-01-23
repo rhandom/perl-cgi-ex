@@ -359,15 +359,18 @@ sub parse_tree {
     my $len_s = length $START;
     my $len_e = length $END;
 
-    my @tree;           # the parsed tree
-    my @state;          # maintain block levels
-    my @move_to_front;  # items that need to be declared first
-    my $i = 0;          # start index
-    my $j = 0;          # end index
-    my $last = 0;       # previous end index
-    my $post_chomp = 0; # previous post_chomp setting
-    my $continue;       # multiple directives in the same tag
-    my $postop;
+    my @tree;             # the parsed tree
+    my @state;            # maintain block levels
+    my $pointer = \@tree; # pointer to current block storage
+    my @move_to_front;    # items that need to be declared first
+    my $i = 0;            # start index
+    my $j = 0;            # end index
+    my $last = 0;         # previous end index
+    my $post_chomp = 0;   # previous post_chomp setting
+    my $continue;         # multiple directives in the same tag
+    my $postop;           # found a post-operative DIRECTIVE
+    my @capture;          # capture the output of a directive
+    my $capture;          # flag to capture
     my $tag;
     my $node;
     while (1) {
@@ -380,7 +383,7 @@ sub parse_tree {
         } else {
             $i = index($$str_ref, $START, $last);
             last if $i == -1;
-            push @tree, ['TEXT', $last, $i, [0, $post_chomp]] if $last != $i;
+            push @$pointer, ['TEXT', $last, $i, [0, $post_chomp]] if $last != $i;
             $j = index($$str_ref, $END, $i + $len_s);
             $last = $j + $len_e;
             if ($j == -1) { # missing closing tag
@@ -393,7 +396,7 @@ sub parse_tree {
 
         ### take care of whitespace
         if ($tag =~ s/^(\#?)-/$1/ || ($self->{'PRE_CHOMP'} && $tag !~ s/^(\#?)\+/$1/)) {
-            $tree[-1]->[3]->[0] = 1 if $tree[-1] && $tree[-1]->[0] eq 'TEXT';
+            $pointer->[-1]->[3]->[0] = 1 if $pointer->[-1] && $pointer->[-1]->[0] eq 'TEXT';
             $node->[1] ++;
         }
         if ($tag =~ s/-$// || ($self->{'POST_CHOMP'} && $tag !~ s/\+$//)) {
@@ -404,7 +407,7 @@ sub parse_tree {
         }
         if ($tag =~ /^\#/) { # leading # means to comment the entire section
             $node->[0] = 'COMMENT';
-            push @tree, $node;
+            push @$pointer, $node;
             next;
         }
         $tag =~ s{ (?<! \\) \# .* $ }{}xmg; # remove trailing comments
@@ -421,43 +424,45 @@ sub parse_tree {
             ### store out this current node level
             my $func = $node->[0] = $1;
             $tag =~ s{ ^ \w+ \s* }{}x;
-            push @tree, $node if ! $postop;
+            push @$pointer, $node if ! $postop;
 
             ### anything that behaves as a block ending
-            if ($func eq 'END' || $DIRECTIVES->{$func}->{'continue_block'}) {
+            if ($func eq 'END' || (my $is_continue = $DIRECTIVES->{$func}->{'continue_block'})) {
                 if ($#state == -1) {
                     die $self->exception('parse', "Found an $func while not in a block", $node);
-                } else {
-                    ### store any child nodes into the parent node
-                    my $parent_node = pop @state;
-                    my $start_index = $parent_node->[4] = $i + $len_s;
-                    my $j = $#tree;
-                    for ( ; $j >= 0; $j--) {
-                        last if defined($tree[$j]->[4]) && $tree[$j]->[4] == $start_index;
-                    }
-                    my @sub_tree = splice @tree, $j + 1, $#tree - ($j + 1), (); # remove from main tree - but store
-                    my $storage = $parent_node->[5] ||= [];
-                    @$storage = @sub_tree;
-                    if ($DIRECTIVES->{$parent_node->[0]}->{'move_to_front'}) {
-                        push @move_to_front, splice(@tree, -2, 2, ());
-                    }
+                }
+                my $parent_node = pop @state;
 
-                    if ($DIRECTIVES->{$func}->{'continue_block'}) {
-                        my $parent_type = $parent_node->[0];
-                        if (! $DIRECTIVES->{$func}->{'continue_block'}->{$parent_type}) {
-                            die $self->exception('parse', "Found unmatched nested block", $node, 0);
-                        }
-                        $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $node) };
-                        if ($@) {
-                            $@->node($node) if UNIVERSAL::can($@, 'node') && ! $@->node;
-                            die $@;
-                        }
-                        $node->[4] = -1;
-                        $node->[5] = [];
-                        push @state, $node;
-                        $parent_node->[6] = $node;
+                if ($is_continue) {
+                    pop @$pointer; # we will store the node in the parent instead
+                    $parent_node->[6] = $node;
+                    my $parent_type = $parent_node->[0];
+                    if (! $is_continue->{$parent_type}) {
+                        die $self->exception('parse', "Found unmatched nested block", $node, 0);
                     }
                 }
+
+                ### restore the pointer up one level
+                $pointer = ($#state == -1) ? \@tree : $state[0]->[5];
+
+                ### normal end block
+                if (! $is_continue) {
+                    if ($DIRECTIVES->{$parent_node->[0]}->{'move_to_front'}) { # move things like BLOCKS to front
+                        push @move_to_front, $parent_node;
+                        splice @$pointer, -1, 1, ();
+                    }
+
+                ### continuation block - such as an elsif
+                } else {
+                    $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $node) };
+                    if (my $err = $@) {
+                        $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
+                        die $err;
+                    }
+                    push @state, $node;
+                    $pointer = $node->[5] ||= [];
+                }
+
             } elsif ($func eq 'TAGS') {
                 if ($tag =~ / ^ (\w+) /x && $TAGS->{$1}) {
                     $tag =~ s{ ^ (\w+) \s* }{}x;
@@ -471,33 +476,28 @@ sub parse_tree {
             } elsif ($DIRECTIVES->{$func}->{'control'}) {
                 # do nothing
             } else {
-                if ($DIRECTIVES->{$func}->{'block'} && ! $postop) {
-                    $node->[4] = -1;
-                    $node->[5] = [];
-                    push @state, $node;
-                }
                 $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $node) };
                 if (my $err = $@) {
                     $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
                 }
-                $postop->[7] = $node if $postop;
+                if ($postop) {
+                    $postop->[7] = $node;
+                } elsif ($DIRECTIVES->{$func}->{'block'}) {
+                    push @state, $node;
+                    $pointer = $node->[5] ||= [];
+                }
             }
 
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_variable(\$tag))) {
-            push @tree, $node;
+            push @$pointer, $node;
             if ($tag =~ s{ ^ = \s* }{}x) {
-                eval {
-                    my $val = $self->parse_variable(\$tag);
-                    my $SET = $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, 'SET', $node) || [];
-                    unshift @$SET, [$var, $val];
-                    $node->[0] = 'SET';
-                    $node->[3] = $SET;
-                };
-                if ($@) {
-                    $@->node($node) if UNIVERSAL::can($@, 'node') && ! $@->node;
-                    die $@;
+                $node->[0] = 'SET';
+                $node->[3] = eval { $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, 'SET', $node, $var) };
+                if (my $err = $@) {
+                    $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
+                    die $err;
                 }
             } else {
                 #die "Found trailing info during variable access \"$tag" if $tag;
@@ -505,23 +505,47 @@ sub parse_tree {
                 $node->[3] = $var;
             }
 
-        } else {
+        } else { # error
             my $all  = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $all =~ s/^\s+//;
             $all =~ s/\s+$//;
             die $self->exception('parse', "Not sure how to handle tag \"$all\"");
         }
 
-        ### look for more directives in the tag
-        if ($tag =~ s{ ^ ; \s* }{}x) {
-            $continue   = $j - length $tag;
-            $postop     = undef;
+
+        ### we need to store the captured directive
+        if ($capture) {
+            undef $capture;
+            if (! $capture[-1]) {
+                die $self->exception('parse', "Die bad DIRECTIVE capturing setup", $node);
+            } elsif ($node->[8]) {
+                die $self->exception('parse', "Nested DIRECTIVE capturing attempted", $node);
+            }
+            my $storage = pop @capture; # pull off the most recent
+            push @$storage, $node;
+        }
+
+        ### we are capturing the output of the next directive - set it up
+        if (delete $node->[8]) {
+            $continue  = $j - length $tag;
+            $postop    = undef;
             $node->[2] = $continue;
-        } elsif ($tag =~ / ^ (\w+) \s /x && $DIRECTIVES->{$1} && $DIRECTIVES->{$1}->{'postop'}) {
-            $continue   = $j - length $tag;
-            $postop     = $node;
+            $capture   = 1;
+            push @capture, $node->[5];
+
+        ### semi-colon = end of statement
+        } elsif ($tag =~ s{ ^ ; \s* }{}x) {
+            $continue  = $j - length $tag;
+            $postop    = undef;
             $node->[2] = $continue;
-        } else {
+
+        ### looking at a postoperator
+        } elsif ($tag =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1} && $DIRECTIVES->{$1}->{'postop'}) {
+            $continue  = $j - length $tag;
+            $postop    = $node;
+            $node->[2] = $continue;
+
+        } else { # error
             die $self->exception('parse', "Found trailing info \"$tag\"", $node) if length $tag;
             $continue = undef;
             $postop   = undef;
@@ -535,7 +559,6 @@ sub parse_tree {
     if ($#state >  -1) {
         die $self->exception('parse.missing.end', "Missing END", $state[-1], 0);
     }
-    return undef if $#tree  == -1;
 
     push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
 
@@ -1492,17 +1515,31 @@ sub play_PROCESS {
 }
 
 sub parse_SET {
-    my ($self, $tag_ref) = @_;
+    my ($self, $tag_ref, $func, $node, $initial_var) = @_;
     my @SET;
     my $copy = $$tag_ref;
     while (length $$tag_ref) {
-        my $set = $self->parse_variable($tag_ref);
-        last if ! defined $set;
+        my $set;
+        my $get_val;
         my $val;
-        if ($$tag_ref =~ s{ ^ = \s* }{}x) {
-            $val = $self->parse_variable($tag_ref);
+        if ($initial_var) {
+            $set = $initial_var;
+            undef $initial_var;
+            $get_val = 1;
         } else {
+            $set = $self->parse_variable($tag_ref);
+            last if ! defined $set;
+            $get_val = $$tag_ref =~ s{ ^ = \s* }{}x;
+        }
+        if (! $get_val) { # no next val
             $val = undef;
+        } elsif ($$tag_ref =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}) { # next val is a directive - set up capturing
+            $node->[8] = 1;           # set a flag to keep parsing
+            $val = $node->[5] ||= []; # setup storage
+            push @SET, [$set, $val];
+            last;
+        } else { # get a normal variable
+            $val = $self->parse_variable($tag_ref);
         }
         push @SET, [$set, $val];
     }
@@ -1510,10 +1547,21 @@ sub parse_SET {
 }
 
 sub play_SET {
-    my ($self, $set) = @_;
+    my ($self, $set, $node, $template_ref) = @_;
     foreach (@$set) {
         my ($set, $val) = @$_;
-        $val = defined($val) ? $self->vivify_variable($val) : '';
+        if (! defined $val) { # not defined
+            $val = '';
+        } elsif ($node->[5] && $val == $node->[5]) { # a captured directive
+            my $sub_tree = $node->[5];
+            $sub_tree = $sub_tree->[0]->[5] if $sub_tree->[0] && $sub_tree->[0]->[0] eq 'BLOCK';
+            $val = '';
+            $self->execute_tree($sub_tree, $template_ref, \$val);
+            debug $val;
+        } else { # normal var
+            $val = $self->vivify_variable($val);
+        }
+
         $self->vivify_variable($set, {
             set_var => 1,
             var_val => $val,
@@ -1967,7 +2015,6 @@ __END__
     Add MACRO
     Add META
     Add FINAL
-    Add UNLESS
     Add CONSTANTS
     Capture block to var
     Look at other configs
