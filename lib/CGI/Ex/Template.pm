@@ -12,10 +12,7 @@ use vars qw(@INCLUDE_PATH
             $TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS
             $DIRECTIVES
-            $OPERATORS
-            $OP_TRINARY
-            $OP_FUNC
-            $OP_QR
+            $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $OP_QR $OP_QR_UNARY
             $QR_FILENAME
             $MAX_RECURSE
             $WHILE_MAX
@@ -216,7 +213,7 @@ BEGIN {
     };
 
     $OPERATORS ||= {qw(**  99   ^  99   pow 99
-                       !   95
+                       !   95   unary_minus 95
                        *   90   /  90   div 90   %  90   mod    90
                        +   85   -  85   _   85   ~  85   concat 85
                        <   80   >  80   <=  80   >= 80
@@ -231,15 +228,21 @@ BEGIN {
                        or  40
                        hashref 1 arrayref 1
                        )};
+    $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'unary_minus' => '-'};
     $OP_TRINARY ||= {'?' => ':'};
     $OP_FUNC    ||= {};
     sub _op_qr { # no mixed \w\W operators
-        my $chrs = join '|', map {quotemeta $_} grep {/^\W{2,}$/} @_;
-        my $chr  = join '',  map {quotemeta $_} grep {/^\W$/} @_;
-        my $word = join '|', grep {/^\w+$/} @_;
-        return "$chrs|[$chr]|$word";
+        my %used;
+        my $chrs = join '|', map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W{2,}$/} @_;
+        my $chr  = join '',  map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
+        my $word = join '|',                    grep {++$used{$_} < 2} grep {/^\w+$/}    @_;
+        $chr = "[$chr]" if $chr;
+        return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
     }
-    $OP_QR ||= _op_qr(sort(keys(%$OPERATORS), values(%$OP_TRINARY)));
+    sub _build_op_qr       { _op_qr(sort(grep {! $OP_UNARY->{$_}} keys(%$OPERATORS), values(%$OP_TRINARY))) }
+    sub _build_op_qr_unary { _op_qr(sort %$OP_UNARY) } # grab keys and values
+    $OP_QR       ||= _build_op_qr();
+    $OP_QR_UNARY ||= _build_op_qr_unary();
 
     $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)* }x;
     $MAX_RECURSE = 50;
@@ -611,8 +614,20 @@ sub parse_variable {
         }
     }
 
-    my @var;
     my $copy = $$str_ref;
+
+    ### test for leading unary operators
+    my $has_unary;
+    if ($copy =~ s{ ^ ($OP_QR_UNARY) \s* }{}xo) {
+        return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
+        $has_unary = $1;
+        if (! $OP_UNARY->{$has_unary}) {
+            my $ref = $self->{'_op_unary_backref'} ||= {reverse %$OP_UNARY};
+            $has_unary = $ref->{$has_unary} || die "Couldn't find canonical name of unary \"$1\"";
+        }
+    }
+
+    my @var;
     my $is_literal;
 
     ### allow for leading $foo or ${foo.bar} type constructs
@@ -622,7 +637,7 @@ sub parse_variable {
         push @var, $self->parse_variable(\$name);
 
     ### allow for numbers
-    } elsif ($copy =~ s{ ^ (-? (?:\d*\.\d+ | \d+) ) \s* }{}x) {
+    } elsif ($copy =~ s{ ^ ( (?:\d*\.\d+ | \d+) ) \s* }{}x) {
         my $number = $1;
         push @var, \ $number;
         $is_literal = 1;
@@ -674,7 +689,7 @@ sub parse_variable {
             push @$hashref, $key, $val;
             $copy =~ s{ ^ , \s* }{}x;
         }
-        $copy =~ s{ ^ \} \s* }{}x || die $self->exception('parse.missing.curly', "Missing close \}", undef,
+        $copy =~ s{ ^ \} \s* }{}x || die $self->exception('parse.missing.curly', "Missing close \} ($copy)", undef,
                                                           length($$str_ref) - length($copy));
         push @var, \ $hashref;
 
@@ -749,6 +764,24 @@ sub parse_variable {
             local $self->{'_state'}->{'operator_precedence'} = 1;
             my $op   = $1;
             my $var2 = $self->parse_variable(\$copy);
+            ### allow for unary operator precedence
+            if ($has_unary && ($OPERATORS->{$op} && $OPERATORS->{$op} < $OPERATORS->{$has_unary})) {
+                if ($tree) {
+                    if ($#$tree == 1) { # only one operator - keep simple things fast
+                        $var = [\ [$tree->[0], $var, $tree->[1]], 0];
+                    } else {
+                        unshift @$tree, $var;
+                        $var = $self->apply_precedence($tree, $found);
+                    }
+                    undef $tree;
+                    undef $found;
+                }
+                my $op_unary = $OP_UNARY->{$has_unary} || $has_unary;
+                $var = [ \ [ $op_unary, $var ], 0 ];
+                undef $has_unary;
+            }
+
+            ### add the operator to the tree
             push (@{ $tree ||= [] }, $op, $var2);
             $found->{$op} = $OPERATORS->{$op} if exists $OPERATORS->{$op};
         }
@@ -762,6 +795,12 @@ sub parse_variable {
                 $var = $self->apply_precedence($tree, $found);
             }
         }
+    }
+
+    ### allow for unary on non-chained variables
+    if ($has_unary) {
+        my $op_unary = $OP_UNARY->{$has_unary} || $has_unary;
+        $var = [ \ [ $op_unary, $var ], 0 ];
     }
 
 #    debug $var, $copy;
@@ -1055,6 +1094,9 @@ sub play_operator {
             return 0 if ! $var;
         }
         return $var;
+    } elsif ($op eq '!') {
+        my $var = ! $self->vivify_variable($tree->[0]);
+        return defined($var) ? $var : '';
     }
 
     ### equality operators
@@ -1076,6 +1118,10 @@ sub play_operator {
 
     ### numeric operators
     my @args = $self->vivify_args($tree);
+    if ($#args == -1) {
+        if ($op eq '-') { return - $n }
+        die "Not enough args for operator \"$op\"";
+    }
     if ($op eq '..')        { return [($n||0) .. ($args[-1]||0)] }
     elsif ($op eq '+')      { $n +=  $_ for @args; return $n }
     elsif ($op eq '-')      { $n -=  $_ for @args; return $n }
@@ -1905,9 +1951,14 @@ __END__
 =head1 TODO
 
     Benchmark text processing
-    Finish MACRO
-    Finish META
+    Add MACRO
+    Add META
     Add FINAL
+    Add UNLESS
+    Add CONSTANTS
+    Capture block to var
+    Look at other configs
+    Allow USE to use our Iterator
     Allow for Interpolate
     Get several test suites to pass
     Add remaining filters
