@@ -8,9 +8,35 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 359 - ($is_tt ? 44 : 0);
+use Test::More tests => 367 - ($is_tt ? 44 : 0);
 use Data::Dumper qw(Dumper);
 
+### set up some dummy packages for use later
+{
+    package MyTestPlugin::Foo;
+    $INC{'MyTestPlugin/Foo.pm'} = $0;
+    sub load { $_[0] }
+    sub new {
+        my $class   = shift;
+        my $context = shift;  # note the plugin style object that needs to shift off context
+        my $args    = shift || {};
+        return bless $args, $class;
+    }
+    sub bar { my $self = shift; return join('', keys %$self, values %$self) }
+    sub seven { 7 }
+    sub many { return 1, 2, 3 }
+    sub echo { my $self = shift; $_[0] }
+}
+{
+    package Foo2;
+    $INC{'Foo2.pm'} = $0;
+    use base qw(MyTestPlugin::Foo);
+    sub new {
+        my $class   = shift;
+        my $args    = shift || {}; # note - no plugin context
+        return bless $args, $class;
+    }
+}
 
 use_ok($module);
 
@@ -19,25 +45,18 @@ sub process_ok { # process the value
     my $test = shift;
     my $args = shift;
     my $out  = '';
-    my $obj = $module->new(ABSOLUTE => 1);
+    my $obj = $module->new(ABSOLUTE => 1, PLUGIN_BASE => 'MyTestPlugin', LOAD_PERL => 1);
     $obj->process(\$str, $args, \$out);
     my $ok = $out eq $test;
     ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
     my $line = (caller)[2];
     warn "#   process_ok called at line $line.\n" if ! $ok;
-    print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
     print $obj->error if ! $ok && $obj->can('error');
+    print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
     exit if ! $ok;
 }
 
-{
-    package OBJ;
-    sub new { bless {}, __PACKAGE__ }
-    sub seven { 7 }
-    sub many { return 1, 2, 3 }
-    sub echo { my $self = shift; $_[0] }
-}
-my $obj = OBJ->new;
+my $obj = Foo2->new;
 
 ###----------------------------------------------------------------###
 ### variable GETting
@@ -223,7 +242,7 @@ process_ok("[% {a => 'A'}.a %]" => 'A') if ! $is_tt;
 process_ok("[% 'This is a string'.length %]" => 16) if ! $is_tt;
 process_ok("[% 123.length %]" => 3) if ! $is_tt;
 process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
-process_ok("[% -123.2.length %]" => 6) if ! $is_tt;
+process_ok("[% -123.2.length %]" => -5) if ! $is_tt; # the - doesn't bind as tight as the dot methods
 
 process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
 process_ok("[% n.repeat(0) %]" => '',   {n => 1});
@@ -520,3 +539,16 @@ process_ok("[% TRY %]Foo[% THROW foo.bar 'for fun' %][% CATCH foo %]one[% CATCH 
 
 process_ok("[% foo(bar = 'one', baz = 'two') %]" => "barbazonetwo", {foo=>sub{my $n=$_[-1];join('',keys %$n, values %$n)}});
 process_ok("[%bar='ONE'%][% foo(\$bar = 'one') %]" => "ONEone", {foo=>sub{my $n=$_[-1];join('',keys %$n, values %$n)}});
+
+###----------------------------------------------------------------###
+### use
+
+process_ok("[% USE son_of_gun_that_does_not_exist %]one" => '');
+process_ok("[% USE Foo %]one" => 'one');
+process_ok("[% USE Foo2 %]one" => 'one');
+process_ok("[% USE Foo(bar = 'baz') %]one[% Foo.bar %]" => 'onebarbaz');
+process_ok("[% USE Foo2(bar = 'baz') %]one[% Foo2.bar %]" => 'onebarbaz');
+process_ok("[% USE Foo(bar = 'baz') %]one[% Foo.bar %]" => 'onebarbaz');
+process_ok("[% USE d = Foo(bar = 'baz') %]one[% d.bar %]" => 'onebarbaz');
+process_ok("[% USE d.d = Foo(bar = 'baz') %]one[% d.d.bar %]" => '');
+
