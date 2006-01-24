@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 367 - ($is_tt ? 44 : 0);
+use Test::More tests => 387 - ($is_tt ? 44 : 0);
 use Data::Dumper qw(Dumper);
 
 ### set up some dummy packages for use later
@@ -45,7 +45,10 @@ sub process_ok { # process the value
     my $test = shift;
     my $args = shift;
     my $out  = '';
-    my $obj = $module->new(ABSOLUTE => 1, PLUGIN_BASE => 'MyTestPlugin', LOAD_PERL => 1);
+    my $obj = $module->new(ABSOLUTE => 1,
+                           PLUGIN_BASE => 'MyTestPlugin', LOAD_PERL => 1,
+                           CONSTANTS   => {harry => sub {'do_this_once'}},
+                           );
     $obj->process(\$str, $args, \$out);
     my $ok = $out eq $test;
     ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
@@ -349,6 +352,7 @@ process_ok("[% 0 ? 1 ? 1 + 2 * 3 : 1 + 2 * 4 : 1 + 2 * 5 %]" => '11');
 process_ok("[% PROCESS foo %]" => '');
 process_ok("[% BLOCK foo %]" => '');
 process_ok("[% BLOCK foo %][% END %]" => '');
+process_ok("[% BLOCK %][% END %]one" => 'one');
 process_ok("[% BLOCK foo %]hi there[% END %]" => '');
 process_ok("[% BLOCK foo %][% BLOCK foo %][% END %][% END %]" => '');
 process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
@@ -371,6 +375,13 @@ process_ok("[% IF 0 %]Yes[% ELSE %]No[% END %]" => 'No');
 process_ok("[% IF 0 %]Yes[% ELSIF 1 %]No[% END %]" => 'No');
 process_ok("[% IF 0 %]Yes[% ELSIF 0 %]No[% END %]" => '');
 process_ok("[% IF 0 %]Yes[% ELSIF 0 %]No[% ELSE %]hmm[% END %]" => 'hmm');
+
+process_ok("[% UNLESS 1 %]Yes[% END %]" => '');
+process_ok("[% UNLESS 0 %]Yes[% END %]" => 'Yes');
+process_ok("[% UNLESS 0 %]Yes[% ELSE %]No[% END %]" => 'Yes');
+process_ok("[% UNLESS 1 %]Yes[% ELSIF 1 %]No[% END %]" => 'No');
+process_ok("[% UNLESS 1 %]Yes[% ELSIF 0 %]No[% END %]" => '');
+process_ok("[% UNLESS 1 %]Yes[% ELSIF 0 %]No[% ELSE %]hmm[% END %]" => 'hmm');
 
 ###----------------------------------------------------------------###
 ### comments
@@ -496,6 +507,13 @@ process_ok("[% FOREACH f = [1..3] IF 0 %]([% f %])[% END %]" => '')             
 process_ok("[% BLOCK bar %][% foo %][% foo = foo - 1 %][% END %][% PROCESS bar WHILE foo %]" => '321', {foo => 3});
 
 ###----------------------------------------------------------------###
+### capturing
+
+process_ok("[% foo = BLOCK %]Hi[% END %][% foo %][% foo %]" => 'HiHi');
+process_ok("[% BLOCK foo %]Hi[% END %]([% bar = PROCESS foo %])([% bar %])" => '()(Hi)');
+
+
+###----------------------------------------------------------------###
 ### tags
 
 process_ok("[% TAGS html %]<!-- 1 + 2 -->" => '3');
@@ -552,3 +570,29 @@ process_ok("[% USE Foo(bar = 'baz') %]one[% Foo.bar %]" => 'onebarbaz');
 process_ok("[% USE d = Foo(bar = 'baz') %]one[% d.bar %]" => 'onebarbaz');
 process_ok("[% USE d.d = Foo(bar = 'baz') %]one[% d.d.bar %]" => '');
 
+###----------------------------------------------------------------###
+### macro
+
+process_ok("[% MACRO foo PROCESS bar %][% BLOCK bar %]Hi[% END %][% foo %]" => 'Hi');
+process_ok("[% MACRO foo BLOCK %]Hi[% END %][% foo %]" => 'Hi');
+process_ok("[% MACRO foo BLOCK %]Hi[% END %][% foo %]" => 'Hi');
+process_ok("[% MACRO foo(n) BLOCK %]Hi[% n %][% END %][% foo(2) %]" => 'Hi2');
+process_ok("[%n=1%][% MACRO foo(n) BLOCK %]Hi[% n %][% END %][% foo(2) %][%n%]" => 'Hi21');
+process_ok("[%n=1%][% MACRO foo BLOCK %]Hi[% n = 2%][% END %][% foo %][%n%]" => 'Hi1');
+process_ok("[% MACRO foo(n) FOREACH i=[1..n] %][% i %][% END %][% foo(3) %]" => '123');
+
+###----------------------------------------------------------------###
+### constants
+
+process_ok("[% constants.harry %]" => 'do_this_once');
+process_ok("[% constants.harry.length %]" => '12');
+process_ok("[% SET constants.foo = 1 %][% constants.foo %]one" => '1one');
+process_ok("[% SET constants.harry = 1 %][% constants.harry %]one" => 'do_this_onceone');
+
+###----------------------------------------------------------------###
+
+#process_ok(qq{[% FOREACH item IN [ 'foo', 'bar', 'baz' ] -%]
+#[%- "<ul>\n" IF loop.first %]
+#<li>[% loop.count %]/[% loop.size %]: [% item %]
+#[%- "</ul>\n" IF loop.last %]
+#[% END %]} => 
