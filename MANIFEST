@@ -71,6 +71,7 @@ t/samples/bench_conf_writers.pl
 t/samples/bench_method_calling.pl
 t/samples/bench_template.pl
 t/samples/bench_template_tag_parser.pl
+t/samples/bench_template_versions.pl
 t/samples/bench_validation.pl
 t/samples/cgi_ex_1.cgi
 t/samples/cgi_ex_2.cgi

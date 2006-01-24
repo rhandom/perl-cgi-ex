@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 387 - ($is_tt ? 44 : 0);
+use Test::More tests => 388 - ($is_tt ? 44 : 0);
 use Data::Dumper qw(Dumper);
 
 ### set up some dummy packages for use later

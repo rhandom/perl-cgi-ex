@@ -14,6 +14,7 @@ use CGI::Ex::Dump qw(debug);
 use Template;
 
 ### This is with CGI::Ex::Template at CVS revision 1.106 which has most of TT's features
+### $txt = ((" "x10)."[% one %]\n")x1000;
 #   file_CET:  2 wallclock secs ( 2.07 usr +  0.00 sys =  2.07 CPU) @ 31.88/s (n=66)
 #  file_CET_60:  2 wallclock secs ( 2.08 usr +  0.02 sys =  2.10 CPU) @ 33.33/s (n=70)
 #  file_CET_n:  3 wallclock secs ( 2.18 usr +  0.01 sys =  2.19 CPU) @ 10.05/s (n=22)
@@ -25,6 +26,20 @@ use Template;
 #  file_CET    31.9/s       1582%        217%          --         -4%         -6%
 #  file_CET_60 33.3/s       1658%        232%          5%          --         -2%
 #  file_TT     34.0/s       1693%        238%          7%          2%          --
+
+### $txt   = "[% SET one = 2 %]";
+#  Benchmark: running file_CET, file_CET_60, file_CET_n, file_TT, file_TT_n for at least 2 CPU seconds...
+#    file_CET:  2 wallclock secs ( 2.16 usr +  0.00 sys =  2.16 CPU) @ 10597.69/s (n=22891)
+#  file_CET_60:  3 wallclock secs ( 1.96 usr +  0.15 sys =  2.11 CPU) @ 5718.01/s (n=12065)
+#  file_CET_n:  1 wallclock secs ( 2.01 usr +  0.09 sys =  2.10 CPU) @ 3054.29/s (n=6414)
+#    file_TT:  2 wallclock secs ( 2.06 usr +  0.03 sys =  2.09 CPU) @ 2734.45/s (n=5715)
+#    file_TT_n:  2 wallclock secs ( 2.08 usr +  0.04 sys =  2.12 CPU) @ 333.96/s (n=708)
+#                 Rate   file_TT_n     file_TT  file_CET_n file_CET_60    file_CET
+#  file_TT_n     334/s          --        -88%        -89%        -94%        -97%
+#  file_TT      2734/s        719%          --        -10%        -52%        -74%
+#  file_CET_n   3054/s        815%         12%          --        -47%        -71%
+#  file_CET_60  5718/s       1612%        109%         87%          --        -46%
+#  file_CET    10598/s       3073%        288%        247%         85%          --
 
 my $tt_cache_dir = tmpnam;
 END { rmtree $tt_cache_dir };
@@ -52,15 +67,16 @@ my $swap = {
     cet   => $cet,
 };
 
-#my $txt  = ((" "x1000)."[% one %]\n")x10;
-#my $txt  = ((" "x1000)."[% one %]\n")x100;
-my $txt = ((" "x10)."[% one %]\n")x1000;
-#my $txt  = "[% one %]"x20;
-#my $txt  = "([% 1 + 2 %])";
-#my $txt   = "[% one %]";
-#my $txt   = "[% SET one = 2 %]";
-#my $txt   = "[% c.d.0 %]";
-#my $txt   = "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]";
+my $txt;
+#$txt  = ((" "x1000)."[% one %]\n")x10;
+#$txt  = ((" "x1000)."[% one %]\n")x100;
+$txt = ((" "x10)."[% one %]\n")x1000;
+#$txt  = "[% one %]"x20;
+#$txt  = "([% 1 + 2 %])";
+#$txt   = "[% one %]";
+$txt   = "[% SET one = 2 %]";
+#$txt   = "[% c.d.0 %]";
+#$txt   = "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]";
 
 my $file  = \$txt;
 my $file2 = $tt_cache_dir .'/template.txt';
