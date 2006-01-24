@@ -412,7 +412,7 @@ sub parse_tree {
             last if $i == -1;
             if ($last != $i) {
                 push @$pointer, ['TEXT', $last, $i, [0, $post_chomp]];
-                $self->interpolate_node($pointer, -1) if $self->{'INTERPOLATE'};
+                $self->interpolate_node($pointer, -1, $str_ref) if $self->{'INTERPOLATE'};
             }
             $j = index($$str_ref, $END, $i + $len_s);
             $last = $j + $len_e;
@@ -599,7 +599,7 @@ sub parse_tree {
     }
 
     push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
-    $self->interpolate_node(\@tree, -1) if $self->{'INTERPOLATE'};
+    $self->interpolate_node(\@tree, -1, $str_ref) if $self->{'INTERPOLATE'};
 
     return \@tree;
 }
@@ -709,19 +709,19 @@ sub parse_variable {
             $is_literal = 1;
         } else {
             my @pieces = split m{ (\$\w+\b | \$\{ [^\}]+ \}) }x, $2;
+            my $n = 0;
             foreach my $piece (@pieces) {
-                if ($piece =~ m{ ^ \$ (\w+) $ }x
-                    || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
-                    my $name = $1;
-                    $piece = $self->parse_variable(\$name);
-                }
+                next if ! ($n++ % 2);
+                next if $piece !~ m{ ^ \$ (\w+) $ }x
+                    && $piece !~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x;
+                my $name = $1;
+                $piece = $self->parse_variable(\$name);
             }
             @pieces = grep {defined && length} @pieces;
             if ($#pieces == -1) {
                 push @var, \ '';
                 $is_literal = 1;
             } else {
-                #push @var, \ ['concat', map {ref($_) ? $_ : [\$_, 0]} @pieces];
                 push @var, \ ['concat', @pieces];
             }
         }
@@ -919,6 +919,72 @@ sub apply_precedence {
     die "Couldn't apply precedence";
 }
 
+
+sub parse_args {
+    my $self    = shift;
+    my $str_ref = shift;
+    my $ARGS    = shift || {};
+    my $copy    = $$str_ref;
+
+    my @args;
+    my @named;
+    while (length $$str_ref) {
+        my $copy = $$str_ref;
+        if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr/\w+/}))
+            && $copy =~ s{ ^ = \s* }{}x) {
+            die $self->exception('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
+            my $val = $self->parse_variable(\$copy);
+            $copy =~ s{ ^ , \s* }{}x;
+            push @named, $name, $val;
+            $$str_ref = $copy;
+        } elsif (defined(my $arg = $self->parse_variable($str_ref))) {
+            push @args, $arg;
+            $$str_ref =~ s{ ^ , \s* }{}x;
+        } else {
+            last;
+        }
+    }
+
+    ### allow for named arguments to be added also
+    push @args, [\ ['hashref', @named], 0] if $#named != -1;
+
+    return \@args;
+}
+
+sub interpolate_node {
+    my ($self, $tree, $index, $template_ref) = @_;
+    my $node = $tree->[$index];
+    my $str = substr($$template_ref, $node->[1], $node->[2]-$node->[1]);
+
+    my @pieces = split m{ (\$\w+\b | \$\{ [^\}]+ \}) }x, $str;
+    return if $#pieces <= 0;
+
+    my @sub_tree;
+    my $n = 0;
+    my $i = 0;
+    foreach my $piece (@pieces) {
+        if (! ($n++ % 2)) {
+            next if ! length $piece;
+            push @sub_tree, ['TEXT', $i, $i + length($piece)];
+        } elsif ($piece =~ m{ ^ \$ (\w+) $ }x
+                 || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
+            my $name = $1;
+            push @sub_tree, ['GET', $i, $i + length($piece), $self->parse_variable(\$name)];
+        } else {
+            die "Parse error";
+        }
+        $i += length $piece;
+    }
+
+    $sub_tree[0]->[3]  = $node->[3] if $node->[3] && $sub_tree[0]->[0]  eq 'TEXT';
+    $sub_tree[-1]->[4] = $node->[4] if $node->[4] && $sub_tree[-1]->[0] eq 'TEXT';
+
+    ### replace the tree
+    splice @$tree, -1, 1, @sub_tree;
+}
+
+###----------------------------------------------------------------###
+
 sub vivify_variable {
     ### allow for the parse tree to store literals
     return $_[1] if ! ref $_[1];
@@ -1081,37 +1147,6 @@ sub vivify_variable {
         return @$ref;
     }
     return $ref;
-}
-
-sub parse_args {
-    my $self    = shift;
-    my $str_ref = shift;
-    my $ARGS    = shift || {};
-    my $copy    = $$str_ref;
-
-    my @args;
-    my @named;
-    while (length $$str_ref) {
-        my $copy = $$str_ref;
-        if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr/\w+/}))
-            && $copy =~ s{ ^ = \s* }{}x) {
-            die $self->exception('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
-            my $val = $self->parse_variable(\$copy);
-            $copy =~ s{ ^ , \s* }{}x;
-            push @named, $name, $val;
-            $$str_ref = $copy;
-        } elsif (defined(my $arg = $self->parse_variable($str_ref))) {
-            push @args, $arg;
-            $$str_ref =~ s{ ^ , \s* }{}x;
-        } else {
-            last;
-        }
-    }
-
-    ### allow for named arguments to be added also
-    push @args, [\ ['hashref', @named], 0] if $#named != -1;
-
-    return \@args;
 }
 
 sub vivify_args {
@@ -2143,8 +2178,8 @@ __END__
     Add META
     Add FINAL
     Look at other configs
+    Allow TRIM to work
     Allow USE to use our Iterator
-    Allow for Interpolate
     Get several test suites to pass
     Add remaining filters
 
