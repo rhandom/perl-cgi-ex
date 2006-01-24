@@ -8,8 +8,7 @@ CGI::Ex::Template - Lightweight TT2/3 engine
 
 use CGI::Ex::Dump qw(debug);
 use strict;
-use vars qw(@INCLUDE_PATH
-            $TAGS
+use vars qw($TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS
             $DIRECTIVES
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $OP_QR $OP_QR_UNARY
@@ -1923,7 +1922,7 @@ sub stash { shift->{'_swap'} ||= {} }
 
 sub include_path {
     my $self = shift;
-    return $self->{'INCLUDE_PATH'} ||= [@INCLUDE_PATH];
+    return $self->{'INCLUDE_PATH'} ||= [];
 }
 
 sub include_filename {
@@ -1936,7 +1935,12 @@ sub include_filename {
         return $file if -e $file;
     } else {
         my $paths = $self->include_path;
-        foreach my $item (ref($paths) ? @$paths : $paths) {
+        if (! ref $paths) {
+            my $delim = $self->{'DELIMITER'} || ':';
+            $delim = ($delim eq ':' && $^O eq 'MSWin32') ? qr|:(?!/)| : qr|\Q$delim\E|;
+            $paths = [split $delim, $paths];
+        }
+        foreach my $item (@$paths) {
             my @path = UNIVERSAL::isa($item, 'CODE')  ? $item->()
                      : UNIVERSAL::can($item, 'paths') ? $item->paths
                      :                                  ($item);
