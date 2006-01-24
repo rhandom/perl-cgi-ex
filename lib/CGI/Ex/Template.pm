@@ -273,7 +273,7 @@ sub swap {
     my $file = shift;
     my $tree;
     my $str_ref;
-    local $self->{'_swap'}  = shift || {};
+    local $self->{'STASH'}  = shift || {};
     local $self->{'_state'} = {};
 
     ### look for cached components
@@ -1012,13 +1012,13 @@ sub vivify_variable {
             if (defined $ref) {
                 if ($ARGS->{'set_var'}) {
                     if ($#$var <= $i) {
-                        $self->{'_swap'}->{$ref} = $ARGS->{'var_val'};
+                        $self->{'STASH'}->{$ref} = $ARGS->{'var_val'};
                         return;
                     } else {
-                        $self->{'_swap'}->{$ref} ||= {};
+                        $self->{'STASH'}->{$ref} ||= {};
                     }
                 }
-                $ref = $self->{'_swap'}->{$ref};
+                $ref = $self->{'STASH'}->{$ref};
             } else {
                 return if $ARGS->{'set_var'};
             }
@@ -1029,13 +1029,13 @@ sub vivify_variable {
         } else {
             if ($ARGS->{'set_var'}) {
                 if ($#$var <= $i) {
-                    $self->{'_swap'}->{$ref} = $ARGS->{'var_val'};
+                    $self->{'STASH'}->{$ref} = $ARGS->{'var_val'};
                     return;
                 } else {
-                    $self->{'_swap'}->{$ref} ||= {};
+                    $self->{'STASH'}->{$ref} ||= {};
                 }
             }
-            $ref = $self->{'_swap'}->{$ref};
+            $ref = $self->{'STASH'}->{$ref};
         }
     }
 
@@ -1393,7 +1393,7 @@ sub play_FOREACH {
 
     ### if the FOREACH tag sets a var - then nothing gets localized
     if (defined $var) {
-        $self->{'_swap'}->{'loop'} = $items;
+        $self->{'STASH'}->{'loop'} = $items;
         foreach my $i ($items->index .. $#$vals) {
             $items->index($i);
             my $item = $vals->[$i];
@@ -1417,8 +1417,8 @@ sub play_FOREACH {
     } else {
 
         ### localize variable access for the foreach
-        my $swap = $self->{'_swap'};
-        local $self->{'_swap'} = my $copy = {%$swap};
+        my $swap = $self->{'STASH'};
+        local $self->{'STASH'} = my $copy = {%$swap};
         $copy->{'loop'} = $items;
 
         ### iterate use the iterator object
@@ -1499,8 +1499,8 @@ sub play_INCLUDE {
     my ($self, $tag_ref, $node, $template_ref, $out_ref) = @_;
 
     ### localize the swap
-    my $swap = $self->{'_swap'};
-    local $self->{'_swap'} = {%$swap};
+    my $swap = $self->{'STASH'};
+    local $self->{'STASH'} = {%$swap};
 
     my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $template_ref, $out_ref);
 
@@ -1569,8 +1569,8 @@ sub play_MACRO {
         set_var => 1,
         var_val => sub {
             ### macros localize
-            my $copy = $self_copy->{'_swap'};
-            local $self_copy->{'_swap'}= {%$copy};
+            my $copy = $self_copy->{'STASH'};
+            local $self_copy->{'STASH'}= {%$copy};
 
             ### set arguments
             my $named = pop(@_) if $_[-1] && UNIVERSAL::isa($_[-1],'HASH') && $#_ > $#$args;
@@ -1652,7 +1652,7 @@ sub play_PROCESS {
                 die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
             }
         } else {
-            my $str = $self->swap($filename, $self->{'_swap'}); # restart the swap - passing it our current stash
+            my $str = $self->swap($filename, $self->{'STASH'}); # restart the swap - passing it our current stash
             $$out_ref .= $str if defined $str;
         }
     }
@@ -1802,7 +1802,7 @@ sub play_TRY {
 
     die $err if ! $catch_body_ref;
 
-    local $self->{'_swap'}->{'error'} = $err;
+    local $self->{'STASH'}->{'error'} = $err;
     $self->execute_tree($catch_body_ref, $template_ref, $out_ref);
     return;
 }
@@ -1947,13 +1947,17 @@ sub play_WRAPPER {
     my $out = '';
     $self->execute_tree($sub_tree, $template_ref, \$out);
 
-    local $self->{'_swap'}->{'content'} = $out;
+    local $self->{'STASH'}->{'content'} = $out;
     return $DIRECTIVES->{'INCLUDE'}->{'play'}->(@_)
 }
 
 ###----------------------------------------------------------------###
 
-sub stash { shift->{'_swap'} ||= {} }
+sub stash {
+    my $self = shift;
+    $self->{'STASH'} = shift if $#_ == 0;
+    return $self->{'STASH'} ||= {};
+}
 
 sub include_path {
     my $self = shift;
@@ -1999,9 +2003,6 @@ sub include_file {
 sub process {
     my ($self, $in, $swap, $out) = @_;
 
-    ### clear blocks as asked
-    delete $self->{'_blocks'} if ! exists($self->{'AUTO_RESET'}) || $self->{'AUTO_RESET'};
-
     ### get the content
     my $content;
     if (ref $in) {
@@ -2029,7 +2030,10 @@ sub process {
     $content = $self->swap($content, $copy);
     $self->{'error'} = $@;
 
-    ### put it back out
+    ### clear blocks as asked
+    delete $self->{'_blocks'} if ! exists($self->{'AUTO_RESET'}) || $self->{'AUTO_RESET'};
+
+    ### send the content back out
     $out ||= $self->{'OUTPUT'};
     if (ref $out) {
         if (UNIVERSAL::isa($out, 'CODE')) {
