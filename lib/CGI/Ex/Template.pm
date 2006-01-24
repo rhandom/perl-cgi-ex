@@ -302,8 +302,13 @@ sub swap {
                 undef $store_file;
             }
         }
+
     }
 
+    if (! $tree && $self->{'CONSTANTS'}) {
+        my $key = $self->{'CONSTANTS_NAMESPACE'} || 'constants';
+        $self->{'NAMESPACE'}->{$key} = $self->{'CONSTANTS'};
+    }
 
     ### parse and execute
     my $out = '';
@@ -316,8 +321,22 @@ sub swap {
         }
     };
 
-    if ($file && ! $self->{'no_cache'}) {
+    ### cache if asked
+    if ($file && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) { 
         $self->{'_documents'}->{$file} ||= [$str_ref, $tree];
+
+        ### allow for config option to keep the cache size down
+        if ($self->{'CACHE_SIZE'}) {
+            my $cache = $self->{'_documents'};
+            $cache->{$file}->[2] = time;
+            if (scalar(keys %$cache) > $self->{'CACHE_SIZE'}) {
+                my $n = 0;
+                foreach my $file (sort {$cache->{$b}->[2] <=> $cache->{$a}->[2]} keys %$cache) {
+                    $n ++;
+                    delete($cache->{$file}) if $n > $self->{'CACHE_SIZE'};
+                }
+            }
+        }
     }
 
 
@@ -387,7 +406,10 @@ sub parse_tree {
         } else {
             $i = index($$str_ref, $START, $last);
             last if $i == -1;
-            push @$pointer, ['TEXT', $last, $i, [0, $post_chomp]] if $last != $i;
+            if ($last != $i) {
+                push @$pointer, ['TEXT', $last, $i, [0, $post_chomp]];
+                $self->interpolate_node($pointer, -1) if $self->{'INTERPOLATE'};
+            }
             $j = index($$str_ref, $END, $i + $len_s);
             $last = $j + $len_e;
             if ($j == -1) { # missing closing tag
@@ -573,6 +595,7 @@ sub parse_tree {
     }
 
     push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
+    $self->interpolate_node(\@tree, -1) if $self->{'INTERPOLATE'};
 
     return \@tree;
 }
@@ -646,7 +669,7 @@ sub parse_variable {
         }
     }
 
-    my $copy = $$str_ref;
+    my $copy = $$str_ref; # copy while parsing to allow for errors
 
     ### test for leading unary operators
     my $has_unary;
@@ -661,18 +684,18 @@ sub parse_variable {
 
     my @var;
     my $is_literal;
-
-    ### allow for leading $foo or ${foo.bar} type constructs
-    if ($copy =~ s{ ^ \$ (\w+) \b \s* }{}x
-        || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* }{}x) {
-        my $name = $1;
-        push @var, $self->parse_variable(\$name);
+    my $is_namespace;
 
     ### allow for numbers
-    } elsif ($copy =~ s{ ^ ( (?:\d*\.\d+ | \d+) ) \s* }{}x) {
+    if ($copy =~ s{ ^ ( (?:\d*\.\d+ | \d+) ) \s* }{}x) {
         my $number = $1;
         push @var, \ $number;
         $is_literal = 1;
+
+    ### looks like a normal variable start
+    } elsif ($copy =~ s{ ^ (\w+) \s* }{}x) {
+        push @var, $1;
+        $is_namespace = 1 if $self->{'NAMESPACE'} && $self->{'NAMESPACE'}->{$1};
 
     ### allow for literal strings
     } elsif ($copy =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* }{}xs) {
@@ -698,6 +721,12 @@ sub parse_variable {
                 push @var, \ ['concat', @pieces];
             }
         }
+
+    ### allow for leading $foo or ${foo.bar} type constructs
+    } elsif ($copy =~ s{ ^ \$ (\w+) \b \s* }{}x
+        || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* }{}x) {
+        my $name = $1;
+        push @var, $self->parse_variable(\$name);
 
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* }{}x) {
@@ -733,10 +762,6 @@ sub parse_variable {
                                                           length($$str_ref) - length($copy));
         @var = @$var;
         pop(@var); # pull off the trailing args of the paren group
-
-    ### looks like a normal variable start
-    } elsif ($copy =~ s{ ^ (\w+) \s* }{}x) {
-        push @var, $1;
 
     ### nothing to find - return failure
     } else {
@@ -784,8 +809,10 @@ sub parse_variable {
 
     }
 
-    ### begin derefing
-    my $var = ($is_literal && $#var == 1) ? ${ $var[0] } : \@var;
+    ### flatten literals and constants as much as possible
+    my $var = ($is_literal && $#var == 1) ? ${ $var[0] }
+            : $is_namespace               ? $self->vivify_variable(\@var, {is_namespace_during_compile => 1})
+            :                               \@var;
 
     ### allow for all "operators"
     if (! $self->{'_state'}->{'operator_precedence'}) {
@@ -927,15 +954,19 @@ sub vivify_variable {
             }
         }
     } elsif (defined $ref) {
-        if ($ARGS->{'set_var'}) {
-            if ($#$var <= $i) {
-                $self->{'_swap'}->{$ref} = $ARGS->{'var_val'};
-                return;
-            } else {
-                $self->{'_swap'}->{$ref} ||= {};
+        if ($ARGS->{'is_namespace_during_compile'}) {
+            $ref = $self->{'NAMESPACE'}->{$ref};
+        } else {
+            if ($ARGS->{'set_var'}) {
+                if ($#$var <= $i) {
+                    $self->{'_swap'}->{$ref} = $ARGS->{'var_val'};
+                    return;
+                } else {
+                    $self->{'_swap'}->{$ref} ||= {};
+                }
             }
+            $ref = $self->{'_swap'}->{$ref};
         }
-        $ref = $self->{'_swap'}->{$ref};
     }
 
     ### let the top level thing be a code block
@@ -986,6 +1017,8 @@ sub vivify_variable {
                 return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
                 next;
+            } elsif ($ARGS->{'is_namespace_during_compile'}) {
+                return $var; # abort - can't fold namespace variable
             } else {
                 $ref = undef;
             }
@@ -1945,13 +1978,16 @@ sub process {
     $self->{'error'} = $@;
 
     ### put it back out
+    $out ||= $self->{'OUTPUT'};
     if (ref $out) {
-        if (UNIVERSAL::isa($out, 'SCALAR')) { # reference to a string
-            $$out = $content;
-        } elsif (UNIVERSAL::isa($out, 'CODE')) {
+        if (UNIVERSAL::isa($out, 'CODE')) {
             $out->($content);
         } elsif (UNIVERSAL::can($out, 'print')) {
             $out->print($content);
+        } elsif (UNIVERSAL::isa($out, 'SCALAR')) { # reference to a string
+            $$out = $content;
+        } elsif (UNIVERSAL::isa($out, 'ARRAY')) {
+            push @$out, $content;
         } else { # should be a file handle
             print $out $content;
         }
@@ -2087,10 +2123,8 @@ __END__
 =head1 TODO
 
     Benchmark text processing
-    Add MACRO
     Add META
     Add FINAL
-    Add CONSTANTS
     Look at other configs
     Allow USE to use our Iterator
     Allow for Interpolate
