@@ -54,6 +54,12 @@ BEGIN {
             return $str;
         },
         size    => sub { 1 },
+        split   => sub {
+            my ($str, $pat, @args) = @_;
+            $str = ''  if ! defined $str;
+            $pat = ' ' if ! defined $pat;
+            return [split $pat, $str, @args];
+        },
     };
 
     $LIST_OPS = {
@@ -262,7 +268,7 @@ BEGIN {
 
 sub new {
   my $class = shift;
-  my $args  = ref($_[0]) ? shift : {@_};
+  my $args  = ref($_[0]) ? { %{ shift() } } : {@_};
   return bless $args, $class;
 }
 
