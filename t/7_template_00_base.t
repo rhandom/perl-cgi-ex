@@ -48,6 +48,7 @@ sub process_ok { # process the value
     my $obj = $module->new(ABSOLUTE => 1,
                            PLUGIN_BASE => 'MyTestPlugin', LOAD_PERL => 1,
                            CONSTANTS   => {harry => sub {'do_this_once'}},
+                           @{ $args->{tt_config} || [] },
                            );
     $obj->process(\$str, $args, \$out);
     my $ok = $out eq $test;
@@ -590,6 +591,9 @@ process_ok("[% SET constants.foo = 1 %][% constants.foo %]one" => '1one');
 process_ok("[% SET constants.harry = 1 %][% constants.harry %]one" => 'do_this_onceone');
 
 ###----------------------------------------------------------------###
+### interpolate
+
+process_ok("Foo \$one Bar" => 'Foo ONE Bar', {one => 'ONE', tt_config => ['INTERPOLATE' => 1]});
 
 #process_ok(qq{[% FOREACH item IN [ 'foo', 'bar', 'baz' ] -%]
 #[%- "<ul>\n" IF loop.first %]
