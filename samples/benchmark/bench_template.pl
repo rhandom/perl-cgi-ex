@@ -19,6 +19,7 @@ END { rmtree $tt_cache_dir };
 mkdir $tt_cache_dir, 0755;
 
 my @config1 = (ABSOLUTE => 1, CONSTANTS => {fefifo => sub {'do_once'}, simple => 'var'});
+#push @config1, (INTERPOLATE => 1);
 my @config2 = (@config1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
 
 my $tt1 = Template->new(@config1);
@@ -84,6 +85,7 @@ $txt = ((" "x10)."[% one %]\n")x1000;                      #   -6%     #  415%  
 #$txt = "[% n=1; n FILTER echo=repeat(2); n FILTER echo%]"; #   40%     #  375%     #  243%
 #$txt = "[% constants.fefifo %]";                           #  355%     #  875%     #  633%
 #$txt = "[% constants.simple %]";                           #  346%     #  931%     #  628%
+#$txt = "Foo \$one Bar" => 'Foo ONE Bar'; # set INTERPOLATE #  287%     #  849%     #  536%
 
 my $str_ref = \$txt;
 my $filename = $tt_cache_dir .'/template.txt';
