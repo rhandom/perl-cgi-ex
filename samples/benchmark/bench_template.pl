@@ -36,28 +36,36 @@ my $swap = {
 #$swap->{$_} = $_ for (1 .. 1000);
 
 my $txt;
-                                                        # This percent is compiled (in memory) CET vs TT
-#$txt = ((" "x1000)."[% one %]\n")x10;                  #   69%
-#$txt = ((" "x1000)."[% one %]\n")x100;                 #   42%
-$txt = ((" "x10)."[% one %]\n")x1000;                  #   -6%
-#$txt = "[% one %]";                                    #  253%
-#$txt = "[% one %]"x20;                                 #   44%
-#$txt = "([% 1 + 2 %])";                                #   49%
-#$txt = "[% 1 + 2 + 3 + 5 + 6 + 8 %]";                  #  118%
-#$txt = "[% SET one = 2 %]";                            #  196%
-#$txt = "[% SET one = [0..30] %]";                      #   42%
-#$txt = "[% c.d.0.hee.0 %]";                            #  280%
-#$txt = ((" "x10)."[% c.d.0.hee.0 %]\n")x1000;          #   62%
-#$txt = "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]"; #  109%
-#$txt = "[% IF 1 %]Two[% END %]";                       #  180%
-#$txt = "[% FOREACH i = [0..10] %][% i %][% END %]";    #    8%
-#$txt = "[%i=1 ; FOREACH i = [0..100] ; i ; END ; i%]"; #  -12%
-#$txt = "[%i=1 ; FOREACH [0..100] ; i ; END ; i %]";    #   11%
-#$txt = "[%f=10%][%WHILE f%][%f=f- 1%][%f%][% END %]";  #  -16%
-#$txt = "[%f=10; WHILE f ; f = f - 1 ; f ; END %]";     #  -16%
-#$txt = "[%f=10; WHILE (g=f) ; f = f - 1 ; f ; END %]"; #   -9%
-#$txt = "[% BLOCK foo %]Hi[% END %][% PROCESS foo %]";  #  321%
-#$txt = "[% BLOCK foo %]Hi[% END %][% INCLUDE foo %]";  #  288%
+                                                            # This percent is compiled (in memory) CET vs TT
+#$txt = ((" "x1000)."[% one %]\n")x10;                      #   69%
+#$txt = ((" "x1000)."[% one %]\n")x100;                     #   42%
+$txt = ((" "x10)."[% one %]\n")x1000;                      #   -6%
+#$txt = ("[% \"".(" "x10)."\$one\" %]\n")x1000;             #  -60%
+#$txt = "[% one %]";                                        #  253%
+#$txt = "[% one %]"x20;                                     #   44%
+#$txt = "([% 1 + 2 %])";                                    #   49%
+#$txt = "[% 1 + 2 + 3 + 5 + 6 + 8 %]";                      #  118%
+#$txt = "[% SET one = 2 %]";                                #  196%
+#$txt = "[% SET one = [0..30] %]";                          #   42%
+#$txt = "[% c.d.0.hee.0 %]";                                #  280%
+#$txt = ((" "x10)."[% c.d.0.hee.0 %]\n")x1000;              #   62%
+#$txt = "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]";     #  109%
+#$txt = "[% IF 1 %]Two[% END %]";                           #  180%
+#$txt = "[% FOREACH i = [0..10] %][% i %][% END %]";        #    8%
+#$txt = "[%i=1 ; FOREACH [0..10] ; i ; END ; i %]";         #   36%
+#$txt = "[%i=1 ; FOREACH i = [0..100] ; i ; END ; i%]";     #  -12%
+#$txt = "[%i=1 ; FOREACH [0..100] ; i ; END ; i %]";        #   11%
+#$txt = "[%f=10%][%WHILE f%][%f=f- 1%][%f%][% END %]";      #  -16%
+#$txt = "[%f=10; WHILE f ; f = f - 1 ; f ; END %]";         #  -15%
+#$txt = "[%f=10; WHILE (g=f) ; f = f - 1 ; f ; END %]";     #   -7%
+#$txt = "[%f=1; WHILE (g=f) ; f = f - 1 ; f ; END %]";      #   75%
+#$txt = "[%f=5; WHILE (g=f) ; f = f - 1 ; f ; END %]";      #    9%
+#$txt = "[% BLOCK foo %]Hi[% END %][% PROCESS foo %]";      #  382%
+#$txt = "[% BLOCK foo %]Hi[% END %][% INCLUDE foo %]";      #  330%
+#$txt = "[% BLOCK foo %]Hi[% END %][% INCLUDE foo %]";      #  330%
+#$txt = "[% MACRO foo BLOCK %]Hi[% END %][% foo %]";        #  140%
+#$txt = "[% MACRO foo(n) BLOCK %]Hi[%n%][%END%][%foo(2)%]"; #  105%
+#$txt = "[% MACRO foo PROCESS bar;BLOCK bar%]7[%END;foo%]"; #  174%
 
 my $file  = \$txt;
 my $file2 = $tt_cache_dir .'/template.txt';
