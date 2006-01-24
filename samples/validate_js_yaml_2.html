@@ -6,17 +6,17 @@
 }
 </style>
 
-<script src="../../lib/CGI/Ex/yaml_load.js"></script>
-<script src="../../lib/CGI/Ex/validate.js"></script>
+<script src="../lib/CGI/Ex/yaml_load.js"></script>
+<script src="../lib/CGI/Ex/validate.js"></script>
 <script>
 if (! document.yaml_load) {
-  document.writeln('<span style="color:red"><h1>Missing document.yaml_load</h1>Path to ../../lib/CGI/Ex/yaml_load.js may be invalid.</span>');
+  document.writeln('<span style="color:red"><h1>Missing document.yaml_load</h1>Path to ../lib/CGI/Ex/yaml_load.js may be invalid.</span>');
 } else {
   document.writeln('<span style="color:green"><h1>Found document.yaml_load</h1></span>');
 }
 
 if (! document.validate) {
-  document.writeln('<span style="color:red"><h1>Missing document.validate</h1>Path to ../../lib/CGI/Ex/validate.js may be invalid.</span>');
+  document.writeln('<span style="color:red"><h1>Missing document.validate</h1>Path to ../lib/CGI/Ex/validate.js may be invalid.</span>');
 } else {
   document.writeln('<span style="color:green"><h1>Found document.validate</h1></span>');
 }
@@ -107,8 +107,8 @@ default: bull sun orange
 </table>
 </form>
 
-<script src="../../lib/CGI/Ex/yaml_load.js"></script>
-<script src="../../lib/CGI/Ex/validate.js"></script>
+<script src="../lib/CGI/Ex/yaml_load.js"></script>
+<script src="../lib/CGI/Ex/validate.js"></script>
 <script>
 if (document.check_form) document.check_form('a');
 </script>

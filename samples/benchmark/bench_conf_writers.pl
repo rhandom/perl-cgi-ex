@@ -15,7 +15,6 @@ my %files = ();
 
 ###----------------------------------------------------------------###
 
-# [pauls@localhost lib]$ perl ../t/samples/bench_conf_readers.pl
 #         Rate   yaml  yaml2    sto     pl    xml g_conf    ini   sto2
 #yaml    250/s     --    -1%   -14%   -14%   -61%   -77%   -95%   -95%
 #yaml2   254/s     1%     --   -13%   -13%   -60%   -77%   -95%   -95%
