@@ -277,7 +277,6 @@ sub swap {
     local $self->{'_swap'}  = shift || {};
     local $self->{'_state'} = {};
 
-
     ### look for cached components
     my $store_file;
     if (ref $file) {
@@ -288,7 +287,13 @@ sub swap {
         ($str_ref, $tree) = @{ $self->{'_documents'}->{$file} };
 
     } else {
-        my $content = $self->include_file($file);
+        my $content = eval { $self->include_file($file) };
+        if (my $err = $@) {
+            die $err if ! $self->{'DEFAULT'};
+            $file = $self->{'DEFAULT'};
+            $content = eval { $self->include_file($file) };
+            die $err if $@; # throw original error
+        }
         $str_ref = \$content;
 
         if ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'}) {
@@ -730,7 +735,7 @@ sub parse_variable {
 
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* }{}x) {
-        local $self->{'_state'}->{'operator_precedence'} = 0; # reset presedence
+        local $self->{'_operator_precedence'} = 0; # reset presedence
         my $arrayref = ['arrayref'];
         while (defined(my $var = $self->parse_variable(\$copy))) {
             push @$arrayref, $var;
@@ -742,7 +747,7 @@ sub parse_variable {
 
     ### looks like a hash constructor
     } elsif ($copy =~ s{ ^ \{ \s* }{}x) {
-        local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
+        local $self->{'_operator_precedence'} = 0; # reset precedence
         my $hashref = ['hashref'];
         while (defined(my $key = $self->parse_variable(\$copy, {auto_quote => qr/\w+/}))) {
             $copy =~ s{ ^ => \s* }{}x;
@@ -756,7 +761,7 @@ sub parse_variable {
 
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* }{}x) {
-        local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
+        local $self->{'_operator_precedence'} = 0; # reset precedence
         my $var = $self->parse_variable(\$copy);
         $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
                                                           length($$str_ref) - length($copy));
@@ -770,7 +775,7 @@ sub parse_variable {
 
     ### looks for args for the initial
     if ($copy =~ s{ ^ \( \s* }{}x) {
-        local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
+        local $self->{'_operator_precedence'} = 0; # reset precedence
         my $args = $self->parse_args(\$copy);
         $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
                                                           length($$str_ref) - length($copy));
@@ -798,7 +803,7 @@ sub parse_variable {
 
         ### looks for args for the nested item
         if ($copy =~ s{ ^ \( \s* }{}x) {
-            local $self->{'_state'}->{'operator_precedence'} = 0; # reset precedence
+            local $self->{'_operator_precedence'} = 0; # reset precedence
             my $args = $self->parse_args(\$copy);
             $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
                                                               length($$str_ref) - length($copy));
@@ -815,12 +820,12 @@ sub parse_variable {
             :                               \@var;
 
     ### allow for all "operators"
-    if (! $self->{'_state'}->{'operator_precedence'}) {
+    if (! $self->{'_operator_precedence'}) {
         my $tree;
         my $found;
         while ($copy =~ s{ ^ ($OP_QR) \s* }{}ox) {
             return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
-            local $self->{'_state'}->{'operator_precedence'} = 1;
+            local $self->{'_operator_precedence'} = 1;
             my $op   = $1;
             my $var2 = $self->parse_variable(\$copy);
             ### allow for unary operator precedence
@@ -1239,7 +1244,7 @@ sub play_BLOCK {
     my ($self, $name, $node, $template_ref, $out_ref) = @_;
 
     my $body_ref = $node->[4] || [];
-    $self->{'BLOCKS'}->{$name} = $body_ref; # store a named reference - but do nothing until something processes it
+    $self->{'_blocks'}->{$name} = $body_ref; # store a named reference - but do nothing until something processes it
 
     return;
 }
@@ -1604,7 +1609,7 @@ sub play_PROCESS {
         my $filename = $self->vivify_variable($ref);
 
         ### handle filenames that look like blocks
-        if (my $body_ref = $self->{'BLOCKS'}->{$filename}) {
+        if (my $body_ref = $self->{'_blocks'}->{$filename}) {
             my $out = '';
             eval { $self->execute_tree($body_ref, $template_ref, \$out) };
             $$out_ref .= $out;
@@ -1931,9 +1936,14 @@ sub include_filename {
         return $file if -e $file;
     } else {
         my $paths = $self->include_path;
-        $paths = [$paths] if ! ref $paths;
-        foreach my $path (@$paths) {
-            return "$path/$file" if -e "$path/$file";
+        foreach my $item (ref($paths) ? @$paths : $paths) {
+            my @path = UNIVERSAL::isa($item, 'CODE')  ? $item->()
+                     : UNIVERSAL::can($item, 'paths') ? $item->paths
+                     :                                  ($item);
+            @path = map {ref($_) ? @$_ : $_} @path;
+            foreach my $path (@path) {
+                return "$path/$file" if -e "$path/$file";
+            }
         }
     }
     die $self->exception('file', "$file not found");
@@ -1949,6 +1959,9 @@ sub include_file {
 
 sub process {
     my ($self, $in, $swap, $out) = @_;
+
+    ### clear blocks as asked
+    delete $self->{'_blocks'} if ! exists($self->{'AUTO_RESET'}) || $self->{'AUTO_RESET'};
 
     ### get the content
     my $content;
