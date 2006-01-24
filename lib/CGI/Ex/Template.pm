@@ -253,6 +253,7 @@ BEGIN {
         my $chr  = join '',  map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
         my $word = join '|',                    grep {++$used{$_} < 2} grep {/^\w+$/}    @_;
         $chr = "[$chr]" if $chr;
+        $word = "\\b(?:$word)\\b" if $word;
         return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
     }
     sub _build_op_qr       { _op_qr(sort(grep {! $OP_UNARY->{$_}} keys(%$OPERATORS), values(%$OP_TRINARY))) }
@@ -437,9 +438,7 @@ sub parse_tree {
             #$node->[1] ++;
         }
         if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
-            if ($tag !~ s/\+$//) {
-                $post_chomp = 1;
-            }
+            $post_chomp = ($tag =~ s/\+$//) ? 0 : 1;
             #$node->[2] --;
         } else {
             $post_chomp = 0;
