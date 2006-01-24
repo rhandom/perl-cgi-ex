@@ -5,6 +5,7 @@ use strict;
 use POSIX qw(tmpnam);
 use File::Path qw(rmtree);
 use CGI::Ex::Template;
+#use CGI::Ex::Template_60;
 
 my $tt_cache_dir = tmpnam;
 END { rmtree $tt_cache_dir };
@@ -27,12 +28,15 @@ my $swap = {
     cet   => $cet,
 };
 
-#my $txt  = "[% one %]\n";
-my $txt  = ((" "x1000)."[% one %]\n")x100;
+my $txt;
+#$txt = "[% one %]\n";
+$txt = ((" "x1000)."[% one %]\n")x100;
+$txt = "[%f=10; WHILE (g=f) ; f = f - 1 ; f ; END %]";
+#$txt = ("[% \"".(" "x10)."\$one\" %]\n")x1000;
 
 my $file = \$txt;
 
-if (0) {
+if (1) {
     $file = $tt_cache_dir .'/template.txt';
     open(my $fh, ">$file") || die "Couldn't open $file: $!";
     print $fh $txt;
