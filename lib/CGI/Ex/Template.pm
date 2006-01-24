@@ -227,23 +227,24 @@ BEGIN {
         },
     };
 
-    $OPERATORS ||= {qw(**  99   ^  99   pow 99
-                       !   95   unary_minus 95
-                       *   90   /  90   div 90   %  90   mod    90
-                       +   85   -  85   _   85   ~  85   concat 85
-                       <   80   >  80   <=  80   >= 80
-                       lt  80   gt 80   le  80   ge 80
-                       ==  75   != 75   eq  75   ne 75
+    $OPERATORS ||= {qw(**  99   ^   99   pow 99
+                       !   95   unary_minus  95
+                       *   90   /   90   div 90   DIV 90
+                       %   90   mod 90   MOD 90
+                       +   85   -   85   _   85   ~   85   concat 85
+                       <   80   >   80   <=  80   >=  80
+                       lt  80   gt  80   le  80   ge  80
+                       ==  75   !=  75   eq  75   ne  75
                        &&  70
                        ||  65
                        ..  60
                        ?   55
-                       not 50
-                       and 45
-                       or  40
+                       not 50   NOT 50
+                       and 45   AND 45
+                       or  40   OR  40
                        hashref 1 arrayref 1
                        )};
-    $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'unary_minus' => '-'};
+    $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-'};
     $OP_TRINARY ||= {'?' => ':'};
     $OP_FUNC    ||= {};
     sub _op_qr { # no mixed \w\W operators
@@ -433,13 +434,15 @@ sub parse_tree {
         ### take care of whitespace
         if ($tag =~ s/^(\#?)-/$1/ || ($self->{'PRE_CHOMP'} && $tag !~ s/^(\#?)\+/$1/)) {
             $pointer->[-1]->[3]->[0] = 1 if $pointer->[-1] && $pointer->[-1]->[0] eq 'TEXT';
-            $node->[1] ++;
+            #$node->[1] ++;
         }
-        if ($tag =~ s/-$// || ($self->{'POST_CHOMP'} && $tag !~ s/\+$//)) {
-            $post_chomp = 1;
-            $node->[2] --;
+        if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
+            if ($tag !~ s/\+$//) {
+                $post_chomp = 1;
+            }
+            #$node->[2] --;
         } else {
-            $post_chomp = $self->{'POST_CHOMP'} || 0;
+            $post_chomp = 0;
         }
         if ($tag =~ /^\#/) { # leading # means to comment the entire section
             $node->[0] = 'COMMENT';
@@ -1192,13 +1195,13 @@ sub play_operator {
         } else {
             return defined($tree->[2]) ? $self->vivify_variable($tree->[2]) : undef;
         }
-    } elsif ($op eq '||' || $op eq 'or') {
+    } elsif ($op eq '||' || $op eq 'or' || $op eq 'OR') {
         for my $node (@$tree) {
             my $var = $self->vivify_variable($node);
             return $var if $var;
         }
         return '';
-    } elsif ($op eq '&&' || $op eq 'and') {
+    } elsif ($op eq '&&' || $op eq 'and' || $op eq 'AND') {
         my $var;
         for my $node (@$tree) {
             $var = $self->vivify_variable($node);
@@ -1237,8 +1240,12 @@ sub play_operator {
     elsif ($op eq '+')      { $n +=  $_ for @args; return $n }
     elsif ($op eq '-')      { $n -=  $_ for @args; return $n }
     elsif ($op eq '*')      { $n *=  $_ for @args; return $n }
-    elsif ($op eq '/'
-           || $op eq 'div') { $n /=  $_ for @args; return $n }
+    elsif ($op eq '/')      { $n /=  $_ for @args; return $n }
+    elsif ($op eq 'div'
+           || $op eq 'DIV') { $n = int($n / $_) for @args; return $n }
+    elsif ($op eq '%'
+           || $op eq 'mod'
+           || $op eq 'MOD') { $n %=  $_ for @args; return $n }
     elsif ($op eq '**'
            || $op eq 'pow') { $n **= $_ for @args; return $n }
 
