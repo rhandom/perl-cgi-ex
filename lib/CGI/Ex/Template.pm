@@ -1476,9 +1476,11 @@ sub play_MACRO {
 
     ### get the sub tree
     my $sub_tree = $node->[4];
-    if (! $sub_tree) {
+    if (! $sub_tree || ! $sub_tree->[0]) {
         $self->vivify_var($name, {set_var => 1, var_val => undef});
         return;
+    } elsif ($sub_tree->[0]->[0] eq 'BLOCK') {
+        $sub_tree = $sub_tree->[0]->[4];
     }
 
     my $self_copy; # get a copy of self without circular refs
@@ -1490,12 +1492,25 @@ sub play_MACRO {
         $self_copy = {%$self}; # hackish way to avoid circular refs on old perls (pre 5.8)
     }
 
-    ### install a closure into the stash that will handle this macro
+    ### install a closure in the stash that will handle the macro
     $self->vivify_variable($name, {
         set_var => 1,
         var_val => sub {
-            my @args = @_;
-            debug $args, \@args;
+            ### macros localize
+            my $copy = $self_copy->{'_swap'};
+            local $self_copy->{'_swap'}= {%$copy};
+
+            ### set arguments
+            my $named = pop(@_) if $_[-1] && UNIVERSAL::isa($_[-1],'HASH') && $#_ > $#$args;
+            my @positional = @_;
+            foreach my $var (@$args) {
+                $self_copy->vivify_variable($var, {set_var => 1, var_val => shift(@positional)});
+            }
+            foreach my $name (sort keys %$named) {
+                $self_copy->vivify_variable([$name, 0], {set_var => 1, var_val => $named->{$name}});
+            }
+
+            ### finally - run the sub tree
             my $out = '';
             $self_copy->execute_tree($sub_tree, $template_ref, \$out);
             return $out;
