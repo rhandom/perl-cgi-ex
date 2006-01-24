@@ -18,11 +18,14 @@ my $tt_cache_dir = tmpnam;
 END { rmtree $tt_cache_dir };
 mkdir $tt_cache_dir, 0755;
 
-my $tt1 = Template->new(ABSOLUTE => 1);
-my $tt2 = Template->new(ABSOLUTE => 1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
+my @config1 = (ABSOLUTE => 1, CONSTANTS => {fefifo => sub {'do_once'}, simple => 'var'});
+my @config2 = (@config1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
 
-my $cet = CGI::Ex::Template->new(ABSOLUTE => 1);
-my $cetc = CGI::Ex::Template->new(ABSOLUTE => 1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
+my $tt1 = Template->new(@config1);
+my $tt2 = Template->new(@config2);
+
+my $cet = CGI::Ex::Template->new(@config1);
+my $cetc = CGI::Ex::Template->new(@config2);
 
 
 ###----------------------------------------------------------------###
@@ -79,6 +82,8 @@ $txt = ((" "x10)."[% one %]\n")x1000;                      #   -6%     #  415%  
 #$txt = "[% MACRO foo PROCESS bar;BLOCK bar%]7[%END;foo%]"; #  174%     #  449%     #  415%
 #$txt = "[% n = 1 %][% n FILTER repeat(2) %]";              #  114%     #  453%     #  343%
 #$txt = "[% n=1; n FILTER echo=repeat(2); n FILTER echo%]"; #   40%     #  375%     #  243%
+#$txt = "[% constants.fefifo %]";                           #  355%     #  875%     #  633%
+#$txt = "[% constants.simple %]";                           #  346%     #  931%     #  628%
 
 my $str_ref = \$txt;
 my $filename = $tt_cache_dir .'/template.txt';
@@ -90,14 +95,14 @@ close $fh;
 
 sub file_TT_new {
     my $out = '';
-    my $t = Template->new(ABSOLUTE => 1);
+    my $t = Template->new(@config1);
     $t->process($filename, $swap, \$out);
     return $out;
 }
 
 sub str_TT_new {
     my $out = '';
-    my $t = Template->new(ABSOLUTE => 1);
+    my $t = Template->new(@config1);
     $t->process($str_ref, $swap, \$out);
     return $out;
 }
@@ -116,7 +121,7 @@ sub str_TT {
 
 sub file_TT_cache_new {
     my $out = '';
-    my $t = Template->new(ABSOLUTE => 1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
+    my $t = Template->new(@config2);
     $t->process($filename, $swap, \$out);
     return $out;
 }
@@ -125,14 +130,14 @@ sub file_TT_cache_new {
 
 sub file_CET_new {
     my $out = '';
-    my $t = CGI::Ex::Template->new(ABSOLUTE => 1);
+    my $t = CGI::Ex::Template->new(@config1);
     $t->process($filename, $swap, \$out);
     return $out;
 }
 
 sub str_CET_new {
     my $out = '';
-    my $t = CGI::Ex::Template->new(ABSOLUTE => 1);
+    my $t = CGI::Ex::Template->new(@config1);
     $t->process($str_ref, $swap, \$out);
     return $out;
 }
@@ -156,7 +161,7 @@ sub str_CET_swap {
 
 sub file_CET_cache_new {
     my $out = '';
-    my $t = CGI::Ex::Template->new(ABSOLUTE => 1, COMPILE_DIR => $tt_cache_dir, COMPILE_EXT => 'ttc');
+    my $t = CGI::Ex::Template->new(@config2);
     $t->process($filename, $swap, \$out);
     return $out;
 }
