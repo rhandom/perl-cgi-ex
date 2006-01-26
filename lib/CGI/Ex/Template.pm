@@ -279,53 +279,14 @@ sub new {
 sub swap {
     my $self = shift;
     my $file = shift;
-    my $tree;
-    my $str_ref;
-    local $self->{'STASH'}  = shift || {};
-    local $self->{'_state'} = {};
-
-    ### look for cached components
-    my $store_file;
-    if (ref $file) {
-        $str_ref = $file;
-        undef $file;
-
-    } elsif ($self->{'_documents'}->{$file}) {
-        ($str_ref, $tree) = @{ $self->{'_documents'}->{$file} };
-
-    } else {
-        my $content = eval { $self->include_file($file) };
-        if (my $err = $@) {
-            die $err if ! $self->{'DEFAULT'};
-            $file = $self->{'DEFAULT'};
-            $content = eval { $self->include_file($file) };
-            die $err if $@; # throw original error
-        }
-        $str_ref = \$content;
-
-        if ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'}) {
-            $store_file = $file . $self->{'COMPILE_EXT'} .'.sto' if $self->{'COMPILE_EXT'};
-            $store_file = ($self->{'COMPILE_DIR'})
-                ? $self->{'COMPILE_DIR'} .'/'. $store_file
-                : $self->include_file($file) . $self->{'COMPILE_EXT'} .'.sto';
-            if (-e $store_file && -M _ == -M $file) {
-                require Storable;
-                $tree = Storable::retrieve($store_file);
-                undef $store_file;
-            }
-        }
-
-    }
-
-    if (! $tree && $self->{'CONSTANTS'}) {
-        my $key = $self->{'CONSTANTS_NAMESPACE'} || 'constants';
-        $self->{'NAMESPACE'}->{$key} = $self->{'CONSTANTS'};
-    }
+    local $self->{'STASH'} = shift || {};
 
     ### parse and execute
     my $out = '';
+    my $tree;
+    my $str_ref;
     eval {
-        $tree ||= $self->parse_tree($str_ref) || [];
+        ($tree, $str_ref) = $self->load_parsed_tree($file);
         if ($#$tree == -1) {
             $out = $$str_ref;
         } else {
@@ -333,8 +294,85 @@ sub swap {
         }
     };
 
-    ### cache if asked
-    if ($file && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) { 
+    ### handle exceptions
+    if (my $err = $@) {
+        $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
+        $err->str_ref(\$_[0]);
+        die $err if $err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/;
+    }
+
+    return $out;
+}
+
+sub load_parsed_tree {
+    my $self = shift;
+    my $file = shift;
+
+    ### look for cached components
+    my $str_ref;
+    my $tree;
+    my $store_file;
+    if (ref $file) {
+        $str_ref = $file;
+
+    } elsif ($self->{'_documents'}->{$file}) {
+        ($str_ref, $tree) = @{ $self->{'_documents'}->{$file} };
+
+    } else {
+        my $filename;
+        my $content;
+        eval {
+            $filename = $self->include_filename($file);
+            $content  = $self->slurp($filename);
+            $str_ref  = \$content;
+        };
+        if (my $err = $@) {
+            if ($self->{'EXPOSE_BLOCKS'}
+                && ! $self->{'_looking_in_block_file'}
+                && $file =~ m|^(.*[^/]) / (\w+)$|x) { # try and load a block name space
+                local $self->{'_looking_in_block_file'} = 1;
+                my ($_file, $block_name) = ($1, $2);
+                my ($_tree, $_str_ref) = eval { $self->load_parsed_tree($_file) };
+                die $err if ! $_tree;
+                foreach my $node (@$_tree) {
+                    next if $block_name ne $node->[3];
+                    $str_ref = $_str_ref;
+                    $tree    = $node->[4];
+                }
+                die $err if ! $tree;
+            } else {
+                $file    = $self->{'DEFAULT'} || die $err;
+                $content = eval { $self->include_file($file) } || die $err;
+                $str_ref = \$content;
+            }
+        }
+
+        if (! $tree && ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'})) {
+            my $_store_file = $file . $self->{'COMPILE_EXT'} .'.sto' if $self->{'COMPILE_EXT'};
+            $_store_file = ($self->{'COMPILE_DIR'})
+                ? $self->{'COMPILE_DIR'} .'/'. $_store_file
+                : $filename . $self->{'COMPILE_EXT'} .'.sto';
+            if (-e $_store_file && -M _ == -M $file) {
+                require Storable;
+                $tree = Storable::retrieve($_store_file);
+                $store_file = $_store_file;
+            }
+        }
+
+    }
+
+    if (! $tree && $self->{'CONSTANTS'}) {
+        my $key = $self->{'CONSTANTS_NAMESPACE'} || 'constants';
+        $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
+    }
+
+
+    ### need to get the tree - let errors die
+    $tree ||= $self->parse_tree($str_ref);
+
+
+    ### cache in memory unless asked not to do so
+    if ($file && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
         $self->{'_documents'}->{$file} ||= [$str_ref, $tree];
 
         ### allow for config option to keep the cache size down
@@ -351,8 +389,7 @@ sub swap {
         }
     }
 
-
-    ### save a cache as asked
+    ### save a cache on the file side as asked
     if ($store_file && $tree) {
         my $dir = $store_file;
         $dir =~ s|/[^/]+$||;
@@ -366,19 +403,7 @@ sub swap {
         utime $mtime, $mtime, $store_file;
     }
 
-    ### all good
-    return $out if ! $@;
-
-    ### handle exceptions
-    my $err = $@;
-
-    $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
-    $err->str_ref(\$_[0]);
-    if ($err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/) {
-        eval { die $err };
-        return '';
-    }
-    return $out; # some directives may get us here - but still contain content
+    return ($tree, $str_ref);
 }
 
 sub parse_tree {
@@ -395,8 +420,9 @@ sub parse_tree {
     my $len_e = length $END;
 
     my @tree;             # the parsed tree
+    my $pointer = \@tree; # pointer to current tree to handle nested blocks
     my @state;            # maintain block levels
-    my $pointer = \@tree; # pointer to current block storage
+    local $self->{'_state'} = \@state; # allow for items to introspect (usually BLOCKS)
     my @move_to_front;    # items that need to be declared first
     my $i = 0;            # start index
     my $j = 0;            # end index
@@ -435,14 +461,8 @@ sub parse_tree {
         ### take care of whitespace
         if ($tag =~ s/^(\#?)-/$1/ || ($self->{'PRE_CHOMP'} && $tag !~ s/^(\#?)\+/$1/)) {
             $pointer->[-1]->[3]->[0] = 1 if $pointer->[-1] && $pointer->[-1]->[0] eq 'TEXT';
-            #$node->[1] ++;
         }
-        if ($tag =~ s/-$// || $self->{'POST_CHOMP'}) {
-            $post_chomp = ($tag =~ s/\+$//) ? 0 : 1;
-            #$node->[2] --;
-        } else {
-            $post_chomp = 0;
-        }
+        $post_chomp = ($tag =~ s/-$//) ? 1 : ($tag =~ s/\+$//) ? 0 : $self->{'POST_CHOMP'};
         if ($tag =~ /^\#/) { # leading # means to comment the entire section
             $node->[0] = 'COMMENT';
             push @$pointer, $node;
@@ -1281,6 +1301,9 @@ sub parse_BLOCK {
     my $name = '';
     if ($$tag_ref =~ s{ ^ (\w+) \s* (?! [\.\|]) }{}x) {
         $name = $1;
+        ### allow for nested blocks to have nested names
+        my @name = map {$_->[3]} grep {$_->[0] eq 'BLOCK'} @{ $self->{'_state'} };
+        $name = join("/", @name, $name) if $#name > -1;
     }
 
     return $name;
@@ -1467,9 +1490,12 @@ sub parse_GET {
 }
 
 sub play_GET {
-    my ($self, $ref) = @_;
-    my $var = $self->vivify_variable($ref);
-    return ref($var) || ! defined($var) ? '' : $var;
+    my ($self, $var) = @_;
+    $var = $self->vivify_variable($var);
+    my $ref = ref $var;
+    return $var if ! $ref;
+    return '' if $ref eq 'ARRAY' || $ref eq 'SCALAR' || $ref eq 'HASH';
+    return $var;
 }
 
 sub parse_IF {
@@ -1633,9 +1659,9 @@ sub play_PROCESS {
 
     my ($files, $args) = @$info;
 
-    $self->{'_state'}->{'recurse'} ||= 0;
-    $self->{'_state'}->{'recurse'} ++;
-    if ($self->{'_state'}->{'recurse'} >= $MAX_RECURSE) {
+    $self->{'_recurse'} ||= 0;
+    $self->{'_recurse'} ++;
+    if ($self->{'_recurse'} >= $MAX_RECURSE) {
         my $func = $node->[0];
         die "MAX_RECURSE $MAX_RECURSE reached during $func";
     }
@@ -1669,7 +1695,7 @@ sub play_PROCESS {
         }
     }
 
-    $self->{'_state'}->{'recurse'} --;
+    $self->{'_recurse'} --;
     return;
 }
 
@@ -1716,7 +1742,6 @@ sub play_SET {
             $sub_tree = $sub_tree->[0]->[4] if $sub_tree->[0] && $sub_tree->[0]->[0] eq 'BLOCK';
             $val = '';
             $self->execute_tree($sub_tree, $template_ref, \$val);
-            debug $val;
         } else { # normal var
             $val = $self->vivify_variable($val);
         }
@@ -2001,14 +2026,19 @@ sub include_filename {
             }
         }
     }
-    die $self->exception('file', "$file not found");
+
+    die $self->exception('file', "$file: not found");
 }
 
 sub include_file {
     my ($self, $file) = @_;
-    my $full = $self->include_filename($file);
-    open(my $fh, "<$full") || die $self->exception('file', "$file couldn't be opened: $!");
-    read $fh, my $txt, -s $full;
+    return $self->slurp($self->include_filename($file));
+}
+
+sub slurp {
+    my ($self, $file) = @_;
+    open(my $fh, "<$file") || die $self->exception('file', "$file couldn't be opened: $!");
+    read $fh, my $txt, -s $file;
     return $txt;
 }
 
@@ -2039,13 +2069,14 @@ sub process {
     my $copy = {%$stash, %$swap};
 
     ### do the swap
-    $content = $self->swap($content, $copy);
+    $content = eval { $self->swap($content, $copy) };
     $self->{'error'} = $@;
 
     ### clear blocks as asked
     delete $self->{'_blocks'} if ! exists($self->{'AUTO_RESET'}) || $self->{'AUTO_RESET'};
 
     ### send the content back out
+    return if ! defined $content;
     $out ||= $self->{'OUTPUT'};
     if (ref $out) {
         if (UNIVERSAL::isa($out, 'CODE')) {
