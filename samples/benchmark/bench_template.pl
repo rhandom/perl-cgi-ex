@@ -180,13 +180,13 @@ for (1..2) {
     }
     die "file_TT didn't match "            if file_TT()      ne str_TT();
     die "str_CET didn't match "            if str_CET()      ne str_TT();
-    die "str_CET_swap didn't match "       if str_CET_swap() ne str_TT();
+#    die "str_CET_swap didn't match "       if str_CET_swap() ne str_TT();
     die "file_CET_cache_new didn't match " if file_CET_cache_new() ne str_TT();
     die "file_TT_cache_new didn't match " if file_TT_cache_new() ne str_TT();
 }
 ###----------------------------------------------------------------###
 
-cmpthese timethese (-2, {
+my $r = timethese (-2, {
     file_TT_n   => \&file_TT_new,
 #    str_TT_n    => \&str_TT_new,
     file_TT     => \&file_TT,
@@ -197,10 +197,30 @@ cmpthese timethese (-2, {
 #    str_CT_n    => \&str_CET_new,
     file_CT     => \&file_CET,
     str_CT      => \&str_CET,
-    str_CT_sw   => \&str_CET_swap,
+#    str_CT_sw   => \&str_CET_swap,
     file_CT_c_n => \&file_CET_cache_new,
 });
+cmpthese $r;
 
+eval {
+    my $hash = {
+        '1 cached_in_memory           ' => '',
+        '2 new_object                 ' => '_n',
+        '3 cached_on_file (new_object)' => '_c_n',
+    };
+    foreach my $type (sort keys %$hash) {
+        my $suffix = $hash->{$type};
+        my $ct = $r->{"file_CT$suffix"};
+        my $tt = $r->{"file_TT$suffix"};
+        my $ct_s = $ct->iters / ($ct->cpu_a || 1);
+        my $tt_s = $tt->iters / ($tt->cpu_a || 1);
+        my $p = int(100 * ($ct_s - $tt_s) / ($tt_s || 1));
+        print "$type - CT is $p% faster than TT\n";
+    }
+};
+
+debug "$@"
+    if $@;
 
 #  Benchmark: running file_CET, file_CET_n, file_TT, file_TT_n, str_CET, str_CET_n, str_CET_o, str_CET_sw, str_TT, str_TT_n for at least 2 CPU seconds...
 #    file_CET:  2 wallclock secs ( 2.00 usr +  0.00 sys =  2.00 CPU) @ 46.00/s (n=92)
