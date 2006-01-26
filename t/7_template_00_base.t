@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 388 - ($is_tt ? 44 : 0);
+use Test::More tests => 389 - ($is_tt ? 44 : 0);
 use Data::Dumper qw(Dumper);
 
 ### set up some dummy packages for use later
@@ -511,8 +511,8 @@ process_ok("[% BLOCK bar %][% foo %][% foo = foo - 1 %][% END %][% PROCESS bar W
 ### capturing
 
 process_ok("[% foo = BLOCK %]Hi[% END %][% foo %][% foo %]" => 'HiHi');
-process_ok("[% BLOCK foo %]Hi[% END %]([% bar = PROCESS foo %])([% bar %])" => '()(Hi)');
-
+process_ok("[% BLOCK foo %]Hi[% END %][% bar = PROCESS foo %]-[% bar %]" => '-Hi');
+process_ok("[% foo = IF 1 %]Hi[% END %][% foo %]" => 'Hi');
 
 ###----------------------------------------------------------------###
 ### tags
