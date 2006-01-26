@@ -445,7 +445,6 @@ sub parse_tree {
     my $post_chomp = 0;   # previous post_chomp setting
     my $continue;         # multiple directives in the same tag
     my $postop;           # found a post-operative DIRECTIVE
-    my @capture;          # capture the output of a directive
     my $capture;          # flag to start capture
     my $tag;
     my $node;
@@ -503,7 +502,9 @@ sub parse_tree {
                 @$postop = @$node;
                 $node = $postop;
                 $node->[4] = [\@postop];
-            } else {
+            } elsif ($capture) {
+                # do nothing
+            } else{
                 push @$pointer, $node;
             }
 
@@ -531,7 +532,9 @@ sub parse_tree {
                     if ($DIRECTIVES->{$parent_node->[0]}->{'move_to_front'}) { # move things like BLOCKS to front
                         $parent_node->[5] = defined($self->{'_filename'}) ? $self->{'_filename'} : '';
                         push @move_to_front, $parent_node;
-                        splice @$pointer, -1, 1, ();
+                        if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
+                            splice(@$pointer, -1, 1, ());
+                        }
                     }
 
                 ### continuation block - such as an elsif
@@ -592,27 +595,19 @@ sub parse_tree {
             die $self->exception('parse', "Not sure how to handle tag \"$all\"");
         }
 
-
-        ### we need to store the captured directive
+        ### we now have the directive to capture - store it
         if ($capture) {
+            my $parent_node = $capture;
+            push @{ $parent_node->[4] }, $node;
             undef $capture;
-            if (! $capture[-1]) {
-                die $self->exception('parse', "Die bad DIRECTIVE capturing setup", $node);
-            } elsif ($node->[6]) {
-                die $self->exception('parse', "Nested DIRECTIVE capturing attempted", $node);
-            }
-            my $storage = pop @capture; # pull off the most recent
-            push @$storage, $node;
-            pop @$pointer;
         }
 
         ### we are capturing the output of the next directive - set it up
-        if (delete $node->[6]) {
+        if ($node->[6]) {
             $continue  = $j - length $tag;
             $node->[2] = $continue;
             $postop    = undef;
-            $capture   = 1;
-            push @capture, $node->[4] ||= [];
+            $capture   = $node;
 
         ### semi-colon = end of statement
         } elsif ($tag =~ s{ ^ ; \s* }{}x) {
