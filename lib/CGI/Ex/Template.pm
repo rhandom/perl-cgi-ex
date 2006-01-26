@@ -12,7 +12,7 @@ use vars qw($TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS
             $DIRECTIVES
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $OP_QR $OP_QR_UNARY
-            $QR_FILENAME
+            $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
             $MAX_RECURSE
             $WHILE_MAX
             );
@@ -261,7 +261,9 @@ BEGIN {
     $OP_QR       ||= _build_op_qr();
     $OP_QR_UNARY ||= _build_op_qr_unary();
 
-    $QR_FILENAME = qr{(?i: [a-z]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)* }x;
+    $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
+    $QR_AQ_NOTDOT = '(?! \s* \.)';
+    $QR_AQ_SPACE  = '(?: \s+ | $ | ;)';
     $MAX_RECURSE = 50;
     $WHILE_MAX   = 1000;
 };
@@ -286,10 +288,12 @@ sub swap {
     my $tree;
     my $str_ref;
     eval {
-        ($tree, $str_ref) = $self->load_parsed_tree($file);
+        my $ref = $self->load_parsed_tree($file);
+        my ($file, $tree, $str_ref) = @$ref{'file', 'tree', 'content'};
         if ($#$tree == -1) {
             $out = $$str_ref;
         } else {
+            local $self->{'_filename'} = $file;
             $self->execute_tree($tree, $str_ref, \$out);
         }
     };
@@ -308,15 +312,19 @@ sub load_parsed_tree {
     my $self = shift;
     my $file = shift;
 
+    local $self->{'_filename'} = $file;
+
     ### look for cached components
     my $str_ref;
     my $tree;
     my $store_file;
     if (ref $file) {
         $str_ref = $file;
+        $file = $self->{'_filename'} = '';
 
-    } elsif ($self->{'_documents'}->{$file}) {
-        ($str_ref, $tree) = @{ $self->{'_documents'}->{$file} };
+    } elsif (my $cache = $self->{'_documents'}->{$file}) {
+        $cache->{'time'} = time if $self->{'CACHE_SIZE'};
+        return $cache;
 
     } else {
         my $filename;
@@ -332,8 +340,8 @@ sub load_parsed_tree {
                 && $file =~ m|^(.*[^/]) / (\w+)$|x) { # try and load a block name space
                 local $self->{'_looking_in_block_file'} = 1;
                 my ($_file, $block_name) = ($1, $2);
-                my ($_tree, $_str_ref) = eval { $self->load_parsed_tree($_file) };
-                die $err if ! $_tree;
+                my $ref = eval { $self->load_parsed_tree($_file) } || die $err;
+                my ($_tree, $_str_ref) = @$ref{'tree', 'content'};
                 foreach my $node (@$_tree) {
                     next if $block_name ne $node->[3];
                     $str_ref = $_str_ref;
@@ -361,27 +369,30 @@ sub load_parsed_tree {
 
     }
 
-    if (! $tree && $self->{'CONSTANTS'}) {
-        my $key = $self->{'CONSTANTS_NAMESPACE'} || 'constants';
-        $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
+    ### need to get the tree
+    if (! $tree) {
+        if ($self->{'CONSTANTS'}) {
+            my $key = $self->{'CONSTANTS_NAMESPACE'} || 'constants';
+            $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
+        }
+
+        $tree = $self->parse_tree($str_ref); # errors die
     }
-
-
-    ### need to get the tree - let errors die
-    $tree ||= $self->parse_tree($str_ref);
-
 
     ### cache in memory unless asked not to do so
     if ($file && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
-        $self->{'_documents'}->{$file} ||= [$str_ref, $tree];
+        $self->{'_documents'}->{$file} ||= {
+            tree    => $tree,
+            content => $str_ref,
+        };
 
         ### allow for config option to keep the cache size down
         if ($self->{'CACHE_SIZE'}) {
+            $self->{'_documents'}->{$file}->{'time'} = time;
             my $cache = $self->{'_documents'};
-            $cache->{$file}->[2] = time;
             if (scalar(keys %$cache) > $self->{'CACHE_SIZE'}) {
                 my $n = 0;
-                foreach my $file (sort {$cache->{$b}->[2] <=> $cache->{$a}->[2]} keys %$cache) {
+                foreach my $file (sort {$cache->{$b}->{'time'} <=> $cache->{$a}->{'time'}} keys %$cache) {
                     $n ++;
                     delete($cache->{$file}) if $n > $self->{'CACHE_SIZE'};
                 }
@@ -398,12 +409,16 @@ sub load_parsed_tree {
             File::Path::mkpath($dir);
         }
         require Storable;
-        Storable::store($tree, $store_file);
+        Storable::store($tree);
         my $mtime = (stat $file)[9];
         utime $mtime, $mtime, $store_file;
     }
 
-    return ($tree, $str_ref);
+    return {
+        tree    => $tree,
+        content => $str_ref,
+        file    => $file,
+    };
 }
 
 sub parse_tree {
@@ -514,13 +529,14 @@ sub parse_tree {
                 ### normal end block
                 if ($func eq 'END') {
                     if ($DIRECTIVES->{$parent_node->[0]}->{'move_to_front'}) { # move things like BLOCKS to front
+                        $parent_node->[5] = defined($self->{'_filename'}) ? $self->{'_filename'} : '';
                         push @move_to_front, $parent_node;
                         splice @$pointer, -1, 1, ();
                     }
 
                 ### continuation block - such as an elsif
                 } else {
-                    $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $node) };
+                    $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $node) };
                     if (my $err = $@) {
                         $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                         die $err;
@@ -542,7 +558,7 @@ sub parse_tree {
             } elsif ($DIRECTIVES->{$func}->{'control'}) {
                 # do nothing
             } else {
-                $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $func, $node) };
+                $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $node) };
                 if (my $err = $@) {
                     $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
@@ -558,7 +574,7 @@ sub parse_tree {
             push @$pointer, $node;
             if ($tag =~ s{ ^ = \s* }{}x) {
                 $node->[0] = 'SET';
-                $node->[3] = eval { $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, 'SET', $node, $var) };
+                $node->[3] = eval { $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, $node, $var) };
                 if (my $err = $@) {
                     $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
@@ -689,9 +705,11 @@ sub parse_variable {
     my $ARGS    = shift || {};
 
     ### allow for custom auto_quoting (such as hash constructors)
-    if (my $quote_qr = $ARGS->{'auto_quote'}) {
-        if ($$str_ref =~ s{ ^ ($quote_qr) \s* (?! \.) }{}x) { # auto-quoted - not followed by a dot
+    if ($ARGS->{'auto_quote'}) {
+        if ($$str_ref =~ $ARGS->{'auto_quote'}) {
             my $str = $1;
+            substr($$str_ref, 0, length($str), '');
+            $$str_ref =~ s{ ^ \s+ }{}x;
             return $str;
             #return [\$str, 0];
         } elsif ($$str_ref =~ s{ ^ \$ (\w+) \s* (?! \.) }{}x # auto-quoted dollars
@@ -776,7 +794,7 @@ sub parse_variable {
     } elsif ($copy =~ s{ ^ \{ \s* }{}x) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $hashref = ['hashref'];
-        while (defined(my $key = $self->parse_variable(\$copy, {auto_quote => qr/\w+/}))) {
+        while (defined(my $key = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
             $copy =~ s{ ^ => \s* }{}x;
             my $val = $self->parse_variable(\$copy);
             push @$hashref, $key, $val;
@@ -958,7 +976,7 @@ sub parse_args {
     my @named;
     while (length $$str_ref) {
         my $copy = $$str_ref;
-        if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr/\w+/}))
+        if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
             && $copy =~ s{ ^ = \s* }{}x) {
             die $self->exception('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
             my $val = $self->parse_variable(\$copy);
@@ -1296,10 +1314,13 @@ sub hash_op {
 ###----------------------------------------------------------------###
 
 sub parse_BLOCK {
-    my ($self, $tag_ref) = @_;
+    my ($self, $tag_ref, $node) = @_;
 
     my $name = '';
-    if ($$tag_ref =~ s{ ^ (\w+) \s* (?! [\.\|]) }{}x) {
+    if ($$tag_ref =~ s{ ^ (\w+ (?: :\w+)*) \s* (?! [\.\|]) }{}x
+        || $$tag_ref =~ s{ ^ '(|.*?[^\\])' \s* (?! [\.\|]) }{}x
+        || $$tag_ref =~ s{ ^ "(|.*?[^\\])" \s* (?! [\.\|]) }{}x
+        ) {
         $name = $1;
         ### allow for nested blocks to have nested names
         my @name = map {$_->[3]} grep {$_->[0] eq 'BLOCK'} @{ $self->{'_state'} };
@@ -1312,8 +1333,11 @@ sub parse_BLOCK {
 sub play_BLOCK {
     my ($self, $name, $node, $template_ref, $out_ref) = @_;
 
-    my $body_ref = $node->[4] || [];
-    $self->{'_blocks'}->{$name} = $body_ref; # store a named reference - but do nothing until something processes it
+    ### store a named reference - but do nothing until something processes it
+    $self->{'BLOCKS'}->{$name} = {
+        tree => $node->[4] || [],
+        file => $node->[5],
+    };
 
     return;
 }
@@ -1330,13 +1354,10 @@ sub parse_CASE {
 
 sub parse_CATCH {
     my ($self, $tag_ref) = @_;
-    return $self->parse_variable($tag_ref, {auto_quote => qr/\w+ (?: \.\w+)*/x});
+    return $self->parse_variable($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
 }
 
-sub parse_DEFAULT {
-    my ($self, $tag_ref) = @_;
-    return $DIRECTIVES->{'SET'}->{'parse'}->($self, $tag_ref);
-}
+sub parse_DEFAULT { $DIRECTIVES->{'SET'}->{'parse'}->(@_) }
 
 sub play_DEFAULT {
     my ($self, $set) = @_;
@@ -1540,6 +1561,10 @@ sub play_INCLUDE {
     my $swap = $self->{'STASH'};
     local $self->{'STASH'} = {%$swap};
 
+    ### localize the blocks
+    my $blocks = $self->{'BLOCKS'};
+    local $self->{'BLOCKS'} = {%$blocks};
+
     my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $template_ref, $out_ref);
 
     return $str;
@@ -1547,7 +1572,7 @@ sub play_INCLUDE {
 
 sub parse_INSERT {
     my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_variable($tag_ref, {auto_quote => $QR_FILENAME});
+    my $ref = $self->parse_variable($tag_ref, {auto_quote => qr{ ^ ($QR_FILENAME) $QR_AQ_SPACE }xo});
     return $ref;
 }
 
@@ -1560,10 +1585,10 @@ sub play_INSERT {
 }
 
 sub parse_MACRO {
-    my ($self, $tag_ref, $func, $node) = @_;
+    my ($self, $tag_ref, $node) = @_;
     my $copy = $$tag_ref;
 
-    my $name = $self->parse_variable(\$copy, {auto_quote => qr/\w+/x});
+    my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo});
     die $self->exception('parse', "Missing macro name") if ! defined $name;
     if (! ref $name) {
         $name = [ $name, 0 ];
@@ -1633,7 +1658,9 @@ sub play_MACRO {
 sub parse_PROCESS {
     my ($self, $tag_ref) = @_;
     my $info = [[], []];
-    while (defined(my $filename = $self->parse_variable($tag_ref, {auto_quote => qr/$QR_FILENAME|\w+/}))) {
+    while (defined(my $filename = $self->parse_variable($tag_ref, {
+                       auto_quote => qr{ ^ ($QR_FILENAME | \w+ (?: :\w+)* ) $QR_AQ_SPACE }xo,
+                   }))) {
         push @{$info->[0]}, $filename;
         last if $$tag_ref !~ s{ ^ \+ \s* }{}x;
     }
@@ -1675,20 +1702,46 @@ sub play_PROCESS {
         });
     }
 
-    ### iterat on any passed block or filename
+    ### iterate on any passed block or filename
     foreach my $ref (@$files) {
         next if ! defined $ref;
         my $filename = $self->vivify_variable($ref);
 
-        ### handle filenames that look like blocks
-        if (my $body_ref = $self->{'_blocks'}->{$filename}) {
+        ### handle blocks
+        if (my $block = $self->{'BLOCKS'}->{$filename}) {
+
+            ### allow for predefined blocks that are a code or a string
+            if (UNIVERSAL::isa($block, 'CODE')) {
+                $block = $block->();
+            }
+            if (! UNIVERSAL::isa($block, 'HASH')) {
+                die $self->exception('block', "Unsupported BLOCK type \"$block\"", $node) if ref $block;
+                my $copy = $block;
+                $block = eval { $self->load_parsed_tree(\$copy) }
+                    || die $self->exeception('block', 'Parse error on predefined block', $node);
+            }
+            if (! $block->{'tree'}) {
+                die $self->exception('block', 'Invalid predifined block', $node);
+            } elsif ($block->{'content'}) {
+                $template_ref = $block->{'content'}; # dynamically loaded block
+            } elsif (! defined $block->{'file'}) {
+                die $self->exception('block', 'Missing file for block', $node);
+            } elsif ($self->{'_filename'} ne $block->{'file'}) {
+                my $ref = eval { $self->load_parsed_tree($block->{'file'}) }
+                     || die $self->exception('block', "Couldn't reload block ($@)", $node);
+                $template_ref = $ref->{'content'};
+            }
+
+            ### swap the block
             my $out = '';
-            eval { $self->execute_tree($body_ref, $template_ref, \$out) };
+            eval { $self->execute_tree($block->{'tree'}, $template_ref, \$out) };
             $$out_ref .= $out;
             if ($@) {
                 my $err = $@;
                 die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
             }
+
+        ### handle items that are actual files
         } else {
             my $str = $self->swap($filename, $self->{'STASH'}); # restart the swap - passing it our current stash
             $$out_ref .= $str if defined $str;
@@ -1700,7 +1753,7 @@ sub play_PROCESS {
 }
 
 sub parse_SET {
-    my ($self, $tag_ref, $func, $node, $initial_var) = @_;
+    my ($self, $tag_ref, $node, $initial_var) = @_;
     my @SET;
     my $copy = $$tag_ref;
     while (length $$tag_ref) {
@@ -1796,8 +1849,8 @@ sub play_SWITCH {
 }
 
 sub parse_THROW {
-    my ($self, $tag_ref, $func, $node) = @_;
-    my $name = $self->parse_variable($tag_ref, {auto_quote => qr/\w+ (?: \.\w+)*/x});
+    my ($self, $tag_ref, $node) = @_;
+    my $name = $self->parse_variable($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
     die $self->exception('parse.missing', "Missing name in THROW", $node) if ! $name;
     my $msg  = $self->parse_variable($tag_ref);
     return [$name, $msg];
@@ -1856,14 +1909,14 @@ sub parse_USE {
 
     my $var;
     my $copy = $$tag_ref;
-    if (defined(my $_var = $self->parse_variable(\$copy, {auto_quote => qr/\w+/}))
+    if (defined(my $_var = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
         && $copy =~ s{ ^ = \s* }{}x) {
         $var = $_var;
         $$tag_ref = $copy;
     }
 
     $copy = $$tag_ref;
-    my $module = $self->parse_variable(\$copy, {auto_quote => qr/\w+ (?: (?:\.|::) \w+)*/x});
+    my $module = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+ (?: (?:\.|::) \w+)*) $QR_AQ_NOTDOT }xo});
     die $self->exception('parse', "Missing plugin name while parsing $$tag_ref") if ! defined $module;
     $module =~ s/\./::/g;
 
@@ -2068,12 +2121,19 @@ sub process {
     my $stash = $self->stash;
     my $copy = {%$stash, %$swap};
 
+    ### prepare block localization
+    my $blocks = $self->{'BLOCKS'} ||= {};
+
     ### do the swap
-    $content = eval { $self->swap($content, $copy) };
+    $content = eval {
+        local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
+
+        return $self->swap($content, $copy);
+    };
     $self->{'error'} = $@;
 
-    ### clear blocks as asked
-    delete $self->{'_blocks'} if ! exists($self->{'AUTO_RESET'}) || $self->{'AUTO_RESET'};
+    ### clear blocks as asked (AUTO_RESET) defaults to on
+    $self->{'BLOCKS'} = $blocks if exists($self->{'AUTO_RESET'}) && ! $self->{'AUTO_RESET'};
 
     ### send the content back out
     return if ! defined $content;
