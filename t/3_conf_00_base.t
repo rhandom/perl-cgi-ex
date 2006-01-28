@@ -1,17 +1,14 @@
 # -*- Mode: Perl; -*-
 
-use Test;
+use Test::More tests => 24;
 
-BEGIN {plan tests => 24};
+use_ok('CGI::Ex::Conf');
 
-use CGI::Ex::Conf;
-ok(1);
-
-my $dir = $0;
+my $dir = __FILE__;
 $dir =~ tr|\\|/|; # should probably use File::Spec
-$dir =~ s|/[^/]+$||;
-$dir = '.' if ! length $dir;
-$dir .= '/samples';
+$dir =~ s|[^/]+$|../samples| || die "Couldn't determine dir";
+$dir =~ s|^t/|./t/|; # to satisfy conf
+
 my $obj = CGI::Ex::Conf->new({
   paths => ["$dir/conf_path_1", "$dir/conf_path_3"],
 });
