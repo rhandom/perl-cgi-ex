@@ -323,6 +323,7 @@ sub load_parsed_tree {
     return {} if ! defined $file;
 
     local $self->{'_filename'} = $file;
+    $self->{'STASH'}->{'template'}->{'name'} = $file if $self->{'_top_level'};
 
     ### look for cached components
     my $str_ref;
@@ -780,11 +781,11 @@ sub parse_variable {
             push @var, \ $str;
             $is_literal = 1;
         } else {
-            my @pieces = split m{ (\$\w+\b | \$\{ [^\}]+ \}) }x, $2;
+            my @pieces = split m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $2;
             my $n = 0;
             foreach my $piece (@pieces) {
                 next if ! ($n++ % 2);
-                next if $piece !~ m{ ^ \$ (\w+) $ }x
+                next if $piece !~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                     && $piece !~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x;
                 my $name = $1;
                 $piece = $self->parse_variable(\$name);
@@ -799,7 +800,7 @@ sub parse_variable {
         }
 
     ### allow for leading $foo or ${foo.bar} type constructs
-    } elsif ($copy =~ s{ ^ \$ (\w+) \b \s* }{}x
+    } elsif ($copy =~ s{ ^ \$ (\w+ (?:\.\w+)*) \b \s* }{}x
         || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* }{}x) {
         my $name = $1;
         push @var, $self->parse_variable(\$name);
@@ -861,7 +862,7 @@ sub parse_variable {
         push @var, $1;
 
         ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
-        if ($copy =~ s{ ^ \$(\w+) \s* }{}x
+        if ($copy =~ s{ ^ \$(\w+ (?:\.\w+)*) \s* }{}x
             || $copy =~ s{ ^ \$\{ \s* ([^\}]+)\} \s* }{}x) {
             my $name = $1;
             my $var = $self->parse_variable(\$name);
@@ -1028,7 +1029,7 @@ sub interpolate_node {
     my $node = $tree->[$index];
     my $str = substr($$template_ref, $node->[1], $node->[2]-$node->[1]);
 
-    my @pieces = split m{ (\$\w+\b | \$\{ [^\}]+ \}) }x, $str;
+    my @pieces = split m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $str;
     return if $#pieces <= 0;
 
     my @sub_tree;
@@ -2314,7 +2315,7 @@ sub new {
 
 sub type { shift->[0] }
 
-sub msg { shift->[1] || '' }
+sub info { shift->[1] || '' }
 
 sub node {
     my $self = shift;
@@ -2332,7 +2333,7 @@ sub str_ref {
 
 sub as_string {
     my $self = shift;
-    my $msg  = $self->type .' error - '. $self->msg;
+    my $msg  = $self->type .' error - '. $self->info;
     if (my $node = $self->node) {
         $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
     }
@@ -2435,7 +2436,7 @@ __END__
 
     Benchmark text processing
     Benchmark FOREACH types again
-    Add META
+    Debug meta more
     Add FINAL
     Look at other configs
     Allow TRIM to work
