@@ -473,14 +473,15 @@ sub parse_tree {
             $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $node = [undef, $i + $len_s, $j];
 
-            ### take care of whitespace
-            if ($tag =~ s/^(\#?)([-=])/$1/ || ($self->{'PRE_CHOMP'} && $tag !~ s/^(\#?)\+/$1/)) {
-                if ($pointer->[-1] && $pointer->[-1]->[0] eq 'TEXT') {
-                    $pointer->[-1]->[3]->[0] = ($2 && $2 eq '=') ? 2 : $self->{'PRE_CHOMP'} ? $self->{'PRE_CHOMP'} : 1;
-                }
+            ### take care of whitespace and comments
+            my $pre  = $tag =~ s{ ^ ([\#+=-]*) }{}x ? $1 : '';
+            my $post = $tag =~ s{ ([\#+=-]+) $ }{}x ? $1 : '';
+            my $pre_chomp = ($pre  =~ /([-=])/) ? ($1 eq '-' ? 1 : 2) : ($pre  =~ /\+/) ? 0 : $self->{'PRE_CHOMP'};
+            $post_chomp   = ($post =~ /([-=])/) ? ($1 eq '-' ? 1 : 2) : ($post =~ /\+/) ? 0 : $self->{'POST_CHOMP'};
+            if ($pre_chomp && $pointer->[-1] && $pointer->[-1]->[0] eq 'TEXT') {
+                $pointer->[-1]->[3]->[0] = $pre_chomp;
             }
-            $post_chomp = ($tag =~ s/-$//) ? 1 : ($tag =~ s/\+$//) ? 0 : $self->{'POST_CHOMP'};
-            if ($tag =~ /^\#/) { # leading # means to comment the entire section
+            if ($pre =~ /\#/) { # leading # means to comment the entire section
                 $node->[0] = 'COMMENT';
                 push @$pointer, $node;
                 next;
@@ -672,8 +673,14 @@ sub execute_tree {
             if (! defined $node->[4]) {
                 $node->[4] = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
 
-                $node->[4] =~ s{ (?:\n|^) [^\S\n]* \z }{}xm   if $node->[3]->[0]; # pre_chomp
-                $node->[4] =~ s{ \G [^\S\n]* (?:\n?$|\n) }{}x if $node->[3]->[1]; # post_chomp
+                if ($node->[3]->[0]) { # pre_chomp
+                    my $space = ($node->[3]->[0] == 2) ? ' ' : '';
+                    $node->[4] =~ s{ (?:\n|^) [^\S\n]* \z }{$space}xm;
+                }
+                if ($node->[3]->[1]) { # post_chomp
+                    my $space = ($node->[3]->[1] == 2) ? ' ' : '';
+                    $node->[4] =~ s{ \G [^\S\n]* (?:\n?$|\n) }{$space}x;
+                }
             }
             $$out_ref .= $node->[4];
             next;
