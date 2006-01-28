@@ -298,7 +298,8 @@ sub swap {
     my $str_ref;
     eval {
         my $ref = $self->load_parsed_tree($file);
-        my ($file, $tree, $str_ref) = @$ref{'file', 'tree', 'content'};
+        my ($tree, $str_ref, $file) = @$ref;
+        die $self->exception('file', "No content found") if ! $tree;
         if ($#$tree == -1) {
             $out = $$str_ref;
         } else {
@@ -320,7 +321,7 @@ sub swap {
 sub load_parsed_tree {
     my $self = shift;
     my $file = shift;
-    return {} if ! defined $file;
+    return [] if ! defined $file;
 
     local $self->{'_filename'} = $file;
     $self->{'STASH'}->{'template'}->{'name'} = $file if $self->{'_top_level'};
@@ -329,13 +330,14 @@ sub load_parsed_tree {
     my $str_ref;
     my $tree;
     my $store_file;
-    my $store_mtime;
+    my $mtime;
     if (ref $file) {
         $str_ref = $file;
         $file = $self->{'_filename'} = '';
 
     } elsif (my $cache = $self->{'_documents'}->{$file}) {
-        $cache->{'time'} = time if $self->{'CACHE_SIZE'};
+        $cache->[4] = time if $self->{'CACHE_SIZE'};
+        $self->{'STASH'}->{'template'}->{'modtime'} = $cache->[3] if $self->{'_top_level'};
         return $cache;
 
     } else {
@@ -343,6 +345,7 @@ sub load_parsed_tree {
         my $content;
         eval {
             $filename = $self->include_filename($file);
+            $mtime    = (stat _)[9];
             $content  = $self->slurp($filename);
             $str_ref  = \$content;
         };
@@ -353,17 +356,23 @@ sub load_parsed_tree {
                 local $self->{'_looking_in_block_file'} = 1;
                 my ($_file, $block_name) = ($1, $2);
                 my $ref = eval { $self->load_parsed_tree($_file) } || die $err;
-                my ($_tree, $_str_ref) = @$ref{'tree', 'content'};
+                my ($_tree, $_str_ref, $_name, $_mtime) = @$ref;
                 foreach my $node (@$_tree) {
                     next if $block_name ne $node->[3];
                     $str_ref = $_str_ref;
                     $tree    = $node->[4];
+                    $mtime   = $_mtime;
+                    $file    = $_name;
                 }
                 die $err if ! $tree;
             } else {
-                $file    = $self->{'DEFAULT'} || die $err;
-                $content = eval { $self->include_file($file) } || die $err;
-                $str_ref = \$content;
+                $file = $self->{'DEFAULT'} || die $err;
+                eval {
+                    $filename = $self->include_filename($file);
+                    $mtime    = (stat _)[9];
+                    $content  =  $self->slurp($filename);
+                    $str_ref  = \$content;
+                } || die $err;
             }
         }
 
@@ -372,8 +381,7 @@ sub load_parsed_tree {
             $store_file = ($self->{'COMPILE_DIR'})
                 ? $self->{'COMPILE_DIR'} .'/'. $store_file .($self->{'COMPILE_EXT'}?$self->{'COMPILE_EXT'}.'.sto':'')
                 : $filename . $self->{'COMPILE_EXT'} .'.sto';
-            $store_mtime = (stat $filename)[9];
-            if (-e $store_file && -M _ == $store_mtime) {
+            if (-e $store_file && -M _ == $mtime) {
                 require Storable;
                 $tree = Storable::retrieve($store_file);
                 undef $store_file; # don't need to restore
@@ -394,19 +402,15 @@ sub load_parsed_tree {
 
     ### cache in memory unless asked not to do so
     if ($file && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
-        $self->{'_documents'}->{$file} ||= {
-            tree    => $tree,
-            content => $str_ref,
-            file    => $file,
-        };
+        $self->{'_documents'}->{$file} ||= [$tree, $str_ref, $file, $mtime];
 
         ### allow for config option to keep the cache size down
         if ($self->{'CACHE_SIZE'}) {
-            $self->{'_documents'}->{$file}->{'time'} = time;
+            $self->{'_documents'}->{$file}->[4] = time;
             my $cache = $self->{'_documents'};
             if (scalar(keys %$cache) > $self->{'CACHE_SIZE'}) {
                 my $n = 0;
-                foreach my $file (sort {$cache->{$b}->{'time'} <=> $cache->{$a}->{'time'}} keys %$cache) {
+                foreach my $file (sort {$cache->{$b}->[4] <=> $cache->{$a}->[4]} keys %$cache) {
                     $n ++;
                     delete($cache->{$file}) if $n > $self->{'CACHE_SIZE'};
                 }
@@ -424,14 +428,11 @@ sub load_parsed_tree {
         }
         require Storable;
         Storable::store($tree, $store_file);
-        utime $store_mtime, $store_mtime, $store_file;
+        utime $mtime, $mtime, $store_file;
     }
 
-    return {
-        tree    => $tree,
-        content => $str_ref,
-        file    => $file,
-    };
+    $self->{'STASH'}->{'template'}->{'modtime'} = $mtime if $self->{'_top_level'};
+    return [$tree, $str_ref, $file, $mtime];
 }
 
 sub parse_tree {
@@ -793,6 +794,9 @@ sub parse_variable {
             @pieces = grep {defined && length} @pieces;
             if ($#pieces == -1) {
                 push @var, \ '';
+                $is_literal = 1;
+            } elsif ($#pieces == 0 && ! ref $pieces[0]) {
+                push @var, \ $pieces[0];
                 $is_literal = 1;
             } else {
                 push @var, \ ['concat', @pieces];
@@ -1364,10 +1368,7 @@ sub play_BLOCK {
     my ($self, $name, $node, $template_ref, $out_ref) = @_;
 
     ### store a named reference - but do nothing until something processes it
-    $self->{'BLOCKS'}->{$name} = {
-        tree => $node->[4] || [],
-        file => $node->[5],
-    };
+    $self->{'BLOCKS'}->{$name} = [$node->[4], undef, $node->[5]]; # tree, content, file (undef says to use current body)
 
     return;
 }
@@ -1796,27 +1797,28 @@ sub play_PROCESS {
             if (UNIVERSAL::isa($block, 'CODE')) {
                 $block = $block->();
             }
-            if (! UNIVERSAL::isa($block, 'HASH')) {
+            if (! UNIVERSAL::isa($block, 'ARRAY')) {
                 die $self->exception('block', "Unsupported BLOCK type \"$block\"", $node) if ref $block;
                 my $copy = $block;
                 $block = eval { $self->load_parsed_tree(\$copy) }
                     || die $self->exeception('block', 'Parse error on predefined block', $node);
             }
-            if (! $block->{'tree'}) {
+            my ($_tree, $_content, $_file) = @$block;
+            if (! $_tree) {
                 die $self->exception('block', 'Invalid predifined block', $node);
-            } elsif ($block->{'content'}) {
-                $template_ref = $block->{'content'}; # dynamically loaded block
-            } elsif (! defined $block->{'file'}) {
+            } elsif ($_content) {
+                $template_ref = $_content; # dynamically loaded block
+            } elsif (! defined $_file) {
                 die $self->exception('block', 'Missing file for block', $node);
-            } elsif ($self->{'_filename'} ne $block->{'file'}) {
-                my $ref = eval { $self->load_parsed_tree($block->{'file'}) }
+            } elsif ($self->{'_filename'} ne $_file) {
+                my $ref = eval { $self->load_parsed_tree($_file) }
                      || die $self->exception('block', "Couldn't reload block ($@)", $node);
-                $template_ref = $ref->{'content'};
+                $template_ref = $ref->[1];
             }
 
             ### swap the block
             my $out = '';
-            eval { $self->execute_tree($block->{'tree'}, $template_ref, \$out) };
+            eval { $self->execute_tree($_tree, $template_ref, \$out) };
             $$out_ref .= $out;
             if ($@) {
                 my $err = $@;
