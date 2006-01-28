@@ -11,7 +11,7 @@ use strict;
 use vars qw($TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS
             $DIRECTIVES
-            $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $OP_QR $OP_QR_UNARY
+            $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $QR_OP $QR_OP_UNARY
             $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
             $MAX_RECURSE
             $WHILE_MAX
@@ -32,7 +32,6 @@ BEGIN {
     $SCALAR_OPS = {
         hash    => sub { {value => $_[0]} },
         length  => sub { defined($_[0]) ? length($_[0]) : 0 },
-        list    => sub { [ $_[0] ] },
         match   => sub {
             my ($str, $pat, $global) = @_;
             return [] if ! defined $str || ! defined $pat;
@@ -258,8 +257,8 @@ BEGIN {
     }
     sub _build_op_qr       { _op_qr(sort(grep {! $OP_UNARY->{$_}} keys(%$OPERATORS), values(%$OP_TRINARY))) }
     sub _build_op_qr_unary { _op_qr(sort %$OP_UNARY) } # grab keys and values
-    $OP_QR       ||= _build_op_qr();
-    $OP_QR_UNARY ||= _build_op_qr_unary();
+    $QR_OP       ||= _build_op_qr();
+    $QR_OP_UNARY ||= _build_op_qr_unary();
 
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_AQ_NOTDOT = '(?! \s* \.)';
@@ -311,6 +310,7 @@ sub swap {
 sub load_parsed_tree {
     my $self = shift;
     my $file = shift;
+    return {} if ! defined $file;
 
     local $self->{'_filename'} = $file;
 
@@ -356,14 +356,14 @@ sub load_parsed_tree {
         }
 
         if (! $tree && ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'})) {
-            my $_store_file = $file . $self->{'COMPILE_EXT'} .'.sto' if $self->{'COMPILE_EXT'};
-            $_store_file = ($self->{'COMPILE_DIR'})
-                ? $self->{'COMPILE_DIR'} .'/'. $_store_file
+            $store_file = $file;
+            $store_file = ($self->{'COMPILE_DIR'})
+                ? $self->{'COMPILE_DIR'} .'/'. $store_file .($self->{'COMPILE_EXT'}?$self->{'COMPILE_EXT'}.'.sto':'')
                 : $filename . $self->{'COMPILE_EXT'} .'.sto';
-            if (-e $_store_file && -M _ == -M $file) {
+            if (-e $store_file && -M _ == -M $file) {
                 require Storable;
-                $tree = Storable::retrieve($_store_file);
-                $store_file = $_store_file;
+                $tree = Storable::retrieve($store_file);
+                undef $store_file; # don't need to restore
             }
         }
 
@@ -384,6 +384,7 @@ sub load_parsed_tree {
         $self->{'_documents'}->{$file} ||= {
             tree    => $tree,
             content => $str_ref,
+            file    => $file,
         };
 
         ### allow for config option to keep the cache size down
@@ -409,7 +410,7 @@ sub load_parsed_tree {
             File::Path::mkpath($dir);
         }
         require Storable;
-        Storable::store($tree);
+        Storable::store($tree, $store_file);
         my $mtime = (stat $file)[9];
         utime $mtime, $mtime, $store_file;
     }
@@ -446,8 +447,9 @@ sub parse_tree {
     my $continue;         # multiple directives in the same tag
     my $postop;           # found a post-operative DIRECTIVE
     my $capture;          # flag to start capture
-    my $tag;
+    my $func;
     my $node;
+    my $tag;
     while (1) {
         ### continue looking for information in a semi-colon delimited tag
         if ($continue) {
@@ -470,20 +472,23 @@ sub parse_tree {
             }
             $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $node = [undef, $i + $len_s, $j];
+
+            ### take care of whitespace
+            if ($tag =~ s/^(\#?)([-=])/$1/ || ($self->{'PRE_CHOMP'} && $tag !~ s/^(\#?)\+/$1/)) {
+                if ($pointer->[-1] && $pointer->[-1]->[0] eq 'TEXT') {
+                    $pointer->[-1]->[3]->[0] = ($2 && $2 eq '=') ? 2 : $self->{'PRE_CHOMP'} ? $self->{'PRE_CHOMP'} : 1;
+                }
+            }
+            $post_chomp = ($tag =~ s/-$//) ? 1 : ($tag =~ s/\+$//) ? 0 : $self->{'POST_CHOMP'};
+            if ($tag =~ /^\#/) { # leading # means to comment the entire section
+                $node->[0] = 'COMMENT';
+                push @$pointer, $node;
+                next;
+            }
+            $tag =~ s{ (?<! \\) \# .* $ }{}xmg; # remove trailing comments
+            $tag =~ s{ ^ \s+ }{}x;
         }
 
-        ### take care of whitespace
-        if ($tag =~ s/^(\#?)-/$1/ || ($self->{'PRE_CHOMP'} && $tag !~ s/^(\#?)\+/$1/)) {
-            $pointer->[-1]->[3]->[0] = 1 if $pointer->[-1] && $pointer->[-1]->[0] eq 'TEXT';
-        }
-        $post_chomp = ($tag =~ s/-$//) ? 1 : ($tag =~ s/\+$//) ? 0 : $self->{'POST_CHOMP'};
-        if ($tag =~ /^\#/) { # leading # means to comment the entire section
-            $node->[0] = 'COMMENT';
-            push @$pointer, $node;
-            next;
-        }
-        $tag =~ s{ (?<! \\) \# .* $ }{}xmg; # remove trailing comments
-        $tag =~ s{ ^ \s+ }{}x;
         if (! length $tag) {
             undef $continue;
             undef $postop;
@@ -491,10 +496,11 @@ sub parse_tree {
         }
 
         ### look for DIRECTIVES
-        if ($tag =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}) {
-
-            my $func = $node->[0] = $1;
+        if ($tag =~ / ^ (\w+) (?: ;|$|\s)/x               # find a word
+            && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
+            && $DIRECTIVES->{$func} ) {                   # is it a directive
             $tag =~ s{ ^ \w+ \s* }{}x;
+            $node->[0] = $func;
 
             ### store out this current node level
             if ($postop) { # on a post operator - replace the original node with the new one
@@ -718,7 +724,7 @@ sub parse_variable {
 
     ### test for leading unary operators
     my $has_unary;
-    if ($copy =~ s{ ^ ($OP_QR_UNARY) \s* }{}xo) {
+    if ($copy =~ s{ ^ ($QR_OP_UNARY) \s* }{}xo) {
         return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
         $has_unary = $1;
         if (! $OP_UNARY->{$has_unary}) {
@@ -863,7 +869,7 @@ sub parse_variable {
     if (! $self->{'_operator_precedence'}) {
         my $tree;
         my $found;
-        while ($copy =~ s{ ^ ($OP_QR) \s* }{}ox) {
+        while ($copy =~ s{ ^ ($QR_OP) \s* }{}ox) {
             return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
             local $self->{'_operator_precedence'} = 1;
             my $op   = $1;
@@ -972,7 +978,7 @@ sub parse_args {
     while (length $$str_ref) {
         my $copy = $$str_ref;
         if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
-            && $copy =~ s{ ^ = \s* }{}x) {
+            && $copy =~ s{ ^ =>? \s* }{}x) {
             die $self->exception('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
             my $val = $self->parse_variable(\$copy);
             $copy =~ s{ ^ , \s* }{}x;
@@ -1161,6 +1167,10 @@ sub vivify_variable {
             if (my $code = $self->scalar_op($name)) {
                 return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
+                next;
+            } elsif (my $code = $self->list_op($name)) {
+                return if $ARGS->{'set_var'};
+                $ref = $code->([$ref], $args ? $self->vivify_args($args) : ());
                 next;
             } elsif (my $filter = $self->{'FILTERS'}->{$name}) {
                 $seen_filters ||= {};
@@ -1619,7 +1629,7 @@ sub play_MACRO {
         $self_copy = $self;
         Scalar::Util::weaken($self_copy);
     } else {
-        $self_copy = {%$self}; # hackish way to avoid circular refs on old perls (pre 5.8)
+        $self_copy = bless {%$self}, ref($self); # hackish way to avoid circular refs on old perls (pre 5.8)
     }
 
     ### install a closure in the stash that will handle the macro
@@ -1947,6 +1957,16 @@ sub play_USE {
         my $context = bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
         my @args    = $args ? $self->vivify_args($args) : ();
         $obj = $shape->new($context, @args);
+    } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_modules({base => $base}) }) {
+        foreach my $package (@packages) {
+            my $require = "$package.pm";
+            $require =~ s|::|/|g;
+            eval {require $require} || next;
+            my $shape   = $package->load;
+            my $context = bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
+            my @args    = $args ? $self->vivify_args($args) : ();
+            $obj = $shape->new($context, @args);
+        }
     } elsif ($self->{'LOAD_PERL'}) {
         my $require = "$module.pm";
         $require =~ s|::|/|g;
@@ -1956,7 +1976,7 @@ sub play_USE {
         }
     }
     if (! $obj) {
-        my $err = $@ || 'Unknown error while loading $module';
+        my $err = $@ || "Unknown error while loading $module";
         die $self->exception('plugin', $err);
     }
 
@@ -1967,6 +1987,30 @@ sub play_USE {
     });
 
     return;
+}
+
+sub list_modules {
+    my $self = shift;
+    my $args = shift || {};
+    my $base = $args->{'base'} || '';
+
+    return $self->{'_modules'}->{$base} ||= do {
+        my @modules;
+
+        $base =~ s|::|/|g;
+        my @dirs = grep {-d $_} map {"$_/$base"} @INC;
+
+        foreach my $dir (@dirs) {
+            require File::Find;
+            File::Find::find(sub {
+                my $mod = $base .'/'. ($File::Find::name =~ m|^ $dir / (.*\w) \.pm $|x ? $1 : return);
+                $mod =~ s|/|::|g;
+                push @modules, $mod;
+            }, $dir);
+        }
+
+        \@modules; # return of the do
+    };
 }
 
 sub parse_WHILE {
@@ -2111,13 +2155,16 @@ sub process {
         $content = $in;
     }
 
+
     ### localize the stash
     $swap ||= {};
     my $stash = $self->stash;
+    $stash->{'global'} ||= {}; # allow for the "global" namespace - the continues in between processing
     my $copy = {%$stash, %$swap};
 
     ### prepare block localization
     my $blocks = $self->{'BLOCKS'} ||= {};
+
 
     ### do the swap
     $content = eval {
@@ -2127,8 +2174,10 @@ sub process {
     };
     $self->{'error'} = $@;
 
+
     ### clear blocks as asked (AUTO_RESET) defaults to on
     $self->{'BLOCKS'} = $blocks if exists($self->{'AUTO_RESET'}) && ! $self->{'AUTO_RESET'};
+
 
     ### send the content back out
     return if ! defined $content;
@@ -2277,6 +2326,7 @@ __END__
 =head1 TODO
 
     Benchmark text processing
+    Benchmark FOREACH types again
     Add META
     Add FINAL
     Look at other configs
