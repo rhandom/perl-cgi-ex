@@ -177,7 +177,16 @@ BEGIN {
             parse  => \&parse_MACRO,
             play   => \&play_MACRO,
         },
+        META    => {
+            parse  => \&parse_META,
+            play   => \&play_META,
+        },
         NEXT    => { control => 1 },
+        PERL    => {
+            parse  => \&parse_PERL,
+            play   => \&play_PERL,
+            block  => 1,
+        },
         PROCESS => {
             parse  => \&parse_PROCESS,
             play   => \&play_PROCESS,
@@ -281,6 +290,7 @@ sub swap {
     my $self = shift;
     my $file = shift;
     local $self->{'STASH'} = shift || {};
+    local $self->{'_top_level'} = delete $self->{'_start_top_level'};
 
     ### parse and execute
     my $out = '';
@@ -318,6 +328,7 @@ sub load_parsed_tree {
     my $str_ref;
     my $tree;
     my $store_file;
+    my $store_mtime;
     if (ref $file) {
         $str_ref = $file;
         $file = $self->{'_filename'} = '';
@@ -358,9 +369,10 @@ sub load_parsed_tree {
         if (! $tree && ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'})) {
             $store_file = $file;
             $store_file = ($self->{'COMPILE_DIR'})
-                ? $self->{'COMPILE_DIR'} .'/'. $store_file .($self->{'COMPILE_EXT'}?$self->{'COMPILE_EXT'}.'.sto':'')
-                : $filename . $self->{'COMPILE_EXT'} .'.sto';
-            if (-e $store_file && -M _ == -M $file) {
+                ? $self->{'COMPILE_DIR'} .'/'. $store_file .($self->{'COMPILE_EXT'}?$self->{'COMPILE_EXT'}.'':'')
+                : $filename . $self->{'COMPILE_EXT'} .'';
+            $store_mtime = (stat $filename)[9];
+            if (-e $store_file && -M _ == $store_mtime) {
                 require Storable;
                 $tree = Storable::retrieve($store_file);
                 undef $store_file; # don't need to restore
@@ -411,8 +423,7 @@ sub load_parsed_tree {
         }
         require Storable;
         Storable::store($tree, $store_file);
-        my $mtime = (stat $file)[9];
-        utime $mtime, $mtime, $store_file;
+        utime $store_mtime, $store_mtime, $store_file;
     }
 
     return {
@@ -656,6 +667,11 @@ sub exception {
     my $self = shift;
     my $pkg  = $self->{'exception_package'} || 'CGI::Ex::Template::Exception';
     return $pkg->new(@_);
+}
+
+sub eval_perl_handle {
+    my ($self, $out_ref) = @_;
+    my $handle = CGI::Ex::Template::EvalPerlHandle->load($out_ref);
 }
 
 sub execute_tree {
@@ -1098,7 +1114,7 @@ sub vivify_variable {
     ### let the top level thing be a code block
     if (UNIVERSAL::isa($ref, 'CODE')) {
         return if $ARGS->{'set_var'} && $#$var <= $i;
-        my @results = $ref->($args ? $self->vivify_args($args) : ());
+        my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
         $ref = ($#results > 0) ? \@results : $results[0];
     }
 
@@ -1124,7 +1140,7 @@ sub vivify_variable {
         }
 
         if (UNIVERSAL::can($ref, $name)) {
-            my @results = $ref->$name($args ? $self->vivify_args($args) : ());
+            my @results = $ref->$name($args ? @{ $self->vivify_args($args) } : ());
             $ref = ($#results > 0) ? \@results : $results[0];
             next;
 
@@ -1141,7 +1157,7 @@ sub vivify_variable {
                 $ref = $ref->{$name};
             } elsif (my $code = $self->hash_op($name)) {
                 return if $ARGS->{'set_var'};
-                $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
+                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } elsif ($ARGS->{'is_namespace_during_compile'}) {
                 return $var; # abort - can't fold namespace variable
@@ -1166,7 +1182,7 @@ sub vivify_variable {
                 }
             } elsif (my $code = $self->list_op($name)) {
                 return if $ARGS->{'set_var'};
-                $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
+                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } else {
                 $ref = undef;
@@ -1175,11 +1191,11 @@ sub vivify_variable {
         } elsif (! ref($ref) && defined($ref)) {
             if (my $code = $self->scalar_op($name)) {
                 return if $ARGS->{'set_var'};
-                $ref = $code->($ref, $args ? $self->vivify_args($args) : ());
+                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } elsif (my $code = $self->list_op($name)) {
                 return if $ARGS->{'set_var'};
-                $ref = $code->([$ref], $args ? $self->vivify_args($args) : ());
+                $ref = $code->([$ref], $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } elsif (my $filter = $self->{'FILTERS'}->{$name}) {
                 $seen_filters ||= {};
@@ -1195,7 +1211,7 @@ sub vivify_variable {
         }
 
         if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? $self->vivify_args($args) : ());
+            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
             $ref = ($#results > 0) ? \@results : $results[0];
         }
 
@@ -1213,7 +1229,7 @@ sub vivify_args {
     my $self = shift;
     my $vars = shift;
     my $args = shift || {};
-    return map {$self->vivify_variable($_, $args)} @$vars;
+    return [map {$self->vivify_variable($_, $args)} @$vars];
 }
 
 ###----------------------------------------------------------------###
@@ -1232,14 +1248,13 @@ sub play_operator {
 
     ### do constructors and short-circuitable operators
     if ($op eq 'concat' || $op eq '~' || $op eq '_') {
-        return join "", grep {defined} $self->vivify_args($tree);
+        return join "", grep {defined} @{ $self->vivify_args($tree) };
     } elsif ($op eq 'arrayref') {
-        my @vals = $self->vivify_args($tree, {list_context => 1});
-        return [@vals];
+        return $self->vivify_args($tree, {list_context => 1});
     } elsif ($op eq 'hashref') {
-        my @args = $self->vivify_args($tree);
-        push @args, undef if ! ($#args % 2);
-        return {@args};
+        my $args = $self->vivify_args($tree);
+        push @$args, undef if ! ($#$args % 2);
+        return {@$args};
     } elsif ($op eq '?') {
         if ($self->vivify_variable($tree->[0])) {
             return defined($tree->[1]) ? $self->vivify_variable($tree->[1]) : undef;
@@ -1282,23 +1297,23 @@ sub play_operator {
     elsif ($op eq 'ge') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n ge $_); $n = $_ }; return 1 }
 
     ### numeric operators
-    my @args = $self->vivify_args($tree);
-    if ($#args == -1) {
+    my $args = $self->vivify_args($tree);
+    if ($#$args == -1) {
         if ($op eq '-') { return - $n }
         die "Not enough args for operator \"$op\"";
     }
-    if ($op eq '..')        { return [($n||0) .. ($args[-1]||0)] }
-    elsif ($op eq '+')      { $n +=  $_ for @args; return $n }
-    elsif ($op eq '-')      { $n -=  $_ for @args; return $n }
-    elsif ($op eq '*')      { $n *=  $_ for @args; return $n }
-    elsif ($op eq '/')      { $n /=  $_ for @args; return $n }
+    if ($op eq '..')        { return [($n||0) .. ($args->[-1]||0)] }
+    elsif ($op eq '+')      { $n +=  $_ for @$args; return $n }
+    elsif ($op eq '-')      { $n -=  $_ for @$args; return $n }
+    elsif ($op eq '*')      { $n *=  $_ for @$args; return $n }
+    elsif ($op eq '/')      { $n /=  $_ for @$args; return $n }
     elsif ($op eq 'div'
-           || $op eq 'DIV') { $n = int($n / $_) for @args; return $n }
+           || $op eq 'DIV') { $n = int($n / $_) for @$args; return $n }
     elsif ($op eq '%'
            || $op eq 'mod'
-           || $op eq 'MOD') { $n %=  $_ for @args; return $n }
+           || $op eq 'MOD') { $n %=  $_ for @$args; return $n }
     elsif ($op eq '**'
-           || $op eq 'pow') { $n **= $_ for @args; return $n }
+           || $op eq 'pow') { $n **= $_ for @$args; return $n }
 
     die "Un-implemented operation $op";
 }
@@ -1669,6 +1684,57 @@ sub play_MACRO {
     return;
 }
 
+sub parse_META {
+    my ($self, $tag_ref) = @_;
+
+    return $self->parse_args($tag_ref);
+}
+
+sub play_META {
+    my ($self, $args) = @_;
+    return if ! $args;
+    return if ! $self->{'_top_level'};
+
+    my $hash = $self->vivify_args($args)->[-1] || return;
+    return if ! UNIVERSAL::isa($hash, 'HASH');
+
+    my $ref = $self->{'STASH'}->{'template'} ||= {};
+    @$ref{keys %$hash} = values %$hash;
+
+    return;
+}
+
+sub parse_PERL {}
+
+sub play_PERL {
+    my ($self, $info, $node, $template_ref, $out_ref) = @_;
+    die $self->exception('perl', 'EVAL_PERL not set') if ! $self->{'EVAL_PERL'};
+
+    ### fill in any variables
+    my $perl = $node->[4] || return;
+    my $out  = '';
+    $self->execute_tree($perl, $template_ref, \$out);
+
+    ### setup a fake handle
+    my $handle = $self->eval_perl_handle($out_ref);
+    local *OUTPUT = $handle;
+    my $old_fh = select OUTPUT;
+
+    ### try the code
+    eval { eval $out };
+    my $err = $@;
+
+    ### put the handle back
+    select $old_fh;
+
+    if ($err) {
+        $err = $self->exception('undef', $err) if ! UNIVERSAL::isa('CGI::Ex::Template::Exception');
+        die $err;
+    }
+
+    return;
+}
+
 sub parse_PROCESS {
     my ($self, $tag_ref) = @_;
     my $info = [[], []];
@@ -1710,6 +1776,7 @@ sub play_PROCESS {
     ### set passed args
     foreach (@$args) {
         my ($key, $val) = @$_;
+        $val = $self->vivify_variable($val);
         $self->vivify_variable($key, {
             set_var => 1,
             var_val => $val,
@@ -1967,7 +2034,7 @@ sub play_USE {
     if (eval {require $require}) {
         my $shape   = $package->load;
         my $context = bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
-        my @args    = $args ? $self->vivify_args($args) : ();
+        my @args    = $args ? @{ $self->vivify_args($args) } : ();
         $obj = $shape->new($context, @args);
     } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_modules({base => $base}) }) {
         foreach my $package (@packages) {
@@ -1976,14 +2043,14 @@ sub play_USE {
             eval {require $require} || next;
             my $shape   = $package->load;
             my $context = bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
-            my @args    = $args ? $self->vivify_args($args) : ();
+            my @args    = $args ? @{ $self->vivify_args($args) } : ();
             $obj = $shape->new($context, @args);
         }
     } elsif ($self->{'LOAD_PERL'}) {
         my $require = "$module.pm";
         $require =~ s|::|/|g;
         if (eval {require $require}) {
-            my @args = $args ? $self->vivify_args($args) : ();
+            my @args = $args ? @{ $self->vivify_args($args) } : ();
             $obj = $module->new(@args);
         }
     }
@@ -2141,8 +2208,10 @@ sub include_file {
 
 sub slurp {
     my ($self, $file) = @_;
-    open(my $fh, "<$file") || die $self->exception('file', "$file couldn't be opened: $!");
-    read $fh, my $txt, -s $file;
+    local *FH;
+    open(FH, "<$file") || die $self->exception('file', "$file couldn't be opened: $!");
+    read FH, my $txt, -s $file;
+    close FH;
     return $txt;
 }
 
@@ -2181,6 +2250,7 @@ sub process {
     ### do the swap
     $content = eval {
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
+        local $self->{'_start_top_level'} = 1;
 
         return $self->swap($content, $copy);
     };
@@ -2266,7 +2336,6 @@ sub as_string {
     if (my $node = $self->node) {
         $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
     }
-    $msg .= "\n" if $msg !~ /\n\z/;
     return $msg;
 }
 
@@ -2313,6 +2382,7 @@ sub next {
 
 ###----------------------------------------------------------------###
 
+
 package CGI::Ex::Template::_Context;
 
 use vars qw($AUTOLOAD);
@@ -2322,6 +2392,32 @@ sub _template { shift->{'_template'} || die "Missing _template" }
 sub AUTOLOAD { shift->_template->exception('not_implemented', "The method $AUTOLOAD has not been implemented") }
 
 sub DESTROY {}
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::EvalPerlHandle;
+
+sub load {
+    my ($class, $out_ref) = @_;
+    tie(*OUTPUT, $class, $out_ref);
+    return \*OUTPUT;
+}
+
+sub TIEHANDLE {
+    my ($class, $out_ref) = @_;
+    return bless [$out_ref], $class;
+}
+
+sub PRINT {
+    my $self = shift;
+    ${ $self->[0] } .= $_ for grep {defined && length} @_;
+    return 1;
+}
+
+sub PRINTF {
+    my $self = shift;
+    $self->PRINT(sprintf @_);
+}
 
 ###----------------------------------------------------------------###
 
