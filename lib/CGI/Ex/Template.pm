@@ -370,8 +370,8 @@ sub load_parsed_tree {
         if (! $tree && ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'})) {
             $store_file = $file;
             $store_file = ($self->{'COMPILE_DIR'})
-                ? $self->{'COMPILE_DIR'} .'/'. $store_file .($self->{'COMPILE_EXT'}?$self->{'COMPILE_EXT'}.'':'')
-                : $filename . $self->{'COMPILE_EXT'} .'';
+                ? $self->{'COMPILE_DIR'} .'/'. $store_file .($self->{'COMPILE_EXT'}?$self->{'COMPILE_EXT'}.'.sto':'')
+                : $filename . $self->{'COMPILE_EXT'} .'.sto';
             $store_mtime = (stat $filename)[9];
             if (-e $store_file && -M _ == $store_mtime) {
                 require Storable;
