@@ -345,7 +345,7 @@ sub load_parsed_tree {
         my $content;
         eval {
             $filename = $self->include_filename($file);
-            $mtime    = (stat _)[9];
+            $mtime    = (stat $filename)[9];
             $content  = $self->slurp($filename);
             $str_ref  = \$content;
         };
@@ -369,7 +369,7 @@ sub load_parsed_tree {
                 $file = $self->{'DEFAULT'} || die $err;
                 eval {
                     $filename = $self->include_filename($file);
-                    $mtime    = (stat _)[9];
+                    $mtime    = (stat $filename)[9];
                     $content  =  $self->slurp($filename);
                     $str_ref  = \$content;
                 } || die $err;
@@ -381,7 +381,7 @@ sub load_parsed_tree {
             $store_file = ($self->{'COMPILE_DIR'})
                 ? $self->{'COMPILE_DIR'} .'/'. $store_file .($self->{'COMPILE_EXT'}?$self->{'COMPILE_EXT'}.'.sto':'')
                 : $filename . $self->{'COMPILE_EXT'} .'.sto';
-            if (-e $store_file && -M _ == $mtime) {
+            if (-e $store_file && (stat _)[9] == $mtime) {
                 require Storable;
                 $tree = Storable::retrieve($store_file);
                 undef $store_file; # don't need to restore
