@@ -18,7 +18,7 @@ my $tt_cache_dir = tmpnam;
 END { rmtree $tt_cache_dir };
 mkdir $tt_cache_dir, 0755;
 
-my @config1 = (ABSOLUTE => 1, CONSTANTS => {fefifo => sub {'do_once'}, simple => 'var'});
+my @config1 = (ABSOLUTE => 1, CONSTANTS => {fefifo => sub {'do_once'}, simple => 'var'}, EVAL_PERL => 1);
 #push @config1, (INTERPOLATE => 1);
 my @config2 = (@config1, COMPILE_EXT => '.ttc');
 
@@ -93,6 +93,7 @@ my $tests = {                                                            #      
     _35_constant  => "[% constants.fefifo %]",                           #  355%  #  875%  #  633%  #
     _36_constant2 => "[% constants.simple %]",                           #  346%  #  931%  #  628%  #
 #    _37_interp    => "Foo \$one Bar" => 'Foo ONE Bar'; # set INTERPOLATE #  287%  #  849%  #  536%  #
+    _38_perl      => "[%one='ONE'%][% PERL %]print \"[%one%]\"[%END%]",  #   98%  #  528%  #  304%  #
 };
 
 ###----------------------------------------------------------------###

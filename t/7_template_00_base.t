@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 389 - ($is_tt ? 44 : 0);
+use Test::More tests => 392 - ($is_tt ? 44 : 0);
 use Data::Dumper qw(Dumper);
 
 ### set up some dummy packages for use later
@@ -591,12 +591,14 @@ process_ok("[% SET constants.foo = 1 %][% constants.foo %]one" => '1one');
 process_ok("[% SET constants.harry = 1 %][% constants.harry %]one" => 'do_this_onceone');
 
 ###----------------------------------------------------------------###
-### interpolate
+### interpolate / anycase
 
 process_ok("Foo \$one Bar" => 'Foo ONE Bar', {one => 'ONE', tt_config => ['INTERPOLATE' => 1]});
 
-#process_ok(qq{[% FOREACH item IN [ 'foo', 'bar', 'baz' ] -%]
-#[%- "<ul>\n" IF loop.first %]
-#<li>[% loop.count %]/[% loop.size %]: [% item %]
-#[%- "</ul>\n" IF loop.last %]
-#[% END %]} => 
+process_ok("[% get one %]" => 'ONE', {one => 'ONE', tt_config => ['ANYCASE' => 1]});
+
+###----------------------------------------------------------------###
+### perl
+
+process_ok("[% TRY %][% PERL %][% END %][% CATCH ; error; END %]" => 'perl error - EVAL_PERL not set');
+process_ok("[% PERL %] print \"[% one %]\" [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
