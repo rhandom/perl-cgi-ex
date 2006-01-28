@@ -622,8 +622,10 @@ sub parse_tree {
             $postop    = undef;
 
         ### looking at a postoperator
-        } elsif ($tag =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}
-                 && $DIRECTIVES->{$1}->{'postop'}) {
+        } elsif ($tag =~ / ^ (\w+) (?: ;|$|\s)/x               # find a word
+                 && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
+                 && $DIRECTIVES->{$func}                       # is it a directive
+                 && $DIRECTIVES->{$func}->{'postop'}) {
             $continue  = $j - length $tag;
             $node->[2] = $continue;
             $postop    = $node;
@@ -1761,6 +1763,7 @@ sub parse_SET {
     my ($self, $tag_ref, $node, $initial_var) = @_;
     my @SET;
     my $copy = $$tag_ref;
+    my $func;
     while (length $$tag_ref) {
         my $set;
         my $get_val;
@@ -1776,7 +1779,9 @@ sub parse_SET {
         }
         if (! $get_val) { # no next val
             $val = undef;
-        } elsif ($$tag_ref =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}) { # next val is a directive - set up capturing
+        } elsif ($$tag_ref =~ / ^ (\w+) (?: ;|$|\s)/x          # find a word
+                 && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
+                 && $DIRECTIVES->{$func}) {                    # is it a directive - if so set up capturing
             $node->[6] = 1;           # set a flag to keep parsing
             $val = $node->[4] ||= []; # setup storage
             push @SET, [$set, $val];
