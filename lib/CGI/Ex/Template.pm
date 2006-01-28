@@ -800,7 +800,7 @@ sub parse_variable {
         }
 
     ### allow for leading $foo or ${foo.bar} type constructs
-    } elsif ($copy =~ s{ ^ \$ (\w+ (?:\.\w+)*) \b \s* }{}x
+    } elsif ($copy =~ s{ ^ \$ (\w+) \b \s* }{}x
         || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* }{}x) {
         my $name = $1;
         push @var, $self->parse_variable(\$name);
@@ -862,7 +862,7 @@ sub parse_variable {
         push @var, $1;
 
         ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
-        if ($copy =~ s{ ^ \$(\w+ (?:\.\w+)*) \s* }{}x
+        if ($copy =~ s{ ^ \$(\w+) \s* }{}x
             || $copy =~ s{ ^ \$\{ \s* ([^\}]+)\} \s* }{}x) {
             my $name = $1;
             my $var = $self->parse_variable(\$name);
@@ -1194,7 +1194,7 @@ sub vivify_variable {
                 return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
-            } elsif (my $code = $self->list_op($name)) {
+            } elsif ($code = $self->list_op($name)) {
                 return if $ARGS->{'set_var'};
                 $ref = $code->([$ref], $args ? @{ $self->vivify_args($args) } : ());
                 next;
@@ -1238,13 +1238,13 @@ sub vivify_args {
 sub play_operator {
     my $self = shift;
     my $tree = shift;
-    my $args = shift || {};
+    my $ARGS = shift || {};
     my $op = $tree->[0];
     $tree = [@$tree[1..$#$tree]];
 
     ### allow for operator function override
     if (exists $OP_FUNC->{$op}) {
-        return $OP_FUNC->{$op}->($self, $op, $tree, $args);
+        return $OP_FUNC->{$op}->($self, $op, $tree, $ARGS);
     }
 
     ### do constructors and short-circuitable operators
