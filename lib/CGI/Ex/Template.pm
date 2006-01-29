@@ -1038,12 +1038,12 @@ sub interpolate_node {
 
     my @sub_tree;
     my $n = 0;
-    my $i = 0;
+    my $i = $node->[1];
     foreach my $piece (@pieces) {
         if (! ($n++ % 2)) {
             next if ! length $piece;
             push @sub_tree, ['TEXT', $i, $i + length($piece)];
-        } elsif ($piece =~ m{ ^ \$ (\w+) $ }x
+        } elsif ($piece =~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                  || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
             my $name = $1;
             push @sub_tree, ['GET', $i, $i + length($piece), $self->parse_variable(\$name)];
