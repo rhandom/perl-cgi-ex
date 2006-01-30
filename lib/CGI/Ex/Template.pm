@@ -739,11 +739,6 @@ sub parse_variable {
             substr($$str_ref, 0, length($str), '');
             $$str_ref =~ s{ ^ \s+ }{}x;
             return $str;
-            #return [\$str, 0];
-        } elsif ($$str_ref =~ s{ ^ \$ (\w+) \s* (?! \.) }{}x # auto-quoted dollars
-                 || $$str_ref =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* (?! \.) }{}x) {
-            my $name = $1;
-            return [$name, 0];
         }
     }
 
@@ -804,12 +799,22 @@ sub parse_variable {
                 push @var, \ ['concat', @pieces];
             }
         }
+        if ($ARGS->{'auto_quote'}){
+            $$str_ref = $copy;
+            return ${ $var[0] } if $is_literal;
+            push @var, 0;
+            return \@var;
+        }
 
     ### allow for leading $foo or ${foo.bar} type constructs
     } elsif ($copy =~ s{ ^ \$ (\w+) \b \s* }{}x
         || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* }{}x) {
         my $name = $1;
         push @var, $self->parse_variable(\$name);
+        if ($ARGS->{'auto_quote'}){
+            $$str_ref = $copy;
+            return $var[-1];
+        }
 
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* }{}x) {
@@ -851,6 +856,8 @@ sub parse_variable {
         return;
     }
 
+    return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
+
     ### looks for args for the initial
     if ($copy =~ s{ ^ \( \s* }{}x) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
@@ -864,7 +871,6 @@ sub parse_variable {
 
     ### allow for nested items
     while ($copy =~ s{ ^ ( \.(?!\.) | \|(?!\|) ) \s* }{}x) {
-        return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
         push @var, $1;
 
         ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
@@ -902,7 +908,6 @@ sub parse_variable {
         my $tree;
         my $found;
         while ($copy =~ s{ ^ ($QR_OP) \s* }{}ox) {
-            return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
             local $self->{'_operator_precedence'} = 1;
             my $op   = $1;
             my $var2 = $self->parse_variable(\$copy);
