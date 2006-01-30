@@ -782,7 +782,9 @@ sub parse_variable {
             push @var, \ $str;
             $is_literal = 1;
         } else {
-            my @pieces = split m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $2;
+            my @pieces = $ARGS->{'auto_quote'}
+                ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $2)  # autoquoted items get a single $\w+ - no nesting
+                : split(m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $2);
             my $n = 0;
             foreach my $piece (@pieces) {
                 next if ! ($n++ % 2);
