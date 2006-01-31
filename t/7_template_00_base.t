@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 392 - ($is_tt ? 44 : 0);
+use Test::More tests => 392 - ($is_tt ? 43 : 0);
 use Data::Dumper qw(Dumper);
 
 ### set up some dummy packages for use later
@@ -285,7 +285,7 @@ process_ok(" \n[%- foo %]" => " ") if ! $is_tt;
 process_ok(" \n \n[%- foo %]" => " \n ") if ! $is_tt;
 
 process_ok("[% foo %] " => ' ');
-process_ok("[% foo -%] " => '') if ! $is_tt;
+process_ok("[% foo -%] " => ' ');
 process_ok("[% foo -%]\n" => '');
 process_ok("[% foo -%] \n" => '');
 process_ok("[% foo -%]\n " => ' ');
@@ -520,7 +520,7 @@ process_ok("[% foo = IF 1 %]Hi[% END %][% foo %]" => 'Hi');
 process_ok("[% TAGS html %]<!-- 1 + 2 -->" => '3');
 process_ok("[% TAGS <!-- --> %]<!-- 1 + 2 -->" => '3');
 process_ok("[% TAGS html %] <!--- 1 + 2 -->" => '3');
-process_ok("[% TAGS html %]<!-- 1 + 2 ---> " => '3') if ! $is_tt;
+process_ok("[% TAGS html %]<!-- 1 + 2 --->" => '3') if ! $is_tt;
 process_ok("[% TAGS html %]<!-- 1 + 2 --->\n" => '3');
 process_ok("[% BLOCK foo %][% TAGS html %]<!-- 1 + 2 -->[% END %][% PROCESS foo %] [% 1 + 2 %]" => '');
 
