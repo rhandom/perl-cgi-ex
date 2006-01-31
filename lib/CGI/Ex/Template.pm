@@ -1185,18 +1185,23 @@ sub vivify_variable {
 
         ### method calls on objects
         if (UNIVERSAL::can($ref, 'can')) {
-            my @results = $ref->$name($args ? @{ $self->vivify_args($args) } : ());
-            if (defined $results[0]) {
-                $ref = ($#results > 0) ? \@results : $results[0];
-            } elsif (defined $results[1]) {
-                die $results[1]; # grr - TT behavior - why not just throw ?
-            } else {
-                $ref = undef;
+            my @results = eval { $ref->$name($args ? @{ $self->vivify_args($args) } : ()) };
+            if (! $@) {
+                if (defined $results[0]) {
+                    $ref = ($#results > 0) ? \@results : $results[0];
+                } elsif (defined $results[1]) {
+                    die $results[1]; # grr - TT behavior - why not just throw ?
+                } else {
+                    $ref = undef;
+                }
+                next;
             }
-            next;
+            die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
+            # fall on down to "normal" accessors
+        }
 
         ### hash member access
-        } elsif (UNIVERSAL::isa($ref, 'HASH')) {
+        if (UNIVERSAL::isa($ref, 'HASH')) {
 
             if ($ARGS->{'set_var'}) {
                 if ($#$var <= $i) {
@@ -1992,7 +1997,7 @@ sub play_TRY {
     my $err = $@;
 
     if (! $node->[5]) {
-        $$out_ref = ''; # hack;
+        $$out_ref = ''; # hack for tt behavior
         $self->throw('parse.missing', "Missing CATCH block", $node);
     }
 
