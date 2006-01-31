@@ -299,7 +299,7 @@ sub swap {
     my $self = shift;
     my $file = shift;
     local $self->{'STASH'} = shift || {};
-    my $out_ref = shift || die "Missing output";
+    my $out_ref = shift || $self->throw('undef', "Missing output");
     local $self->{'_top_level'} = delete $self->{'_start_top_level'};
 
     ### parse and execute
@@ -319,7 +319,7 @@ sub swap {
     ### handle exceptions
     if (my $err = $@) {
         $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
-        $err->doc($doc) if $doc;
+        $err->doc($doc) if $doc && $err->can('doc') && ! $err->doc;
         die $err;
     }
 
@@ -365,12 +365,7 @@ sub load_parsed_tree {
 
     ### go and look on the file system
     } else {
-        eval {
-            $doc->{'filename'} = $self->include_filename($file);
-            $doc->{'modtime'}  = (stat $doc->{'filename'})[9];
-            my $str = $self->slurp($doc->{'filename'});
-            $doc->{'content'}  = \$str;
-        };
+        $doc->{'filename'} = eval { $self->include_filename($file) };
         if (my $err = $@) {
             ### allow for blocks in other files
             if ($self->{'EXPOSE_BLOCKS'}
@@ -393,36 +388,41 @@ sub load_parsed_tree {
                 }
                 die $err if ! $doc->{'tree'};
             } elsif ($self->{'DEFAULT'}) {
-                eval {
-                    $doc->{'filename'} = $self->include_filename($self->{'DEFAULT'});
-                    $doc->{'modtime'}  = (stat $doc->{'filename'})[9];
-                    my $str = $self->slurp($doc->{'filename'});
-                    $doc->{'content'}  = \$str;
-                } || die $err;
+                $doc->{'filename'} = eval { $self->include_filename($self->{'DEFAULT'}) } || die $err;
             } else {
                 die $err;
             }
         }
 
-        if (! $doc->{'tree'} && ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'})) {
-            if ($self->{'COMPILE_DIR'}) {
-                $doc->{'compile_filename'} = $self->{'COMPILE_DIR'} .'/'. $file;
-            } else {
-                $doc->{'compile_filename'} = $doc->{'filename'};
-            }
-            $doc->{'compile_filename'} .= $self->{'COMPILE_EXT'} if defined($self->{'COMPILE_EXT'});
-            $doc->{'compile_filename'} .= $EXTRA_COMPILE_EXT       if defined $EXTRA_COMPILE_EXT;
+        ### no tree yet - look for a file cache
+        if (! $doc->{'tree'}) {
+            $doc->{'modtime'} = (stat $doc->{'filename'})[9];
+            if  ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'}) {
+                if ($self->{'COMPILE_DIR'}) {
+                    $doc->{'compile_filename'} = $self->{'COMPILE_DIR'} .'/'. $file;
+                } else {
+                    $doc->{'compile_filename'} = $doc->{'filename'};
+                }
+                $doc->{'compile_filename'} .= $self->{'COMPILE_EXT'} if defined($self->{'COMPILE_EXT'});
+                $doc->{'compile_filename'} .= $EXTRA_COMPILE_EXT       if defined $EXTRA_COMPILE_EXT;
 
-            if (-e $doc->{'compile_filename'} && (stat _)[9] == $doc->{'modtime'}) {
-                require Storable;
-                $doc->{'tree'} = Storable::retrieve($doc->{'compile_filename'});
-                $doc->{'compile_was_used'} = 1;
+                if (-e $doc->{'compile_filename'} && (stat _)[9] == $doc->{'modtime'}) {
+                    require Storable;
+                    $doc->{'tree'} = Storable::retrieve($doc->{'compile_filename'});
+                    $doc->{'compile_was_used'} = 1;
+                } else {
+                    my $str = $self->slurp($doc->{'filename'});
+                    $doc->{'content'}  = \$str;
+                }
+            } else {
+                my $str = $self->slurp($doc->{'filename'});
+                $doc->{'content'}  = \$str;
             }
         }
 
     }
 
-    ### need to get the tree
+    ### haven't found a parsed tree yet
     if (! $doc->{'tree'}) {
         if ($self->{'CONSTANTS'}) {
             my $key = $self->{'CONSTANTS_NAMESPACE'} || 'constants';
@@ -433,7 +433,7 @@ sub load_parsed_tree {
         $doc->{'tree'} = $self->parse_tree($doc->{'content'}); # errors die
     }
 
-    ### cache in memory unless asked not to do so
+    ### cache parsed_tree in memory unless asked not to do so
     if (! $doc->{'is_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
         $self->{'_documents'}->{$file} ||= $doc;
 
@@ -792,7 +792,7 @@ sub parse_variable {
         $has_unary = $1;
         if (! $OP_UNARY->{$has_unary}) {
             my $ref = $self->{'_op_unary_backref'} ||= {reverse %$OP_UNARY};
-            $has_unary = $ref->{$has_unary} || die "Couldn't find canonical name of unary \"$1\"";
+            $has_unary = $ref->{$has_unary} || $self->throw("Couldn't find canonical name of unary \"$1\"");
         }
     }
 
@@ -923,7 +923,7 @@ sub parse_variable {
         } elsif ($copy =~ s{ ^ (\w+) \s* }{}x) {
             push @var, $1;
         } else {
-            die "Not sure how to continue parsing on \"$copy\" ($$str_ref)";
+            $self->throw('parse', "Not sure how to continue parsing on \"$copy\" ($$str_ref)");
         }
 
         ### looks for args for the nested item
@@ -1041,7 +1041,7 @@ sub apply_precedence {
 
     }
 
-    die "Couldn't apply precedence";
+    $self->throw('parse', "Couldn't apply precedence");
 }
 
 
@@ -1093,7 +1093,7 @@ sub interpolate_node {
             my $name = $1;
             push @sub_tree, ['GET', $offset, $offset + length($piece), $self->parse_variable(\$name)];
         } else {
-            die "Parse error";
+            $self->throw('parse', "Parse error during interpolate node");
         }
         $offset += length $piece;
     }
@@ -1164,7 +1164,7 @@ sub vivify_variable {
         if (defined $results[0]) {
             $ref = ($#results > 0) ? \@results : $results[0];
         } elsif (defined $results[1]) {
-            die $results[1]; # grr - TT behavior - why not just throw ?
+            die $results[1]; # grr - TT behavior - why not just throw in the plugin ?
         } else {
             $ref = undef;
         }
@@ -1377,7 +1377,7 @@ sub play_operator {
     my $args = $self->vivify_args($tree);
     if ($#$args == -1) {
         if ($op eq '-') { return - $n }
-        die "Not enough args for operator \"$op\"";
+        $self->throw('operator', "Not enough args for operator \"$op\"");
     }
     if ($op eq '..')        { return [($n||0) .. ($args->[-1]||0)] }
     elsif ($op eq '+')      { $n +=  $_ for @$args; return $n }
@@ -1392,7 +1392,7 @@ sub play_operator {
     elsif ($op eq '**'
            || $op eq 'pow') { $n **= $_ for @$args; return $n }
 
-    die "Un-implemented operation $op";
+    $self->throw('operator', "Un-implemented operation $op");
 }
 
 ###----------------------------------------------------------------###
@@ -1596,12 +1596,12 @@ sub play_FOREACH {
 
             ### execute the sub tree
             eval { $self->execute_tree($sub_tree, $out_ref) };
-            if ($@) {
-                if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
-                    next if $@->[0] =~ /NEXT/;
-                    last if $@->[0] =~ /LAST|BREAK/;
+            if (my $err = $@) {
+                if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
+                    next if $err->type =~ /NEXT/;
+                    last if $err->type =~ /LAST|BREAK/;
                 }
-                die $@;
+                die $err;
             }
         }
 
@@ -2152,7 +2152,7 @@ sub parse_WHILE {
         && defined($var = $self->parse_variable(\$copy))
         && $copy =~ s{ ^ = \s* }{}x) {
         $var2 = $self->parse_variable(\$copy);
-        $copy =~ s{ ^ \) \s* }{}x || die "Missing close \")\"";
+        $copy =~ s{ ^ \) \s* }{}x || $self->throw('parse', "Missing close \")\"");
         $$tag_ref = $copy;
     } else {
         $var2 = $self->parse_variable($tag_ref);
@@ -2185,12 +2185,12 @@ sub play_WHILE {
 
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $out_ref) };
-        if ($@) {
-            if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
-                next if $@->[0] =~ /NEXT/;
-                last if $@->[0] =~ /LAST|BREAK/;
+        if (my $err = $@) {
+            if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
+                next if $err->type =~ /NEXT/;
+                last if $err->type =~ /LAST|BREAK/;
             }
-            die $@;
+            die $err;
         }
     }
 
@@ -2484,10 +2484,7 @@ sub PRINT {
     return 1;
 }
 
-sub PRINTF {
-    my $self = shift;
-    $self->PRINT(sprintf @_);
-}
+sub PRINTF { shift->PRINT(sprintf @_) }
 
 ###----------------------------------------------------------------###
 
