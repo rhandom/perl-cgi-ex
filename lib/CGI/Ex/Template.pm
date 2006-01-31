@@ -311,7 +311,7 @@ sub swap {
         } else {
             local $self->{'_template'} = $doc;
             $self->{'STASH'}->{'template'} = $doc if $self->{'_top_level'};
-            $self->execute_tree($doc->{'tree'}, $doc->{'content'}, $out_ref);
+            $self->execute_tree($doc->{'tree'}, $out_ref);
             delete $self->{'STASH'}->{'template'} if $self->{'_top_level'};
         }
     };
@@ -319,7 +319,7 @@ sub swap {
     ### handle exceptions
     if (my $err = $@) {
         $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
-        $err->str_ref($doc->{'content'}) if $doc && $doc->{'content'};
+        $err->doc($doc) if $doc;
         die $err;
     }
 
@@ -359,9 +359,7 @@ sub load_parsed_tree {
             $block = eval { $self->load_parsed_tree(\$copy) }
                 || $self->throw('block', 'Parse error on predefined block');
         }
-
-        $doc->{'tree'}    = $block->{'tree'}    || $self->throw('block', "Invalid block definition (missing tree)");
-        $doc->{'content'} = $block->{'content'} || $self->throw('block', "Invalid block definition (missing content)");
+        $doc->{'tree'} = $block->{'tree'} || $self->throw('block', "Invalid block definition (missing tree)");
         return $doc;
 
 
@@ -507,11 +505,15 @@ sub parse_tree {
             $i = index($$str_ref, $START, $last);
             last if $i == -1;
             if ($last != $i) {
-                my $text = substr($$str_ref, $last, $i - $last);
-                $text =~ s{ ^ [^\S\n]* \n }{($post_chomp == 2) ? ' ' : ''}xe if $post_chomp;
+                my $text  = substr($$str_ref, $last, $i - $last);
+                my $_last = $last;
+                if ($post_chomp) {
+                    $_last -= length($1) + ($post_chomp == 2 ? 1 : 0)
+                        if $text =~ s{ ^ ([^\S\n]* \n) }{($post_chomp == 2) ? ' ' : ''}xe;
+                }
                 if (length $text) {
                     push @$pointer, $text;
-                    $self->interpolate_node($pointer, -1, $last, $str_ref) if $self->{'INTERPOLATE'};
+                    $self->interpolate_node($pointer, -1, $_last) if $self->{'INTERPOLATE'};
                 }
             }
             $j = index($$str_ref, $END, $i + $len_s);
@@ -697,11 +699,15 @@ sub parse_tree {
     }
 
     if ($last != length($$str_ref)) {
-        my $text = substr($$str_ref, $last, length($$str_ref) - $last);
-        $text =~ s{ ^ [^\S\n]* \n }{($post_chomp == 2) ? ' ' : ''}xe if $post_chomp;
+        my $text  = substr($$str_ref, $last, length($$str_ref) - $last);
+        my $_last = $last;
+        if ($post_chomp) {
+            $_last -= length($1) + ($post_chomp == 2 ? 1 : 0)
+                if $text =~ s{ ^ ([^\S\n]* \n) }{($post_chomp == 2) ? ' ' : ''}xe;
+        }
         if (length $text) {
-            push @tree, $text;
-            $self->interpolate_node(\@tree, -1, $last, $str_ref) if $self->{'INTERPOLATE'};
+            push @$pointer, $text;
+            $self->interpolate_node($pointer, -1, $_last) if $self->{'INTERPOLATE'};
         }
     }
 
@@ -723,7 +729,7 @@ sub eval_perl_handle {
 }
 
 sub execute_tree {
-    my ($self, $tree, $template_ref, $out_ref) = @_;
+    my ($self, $tree, $out_ref) = @_;
 
     # node contains (0: DIRECTIVE,
     #                1: start_index,
@@ -753,7 +759,7 @@ sub execute_tree {
 
         ### normal directive
         } else {
-            my $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $template_ref, $out_ref);
+            my $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $out_ref);
             $$out_ref .= $val if defined $val;
         }
 
@@ -1071,7 +1077,7 @@ sub parse_args {
 }
 
 sub interpolate_node {
-    my ($self, $tree, $index, $offset, $template_ref) = @_;
+    my ($self, $tree, $index, $offset) = @_;
 
     my @pieces = split m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $tree->[$index];
     return if $#pieces <= 0;
@@ -1431,13 +1437,12 @@ sub parse_BLOCK {
 }
 
 sub play_BLOCK {
-    my ($self, $block_name, $node, $template_ref, $out_ref) = @_;
+    my ($self, $block_name, $node, $out_ref) = @_;
 
     ### store a named reference - but do nothing until something processes it
     $self->{'BLOCKS'}->{$block_name} = {
         tree    => $node->[4],
-        content => $template_ref, # alas - we must do this to allow for non-localized blocks
-        #name    => $self->{'_template'}->{'name'} .'/'. $block_name,
+        name    => $self->{'_template'}->{'name'} .'/'. $block_name,
     };
 
     return;
@@ -1503,7 +1508,7 @@ sub parse_FILTER {
 }
 
 sub play_FILTER {
-    my ($self, $ref, $node, $template_ref, $out_ref) = @_;
+    my ($self, $ref, $node, $out_ref) = @_;
     my ($name, $filter) = @$ref;
 
     return '' if $#$filter == -1;
@@ -1514,12 +1519,12 @@ sub play_FILTER {
 
     ### play the block
     my $out = '';
-    eval { $self->execute_tree($sub_tree, $template_ref, \$out) };
+    eval { $self->execute_tree($sub_tree, \$out) };
     die $@ if $@ && ! UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception');
 
     my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
 
-    return $DIRECTIVES->{'GET'}->{'play'}->($self, $var, $node, $template_ref, $out_ref);
+    return $DIRECTIVES->{'GET'}->{'play'}->($self, $var, $node, $out_ref);
 }
 
 sub parse_FOREACH {
@@ -1534,7 +1539,7 @@ sub parse_FOREACH {
 }
 
 sub play_FOREACH {
-    my ($self, $ref, $node, $template_ref, $out_ref) = @_;
+    my ($self, $ref, $node, $out_ref) = @_;
 
     ### get the items - make sure it is an arrayref
     my ($var, $items) = @$ref;
@@ -1562,7 +1567,7 @@ sub play_FOREACH {
 
 
             ### execute the sub tree
-            eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
+            eval { $self->execute_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
                 if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
                     next if $err->type =~ /NEXT/;
@@ -1590,7 +1595,7 @@ sub play_FOREACH {
             }
 
             ### execute the sub tree
-            eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
+            eval { $self->execute_tree($sub_tree, $out_ref) };
             if ($@) {
                 if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
                     next if $@->[0] =~ /NEXT/;
@@ -1628,26 +1633,26 @@ sub parse_IF {
 }
 
 sub play_IF {
-    my ($self, $var, $node, $template_ref, $out_ref) = @_;
+    my ($self, $var, $node, $out_ref) = @_;
 
     my $val = $self->vivify_variable($var);
     if ($val) {
         my $body_ref = $node->[4] ||= [];
-        $self->execute_tree($body_ref, $template_ref, $out_ref);
+        $self->execute_tree($body_ref, $out_ref);
         return;
     }
 
     while ($node = $node->[5]) { # ELSE, ELSIF's
         if ($node->[0] eq 'ELSE') {
             my $body_ref = $node->[4] ||= [];
-            $self->execute_tree($body_ref, $template_ref, $out_ref);
+            $self->execute_tree($body_ref, $out_ref);
             return;
         }
         my $var = $node->[3];
         my $val = $self->vivify_variable($var);
         if ($val) {
             my $body_ref = $node->[4] ||= [];
-            $self->execute_tree($body_ref, $template_ref, $out_ref);
+            $self->execute_tree($body_ref, $out_ref);
             return;
         }
     }
@@ -1657,7 +1662,7 @@ sub play_IF {
 sub parse_INCLUDE { $DIRECTIVES->{'PROCESS'}->{'parse'}->(@_) }
 
 sub play_INCLUDE {
-    my ($self, $tag_ref, $node, $template_ref, $out_ref) = @_;
+    my ($self, $tag_ref, $node, $out_ref) = @_;
 
     ### localize the swap
     my $swap = $self->{'STASH'};
@@ -1667,7 +1672,7 @@ sub play_INCLUDE {
     my $blocks = $self->{'BLOCKS'};
     local $self->{'BLOCKS'} = {%$blocks};
 
-    my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $template_ref, $out_ref);
+    my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $out_ref);
 
     return $str;
 }
@@ -1708,7 +1713,7 @@ sub parse_MACRO {
 }
 
 sub play_MACRO {
-    my ($self, $ref, $node, $template_ref, $out_ref) = @_;
+    my ($self, $ref, $node, $out_ref) = @_;
     my ($name, $args) = @$ref;
 
     ### get the sub tree
@@ -1749,7 +1754,7 @@ sub play_MACRO {
 
             ### finally - run the sub tree
             my $out = '';
-            $self_copy->execute_tree($sub_tree, $template_ref, \$out);
+            $self_copy->execute_tree($sub_tree, \$out);
             return $out;
         },
     });
@@ -1783,13 +1788,13 @@ sub play_META {
 sub parse_PERL {}
 
 sub play_PERL {
-    my ($self, $info, $node, $template_ref, $out_ref) = @_;
+    my ($self, $info, $node, $out_ref) = @_;
     $self->throw('perl', 'EVAL_PERL not set') if ! $self->{'EVAL_PERL'};
 
     ### fill in any variables
     my $perl = $node->[4] || return;
     my $out  = '';
-    $self->execute_tree($perl, $template_ref, \$out);
+    $self->execute_tree($perl, \$out);
 
     ### setup a fake handle
     my $handle = $self->eval_perl_handle($out_ref);
@@ -1838,7 +1843,7 @@ sub parse_PROCESS {
 }
 
 sub play_PROCESS {
-    my ($self, $info, $node, $template_ref, $out_ref) = @_;
+    my ($self, $info, $node, $out_ref) = @_;
 
     my ($files, $args) = @$info;
 
@@ -1914,7 +1919,7 @@ sub parse_SET {
 }
 
 sub play_SET {
-    my ($self, $set, $node, $template_ref) = @_;
+    my ($self, $set, $node) = @_;
     foreach (@$set) {
         my ($set, $val) = @$_;
         if (! defined $val) { # not defined
@@ -1923,7 +1928,7 @@ sub play_SET {
             my $sub_tree = $node->[4];
             $sub_tree = $sub_tree->[0]->[4] if $sub_tree->[0] && $sub_tree->[0]->[0] eq 'BLOCK';
             $val = '';
-            $self->execute_tree($sub_tree, $template_ref, \$val);
+            $self->execute_tree($sub_tree, \$val);
         } else { # normal var
             $val = $self->vivify_variable($val);
         }
@@ -1939,7 +1944,7 @@ sub play_SET {
 sub parse_SWITCH { $DIRECTIVES->{'GET'}->{'parse'}->(@_) }
 
 sub play_SWITCH {
-    my ($self, $var, $node, $template_ref, $out_ref) = @_;
+    my ($self, $var, $node, $out_ref) = @_;
 
     my $val = $self->vivify_variable($var);
     $val = '' if ! defined $val;
@@ -1965,13 +1970,13 @@ sub play_SWITCH {
             }
 
             my $body_ref = $node->[4] ||= [];
-            $self->execute_tree($body_ref, $template_ref, $out_ref);
+            $self->execute_tree($body_ref, $out_ref);
             return;
         }
     }
 
     if ($default) {
-        $self->execute_tree($default, $template_ref, $out_ref);
+        $self->execute_tree($default, $out_ref);
     }
 
     return;
@@ -1993,10 +1998,10 @@ sub play_THROW {
 }
 
 sub play_TRY {
-    my ($self, $foo, $node, $template_ref, $out_ref) = @_;
+    my ($self, $foo, $node, $out_ref) = @_;
 
     my $body_ref = $node->[4];
-    eval { $self->execute_tree($body_ref, $template_ref, $out_ref) };
+    eval { $self->execute_tree($body_ref, $out_ref) };
 
     return if ! $@;
     my $err = $@;
@@ -2022,7 +2027,7 @@ sub play_TRY {
     die $err if ! $catch_body_ref;
     local $self->{'STASH'}->{'error'} = $err;
     local $self->{'STASH'}->{'e'}     = $err;
-    $self->execute_tree($catch_body_ref, $template_ref, $out_ref);
+    $self->execute_tree($catch_body_ref, $out_ref);
 
     return;
 }
@@ -2061,7 +2066,7 @@ sub parse_USE {
 }
 
 sub play_USE {
-    my ($self, $ref, $node, $template_ref, $out_ref) = @_;
+    my ($self, $ref, $node, $out_ref) = @_;
     my ($var, $module, $args) = @$ref;
 
     ### get the stash storage location - default to the module
@@ -2156,7 +2161,7 @@ sub parse_WHILE {
 }
 
 sub play_WHILE {
-    my ($self, $ref, $node, $template_ref, $out_ref) = @_;
+    my ($self, $ref, $node, $out_ref) = @_;
 
     ### get the items - make sure it is an arrayref
     my ($var, $var2) = @$ref;
@@ -2179,7 +2184,7 @@ sub play_WHILE {
         last if ! $value;
 
         ### execute the sub tree
-        eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
+        eval { $self->execute_tree($sub_tree, $out_ref) };
         if ($@) {
             if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
                 next if $@->[0] =~ /NEXT/;
@@ -2195,11 +2200,11 @@ sub play_WHILE {
 sub parse_WRAPPER { $DIRECTIVES->{'INCLUDE'}->{'parse'}->(@_) }
 
 sub play_WRAPPER {
-    my ($self, $var, $node, $template_ref, $out_ref) = @_;
+    my ($self, $var, $node, $out_ref) = @_;
     my $sub_tree = $node->[4] || return;
 
     my $out = '';
-    $self->execute_tree($sub_tree, $template_ref, \$out);
+    $self->execute_tree($sub_tree, \$out);
 
     local $self->{'STASH'}->{'content'} = $out;
     return $DIRECTIVES->{'INCLUDE'}->{'play'}->(@_)
@@ -2389,7 +2394,7 @@ sub node {
 
 sub offset { shift->[3] || 0 }
 
-sub str_ref {
+sub doc {
     my $self = shift;
     $self->[4] = shift if $#_ == 0;
     $self->[4];
