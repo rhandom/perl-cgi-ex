@@ -15,6 +15,7 @@ use vars qw($TAGS
             $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
             $MAX_RECURSE
             $WHILE_MAX
+            $EXTRA_COMPILE_EXT
             );
 
 BEGIN {
@@ -274,6 +275,7 @@ BEGIN {
     $QR_AQ_SPACE  = '(?: \s+ | $ | ;)';
     $MAX_RECURSE = 50;
     $WHILE_MAX   = 1000;
+    $EXTRA_COMPILE_EXT = '.sto';
 };
 
 ###----------------------------------------------------------------###
@@ -290,157 +292,182 @@ sub swap {
     my $self = shift;
     my $file = shift;
     local $self->{'STASH'} = shift || {};
+    my $out_ref = shift || die "Missing output";
     local $self->{'_top_level'} = delete $self->{'_start_top_level'};
 
     ### parse and execute
-    my $out = '';
-    my $tree;
-    my $str_ref;
+    my $doc;
     eval {
-        my $ref = $self->load_parsed_tree($file);
-        my ($tree, $str_ref, $file) = @$ref;
-        die $self->exception('file', "No content found") if ! $tree;
-        if ($#$tree == -1) {
-            $out = $$str_ref;
+        $doc = $self->load_parsed_tree($file) || die $self->throw('undef', "Zero length content");;
+        if ($#{ $doc->{'tree'} } == -1) { # no tags found - just return the content
+            $$out_ref = ${ $doc->{'content'} };
         } else {
-            local $self->{'_filename'} = $file;
-            $self->execute_tree($tree, $str_ref, \$out);
+            local $self->{'_template'} = $doc;
+            $self->{'STASH'}->{'template'} = $doc if $self->{'_top_level'};
+            $self->execute_tree($doc->{'tree'}, $doc->{'content'}, $out_ref);
+            delete $self->{'STASH'}->{'template'} if $self->{'_top_level'};
         }
     };
 
     ### handle exceptions
     if (my $err = $@) {
-        $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
-        $err->str_ref(\$_[0]);
-        die $err if $err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/;
+        $err = $self->throw('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
+        $err->str_ref($doc->{'content'}) if $doc && $doc->{'content'};
+        die $err;
     }
 
-    return $out;
+    return 1;
 }
 
 sub load_parsed_tree {
     my $self = shift;
     my $file = shift;
-    return [] if ! defined $file;
+    return if ! defined $file;
 
-    local $self->{'_filename'} = $file;
-    $self->{'STASH'}->{'template'}->{'name'} = $file if $self->{'_top_level'};
+    my $doc = {name => $file};
 
-    ### look for cached components
-    my $str_ref;
-    my $tree;
-    my $store_file;
-    my $mtime;
+    ### looks like a string reference
     if (ref $file) {
-        $str_ref = $file;
-        $file = $self->{'_filename'} = '';
-        $self->{'STASH'}->{'template'}->{'name'} = 'input text' if $self->{'_top_level'};
+        $doc->{'content'} = $file;
+        $doc->{'name'}    = 'input text';
+        $doc->{'is_ref'}  = 1;
 
-    } elsif (my $cache = $self->{'_documents'}->{$file}) {
-        $cache->[4] = time if $self->{'CACHE_SIZE'};
-        $self->{'STASH'}->{'template'}->{'modtime'} = $cache->[3] if $self->{'_top_level'};
-        return $cache;
+    ### looks like a previously cached-in-memory document
+    } elsif ($self->{'_documents'}->{$file}) {
+        $doc = $self->{'_documents'}->{$file};
+        $doc->{'cache_time'} = time if $self->{'CACHE_SIZE'};
+        return $doc;
 
+    ### looks like a block name of some sort
+    } elsif ($self->{'BLOCKS'}->{$file}) {
+        my $block = $self->{'BLOCKS'}->{$file};
+
+        ### allow for predefined blocks that are a code or a string
+        if (UNIVERSAL::isa($block, 'CODE')) {
+            $block = $block->();
+        }
+        if (! UNIVERSAL::isa($block, 'HASH')) {
+            die $self->throw('block', "Unsupported BLOCK type \"$block\"") if ref $block;
+            my $copy = $block;
+            $block = eval { $self->load_parsed_tree(\$copy) }
+                || die $self->exeception('block', 'Parse error on predefined block');
+        }
+        die $self->throw('block', "Invalid block definition (missing tree)")    if ! $block->{'tree'};
+        die $self->throw('block', "Invalid block definition (missing content)") if ! $block->{'content'};
+        die $self->throw('block', "Invalid block definition (missing name)")    if ! $block->{'name'};
+
+        $doc->{'tree'}    = $block->{'tree'};
+        $doc->{'content'} = $block->{'content'};
+        return $doc;
+
+
+    ### go and look on the file system
     } else {
-        my $filename;
-        my $content;
         eval {
-            $filename = $self->include_filename($file);
-            $mtime    = (stat $filename)[9];
-            $content  = $self->slurp($filename);
-            $str_ref  = \$content;
+            $doc->{'filename'} = $self->include_filename($file);
+            $doc->{'modtime'}  = (stat $doc->{'filename'})[9];
+            my $str = $self->slurp($doc->{'filename'});
+            $doc->{'content'}  = \$str;
         };
         if (my $err = $@) {
+            ### allow for blocks in other files
             if ($self->{'EXPOSE_BLOCKS'}
-                && ! $self->{'_looking_in_block_file'}
-                && $file =~ m|^(.*[^/]) / (\w+)$|x) { # try and load a block name space
+                && ! $self->{'_looking_in_block_file'}) {
                 local $self->{'_looking_in_block_file'} = 1;
-                my ($_file, $block_name) = ($1, $2);
-                my $ref = eval { $self->load_parsed_tree($_file) } || die $err;
-                my ($_tree, $_str_ref, $_name, $_mtime) = @$ref;
-                foreach my $node (@$_tree) {
-                    next if $block_name ne $node->[3];
-                    $str_ref = $_str_ref;
-                    $tree    = $node->[4];
-                    $mtime   = $_mtime;
-                    $file    = $_name;
+                my $block_name = '';
+                while ($file =~ s|/([^/.]+)$||) {
+                    $block_name = length($block_name) ? "$1/$block_name" : $1;
+                    my $ref = eval { $self->load_parsed_tree($file) } || next;
+                    my $_tree = $ref->{'tree'};
+                    foreach my $node (@$_tree) {
+                        next if $block_name ne $node->[3];
+                        $doc->{'content'} = $ref->{'content'};
+                        $doc->{'tree'}    = $node->[4];
+                        $doc->{'modtime'} = $ref->{'modtime'};
+                        $file = $ref->{'name'};
+                        last;
+                    }
                 }
-                die $err if ! $tree;
-            } else {
-                $file = $self->{'DEFAULT'} || die $err;
+                die $err if ! $doc->{'tree'};
+            } elsif ($self->{'DEFAULT'}) {
                 eval {
-                    $filename = $self->include_filename($file);
-                    $mtime    = (stat $filename)[9];
-                    $content  =  $self->slurp($filename);
-                    $str_ref  = \$content;
+                    $doc->{'filename'} = $self->include_filename($self->{'DEFAULT'});
+                    $doc->{'modtime'}  = (stat $doc->{'filename'})[9];
+                    my $str = $self->slurp($doc->{'filename'});
+                    $doc->{'content'}  = \$str;
                 } || die $err;
+            } else {
+                die $err;
             }
         }
 
-        if (! $tree && ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'})) {
-            $store_file = $file;
-            $store_file = ($self->{'COMPILE_DIR'})
-                ? $self->{'COMPILE_DIR'} .'/'. $store_file .($self->{'COMPILE_EXT'}?$self->{'COMPILE_EXT'}.'.sto':'')
-                : $filename . $self->{'COMPILE_EXT'} .'.sto';
-            if (-e $store_file && (stat _)[9] == $mtime) {
+        if (! $doc->{'tree'} && ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'})) {
+            if ($self->{'COMPILE_DIR'}) {
+                $doc->{'compile_filename'} = $self->{'COMPILE_DIR'} .'/'. $file;
+            } else {
+                $doc->{'compile_filename'} = $doc->{'filename'};
+            }
+            $doc->{'compile_filename'} .= $self->{'COMPILE_EXT'} if defined($self->{'COMPILE_EXT'});
+            $doc->{'compile_filename'} .= $EXTRA_COMPILE_EXT       if defined $EXTRA_COMPILE_EXT;
+
+            if (-e $doc->{'compile_filename'} && (stat _)[9] == $doc->{'modtime'}) {
                 require Storable;
-                $tree = Storable::retrieve($store_file);
-                undef $store_file; # don't need to restore
+                $doc->{'tree'} = Storable::retrieve($doc->{'compile_filename'});
+                $doc->{'compile_was_used'} = 1;
             }
         }
 
     }
 
     ### need to get the tree
-    if (! $tree) {
+    if (! $doc->{'tree'}) {
         if ($self->{'CONSTANTS'}) {
             my $key = $self->{'CONSTANTS_NAMESPACE'} || 'constants';
             $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
         }
 
-        $tree = $self->parse_tree($str_ref); # errors die
+        local $self->{'_template'} = $doc;
+        $doc->{'tree'} = $self->parse_tree($doc->{'content'}); # errors die
     }
 
     ### cache in memory unless asked not to do so
-    if ($file && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
-        $self->{'_documents'}->{$file} ||= [$tree, $str_ref, $file, $mtime];
+    if (! $doc->{'is_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
+        $self->{'_documents'}->{$file} ||= $doc;
 
         ### allow for config option to keep the cache size down
         if ($self->{'CACHE_SIZE'}) {
-            $self->{'_documents'}->{$file}->[4] = time;
-            my $cache = $self->{'_documents'};
-            if (scalar(keys %$cache) > $self->{'CACHE_SIZE'}) {
+            $doc->{'cache_time'} = time;
+            my $all = $self->{'_documents'};
+            if (scalar(keys %$all) > $self->{'CACHE_SIZE'}) {
                 my $n = 0;
-                foreach my $file (sort {$cache->{$b}->[4] <=> $cache->{$a}->[4]} keys %$cache) {
-                    $n ++;
-                    delete($cache->{$file}) if $n > $self->{'CACHE_SIZE'};
+                foreach my $file (sort {$all->{$b}->{'cache_time'} <=> $all->{$a}->{'cache_time'}} keys %$all) {
+                    delete($all->{$file}) if ++$n > $self->{'CACHE_SIZE'};
                 }
             }
         }
     }
 
-    ### save a cache on the file side as asked
-    if ($store_file && $tree) {
-        my $dir = $store_file;
+    ### save a cache on the fileside as asked
+    if ($doc->{'compile_filename'} && ! $doc->{'compile_was_used'}) {
+        my $dir = $doc->{'compile_filename'};
         $dir =~ s|/[^/]+$||;
         if (! -d $dir) {
             require File::Path;
             File::Path::mkpath($dir);
         }
         require Storable;
-        Storable::store($tree, $store_file);
-        utime $mtime, $mtime, $store_file;
+        Storable::store($doc->{'tree'}, $doc->{'compile_filename'});
+        utime $doc->{'modtime'}, $doc->{'modtime'}, $doc->{'compile_filename'};
     }
 
-    $self->{'STASH'}->{'template'}->{'modtime'} = $mtime if $self->{'_top_level'};
-    return [$tree, $str_ref, $file, $mtime];
+    return $doc;
 }
 
 sub parse_tree {
     my $self    = shift;
     my $str_ref = shift;
     if (! $str_ref || ! defined $$str_ref) {
-        die $self->exception('parse.no_string', "No string or undefined during parse");
+        die $self->throw('parse.no_string', "No string or undefined during parse");
     }
 
     my $STYLE = $self->{'TAG_STYLE'} || 'template';
@@ -532,7 +559,7 @@ sub parse_tree {
             ### anything that behaves as a block ending
             if ($func eq 'END' || $DIRECTIVES->{$func}->{'continue_block'}) {
                 if ($#state == -1) {
-                    die $self->exception('parse', "Found an $func while not in a block", $node);
+                    die $self->throw('parse', "Found an $func while not in a block", $node);
                 }
                 my $parent_node = pop @state;
 
@@ -541,7 +568,7 @@ sub parse_tree {
                     $parent_node->[5] = $node;
                     my $parent_type = $parent_node->[0];
                     if (! $DIRECTIVES->{$func}->{'continue_block'}->{$parent_type}) {
-                        die $self->exception('parse', "Found unmatched nested block", $node, 0);
+                        die $self->throw('parse', "Found unmatched nested block", $node, 0);
                     }
                 }
 
@@ -551,7 +578,7 @@ sub parse_tree {
                 ### normal end block
                 if ($func eq 'END') {
                     if ($DIRECTIVES->{$parent_node->[0]}->{'move_to_front'}) { # move things like BLOCKS to front
-                        $parent_node->[5] = defined($self->{'_filename'}) ? $self->{'_filename'} : '';
+                        $parent_node->[5] = $self->{'_template'}->{'name'};
                         push @move_to_front, $parent_node;
                         if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
                             splice(@$pointer, -1, 1, ());
@@ -613,7 +640,7 @@ sub parse_tree {
             my $all  = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $all =~ s/^\s+//;
             $all =~ s/\s+$//;
-            die $self->exception('parse', "Not sure how to handle tag \"$all\"");
+            die $self->throw('parse', "Not sure how to handle tag \"$all\"");
         }
 
         ### we now have the directive to capture - store it
@@ -646,7 +673,7 @@ sub parse_tree {
             $postop    = $node;
 
         } else { # error
-            die $self->exception('parse', "Found trailing info \"$tag\"", $node) if length $tag;
+            die $self->throw('parse', "Found trailing info \"$tag\"", $node) if length $tag;
             $continue = undef;
             $postop   = undef;
         }
@@ -657,7 +684,7 @@ sub parse_tree {
     }
 
     if ($#state >  -1) {
-        die $self->exception('parse.missing.end', "Missing END", $state[-1], 0);
+        die $self->throw('parse.missing.end', "Missing END", $state[-1], 0);
     }
 
     push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
@@ -666,7 +693,7 @@ sub parse_tree {
     return \@tree;
 }
 
-sub exception {
+sub throw {
     my $self = shift;
     my $pkg  = $self->{'exception_package'} || 'CGI::Ex::Template::Exception';
     return $pkg->new(@_);
@@ -693,12 +720,10 @@ sub execute_tree {
                 $node->[4] = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
 
                 if ($node->[3]->[0]) { # pre_chomp
-                    my $space = ($node->[3]->[0] == 2) ? ' ' : '';
-                    $node->[4] =~ s{ (?:\n|^) [^\S\n]* \z }{$space}xm;
+                    $node->[4] =~ s{ (?:\n|^) [^\S\n]* \z }{($node->[3]->[0] == 2) ? ' ' : ''}xme;
                 }
                 if ($node->[3]->[1]) { # post_chomp
-                    my $space = ($node->[3]->[1] == 2) ? ' ' : '';
-                    $node->[4] =~ s{ ^ [^\S\n]* \n }{$space}x;
+                    $node->[4] =~ s{ ^ [^\S\n]* \n }{($node->[3]->[1] == 2) ? ' ' : ''}xe;
                 }
             }
             $$out_ref .= $node->[4];
@@ -715,7 +740,7 @@ sub execute_tree {
                 $$out_ref = '';
                 next;
             }
-            die $self->exception($node->[0], 'Control exception', $node);
+            die $self->throw($node->[0], 'Control exception', $node);
 
         ### normal directive
         } else {
@@ -825,7 +850,7 @@ sub parse_variable {
             push @$arrayref, $var;
             $copy =~ s{ ^ , \s* }{}x;
         }
-        $copy =~ s{ ^ \] \s* }{}x || die $self->exception('parse.missing.square', "Missing close \]", undef,
+        $copy =~ s{ ^ \] \s* }{}x || die $self->throw('parse.missing.square', "Missing close \]", undef,
                                                           length($$str_ref) - length($copy));
         push @var, \ $arrayref;
 
@@ -839,7 +864,7 @@ sub parse_variable {
             push @$hashref, $key, $val;
             $copy =~ s{ ^ , \s* }{}x;
         }
-        $copy =~ s{ ^ \} \s* }{}x || die $self->exception('parse.missing.curly', "Missing close \} ($copy)", undef,
+        $copy =~ s{ ^ \} \s* }{}x || die $self->throw('parse.missing.curly', "Missing close \} ($copy)", undef,
                                                           length($$str_ref) - length($copy));
         push @var, \ $hashref;
 
@@ -847,7 +872,7 @@ sub parse_variable {
     } elsif ($copy =~ s{ ^ \( \s* }{}x) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $var = $self->parse_variable(\$copy);
-        $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
+        $copy =~ s{ ^ \) \s* }{}x || die $self->throw('parse.missing.paren', "Missing close \)", undef,
                                                           length($$str_ref) - length($copy));
         @var = @$var;
         pop(@var); # pull off the trailing args of the paren group
@@ -863,7 +888,7 @@ sub parse_variable {
     if ($copy =~ s{ ^ \( \s* }{}x) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $args = $self->parse_args(\$copy);
-        $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
+        $copy =~ s{ ^ \) \s* }{}x || die $self->throw('parse.missing.paren', "Missing close \)", undef,
                                                           length($$str_ref) - length($copy));
         push @var, $args;
     } else {
@@ -890,7 +915,7 @@ sub parse_variable {
         if ($copy =~ s{ ^ \( \s* }{}x) {
             local $self->{'_operator_precedence'} = 0; # reset precedence
             my $args = $self->parse_args(\$copy);
-            $copy =~ s{ ^ \) \s* }{}x || die $self->exception('parse.missing.paren', "Missing close \)", undef,
+            $copy =~ s{ ^ \) \s* }{}x || die $self->throw('parse.missing.paren', "Missing close \)", undef,
                                                               length($$str_ref) - length($copy));
             push @var, $args;
         } else {
@@ -1017,7 +1042,7 @@ sub parse_args {
         my $copy = $$str_ref;
         if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
             && $copy =~ s{ ^ =>? \s* }{}x) {
-            die $self->exception('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
+            die $self->throw('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
             my $val = $self->parse_variable(\$copy);
             $copy =~ s{ ^ , \s* }{}x;
             push @named, $name, $val;
@@ -1376,7 +1401,11 @@ sub play_BLOCK {
     my ($self, $name, $node, $template_ref, $out_ref) = @_;
 
     ### store a named reference - but do nothing until something processes it
-    $self->{'BLOCKS'}->{$name} = [$node->[4], undef, $node->[5]]; # tree, content, file (undef says to use current body)
+    $self->{'BLOCKS'}->{$name} = {
+        tree    => $node->[4],
+        content => $template_ref,
+        name    => $node->[5],
+    };
 
     return;
 }
@@ -1545,7 +1574,7 @@ sub play_FOREACH {
 sub parse_GET {
     my ($self, $tag_ref) = @_;
     my $ref = $self->parse_variable($tag_ref);
-    die $self->exception('parse', "Missing variable name") if ! defined $ref;
+    die $self->throw('parse', "Missing variable name") if ! defined $ref;
     return $ref;
 }
 
@@ -1628,7 +1657,7 @@ sub parse_MACRO {
     my $copy = $$tag_ref;
 
     my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo});
-    die $self->exception('parse', "Missing macro name") if ! defined $name;
+    die $self->throw('parse', "Missing macro name") if ! defined $name;
     if (! ref $name) {
         $name = [ $name, 0 ];
     }
@@ -1636,7 +1665,7 @@ sub parse_MACRO {
     my $args;
     if ($copy =~ s{ ^ \( \s* }{}x) {
         $args = $self->parse_args(\$copy, {positional_only => 1});
-        $copy =~ s { ^ \) \s* }{}x || die $self->exception('parse.missing', "Missing close ')'");
+        $copy =~ s { ^ \) \s* }{}x || die $self->throw('parse.missing', "Missing close ')'");
     }
 
     $node->[6] = 1;           # set a flag to keep parsing
@@ -1709,7 +1738,10 @@ sub play_META {
     return if ! UNIVERSAL::isa($hash, 'HASH');
 
     my $ref = $self->{'STASH'}->{'template'} ||= {};
-    @$ref{keys %$hash} = values %$hash;
+    foreach my $key (keys %$hash) {
+        next if $key eq 'name' || $key eq 'modtime';
+        $ref->{$key} = $hash->{$key};
+    }
 
     return;
 }
@@ -1718,7 +1750,7 @@ sub parse_PERL {}
 
 sub play_PERL {
     my ($self, $info, $node, $template_ref, $out_ref) = @_;
-    die $self->exception('perl', 'EVAL_PERL not set') if ! $self->{'EVAL_PERL'};
+    die $self->throw('perl', 'EVAL_PERL not set') if ! $self->{'EVAL_PERL'};
 
     ### fill in any variables
     my $perl = $node->[4] || return;
@@ -1738,7 +1770,7 @@ sub play_PERL {
     select $old_fh;
 
     if ($err) {
-        $err = $self->exception('undef', $err) if ! UNIVERSAL::isa('CGI::Ex::Template::Exception');
+        $err = $self->throw('undef', $err) if ! UNIVERSAL::isa('CGI::Ex::Template::Exception');
         die $err;
     }
 
@@ -1762,7 +1794,7 @@ sub parse_PROCESS {
         my $var = $self->parse_variable($tag_ref);
         last if ! defined $var;
         if ($$tag_ref !~ s{ ^ = \s* }{}x) {
-            die $self->exception('parse.missing.equals', 'Missing equals while parsing args');
+            die $self->throw('parse.missing.equals', 'Missing equals while parsing args');
         }
         my $val = $self->parse_variable($tag_ref);
         push @{$info->[1]}, [$var, $val];
@@ -1798,45 +1830,13 @@ sub play_PROCESS {
         next if ! defined $ref;
         my $filename = $self->vivify_variable($ref);
 
-        ### handle blocks
-        if (my $block = $self->{'BLOCKS'}->{$filename}) {
-
-            ### allow for predefined blocks that are a code or a string
-            if (UNIVERSAL::isa($block, 'CODE')) {
-                $block = $block->();
-            }
-            if (! UNIVERSAL::isa($block, 'ARRAY')) {
-                die $self->exception('block', "Unsupported BLOCK type \"$block\"", $node) if ref $block;
-                my $copy = $block;
-                $block = eval { $self->load_parsed_tree(\$copy) }
-                    || die $self->exeception('block', 'Parse error on predefined block', $node);
-            }
-            my ($_tree, $_content, $_file) = @$block;
-            if (! $_tree) {
-                die $self->exception('block', 'Invalid predifined block', $node);
-            } elsif ($_content) {
-                $template_ref = $_content; # dynamically loaded block
-            } elsif (! defined $_file) {
-                die $self->exception('block', 'Missing file for block', $node);
-            } elsif ($self->{'_filename'} ne $_file) {
-                my $ref = eval { $self->load_parsed_tree($_file) }
-                     || die $self->exception('block', "Couldn't reload block ($@)", $node);
-                $template_ref = $ref->[1];
-            }
-
-            ### swap the block
-            my $out = '';
-            eval { $self->execute_tree($_tree, $template_ref, \$out) };
-            $$out_ref .= $out;
-            if ($@) {
-                my $err = $@;
-                die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
-            }
-
-        ### handle items that are actual files
-        } else {
-            my $str = $self->swap($filename, $self->{'STASH'}); # restart the swap - passing it our current stash
-            $$out_ref .= $str if defined $str;
+        my $out = '';
+        eval {
+            $self->swap($filename, $self->{'STASH'}, \$out); # restart the swap - passing it our current stash
+        };
+        $$out_ref .= $out if length $out;
+        if (my $err = $@) {
+            die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
         }
     }
 
@@ -1946,7 +1946,7 @@ sub play_SWITCH {
 sub parse_THROW {
     my ($self, $tag_ref, $node) = @_;
     my $name = $self->parse_variable($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
-    die $self->exception('parse.missing', "Missing name in THROW", $node) if ! $name;
+    die $self->throw('parse.missing', "Missing name in THROW", $node) if ! $name;
     my $msg  = $self->parse_variable($tag_ref);
     return [$name, $msg];
 }
@@ -1955,7 +1955,7 @@ sub play_THROW {
     my ($self, $ref, $node) = @_;
     my ($name, $info) = @$ref;
     $name = $self->vivify_variable($name);
-    die $self->exception($name, $info, $node);
+    die $self->throw($name, $info, $node);
 }
 
 sub play_TRY {
@@ -1969,7 +1969,7 @@ sub play_TRY {
 
     if (! $node->[5]) {
         $$out_ref = ''; # hack;
-        die $self->exception('parse.missing', "Missing CATCH block", $node);
+        die $self->throw('parse.missing', "Missing CATCH block", $node);
     }
 
     my $catch_body_ref;
@@ -2012,13 +2012,13 @@ sub parse_USE {
 
     $copy = $$tag_ref;
     my $module = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+ (?: (?:\.|::) \w+)*) $QR_AQ_NOTDOT }xo});
-    die $self->exception('parse', "Missing plugin name while parsing $$tag_ref") if ! defined $module;
+    die $self->throw('parse', "Missing plugin name while parsing $$tag_ref") if ! defined $module;
     $module =~ s/\./::/g;
 
     my $args;
     if ($copy =~ s{ ^ \( \s* }{}x) {
         $args = $self->parse_args(\$copy);
-        $copy =~ s { ^ \) \s* }{}x || die $self->exception('parse.missing', "Missing close ')'");
+        $copy =~ s { ^ \) \s* }{}x || die $self->throw('parse.missing', "Missing close ')'");
     }
 
     $$tag_ref = $copy;
@@ -2067,7 +2067,7 @@ sub play_USE {
     }
     if (! $obj) {
         my $err = $@ || "Unknown error while loading $module";
-        die $self->exception('plugin', $err);
+        die $self->throw('plugin', $err);
     }
 
     ### all good
@@ -2186,10 +2186,10 @@ sub include_path {
 sub include_filename {
     my ($self, $file) = @_;
     if ($file =~ m|^/|) {
-        die $self->exception('file', "$file ABSOLUTE paths disabled") if ! $self->{'ABSOLUTE'};
+        die $self->throw('file', "$file ABSOLUTE paths disabled") if ! $self->{'ABSOLUTE'};
         return $file if -e $file;
     } elsif ($file =~ m|^\./|) {
-        die $self->exception('file', "$file RELATIVE paths disabled") if ! $self->{'RELATIVE'};
+        die $self->throw('file', "$file RELATIVE paths disabled") if ! $self->{'RELATIVE'};
         return $file if -e $file;
     } else {
         my $paths = $self->include_path;
@@ -2209,7 +2209,7 @@ sub include_filename {
         }
     }
 
-    die $self->exception('file', "$file: not found");
+    die $self->throw('file', "$file: not found");
 }
 
 sub include_file {
@@ -2220,7 +2220,7 @@ sub include_file {
 sub slurp {
     my ($self, $file) = @_;
     local *FH;
-    open(FH, "<$file") || die $self->exception('file', "$file couldn't be opened: $!");
+    open(FH, "<$file") || die $self->throw('file', "$file couldn't be opened: $!");
     read FH, my $txt, -s $file;
     close FH;
     return $txt;
@@ -2259,50 +2259,66 @@ sub process {
 
 
     ### do the swap
-    $content = eval {
+    my $output = '';
+    eval {
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
         local $self->{'_start_top_level'} = 1;
 
-        return $self->swap($content, $copy);
+        return $self->swap($content, $copy, \$output);
     };
-    $self->{'error'} = $@;
-
+    if (my $err = $@) {
+        return if $err && $err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/;
+    }
 
     ### clear blocks as asked (AUTO_RESET) defaults to on
     $self->{'BLOCKS'} = $blocks if exists($self->{'AUTO_RESET'}) && ! $self->{'AUTO_RESET'};
 
-
     ### send the content back out
-    return if ! defined $content;
     $out ||= $self->{'OUTPUT'};
     if (ref $out) {
         if (UNIVERSAL::isa($out, 'CODE')) {
-            $out->($content);
+            $out->($output);
         } elsif (UNIVERSAL::can($out, 'print')) {
-            $out->print($content);
+            $out->print($output);
         } elsif (UNIVERSAL::isa($out, 'SCALAR')) { # reference to a string
-            $$out = $content;
+            $$out = $output;
         } elsif (UNIVERSAL::isa($out, 'ARRAY')) {
-            push @$out, $content;
+            push @$out, $output;
         } else { # should be a file handle
-            print $out $content;
+            print $out $output;
         }
     } elsif ($out) { # should be a filename
         my $file;
         if ($out =~ m|^/|) {
-            die $self->exception('file', "ABSOLUTE paths disabled") if ! $self->{'ABSOLUTE'};
-            $file = $out;
-        } elsif ($out =~ m|^\./|) {
-            die $self->exception('file', "RELATIVE paths disabled") if ! $self->{'RELATIVE'};
-            $file = $out;
+            if (! $self->{'ABSOLUTE'}) {
+                $self->{'error'} = $self->throw('file', "ABSOLUTE paths disabled");
+            } else {
+                $file = $out;
+            }
+        } elsif ($out =~ m|^\.\.?/|) {
+            if (! $self->{'RELATIVE'}) {
+                $self->{'error'} = $self->throw('file', "RELATIVE paths disabled");
+            } else {
+                $file = $out;
+            }
         } else {
-            die $self->exception('file', "OUTPUT_PATH not set") if ! $self->{'OUTPUT_PATH'};
-            $file = $self->{'OUTPUT_PATH'} . '/' . $out;
+            if (! $self->{'OUTPUT_PATH'}) {
+                $self->{'error'} = $self->throw('file', "OUTPUT_PATH not set");
+            } else {
+                $file = $self->{'OUTPUT_PATH'} . '/' . $out;
+            }
         }
-        open(my $fh, ">$file") || die $self->exception('file', "$out couldn't be opened for writing: $!");
-        print $fh $content;
+        if ($file) {
+            local *FH;
+            if (open FH, ">$file") {
+                print FH $output;
+                close FH;
+            } else {
+                $self->{'error'} = $self->throw('file', "$out couldn't be opened for writing: $!");
+            }
+        }
     } else {
-        print $content;
+        print $output;
     }
 
     return if $self->{'error'};
@@ -2400,7 +2416,7 @@ use vars qw($AUTOLOAD);
 
 sub _template { shift->{'_template'} || die "Missing _template" }
 
-sub AUTOLOAD { shift->_template->exception('not_implemented', "The method $AUTOLOAD has not been implemented") }
+sub AUTOLOAD { shift->_template->throw('not_implemented', "The method $AUTOLOAD has not been implemented") }
 
 sub DESTROY {}
 
