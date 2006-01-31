@@ -334,6 +334,7 @@ sub load_parsed_tree {
     if (ref $file) {
         $str_ref = $file;
         $file = $self->{'_filename'} = '';
+        $self->{'STASH'}->{'template'}->{'name'} = 'input text' if $self->{'_top_level'};
 
     } elsif (my $cache = $self->{'_documents'}->{$file}) {
         $cache->[4] = time if $self->{'CACHE_SIZE'};
@@ -697,7 +698,7 @@ sub execute_tree {
                 }
                 if ($node->[3]->[1]) { # post_chomp
                     my $space = ($node->[3]->[1] == 2) ? ' ' : '';
-                    $node->[4] =~ s{ \G [^\S\n]* (?:\n?$|\n) }{$space}x;
+                    $node->[4] =~ s{ ^ [^\S\n]* \n }{$space}x;
                 }
             }
             $$out_ref .= $node->[4];
