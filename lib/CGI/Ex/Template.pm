@@ -350,14 +350,11 @@ sub load_parsed_tree {
             die $self->throw('block', "Unsupported BLOCK type \"$block\"") if ref $block;
             my $copy = $block;
             $block = eval { $self->load_parsed_tree(\$copy) }
-                || die $self->exeception('block', 'Parse error on predefined block');
+                || die $self->throw('block', 'Parse error on predefined block');
         }
-        die $self->throw('block', "Invalid block definition (missing tree)")    if ! $block->{'tree'};
-        die $self->throw('block', "Invalid block definition (missing content)") if ! $block->{'content'};
-        die $self->throw('block', "Invalid block definition (missing name)")    if ! $block->{'name'};
 
-        $doc->{'tree'}    = $block->{'tree'};
-        $doc->{'content'} = $block->{'content'};
+        $doc->{'tree'}    = $block->{'tree'}    || die $self->throw('block', "Invalid block definition (missing tree)");
+        $doc->{'content'} = $block->{'content'} || die $self->throw('block', "Invalid block definition (missing content)");
         return $doc;
 
 
@@ -578,7 +575,6 @@ sub parse_tree {
                 ### normal end block
                 if ($func eq 'END') {
                     if ($DIRECTIVES->{$parent_node->[0]}->{'move_to_front'}) { # move things like BLOCKS to front
-                        $parent_node->[5] = $self->{'_template'}->{'name'};
                         push @move_to_front, $parent_node;
                         if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
                             splice(@$pointer, -1, 1, ());
@@ -1383,28 +1379,28 @@ sub hash_op {
 sub parse_BLOCK {
     my ($self, $tag_ref, $node) = @_;
 
-    my $name = '';
+    my $block_name = '';
     if ($$tag_ref =~ s{ ^ (\w+ (?: :\w+)*) \s* (?! [\.\|]) }{}x
         || $$tag_ref =~ s{ ^ '(|.*?[^\\])' \s* (?! [\.\|]) }{}x
         || $$tag_ref =~ s{ ^ "(|.*?[^\\])" \s* (?! [\.\|]) }{}x
         ) {
-        $name = $1;
+        $block_name = $1;
         ### allow for nested blocks to have nested names
-        my @name = map {$_->[3]} grep {$_->[0] eq 'BLOCK'} @{ $self->{'_state'} };
-        $name = join("/", @name, $name) if $#name > -1;
+        my @names = map {$_->[3]} grep {$_->[0] eq 'BLOCK'} @{ $self->{'_state'} };
+        $block_name = join("/", @names, $block_name) if $#names > -1;
     }
 
-    return $name;
+    return $block_name;
 }
 
 sub play_BLOCK {
-    my ($self, $name, $node, $template_ref, $out_ref) = @_;
+    my ($self, $block_name, $node, $template_ref, $out_ref) = @_;
 
     ### store a named reference - but do nothing until something processes it
-    $self->{'BLOCKS'}->{$name} = {
+    $self->{'BLOCKS'}->{$block_name} = {
         tree    => $node->[4],
-        content => $template_ref,
-        name    => $node->[5],
+        content => $template_ref, # alas - we must do this to allow for non-localized blocks
+        #name    => $self->{'_template'}->{'name'} .'/'. $block_name,
     };
 
     return;
