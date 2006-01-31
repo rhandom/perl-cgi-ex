@@ -31,6 +31,13 @@ BEGIN {
 
     ### list out the virtual methods
     $SCALAR_OPS = {
+        indent  => sub {
+            my $str = shift; $str = '' if ! defined $str;
+            my $n   = shift; $n   = 4  if ! defined $n;
+            my $ind = ' ' x $n;
+            $str =~ s/^/$ind/mg;
+            return $str;
+        },
         hash    => sub { {value => $_[0]} },
         length  => sub { defined($_[0]) ? length($_[0]) : 0 },
         match   => sub {
@@ -377,6 +384,7 @@ sub load_parsed_tree {
                     my $ref = eval { $self->load_parsed_tree($file) } || next;
                     my $_tree = $ref->{'tree'};
                     foreach my $node (@$_tree) {
+                        next if ! ref $node;
                         next if $block_name ne $node->[3];
                         $doc->{'content'} = $ref->{'content'};
                         $doc->{'tree'}    = $node->[4];
@@ -499,8 +507,12 @@ sub parse_tree {
             $i = index($$str_ref, $START, $last);
             last if $i == -1;
             if ($last != $i) {
-                push @$pointer, ['TEXT', $last, $i, [0, $post_chomp]];
-                $self->interpolate_node($pointer, -1, $str_ref) if $self->{'INTERPOLATE'};
+                my $text = substr($$str_ref, $last, $i - $last);
+                $text =~ s{ ^ [^\S\n]* \n }{($post_chomp == 2) ? ' ' : ''}xe if $post_chomp;
+                if (length $text) {
+                    push @$pointer, $text;
+                    $self->interpolate_node($pointer, -1, $last, $str_ref) if $self->{'INTERPOLATE'};
+                }
             }
             $j = index($$str_ref, $END, $i + $len_s);
             $last = $j + $len_e;
@@ -516,8 +528,9 @@ sub parse_tree {
             my $post = $tag =~ s{ ([\#+=-]+) $ }{}x ? $1 : '';
             my $pre_chomp = ($pre  =~ /([-=])/) ? ($1 eq '-' ? 1 : 2) : ($pre  =~ /\+/) ? 0 : $self->{'PRE_CHOMP'};
             $post_chomp   = ($post =~ /([-=])/) ? ($1 eq '-' ? 1 : 2) : ($post =~ /\+/) ? 0 : $self->{'POST_CHOMP'};
-            if ($pre_chomp && $pointer->[-1] && $pointer->[-1]->[0] eq 'TEXT') {
-                $pointer->[-1]->[3]->[0] = $pre_chomp;
+            if ($pre_chomp && $pointer->[-1] && ! ref $pointer->[-1]) {
+                $pointer->[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{($pre_chomp == 2) ? ' ' : ''}xme;
+                splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
             }
             if ($pre =~ /\#/) { # leading # means to comment the entire section
                 $node->[0] = 'COMMENT';
@@ -683,8 +696,14 @@ sub parse_tree {
         $self->throw('parse.missing.end', "Missing END", $state[-1], 0);
     }
 
-    push @tree, ['TEXT', $last, length($$str_ref), [0, $post_chomp]] if $last != length($$str_ref);
-    $self->interpolate_node(\@tree, -1, $str_ref) if $self->{'INTERPOLATE'};
+    if ($last != length($$str_ref)) {
+        my $text = substr($$str_ref, $last, length($$str_ref) - $last);
+        $text =~ s{ ^ [^\S\n]* \n }{($post_chomp == 2) ? ' ' : ''}xe if $post_chomp;
+        if (length $text) {
+            push @tree, $text;
+            $self->interpolate_node(\@tree, -1, $last, $str_ref) if $self->{'INTERPOLATE'};
+        }
+    }
 
     return \@tree;
 }
@@ -714,18 +733,9 @@ sub execute_tree {
     #                5: continuation sub trees for sub continuation block types (elsif, else, etc)
     #                6: flag to capture next directive
     for my $node (@$tree) {
-        if ($node->[0] eq 'TEXT') {
-            if (! defined $node->[4]) {
-                $node->[4] = substr($$template_ref, $node->[1], $node->[2] - $node->[1]);
-
-                if ($node->[3]->[0]) { # pre_chomp
-                    $node->[4] =~ s{ (?:\n|^) [^\S\n]* \z }{($node->[3]->[0] == 2) ? ' ' : ''}xme;
-                }
-                if ($node->[3]->[1]) { # post_chomp
-                    $node->[4] =~ s{ ^ [^\S\n]* \n }{($node->[3]->[1] == 2) ? ' ' : ''}xe;
-                }
-            }
-            $$out_ref .= $node->[4];
+        ### text nodes are just the bare text
+        if (! ref $node) {
+            $$out_ref .= $node if defined $node;
             next;
         }
 
@@ -1061,32 +1071,26 @@ sub parse_args {
 }
 
 sub interpolate_node {
-    my ($self, $tree, $index, $template_ref) = @_;
-    my $node = $tree->[$index];
-    my $str = substr($$template_ref, $node->[1], $node->[2]-$node->[1]);
+    my ($self, $tree, $index, $offset, $template_ref) = @_;
 
-    my @pieces = split m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $str;
+    my @pieces = split m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $tree->[$index];
     return if $#pieces <= 0;
 
     my @sub_tree;
     my $n = 0;
-    my $i = $node->[1];
     foreach my $piece (@pieces) {
         if (! ($n++ % 2)) {
             next if ! length $piece;
-            push @sub_tree, ['TEXT', $i, $i + length($piece)];
+            push @sub_tree, $piece;
         } elsif ($piece =~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                  || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
             my $name = $1;
-            push @sub_tree, ['GET', $i, $i + length($piece), $self->parse_variable(\$name)];
+            push @sub_tree, ['GET', $offset, $offset + length($piece), $self->parse_variable(\$name)];
         } else {
             die "Parse error";
         }
-        $i += length $piece;
+        $offset += length $piece;
     }
-
-    $sub_tree[0]->[3]  = $node->[3] if $node->[3] && $sub_tree[0]->[0]  eq 'TEXT';
-    $sub_tree[-1]->[4] = $node->[4] if $node->[4] && $sub_tree[-1]->[0] eq 'TEXT';
 
     ### replace the tree
     splice @$tree, -1, 1, @sub_tree;
@@ -1350,8 +1354,8 @@ sub play_operator {
     local $^W = 0;
     my $n = $self->vivify_variable($tree->[0]);
     $tree = [@$tree[1..$#$tree]];
-    if ($op eq '==')    { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n == $_) }; return 1 }
-    elsif ($op eq '!=') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n != $_) }; return 1 }
+    if ($op eq '==')    { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n eq $_) }; return 1 }
+    elsif ($op eq '!=') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n ne $_) }; return 1 }
     elsif ($op eq 'eq') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n eq $_) }; return 1 }
     elsif ($op eq 'ne') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n ne $_) }; return 1 }
     elsif ($op eq '<')  { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n <  $_); $n = $_ }; return 1 }
@@ -1556,14 +1560,15 @@ sub play_FOREACH {
                 var_val => $item,
             });
 
+
             ### execute the sub tree
             eval { $self->execute_tree($sub_tree, $template_ref, $out_ref) };
-            if ($@) {
-                if (UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception')) {
-                    next if $@->[0] =~ /NEXT/;
-                    last if $@->[0] =~ /LAST|BREAK/;
+            if (my $err = $@) {
+                if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
+                    next if $err->type =~ /NEXT/;
+                    last if $err->type =~ /LAST|BREAK/;
                 }
-                die $@;
+                die $err;
             }
         }
     ### if the FOREACH tag doesn't set a var - then everything gets localized
@@ -2297,7 +2302,10 @@ sub process {
         return $self->swap($content, $copy, \$output);
     };
     if (my $err = $@) {
-        return if $err && $err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/;
+        if ($err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/) {
+            $self->{'error'} = $err;
+            return;
+        }
     }
 
     ### clear blocks as asked (AUTO_RESET) defaults to on
