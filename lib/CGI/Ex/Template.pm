@@ -160,6 +160,11 @@ BEGIN {
             block  => 1,
             postop => 1,
         },
+        FINAL   => {
+            parse  => sub {},
+            play   => sub {},
+            continue_block => {TRY => 1, CATCH => 1},
+        },
         FOR     => {
             parse  => \&parse_FOREACH,
             play   => \&play_FOREACH,
@@ -1258,7 +1263,9 @@ sub vivify_variable {
 
         ### scalar access
         } elsif (! ref($ref) && defined($ref)) {
-            if (my $code = $self->scalar_op($name)) {
+            if (UNIVERSAL::isa($name, 'CODE')) { ### looks like a filter access
+                $ref = $name->($ref);
+            } elsif (my $code = $self->scalar_op($name)) {
                 return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
@@ -1275,6 +1282,7 @@ sub vivify_variable {
                 $var = ['|', @$filter, splice(@$var, $i)];
                 $i = 0;
             } else {
+#                if (eval {require Template::Filter} && $Template::Filter::FILTERS->
                 $ref = undef;
             }
         }
@@ -2021,19 +2029,25 @@ sub play_TRY {
 
     my $body_ref = $node->[4];
     eval { $self->execute_tree($body_ref, $out_ref) };
-
-    return if ! $@;
     my $err = $@;
 
-    if (! $node->[5]) {
+    if (! $node->[5]) { # no catch or final
+        return if ! $err; # no final block and no error
         $$out_ref = ''; # hack for tt behavior
         $self->throw('parse.missing', "Missing CATCH block", $node);
     }
 
+    ### loop through the nested catch and final blocks
     my $catch_body_ref;
     my $last_found;
-    my $type = $err->type;
+    my $type = $err ? $err->type : '';
+    my $final;
     while ($node = $node->[5]) { # CATCH
+        if ($node->[0] eq 'FINAL') {
+            $final = $node->[4];
+            next;
+        }
+        next if ! $err;
         my $name = $self->vivify_variable($node->[3]);
         $name = '' if ! defined $name;
         if ($type =~ / ^ \Q$name\E \b /x
@@ -2043,10 +2057,16 @@ sub play_TRY {
         }
     }
 
-    die $err if ! $catch_body_ref;
-    local $self->{'STASH'}->{'error'} = $err;
-    local $self->{'STASH'}->{'e'}     = $err;
-    $self->execute_tree($catch_body_ref, $out_ref);
+    ### play the best catch block
+    if ($err) {
+        die $err if ! $catch_body_ref;
+        local $self->{'STASH'}->{'error'} = $err;
+        local $self->{'STASH'}->{'e'}     = $err;
+        $self->execute_tree($catch_body_ref, $out_ref);
+    }
+
+    ### the final block
+    $self->execute_tree($final, $out_ref) if $final;
 
     return;
 }
@@ -2095,7 +2115,7 @@ sub play_USE {
 
     ### look for a plugin_base
     my $base = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
-    my $package = "${base}::${module}";
+    my $package = $self->{'PLUGINS'}->{$module} ? $self->{'PLUGINS'}->{$module} : "${base}::${module}";
     my $require = "$package.pm";
     $require =~ s|::|/|g;
 
