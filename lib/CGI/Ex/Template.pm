@@ -714,20 +714,6 @@ sub parse_tree {
     return \@tree;
 }
 
-sub exception {
-    my $self = shift;
-    my $pkg  = $self->{'exception_package'} || 'CGI::Ex::Template::Exception';
-    return $pkg->new(@_);
-}
-
-sub throw { die shift->exception(@_) }
-
-
-sub eval_perl_handle {
-    my ($self, $out_ref) = @_;
-    my $handle = CGI::Ex::Template::EvalPerlHandle->load($out_ref);
-}
-
 sub execute_tree {
     my ($self, $tree, $out_ref) = @_;
 
@@ -744,6 +730,8 @@ sub execute_tree {
             $$out_ref .= $node if defined $node;
             next;
         }
+
+        $$out_ref .= $self->debug_node($node) if $self->{'_debug_dirs'} && ! $self->{'_debug_off'};
 
         ### allow for the null directives
         if ($node->[0] eq 'END' || $node->[0] eq 'TAGS') {
@@ -1396,8 +1384,6 @@ sub play_operator {
 }
 
 ###----------------------------------------------------------------###
-
-sub undefined {''}
 
 sub scalar_op {
     my ($self, $name) = @_;
@@ -2119,30 +2105,6 @@ sub play_USE {
     return;
 }
 
-sub list_modules {
-    my $self = shift;
-    my $args = shift || {};
-    my $base = $args->{'base'} || '';
-
-    return $self->{'_modules'}->{$base} ||= do {
-        my @modules;
-
-        $base =~ s|::|/|g;
-        my @dirs = grep {-d $_} map {"$_/$base"} @INC;
-
-        foreach my $dir (@dirs) {
-            require File::Find;
-            File::Find::find(sub {
-                my $mod = $base .'/'. ($File::Find::name =~ m|^ $dir / (.*\w) \.pm $|x ? $1 : return);
-                $mod =~ s|/|::|g;
-                push @modules, $mod;
-            }, $dir);
-        }
-
-        \@modules; # return of the do
-    };
-}
-
 sub parse_WHILE {
     my ($self, $tag_ref) = @_;
     my $copy = $$tag_ref;
@@ -2304,6 +2266,9 @@ sub process {
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
         local $self->{'_start_top_level'} = 1;
 
+        local $self->{'_debug_dirs'} = $self->{'DEBUG'}
+            && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 8 : $self->{'DEBUG'} =~ /dirs/);
+
         return $self->swap($content, $copy, \$output);
     };
     if (my $err = $@) {
@@ -2369,6 +2334,85 @@ sub process {
 }
 
 sub error { shift->{'error'} }
+
+###----------------------------------------------------------------###
+
+sub exception {
+    my $self = shift;
+    my $pkg  = $self->{'exception_package'} || 'CGI::Ex::Template::Exception';
+    return $pkg->new(@_);
+}
+
+sub throw { die shift->exception(@_) }
+
+sub eval_perl_handle {
+    my ($self, $out_ref) = @_;
+    my $handle = CGI::Ex::Template::EvalPerlHandle->load($out_ref);
+}
+
+sub undefined {''}
+
+sub list_modules {
+    my $self = shift;
+    my $args = shift || {};
+    my $base = $args->{'base'} || '';
+
+    return $self->{'_modules'}->{$base} ||= do {
+        my @modules;
+
+        $base =~ s|::|/|g;
+        my @dirs = grep {-d $_} map {"$_/$base"} @INC;
+
+        foreach my $dir (@dirs) {
+            require File::Find;
+            File::Find::find(sub {
+                my $mod = $base .'/'. ($File::Find::name =~ m|^ $dir / (.*\w) \.pm $|x ? $1 : return);
+                $mod =~ s|/|::|g;
+                push @modules, $mod;
+            }, $dir);
+        }
+
+        \@modules; # return of the do
+    };
+}
+
+sub debug_node {
+    my ($self, $node) = @_;
+    my $doc = $self->{'_template'};
+    my $i = $node->[1];
+    my $j = $node->[2];
+    $doc->{'content'} ||= do { my $s = $self->slurp($doc->{'filename'}) ; \$s };
+    my $format = $self->{'DEBUG_FORMAT'} || "\n## \$file line \$line : [% \$text %] ##\n";
+    $format =~ s{\$file}{$doc->{name}}g;
+    $format =~ s{\$line}{ $self->get_line_number_by_index($doc, $i) }eg;
+    $format =~ s{\$text}{ my $s = substr(${ $doc->{'content'} }, $i, $j - $i); $s=~s/^\s+//; $s=~s/\s+$//; $s }eg;
+    return $format;
+}
+
+sub get_line_number_by_index {
+    my ($self, $doc, $index) = @_;
+    ### get the line offsets for the doc
+    my $lines = $doc->{'line_offsets'} ||= do {
+        $doc->{'content'} ||= do { my $s = $self->slurp($doc->{'filename'}) ; \$s };
+        my $i = 0;
+        my @lines = (0);
+        while (1) {
+            $i = index(${ $doc->{'content'} }, "\n", $i) + 1;
+            last if $i == 0;
+            push @lines, $i;
+        }
+        \@lines;
+    };
+    ### binary search them (this is fast even on big docs)
+    return $#$lines + 1 if $index > $lines->[-1];
+    my ($i, $j) = (0, $#$lines);
+    while (1) {
+        return $i + 1 if abs($i - $j) <= 1;
+        my $k = int(($i + $j) / 2);
+        $j = $k if $lines->[$k] >= $index;
+        $i = $k if $lines->[$k] <= $index;
+    }
+}
 
 ###----------------------------------------------------------------###
 
@@ -2502,7 +2546,6 @@ __END__
 
     Benchmark text processing
     Benchmark FOREACH types again
-    Debug meta more
     Add FINAL
     Look at other configs
     Allow TRIM to work
