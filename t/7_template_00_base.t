@@ -11,7 +11,7 @@ use strict;
 use Test::More tests => 405 - ($is_tt ? 46 : 0);
 use Data::Dumper qw(Dumper);
 
-### set up some dummy packages for use later
+### set up some dummy packages for various tests
 {
     package MyTestPlugin::Foo;
     $INC{'MyTestPlugin/Foo.pm'} = $0;
@@ -43,14 +43,10 @@ use_ok($module);
 sub process_ok { # process the value
     my $str  = shift;
     my $test = shift;
-    my $args = shift;
+    my $vars = shift;
+    my $obj  = shift || $module->new(@{ $vars->{tt_config} || [] }); # new object each time
     my $out  = '';
-    my $obj = $module->new(ABSOLUTE => 1,
-                           PLUGIN_BASE => 'MyTestPlugin', LOAD_PERL => 1,
-                           CONSTANTS   => {harry => sub {'do_this_once'}},
-                           @{ $args->{tt_config} || [] },
-                           );
-    $obj->process(\$str, $args, \$out);
+    $obj->process(\$str, $vars, \$out);
     my $ok = ref($test) ? $out =~ $test : $out eq $test;
     ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
     my $line = (caller)[2];
@@ -574,14 +570,15 @@ process_ok("[%bar='ONE'%][% foo(\$bar = 'one') %]" => "ONEone",
 ###----------------------------------------------------------------###
 ### use
 
-process_ok("[% USE son_of_gun_that_does_not_exist %]one" => '');
-process_ok("[% USE Foo %]one" => 'one');
-process_ok("[% USE Foo2 %]one" => 'one');
-process_ok("[% USE Foo(bar = 'baz') %]one[% Foo.bar %]" => 'onebarbaz');
-process_ok("[% USE Foo2(bar = 'baz') %]one[% Foo2.bar %]" => 'onebarbaz');
-process_ok("[% USE Foo(bar = 'baz') %]one[% Foo.bar %]" => 'onebarbaz');
-process_ok("[% USE d = Foo(bar = 'baz') %]one[% d.bar %]" => 'onebarbaz');
-process_ok("[% USE d.d = Foo(bar = 'baz') %]one[% d.d.bar %]" => '');
+my @config_p = (PLUGIN_BASE => 'MyTestPlugin', LOAD_PERL => 1);
+process_ok("[% USE son_of_gun_that_does_not_exist %]one" => '', {tt_config => \@config_p});
+process_ok("[% USE Foo %]one" => 'one', {tt_config => \@config_p});
+process_ok("[% USE Foo2 %]one" => 'one', {tt_config => \@config_p});
+process_ok("[% USE Foo(bar = 'baz') %]one[% Foo.bar %]" => 'onebarbaz', {tt_config => \@config_p});
+process_ok("[% USE Foo2(bar = 'baz') %]one[% Foo2.bar %]" => 'onebarbaz', {tt_config => \@config_p});
+process_ok("[% USE Foo(bar = 'baz') %]one[% Foo.bar %]" => 'onebarbaz', {tt_config => \@config_p});
+process_ok("[% USE d = Foo(bar = 'baz') %]one[% d.bar %]" => 'onebarbaz', {tt_config => \@config_p});
+process_ok("[% USE d.d = Foo(bar = 'baz') %]one[% d.d.bar %]" => '', {tt_config => \@config_p});
 
 ###----------------------------------------------------------------###
 ### macro
@@ -608,10 +605,11 @@ process_ok("[% DEBUG format '(\$line)' %][% one %]" => qr/\(1\)/, {one=>'ONE', t
 ###----------------------------------------------------------------###
 ### constants
 
-process_ok("[% constants.harry %]" => 'do_this_once');
-process_ok("[% constants.harry.length %]" => '12');
-process_ok("[% SET constants.foo = 1 %][% constants.foo %]one" => '1one');
-process_ok("[% SET constants.harry = 1 %][% constants.harry %]one" => 'do_this_onceone');
+my @config_c = (CONSTANTS   => {harry => sub {'do_this_once'}});
+process_ok("[% constants.harry %]" => 'do_this_once', {tt_config => \@config_c});
+process_ok("[% constants.harry.length %]" => '12', {tt_config => \@config_c});
+process_ok("[% SET constants.foo = 1 %][% constants.foo %]one" => '1one', {tt_config => \@config_c});
+process_ok("[% SET constants.harry = 1 %][% constants.harry %]one" => 'do_this_onceone', {tt_config => \@config_c});
 
 ###----------------------------------------------------------------###
 ### interpolate / anycase
