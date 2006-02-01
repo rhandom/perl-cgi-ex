@@ -37,18 +37,19 @@ my $swap = {
     array => [qw(A B C D E a A)],
     code  => sub {"($_[0])"},
     cet   => $cet,
+    filt  => sub {sub {$_[0]x2}},
 };
 #$swap->{$_} = $_ for (1 .. 1000); # swap size affects benchmark speed
 
 ### set a few globals that will be available in our subs
-my @run;
+my @run = @ARGV;
 my $str_ref;
 my $filename;
 
 ###----------------------------------------------------------------###
 
 ### uncomment to run a specific test - otherwise all tests run
-@run = qw(_07_var_sma);
+#@run = qw(_07_var_sma);
 
 #                                                                         ### All percents are CGI::Ex::Template vs TT2
 #                                                                         ### (The percent that CET is faster than TT)
@@ -94,6 +95,8 @@ my $tests = {                                                            #      
     _36_constant2 => "[% constants.simple %]",                           #  346%  #  931%  #  628%  #
 #    _37_interp    => "Foo \$one Bar" => 'Foo ONE Bar'; # set INTERPOLATE #  287%  #  849%  #  536%  #
     _38_perl      => "[%one='ONE'%][% PERL %]print \"[%one%]\"[%END%]",  #   98%  #  528%  #  304%  #
+    _39_filtervar => "[% 'hi' | \$filt %]",                              #  167%  #  738%  #  514%  #
+    _40_filteruri => "[% ' ' | uri %]",                                  #  137%  #  742%  #  484%  #
 };
 
 ###----------------------------------------------------------------###
@@ -178,6 +181,7 @@ sub file_CET_cache_new {
 my $output = '';
 my %cumulative;
 foreach my $test_name (@run) {
+    die "Invalid test $test_name" if ! exists $tests->{$test_name};
     my $txt = $tests->{$test_name};
     my $sample = (length($txt) > 40) ? substr($txt,0,40).'...' : $txt;
     print "-------------------------------------------------------------\n";
@@ -223,7 +227,11 @@ foreach my $test_name (@run) {
         str_CT      => \&str_CET,
 #        str_CT_sw   => \&str_CET_swap,
         file_CT_c_n => \&file_CET_cache_new,
-    }) } || next;
+    }) };
+    if (! $r) {
+        debug "$@";
+        next;
+    }
     eval { cmpthese $r };
 
     $output .= sprintf('%-20s', $test_name);
