@@ -8,8 +8,29 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 405 - ($is_tt ? 46 : 0);
+use Test::More tests => 411 - ($is_tt ? 46 : 0);
 use Data::Dumper qw(Dumper);
+use_ok($module);
+
+###----------------------------------------------------------------###
+
+sub process_ok { # process the value and say if it was ok
+    my $str  = shift;
+    my $test = shift;
+    my $vars = shift;
+    my $obj  = shift || $module->new(@{ $vars->{tt_config} || [] }); # new object each time
+    my $out  = '';
+    $obj->process(\$str, $vars, \$out);
+    my $ok = ref($test) ? $out =~ $test : $out eq $test;
+    ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
+    my $line = (caller)[2];
+    warn "#   process_ok called at line $line.\n" if ! $ok;
+    print $obj->error if ! $ok && $obj->can('error');
+    print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
+    exit if ! $ok;
+}
+
+###----------------------------------------------------------------###
 
 ### set up some dummy packages for various tests
 {
@@ -31,29 +52,14 @@ use Data::Dumper qw(Dumper);
     package Foo2;
     $INC{'Foo2.pm'} = $0;
     use base qw(MyTestPlugin::Foo);
+    use vars qw($AUTOLOAD);
     sub new {
         my $class   = shift;
         my $args    = shift || {}; # note - no plugin context
         return bless $args, $class;
     }
-}
-
-use_ok($module);
-
-sub process_ok { # process the value
-    my $str  = shift;
-    my $test = shift;
-    my $vars = shift;
-    my $obj  = shift || $module->new(@{ $vars->{tt_config} || [] }); # new object each time
-    my $out  = '';
-    $obj->process(\$str, $vars, \$out);
-    my $ok = ref($test) ? $out =~ $test : $out eq $test;
-    ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
-    my $line = (caller)[2];
-    warn "#   process_ok called at line $line.\n" if ! $ok;
-    print $obj->error if ! $ok && $obj->can('error');
-    print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
-    exit if ! $ok;
+    sub leave {}      # hacks to allow tt to do the plugins passed via PLUGINS
+    sub delocalise {} # hacks to allow tt to do the plugins passed via PLUGINS
 }
 
 my $obj = Foo2->new;
@@ -272,6 +278,11 @@ process_ok("[% n FILTER echo = repeat(2) %][% n|echo.length %]" => '112', {n => 
 process_ok("[% n FILTER echo = repeat(2) %][% n FILTER \$foo %]" => '1111', {n => 1, foo => 'echo'});
 process_ok("[% n FILTER echo = repeat(2) %][% n | \$foo %]" => '1111', {n => 1, foo => 'echo'});
 process_ok("[% n FILTER echo = repeat(2) %][% n|\$foo.length %]" => '112', {n => 1, foo => 'echo'}) if ! $is_tt;
+
+process_ok('[% "hi" FILTER $foo %]' => 'hihi', {foo => sub {sub {$_[0]x2}}}); # filter via a passed var
+process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => sub {$_[0]x2}}]});
+process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {$_[0]x2},0]}]});
+process_ok('[% "hi" FILTER foo(2) %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {my$a=$_[1];sub{$_[0]x$a}},1]}]});
 
 ###----------------------------------------------------------------###
 ### chomping
@@ -579,6 +590,9 @@ process_ok("[% USE Foo2(bar = 'baz') %]one[% Foo2.bar %]" => 'onebarbaz', {tt_co
 process_ok("[% USE Foo(bar = 'baz') %]one[% Foo.bar %]" => 'onebarbaz', {tt_config => \@config_p});
 process_ok("[% USE d = Foo(bar = 'baz') %]one[% d.bar %]" => 'onebarbaz', {tt_config => \@config_p});
 process_ok("[% USE d.d = Foo(bar = 'baz') %]one[% d.d.bar %]" => '', {tt_config => \@config_p});
+
+process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => '',     {tt_config => [@config_p, PLUGINS => {a=>'Foo'}, ]});
+process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => 'one7', {tt_config => [@config_p, PLUGINS => {a=>'Foo2'},]});
 
 ###----------------------------------------------------------------###
 ### macro
