@@ -22,7 +22,7 @@ use Data::Dumper qw(Dumper);
         my $args    = shift || {};
         return bless $args, $class;
     }
-    sub bar { my $self = shift; return join('', keys %$self, values %$self) }
+    sub bar { my $self = shift; return join('', map {"$_$self->{$_}"} sort keys %$self) }
     sub seven { 7 }
     sub many { return 1, 2, 3 }
     sub echo { my $self = shift; $_[0] }
@@ -560,8 +560,10 @@ process_ok("[% TRY %]Foo[% THROW foo.bar 'for fun' %][% CATCH foo %]one[% CATCH 
 ###----------------------------------------------------------------###
 ### named args
 
-process_ok("[% foo(bar = 'one', baz = 'two') %]" => "barbazonetwo", {foo=>sub{my $n=$_[-1];join('',keys %$n, values %$n)}});
-process_ok("[%bar='ONE'%][% foo(\$bar = 'one') %]" => "ONEone", {foo=>sub{my $n=$_[-1];join('',keys %$n, values %$n)}});
+process_ok("[% foo(bar = 'one', baz = 'two') %]" => "baronebaztwo",
+               {foo=>sub{my $n=$_[-1];join('',map{"$_$n->{$_}"} sort keys %$n)}});
+process_ok("[%bar='ONE'%][% foo(\$bar = 'one') %]" => "ONEone",
+               {foo=>sub{my $n=$_[-1];join('',map{"$_$n->{$_}"} sort keys %$n)}});
 
 ###----------------------------------------------------------------###
 ### use
