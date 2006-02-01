@@ -125,6 +125,10 @@ BEGIN {
             parse  => sub {},
             play   => sub {},
         },
+        DEBUG   => {
+            parse  => \&parse_DEBUG,
+            play   => \&play_DEBUG,
+        },
         DEFAULT => {
             parse  => \&parse_DEFAULT,
             play   => \&play_DEFAULT,
@@ -1456,6 +1460,28 @@ sub parse_CATCH {
     return $self->parse_variable($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
 }
 
+sub parse_DEBUG {
+    my ($self, $tag_ref) = @_;
+    $$tag_ref =~ s{ ^ (on | off | format) \s* }{}xi || $self->throw('parse', "Unknown DEBUG option");
+    my $ret = [lc($1)];
+    if ($ret->[0] eq 'format') {
+        $$tag_ref =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* }{}xs || $self->throw('parse', "Missing format string");
+        $ret->[1] = $2;
+    }
+    return $ret;
+}
+
+sub play_DEBUG {
+    my ($self, $ref) = @_;
+    if ($ref->[0] eq 'on') {
+        delete $self->{'_debug_off'};
+    } elsif ($ref->[0] eq 'off') {
+        $self->{'_debug_off'} = 1;
+    } elsif ($ref->[0] eq 'format') {
+        $self->{'_debug_format'} = $ref->[1];
+    }
+}
+
 sub parse_DEFAULT { $DIRECTIVES->{'SET'}->{'parse'}->(@_) }
 
 sub play_DEFAULT {
@@ -2277,6 +2303,7 @@ sub process {
         local $self->{'_debug_dirs'} = $self->{'DEBUG'}
             && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 8 : $self->{'DEBUG'} =~ /dirs/);
         delete $self->{'_debug_off'};
+        delete $self->{'_debug_format'};
 
         return $self->swap($content, $copy, \$output);
     };
@@ -2391,7 +2418,7 @@ sub debug_node {
     my $i = $node->[1];
     my $j = $node->[2];
     $doc->{'content'} ||= do { my $s = $self->slurp($doc->{'filename'}) ; \$s };
-    my $format = $self->{'DEBUG_FORMAT'} || "\n## \$file line \$line : [% \$text %] ##\n";
+    my $format = $self->{'_debug_format'} || $self->{'DEBUG_FORMAT'} || "\n## \$file line \$line : [% \$text %] ##\n";
     $format =~ s{\$file}{$doc->{name}}g;
     $format =~ s{\$line}{ $self->get_line_number_by_index($doc, $i) }eg;
     $format =~ s{\$text}{ my $s = substr(${ $doc->{'content'} }, $i, $j - $i); $s=~s/^\s+//; $s=~s/\s+$//; $s }eg;
