@@ -1654,9 +1654,9 @@ sub parse_GET {
 }
 
 sub play_GET {
-    my ($self, $var) = @_;
-    $var = $self->vivify_variable($var);
-    $var = $self->undefined if ! defined $var;
+    my ($self, $ref) = @_;
+    my $var = $self->vivify_variable($ref);
+    $var = $self->undefined($ref) if ! defined $var;
     my $ref = ref $var;
     return $var if ! $ref;
     return '' if $ref eq 'ARRAY' || $ref eq 'SCALAR' || $ref eq 'HASH';
@@ -2416,7 +2416,7 @@ sub eval_perl_handle {
     my $handle = CGI::Ex::Template::EvalPerlHandle->load($out_ref);
 }
 
-sub undefined {''}
+sub undefined { ''}
 
 sub list_filters {
     my $self = shift;
