@@ -1273,21 +1273,29 @@ sub vivify_variable {
                 return if $ARGS->{'set_var'};
                 $ref = $code->([$ref], $args ? @{ $self->vivify_args($args) } : ());
                 next;
-            } elsif (my $filter = $self->{'FILTERS'}->{$name}) {
-                $seen_filters ||= {};
-                if ($seen_filters->{$name} ++) {
-                    $ref = undef;
-                    next;
+            } elsif (my $filter = $self->{'FILTERS'}->{$name} || $self->list_filters->{$name}) {
+                $filter = [$filter, 0] if UNIVERSAL::isa($filter, 'CODE');
+                if ($#$filter == 1 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
+                    my $sub = $filter->[0];
+                    if ($filter->[1]) {
+                        $sub = $sub->({}, $args ? @{ $self->vivify_args($args) } : ()); # dynamic filter (empty context)
+                    }
+                    $ref = $sub->($ref);
+                } else { # this looks like our vmethods turned into "filters"
+                    $seen_filters ||= {};
+                    if ($seen_filters->{$name} ++) {
+                        $ref = undef;
+                        next;
+                    }
+                    $var = ['|', @$filter, splice(@$var, $i)];
+                    $i = 0;
                 }
-                $var = ['|', @$filter, splice(@$var, $i)];
-                $i = 0;
             } else {
-#                if (eval {require Template::Filter} && $Template::Filter::FILTERS->
                 $ref = undef;
             }
         }
 
-        ### check at each point if the rurned thing was a co
+        ### check at each point if the rurned thing was a code
         if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
             my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
             if (defined $results[0]) {
@@ -1570,6 +1578,7 @@ sub play_FOREACH {
 
     ### get the items - make sure it is an arrayref
     my ($var, $items) = @$ref;
+
     $items = $self->vivify_variable($items);
     return '' if ! defined $items;
 
@@ -1647,6 +1656,7 @@ sub parse_GET {
 sub play_GET {
     my ($self, $var) = @_;
     $var = $self->vivify_variable($var);
+    $var = $self->undefined if ! defined $var;
     my $ref = ref $var;
     return $var if ! $ref;
     return '' if $ref eq 'ARRAY' || $ref eq 'SCALAR' || $ref eq 'HASH';
@@ -2126,7 +2136,7 @@ sub play_USE {
         my $context = bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
         my @args    = $args ? @{ $self->vivify_args($args) } : ();
         $obj = $shape->new($context, @args);
-    } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_modules({base => $base}) }) {
+    } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
         foreach my $package (@packages) {
             my $require = "$package.pm";
             $require =~ s|::|/|g;
@@ -2408,13 +2418,18 @@ sub eval_perl_handle {
 
 sub undefined {''}
 
-sub list_modules {
+sub list_filters {
+    my $self = shift;
+    return $self->{'_filters'} ||= eval { require Template::Filters; $Template::Filters::FILTERS } || {};
+}
+
+sub list_plugins {
     my $self = shift;
     my $args = shift || {};
     my $base = $args->{'base'} || '';
 
-    return $self->{'_modules'}->{$base} ||= do {
-        my @modules;
+    return $self->{'_plugins'}->{$base} ||= do {
+        my @plugins;
 
         $base =~ s|::|/|g;
         my @dirs = grep {-d $_} map {"$_/$base"} @INC;
@@ -2424,11 +2439,11 @@ sub list_modules {
             File::Find::find(sub {
                 my $mod = $base .'/'. ($File::Find::name =~ m|^ $dir / (.*\w) \.pm $|x ? $1 : return);
                 $mod =~ s|/|::|g;
-                push @modules, $mod;
+                push @plugins, $mod;
             }, $dir);
         }
 
-        \@modules; # return of the do
+        \@plugins; # return of the do
     };
 }
 
@@ -2634,12 +2649,10 @@ __END__
 
     Benchmark text processing
     Benchmark FOREACH types again
-    Add FINAL
+    Allow USE to use our Iterator
     Look at other configs
     Allow TRIM to work
-    Allow USE to use our Iterator
     Get several test suites to pass
-    Add remaining filters
 
 =head1 OPERATORS
 
