@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 392 - ($is_tt ? 43 : 0);
+use Test::More tests => 397 - ($is_tt ? 44 : 0);
 use Data::Dumper qw(Dumper);
 
 ### set up some dummy packages for use later
@@ -583,6 +583,16 @@ process_ok("[%n=1%][% MACRO foo BLOCK %]Hi[% n = 2%][% END %][% foo %][%n%]" => 
 process_ok("[% MACRO foo(n) FOREACH i=[1..n] %][% i %][% END %][% foo(3) %]" => '123');
 
 ###----------------------------------------------------------------###
+### debug;
+
+process_ok("\n\n[% one %]" => "\n\n\n## input text line 3 : [% one %] ##\nONE", {one=>'ONE', tt_config => ['DEBUG' => 8]});
+process_ok("[% one %]" => "\n## input text line 1 : [% one %] ##\nONE", {one=>'ONE', tt_config => ['DEBUG' => 8]});
+process_ok("[% one %]\n\n" => "(1)ONE\n\n", {one=>'ONE', tt_config => ['DEBUG' => 8, 'DEBUG_FORMAT' => '($line)']});
+process_ok("1\n2\n3[% one %]" => "1\n2\n3(3)ONE", {one=>'ONE', tt_config => ['DEBUG' => 8, 'DEBUG_FORMAT' => '($line)']});
+process_ok("[% one;\n one %]" => "(1)ONE(2)ONE", {one=>'ONE', tt_config => ['DEBUG' => 8,
+                                                                            'DEBUG_FORMAT' => '($line)']}) if ! $is_tt;
+
+###----------------------------------------------------------------###
 ### constants
 
 process_ok("[% constants.harry %]" => 'do_this_once');
@@ -602,3 +612,4 @@ process_ok("[% get one %]" => 'ONE', {one => 'ONE', tt_config => ['ANYCASE' => 1
 
 process_ok("[% TRY %][% PERL %][% END %][% CATCH ; error; END %]" => 'perl error - EVAL_PERL not set');
 process_ok("[% PERL %] print \"[% one %]\" [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
+
