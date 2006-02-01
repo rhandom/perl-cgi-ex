@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 397 - ($is_tt ? 44 : 0);
+use Test::More tests => 400 - ($is_tt ? 46 : 0);
 use Data::Dumper qw(Dumper);
 
 ### set up some dummy packages for use later
@@ -256,6 +256,10 @@ process_ok("[% n.repeat(2,'|') %]" => '1|1', {n => 1}) if ! $is_tt;
 
 process_ok("[% n.size %]", => 'SIZE', {n => {size => 'SIZE', a => 'A'}});
 process_ok("[% n|size %]", => '2',    {n => {size => 'SIZE', a => 'A'}}) if ! $is_tt; # tt2 | is alias for FILTER
+
+process_ok("[% n.replace('foo', 'bar') %]" => 'barbar', {n => 'foofoo'});
+process_ok("[% n.replace('(foo)', 'bar\$1') %]" => 'barfoobarfoo', {n => 'foofoo'}) if ! $is_tt;
+process_ok("[% n.replace('foo', 'bar', 0) %]" => 'barfoo', {n => 'foofoo'}) if ! $is_tt;
 
 process_ok("[% n FILTER size %]", => '1', {n => {size => 'SIZE', a => 'A'}}) if ! $is_tt; # tt2 doesn't have size
 
