@@ -10,7 +10,7 @@ use CGI::Ex::Dump qw(debug);
 use strict;
 use vars qw($TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS
-            $DIRECTIVES
+            $DIRECTIVES $QR_DIRECTIVE
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $QR_OP $QR_OP_UNARY
             $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
             $MAX_RECURSE
@@ -53,13 +53,7 @@ BEGIN {
             $join = '' if ! defined $join;
             return join $join, ($str) x $n;
         },
-        replace => sub {
-            my ($str, $pat, $replace) = @_;
-            return undef if ! defined $str || ! defined $pat;
-            $replace = '' if ! defined $replace;
-            $str =~ s/$pat/$replace/g;
-            return $str;
-        },
+        replace => \&vmethod_replace,
         size    => sub { 1 },
         split   => sub {
             my ($str, $pat, @args) = @_;
@@ -67,10 +61,15 @@ BEGIN {
             $pat = ' ' if ! defined $pat;
             return [split $pat, $str, @args];
         },
+        substr  => sub {
+            my ($str, $i, $len) = @_;
+            return substr $str, $i, $len;
+        },
     };
 
     $LIST_OPS = {
         grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
+        hash    => sub { my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
         join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; return join $join, @$ref },
         list    => sub { $_[0] },
         max     => sub { $#{ $_[0] } },
@@ -91,7 +90,8 @@ BEGIN {
         exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
         hash    => sub { $_[0] },
         keys    => sub { [keys %{ $_[0] }] },
-        list    => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
+        list    => sub { [$_[0]] },
+        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
         nsort   => sub { my $ref = shift; [sort {$ref->{$a}    <=> $ref->{$b}   } keys %$ref] },
         size    => sub { scalar keys %{ $_[0] } },
         sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
@@ -145,6 +145,12 @@ BEGIN {
         },
         END     => {}, # builtin that cannot be overridden
         FILTER  => {
+            parse  => \&parse_FILTER,
+            play   => \&play_FILTER,
+            block  => 1,
+            postop => 1,
+        },
+        '|'     => {
             parse  => \&parse_FILTER,
             play   => \&play_FILTER,
             block  => 1,
@@ -242,6 +248,7 @@ BEGIN {
             block  => 1,
         },
     };
+    $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= \s|$|;) }x;
 
     $OPERATORS ||= {qw(**  99   ^   99   pow 99
                        !   95   unary_minus  95
@@ -550,7 +557,7 @@ sub parse_tree {
         }
 
         ### look for DIRECTIVES
-        if ($tag =~ / ^ (\w+) (?: ;|$|\s)/x               # find a word
+        if ($tag =~ $QR_DIRECTIVE                         # find a word
             && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
             && $DIRECTIVES->{$func} ) {                   # is it a directive
             $tag =~ s{ ^ \w+ \s* }{}x;
@@ -675,7 +682,7 @@ sub parse_tree {
             $postop    = undef;
 
         ### looking at a postoperator
-        } elsif ($tag =~ / ^ (\w+) (?: ;|$|\s)/x               # find a word
+        } elsif ($tag =~ $QR_DIRECTIVE                         # find a word
                  && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
                  && $DIRECTIVES->{$func}                       # is it a directive
                  && $DIRECTIVES->{$func}->{'postop'}) {
@@ -1889,7 +1896,7 @@ sub parse_SET {
         }
         if (! $get_val) { # no next val
             $val = undef;
-        } elsif ($$tag_ref =~ / ^ (\w+) (?: ;|$|\s)/x          # find a word
+        } elsif ($$tag_ref =~ $QR_DIRECTIVE                    # find a word
                  && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
                  && $DIRECTIVES->{$func}) {                    # is it a directive - if so set up capturing
             $node->[6] = 1;           # set a flag to keep parsing
@@ -2414,6 +2421,38 @@ sub get_line_number_by_index {
         $j = $k if $lines->[$k] >= $index;
         $i = $k if $lines->[$k] <= $index;
     }
+}
+
+###----------------------------------------------------------------###
+
+sub vmethod_replace {
+    my ($str, $pat, $replace, $global) = @_;
+    $str     = '' if ! defined $str;
+    $pat     = '' if ! defined $pat;
+    $replace = '' if ! defined $replace;
+    $global  = 1  if ! defined $global;
+    if ($global) {
+        $str =~ s{$pat}{
+            my @start = @-;
+            my @end   = @+;
+            my $copy  = $replace;
+            $copy =~ s{ (?<!\\) \$ (\d+) }{
+                ($1 > $#start || $1 == 0) ? '' : substr($str, $start[$1], $end[$1] - $start[$1]);
+            }exg;
+            $copy;
+        }eg;
+    } else {
+        $str =~ s{$pat}{
+            my @start = @-;
+            my @end   = @+;
+            my $copy  = $replace;
+            $copy =~ s{ (?<!\\) \$ (\d+) }{
+                ($1 > $#start || $1 == 0) ? '' : substr($str, $start[$1], $end[$1] - $start[$1]);
+            }exg;
+            $copy;
+        }e;
+    }
+    return $str;
 }
 
 ###----------------------------------------------------------------###
