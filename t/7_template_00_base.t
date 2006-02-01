@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 400 - ($is_tt ? 46 : 0);
+use Test::More tests => 405 - ($is_tt ? 46 : 0);
 use Data::Dumper qw(Dumper);
 
 ### set up some dummy packages for use later
@@ -51,7 +51,7 @@ sub process_ok { # process the value
                            @{ $args->{tt_config} || [] },
                            );
     $obj->process(\$str, $args, \$out);
-    my $ok = $out eq $test;
+    my $ok = ref($test) ? $out =~ $test : $out eq $test;
     ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
     my $line = (caller)[2];
     warn "#   process_ok called at line $line.\n" if ! $ok;
@@ -61,6 +61,7 @@ sub process_ok { # process the value
 }
 
 my $obj = Foo2->new;
+
 
 ###----------------------------------------------------------------###
 ### variable GETting
@@ -557,6 +558,11 @@ process_ok("[% TRY %]Foo[% TRY %]Foo[% THROW foo 'for fun' %][% CATCH bar %]one[
 process_ok("[% TRY %]Foo[% TRY %]Foo[% THROW foo 'for fun' %][% CATCH bar %]one[% END %][% CATCH s %]two[% END %]hi" => '');
 process_ok("[% TRY %]Foo[% THROW foo.bar 'for fun' %][% CATCH foo %]one[% CATCH foo.bar %]two[% END %]hi" => 'Footwohi');
 
+process_ok("[% TRY %]Foo[% FINAL %]Bar[% END %]hi" => 'FooBarhi');
+process_ok("[% TRY %]Foo[% THROW foo %][% FINAL %]Bar[% CATCH %]one[% END %]hi" => '');
+process_ok("[% TRY %]Foo[% THROW foo %][% CATCH %]one[% FINAL %]Bar[% END %]hi" => 'FoooneBarhi');
+process_ok("[% TRY %]Foo[% THROW foo %][% CATCH bar %]one[% FINAL %]Bar[% END %]hi" => '');
+
 ###----------------------------------------------------------------###
 ### named args
 
@@ -597,6 +603,7 @@ process_ok("[% one %]\n\n" => "(1)ONE\n\n", {one=>'ONE', tt_config => ['DEBUG' =
 process_ok("1\n2\n3[% one %]" => "1\n2\n3(3)ONE", {one=>'ONE', tt_config => ['DEBUG' => 8, 'DEBUG_FORMAT' => '($line)']});
 process_ok("[% one;\n one %]" => "(1)ONE(2)ONE", {one=>'ONE', tt_config => ['DEBUG' => 8,
                                                                             'DEBUG_FORMAT' => '($line)']}) if ! $is_tt;
+process_ok("[% DEBUG format '(\$line)' %][% one %]" => qr/\(1\)/, {one=>'ONE', tt_config => ['DEBUG' => 8]});
 
 ###----------------------------------------------------------------###
 ### constants
