@@ -2266,8 +2266,10 @@ sub process {
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
         local $self->{'_start_top_level'} = 1;
 
+        ### "enable" debugging - we only support DEBUG_DIRS
         local $self->{'_debug_dirs'} = $self->{'DEBUG'}
             && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 8 : $self->{'DEBUG'} =~ /dirs/);
+        delete $self->{'_debug_off'};
 
         return $self->swap($content, $copy, \$output);
     };
