@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 420 - ($is_tt ? 47 : 0);
+use Test::More tests => 424 - ($is_tt ? 49 : 0);
 use Data::Dumper qw(Dumper);
 use_ok($module);
 
@@ -636,6 +636,10 @@ process_ok("[% SET constants.harry = 1 %][% constants.harry %]one" => 'do_this_o
 process_ok("Foo \$one Bar" => 'Foo ONE Bar', {one => 'ONE', tt_config => ['INTERPOLATE' => 1]});
 
 process_ok("[% get one %]" => 'ONE', {one => 'ONE', tt_config => ['ANYCASE' => 1]});
+process_ok("[% GET %]" => '', {GET => 'ONE'});
+process_ok("[% GET GET %]" => 'ONE', {GET => 'ONE'}) if ! $is_tt;
+process_ok("[% get %]" => '', {get => 'ONE', tt_config => ['ANYCASE' => 1]});
+process_ok("[% get get %]" => 'ONE', {get => 'ONE', tt_config => ['ANYCASE' => 1]}) if ! $is_tt;
 
 process_ok("[% BLOCK foo %]\nhi\n[% END %][% PROCESS foo %]" => "\nhi\n");
 process_ok("[% BLOCK foo %]\nhi[% END %][% PROCESS foo %]" => "hi", {tt_config => [TRIM => 1]});
