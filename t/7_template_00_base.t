@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 411 - ($is_tt ? 46 : 0);
+use Test::More tests => 418 - ($is_tt ? 47 : 0);
 use Data::Dumper qw(Dumper);
 use_ok($module);
 
@@ -283,6 +283,9 @@ process_ok('[% "hi" FILTER $foo %]' => 'hihi', {foo => sub {sub {$_[0]x2}}}); # 
 process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => sub {$_[0]x2}}]});
 process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {$_[0]x2},0]}]});
 process_ok('[% "hi" FILTER foo(2) %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {my$a=$_[1];sub{$_[0]x$a}},1]}]});
+
+### this does work - but requires that Template::Filters is installed
+#process_ok("[% ' ' | uri %]" => '%20');
 
 ###----------------------------------------------------------------###
 ### chomping
@@ -626,15 +629,27 @@ process_ok("[% SET constants.foo = 1 %][% constants.foo %]one" => '1one', {tt_co
 process_ok("[% SET constants.harry = 1 %][% constants.harry %]one" => 'do_this_onceone', {tt_config => \@config_c});
 
 ###----------------------------------------------------------------###
-### interpolate / anycase
+### interpolate / anycase / trim
 
 process_ok("Foo \$one Bar" => 'Foo ONE Bar', {one => 'ONE', tt_config => ['INTERPOLATE' => 1]});
 
 process_ok("[% get one %]" => 'ONE', {one => 'ONE', tt_config => ['ANYCASE' => 1]});
+
+process_ok("[% BLOCK foo %]\nhi\n[% END %][% PROCESS foo %]" => "\nhi\n");
+process_ok("[% BLOCK foo %]\nhi[% END %][% PROCESS foo %]" => "hi", {tt_config => [TRIM => 1]});
+process_ok("[% BLOCK foo %]hi\n[% END %][% PROCESS foo %]" => "hi", {tt_config => [TRIM => 1]});
+process_ok("[% BLOCK foo %]hi[% nl %][% END %][% PROCESS foo %]" => "hi", {nl => "\n", tt_config => [TRIM => 1]});
+process_ok("[% BLOCK foo %][% nl %]hi[% END %][% PROCESS foo %]" => "hi", {nl => "\n", tt_config => [TRIM => 1]});
+process_ok("A[% TRY %]\nhi\n[% END %]" => "A\nhi", {tt_config => [TRIM => 1]});
 
 ###----------------------------------------------------------------###
 ### perl
 
 process_ok("[% TRY %][% PERL %][% END %][% CATCH ; error; END %]" => 'perl error - EVAL_PERL not set');
 process_ok("[% PERL %] print \"[% one %]\" [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
+
+###----------------------------------------------------------------###
+### recursion prevention
+
+process_ok("[% BLOCK foo %][% PROCESS bar %][% END %][% BLOCK bar %][% PROCESS foo %][% END %][% PROCESS foo %]" => '') if ! $is_tt;
 
