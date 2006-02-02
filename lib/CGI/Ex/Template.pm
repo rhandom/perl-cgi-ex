@@ -13,7 +13,6 @@ use vars qw($TAGS
             $DIRECTIVES $QR_DIRECTIVE
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $QR_OP $QR_OP_UNARY
             $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
-            $MAX_RECURSE
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             );
@@ -296,7 +295,7 @@ BEGIN {
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_AQ_NOTDOT = '(?! \s* \.)';
     $QR_AQ_SPACE  = '(?: \s+ | $ | ;)';
-    $MAX_RECURSE = 50;
+
     $WHILE_MAX   = 1000;
     $EXTRA_COMPILE_EXT = '.sto';
 };
@@ -314,23 +313,38 @@ sub new {
 sub swap {
     my $self = shift;
     my $file = shift;
-    local $self->{'STASH'} = shift || {};
+    local $self->{'_vars'} = shift || {};
     my $out_ref = shift || $self->throw('undef', "Missing output");
     local $self->{'_top_level'} = delete $self->{'_start_top_level'};
+    my $i = length $$out_ref;
 
     ### parse and execute
     my $doc;
     eval {
+        ### load the document
         $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");;
+
+        ### prevent recursion
+        $self->throw('recursion', "Recursive call into $doc->{name}")
+            if ! $self->{'RECURSION'} && $self->{'_in'}->{$doc->{'name'}};
+        local $self->{'_in'}->{$doc->{'name'}} = 1;
+
+        ### execute the document
         if ($#{ $doc->{'tree'} } == -1) { # no tags found - just return the content
             $$out_ref = ${ $doc->{'content'} };
         } else {
             local $self->{'_template'} = $doc;
-            $self->{'STASH'}->{'template'} = $doc if $self->{'_top_level'};
+            $self->{'_vars'}->{'template'} = $doc if $self->{'_top_level'};
             $self->execute_tree($doc->{'tree'}, $out_ref);
-            delete $self->{'STASH'}->{'template'} if $self->{'_top_level'};
+            delete $self->{'_vars'}->{'template'} if $self->{'_top_level'};
         }
     };
+
+    ### trim whitespace from the beginning and the end of a block or template
+    if ($self->{'TRIM'}) {
+        substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ \s+ $ }{}x; # tail first
+        substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ ^ \s+ }{}x;
+    }
 
     ### handle exceptions
     if (my $err = $@) {
@@ -741,6 +755,7 @@ sub execute_tree {
     #                5: continuation sub trees for sub continuation block types (elsif, else, etc)
     #                6: flag to capture next directive
     for my $node (@$tree) {
+
         ### text nodes are just the bare text
         if (! ref $node) {
             $$out_ref .= $node if defined $node;
@@ -766,8 +781,8 @@ sub execute_tree {
             my $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $out_ref);
             $$out_ref .= $val if defined $val;
         }
-
     }
+
 }
 
 ###----------------------------------------------------------------###
@@ -1134,13 +1149,13 @@ sub vivify_variable {
             if (defined $ref) {
                 if ($ARGS->{'set_var'}) {
                     if ($#$var <= $i) {
-                        $self->{'STASH'}->{$ref} = $ARGS->{'var_val'};
+                        $self->{'_vars'}->{$ref} = $ARGS->{'var_val'};
                         return;
                     } else {
-                        $self->{'STASH'}->{$ref} ||= {};
+                        $self->{'_vars'}->{$ref} ||= {};
                     }
                 }
-                $ref = $self->{'STASH'}->{$ref};
+                $ref = $self->{'_vars'}->{$ref};
             } else {
                 return if $ARGS->{'set_var'};
             }
@@ -1151,13 +1166,13 @@ sub vivify_variable {
         } else {
             if ($ARGS->{'set_var'}) {
                 if ($#$var <= $i) {
-                    $self->{'STASH'}->{$ref} = $ARGS->{'var_val'};
+                    $self->{'_vars'}->{$ref} = $ARGS->{'var_val'};
                     return;
                 } else {
-                    $self->{'STASH'}->{$ref} ||= {};
+                    $self->{'_vars'}->{$ref} ||= {};
                 }
             }
-            $ref = $self->{'STASH'}->{$ref};
+            $ref = $self->{'_vars'}->{$ref};
         }
     }
 
@@ -1591,7 +1606,7 @@ sub play_FOREACH {
 
     ### if the FOREACH tag sets a var - then nothing gets localized
     if (defined $var) {
-        $self->{'STASH'}->{'loop'} = $items;
+        $self->{'_vars'}->{'loop'} = $items;
         foreach my $i ($items->index .. $#$vals) {
             $items->index($i);
             my $item = $vals->[$i];
@@ -1616,8 +1631,8 @@ sub play_FOREACH {
     } else {
 
         ### localize variable access for the foreach
-        my $swap = $self->{'STASH'};
-        local $self->{'STASH'} = my $copy = {%$swap};
+        my $swap = $self->{'_vars'};
+        local $self->{'_vars'} = my $copy = {%$swap};
         $copy->{'loop'} = $items;
 
         ### iterate use the iterator object
@@ -1702,8 +1717,8 @@ sub play_INCLUDE {
     my ($self, $tag_ref, $node, $out_ref) = @_;
 
     ### localize the swap
-    my $swap = $self->{'STASH'};
-    local $self->{'STASH'} = {%$swap};
+    my $swap = $self->{'_vars'};
+    local $self->{'_vars'} = {%$swap};
 
     ### localize the blocks
     my $blocks = $self->{'BLOCKS'};
@@ -1776,8 +1791,8 @@ sub play_MACRO {
         set_var => 1,
         var_val => sub {
             ### macros localize
-            my $copy = $self_copy->{'STASH'};
-            local $self_copy->{'STASH'}= {%$copy};
+            my $copy = $self_copy->{'_vars'};
+            local $self_copy->{'_vars'}= {%$copy};
 
             ### set arguments
             my $named = pop(@_) if $_[-1] && UNIVERSAL::isa($_[-1],'HASH') && $#_ > $#$args;
@@ -1813,7 +1828,7 @@ sub play_META {
     my $hash = $self->vivify_args($args)->[-1] || return;
     return if ! UNIVERSAL::isa($hash, 'HASH');
 
-    my $ref = $self->{'STASH'}->{'template'} ||= {};
+    my $ref = $self->{'_vars'}->{'template'} ||= {};
     foreach my $key (keys %$hash) {
         next if $key eq 'name' || $key eq 'modtime';
         $ref->{$key} = $hash->{$key};
@@ -1884,13 +1899,6 @@ sub play_PROCESS {
 
     my ($files, $args) = @$info;
 
-    $self->{'_recurse'} ||= 0;
-    $self->{'_recurse'} ++;
-    if ($self->{'_recurse'} >= $MAX_RECURSE) {
-        my $func = $node->[0];
-        die "MAX_RECURSE $MAX_RECURSE reached during $func";
-    }
-
     ### set passed args
     foreach (@$args) {
         my ($key, $val) = @$_;
@@ -1908,7 +1916,7 @@ sub play_PROCESS {
 
         my $out = '';
         eval {
-            $self->swap($filename, $self->{'STASH'}, \$out); # restart the swap - passing it our current stash
+            $self->swap($filename, $self->{'_vars'}, \$out); # restart the swap - passing it our current stash
         };
         $$out_ref .= $out if length $out;
         if (my $err = $@) {
@@ -1916,7 +1924,6 @@ sub play_PROCESS {
         }
     }
 
-    $self->{'_recurse'} --;
     return;
 }
 
@@ -2070,8 +2077,8 @@ sub play_TRY {
     ### play the best catch block
     if ($err) {
         die $err if ! $catch_body_ref;
-        local $self->{'STASH'}->{'error'} = $err;
-        local $self->{'STASH'}->{'e'}     = $err;
+        local $self->{'_vars'}->{'error'} = $err;
+        local $self->{'_vars'}->{'e'}     = $err;
         $self->execute_tree($catch_body_ref, $out_ref);
     }
 
@@ -2231,7 +2238,7 @@ sub play_WRAPPER {
     my $out = '';
     $self->execute_tree($sub_tree, \$out);
 
-    local $self->{'STASH'}->{'content'} = $out;
+    local $self->{'_vars'}->{'content'} = $out;
     return $DIRECTIVES->{'INCLUDE'}->{'play'}->(@_)
 }
 
@@ -2239,8 +2246,8 @@ sub play_WRAPPER {
 
 sub stash {
     my $self = shift;
-    $self->{'STASH'} = shift if $#_ == 0;
-    return $self->{'STASH'} ||= {};
+    $self->{'_vars'} = shift if $#_ == 0;
+    return $self->{'_vars'} ||= {};
 }
 
 sub include_path {
@@ -2313,12 +2320,6 @@ sub process {
     }
 
 
-    ### localize the stash
-    $swap ||= {};
-    my $stash = $self->stash;
-    $stash->{'global'} ||= {}; # allow for the "global" namespace - the continues in between processing
-    my $copy = {%$stash, %$swap};
-
     ### prepare block localization
     my $blocks = $self->{'BLOCKS'} ||= {};
 
@@ -2326,12 +2327,20 @@ sub process {
     ### do the swap
     my $output = '';
     eval {
+
+        ### localize the stash
+        $swap ||= {};
+        my $var1 = $self->{'_vars'} ||= {};
+        my $var2 = $self->{'VARIABLES'} || $self->{'PRE_DEFINE'} || {};
+        $var1->{'global'} ||= {}; # allow for the "global" namespace - that continues in between processing
+        my $copy = {%$var2, %$var1, %$swap};
+
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
         local $self->{'_start_top_level'} = 1;
 
         ### "enable" debugging - we only support DEBUG_DIRS
         local $self->{'_debug_dirs'} = $self->{'DEBUG'}
-            && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 8 : $self->{'DEBUG'} =~ /dirs/);
+            && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 8 : $self->{'DEBUG'} =~ /dirs|all/);
         delete $self->{'_debug_off'};
         delete $self->{'_debug_format'};
 
@@ -2653,6 +2662,27 @@ __END__
     Look at other configs
     Allow TRIM to work
     Get several test suites to pass
+
+=head1 SUPPORTED TT CONFIGURATION
+
+=over 4
+
+START_TAG
+END_TAG
+TAG_STYLE
+PRE_CHOMP
+POST_CHOMP
+TRIM
+VARIABLES
+PRE_DEFINE
+
+=back
+
+=head1 UNSUPPORTED TT CONFIGURATION
+
+=over 4
+
+=back
 
 =head1 OPERATORS
 
