@@ -2497,33 +2497,26 @@ sub get_line_number_by_index {
 ###----------------------------------------------------------------###
 
 sub vmethod_replace {
-    my ($str, $pat, $replace, $global) = @_;
-    $str     = '' if ! defined $str;
-    $pat     = '' if ! defined $pat;
-    $replace = '' if ! defined $replace;
-    $global  = 1  if ! defined $global;
+    my ($text, $pattern, $replace, $global) = @_;
+    $text      = '' unless defined $text;
+    $pattern   = '' unless defined $pattern;
+    $replace   = '' unless defined $replace;
+    $global    = 1  unless defined $global;
+    my $expand = sub {
+        my ($chunk, $start, $end) = @_;
+        $chunk =~ s{ \\(\\|\$) | \$ (\d+) }{
+            $1 ? $1
+                : ($2 > $#$start || $2 == 0) ? ''
+                : substr($text, $start->[$2], $end->[$2] - $start->[$2]);
+        }exg;
+        $chunk;
+    };
     if ($global) {
-        $str =~ s{$pat}{
-            my @start = @-;
-            my @end   = @+;
-            my $copy  = $replace;
-            $copy =~ s{ (?<!\\) \$ (\d+) }{
-                ($1 > $#start || $1 == 0) ? '' : substr($str, $start[$1], $end[$1] - $start[$1]);
-            }exg;
-            $copy;
-        }eg;
+        $text =~ s{$pattern}{ $expand->($replace, [@-], [@+]) }eg;
     } else {
-        $str =~ s{$pat}{
-            my @start = @-;
-            my @end   = @+;
-            my $copy  = $replace;
-            $copy =~ s{ (?<!\\) \$ (\d+) }{
-                ($1 > $#start || $1 == 0) ? '' : substr($str, $start[$1], $end[$1] - $start[$1]);
-            }exg;
-            $copy;
-        }e;
+        $text =~ s{$pattern}{ $expand->($replace, [@-], [@+]) }e;
     }
-    return $str;
+    return $text;
 }
 
 ###----------------------------------------------------------------###
@@ -2699,19 +2692,80 @@ equal to the hashref returned by the load_parsed_tree method.
 
 Number of compiled templates to keep in memory.  Default undef.
 Undefined means to allow all templates to cache.  A value of 0 will
-force no caching.  The cache will clear templates that have not been
-used recently.
+force no caching.  The cache mechanism will clear templates that have
+not been used recently.
 
 =item COMPILE_DIR
 
-Base directory to store compiled templates.  Default undef. Compiled templates will only be stored if one of COMPILE_DIR and COMPILE_EXT is set.
+Base directory to store compiled templates.  Default undef. Compiled
+templates will only be stored if one of COMPILE_DIR and COMPILE_EXT is
+set.
 
 =item COMPILE_EXT
 
 Extension to add to stored compiled template filenames.  Default undef.
 
 =item CONSTANTS
+
+Hashref.  Used to define variables that will be "folded" into the
+compiled template.  Variables defined here cannot be overridden.
+
+    CONSTANTS => {my_constant => 42},
+
+    A template containing:
+
+    [% constants.my_constant %]
+
+    Will have the value 42 compiled in.
+
+Constants defined in this way can be chained as in [%
+constant.foo.bar.baz %] but may only interpolate values that are set
+before the compile process begins.  This goes one step beyond TT in
+that any variable set in VARIABLES, or PRE_DEFINE, or passed to the
+process method are allowed - they are not in TT.  Variables defined in
+the template are not available during the compile process.
+
+    GOOD:
+
+    CONSTANTS => {
+        foo  => {
+            bar => {baz => 42},
+            bim => 57,
+        },
+        bing => 'baz',
+        bang => 'bim',
+    },
+    VARIABLES => {
+        bam  => 'bar',
+    },
+
+    In the template
+
+    [% constants.foo.${constants.bang} %]
+
+    Will correctly print 42.
+
+    GOOD (non-tt behavior)
+
+    [% constants.foo.$bam.${constants.bing} %]
+
+    Will correctly print 42.  TT would print '' as the value of $bam
+    is not yet defined in the TT engine.
+
+
+    BAD:
+
+    In the template:
+
+    [% bam = 'somethingelse' %]
+    [% constants.foo.$bam.${constants.bing} %]
+
+    Will still print 42 because the value of bam used comes from
+    variables defined before the template was compiled.
+
 =item CONSTANT_NAMESPACE
+
+
 =item DEBUG
 =item DEBUG_FORMAT
 =item DEFAULT
