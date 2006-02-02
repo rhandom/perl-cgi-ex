@@ -1147,6 +1147,7 @@ sub vivify_variable {
         } else { # a named variable access (ie via $name.foo)
             $ref = $self->vivify_variable($ref);
             if (defined $ref) {
+                return if $ref =~ /^_/; # don't allow vars that begin with _
                 if ($ARGS->{'set_var'}) {
                     if ($#$var <= $i) {
                         $self->{'_vars'}->{$ref} = $ARGS->{'var_val'};
@@ -1164,6 +1165,7 @@ sub vivify_variable {
         if ($ARGS->{'is_namespace_during_compile'}) {
             $ref = $self->{'NAMESPACE'}->{$ref};
         } else {
+            return if $ref =~ /^_/; # don't allow vars that begin with _
             if ($ARGS->{'set_var'}) {
                 if ($#$var <= $i) {
                     $self->{'_vars'}->{$ref} = $ARGS->{'var_val'};
@@ -1231,7 +1233,7 @@ sub vivify_variable {
 
         ### hash member access
         if (UNIVERSAL::isa($ref, 'HASH')) {
-
+            return if $name =~ /^_/; # don't allow vars that begin with _
             if ($ARGS->{'set_var'}) {
                 if ($#$var <= $i) {
                     $ref->{$name} = $ARGS->{'var_val'};
@@ -2496,6 +2498,8 @@ sub get_line_number_by_index {
 
 ###----------------------------------------------------------------###
 
+### This method is a combination of my submissions along
+### with work from Andy Wardley, Sergey Martynoff, Nik Clayton, and Josh Rosenbaum
 sub vmethod_replace {
     my ($text, $pattern, $replace, $global) = @_;
     $text      = '' unless defined $text;
