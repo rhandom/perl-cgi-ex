@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 424 - ($is_tt ? 49 : 0);
+use Test::More tests => 443 - ($is_tt ? 57 : 0);
 use Data::Dumper qw(Dumper);
 use_ok($module);
 
@@ -162,6 +162,11 @@ process_ok("[% 'hi \${foo}' %]" => 'hi ${foo}', {foo => 7});
 process_ok("[% \"hi \${foo.seven}\" %]"   => 'hi 7', {foo => $obj});
 process_ok("[% \"hi \${foo.echo(7)}\" %]" => 'hi 7', {foo => $obj});
 
+process_ok("[% _foo %]2" => '2', {_foo => 1});
+process_ok("[% \$bar %]2" => '2', {_foo => 1, bar => '_foo'});
+process_ok("[% __foo %]2" => '2', {__foo => 1});
+process_ok("[% _foo = 1 %][% _foo %]2" => '2');
+process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
 
 ###----------------------------------------------------------------###
 ### variable SETting
@@ -229,6 +234,29 @@ process_ok("[% foo = 1 %][% foo %]" => '1');
 process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo = 1 ; bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo.bar = 2 %][% foo.bar %]" => '2');
+
+###----------------------------------------------------------------###
+### Reserved words
+
+my $vars = {
+    GET => 'named_get',
+    get => 'lower_named_get',
+    named_get => 'value of named_get',
+    hold_get => 'GET',
+};
+process_ok("[% GET %]" => '', $vars);
+process_ok("[% GET GET %]" => 'named_get', $vars) if ! $is_tt;
+process_ok("[% GET get %]" => 'lower_named_get', $vars);
+
+process_ok("[% GET = 1 %][% GET GET %]" => '', $vars);
+process_ok("[% SET GET = 1 %][% GET GET %]" => '1', $vars) if ! $is_tt;
+
+process_ok("[% GET \$hold_get %]" => 'named_get', $vars);
+process_ok("[% GET \$GET %]" => 'value of named_get', $vars) if ! $is_tt;
+process_ok("[% BLOCK GET %]hi[% END %][% PROCESS GET %]" => 'hi') if ! $is_tt;
+process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo a = GET %]" => 'hi', $vars) if ! $is_tt;
+process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo GET = 1 %]" => '');
+process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo IF GET %]" => 'hi', $vars) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### CALL and DEFAULT
@@ -624,11 +652,27 @@ process_ok("[% DEBUG format '(\$line)' %][% one %]" => qr/\(1\)/, {one=>'ONE', t
 ###----------------------------------------------------------------###
 ### constants
 
-my @config_c = (CONSTANTS   => {harry => sub {'do_this_once'}});
+my @config_c = (
+    CONSTANTS => {
+        harry => sub {'do_this_once'},
+        foo  => {
+            bar => {baz => 42},
+            bim => 57,
+        },
+        bing => 'baz',
+        bang => 'bim',
+    },
+    VARIABLES => {
+        bam  => 'bar',
+    },
+);
 process_ok("[% constants.harry %]" => 'do_this_once', {tt_config => \@config_c});
 process_ok("[% constants.harry.length %]" => '12', {tt_config => \@config_c});
-process_ok("[% SET constants.foo = 1 %][% constants.foo %]one" => '1one', {tt_config => \@config_c});
+process_ok("[% SET constants.something = 1 %][% constants.something %]one" => '1one', {tt_config => \@config_c});
 process_ok("[% SET constants.harry = 1 %][% constants.harry %]one" => 'do_this_onceone', {tt_config => \@config_c});
+process_ok("[% constants.foo.\${constants.bang} %]" => '57', {tt_config => [@config_c]});
+process_ok("[% constants.foo.\$bam.\${constants.bing} %]" => '42', {tt_config => [@config_c]}) if ! $is_tt;
+process_ok("[% bam = 'somethingelse' %][% constants.foo.\$bam.\${constants.bing} %]" => '42', {tt_config => [@config_c]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### interpolate / anycase / trim
