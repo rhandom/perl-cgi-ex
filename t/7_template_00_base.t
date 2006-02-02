@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 418 - ($is_tt ? 47 : 0);
+use Test::More tests => 420 - ($is_tt ? 47 : 0);
 use Data::Dumper qw(Dumper);
 use_ok($module);
 
@@ -70,6 +70,8 @@ my $obj = Foo2->new;
 
 process_ok("[% foo %]" => "");
 process_ok("[% foo %]" => "7",       {foo => 7});
+process_ok("[% foo %]" => "7",       {tt_config => [VARIABLES => {foo => 7}]});
+process_ok("[% foo %]" => "7",       {tt_config => [PRE_DEFINE => {foo => 7}]});
 process_ok("[% foo %][% foo %][% foo %]" => "777", {foo => 7});
 process_ok("[% foo() %]" => "7",     {foo => 7});
 process_ok("[% foo.bar %]" => "");
