@@ -455,7 +455,7 @@ sub load_parsed_tree {
     ### haven't found a parsed tree yet
     if (! $doc->{'tree'}) {
         if ($self->{'CONSTANTS'}) {
-            my $key = $self->{'CONSTANTS_NAMESPACE'} || 'constants';
+            my $key = $self->{'CONSTANT_NAMESPACE'} || 'constants';
             $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
         }
 
@@ -2665,22 +2665,101 @@ __END__
 
 =head1 SUPPORTED TT CONFIGURATION
 
+The following TT2 configuration variables are supported. (in alphabetical order)
+
 =over 4
 
-START_TAG
-END_TAG
-TAG_STYLE
-PRE_CHOMP
-POST_CHOMP
-TRIM
-VARIABLES
-PRE_DEFINE
+=item ABSOLUTE
+
+Boolean.  Default false.  Are absolute paths allowed for included files.
+
+=item ANYCASE
+
+Boolean.  Default false.  Allow directive names to be in any case.
+See the note about DIRECTIVE names in the differences from TT section.
+
+=item AUTO_RESET
+
+Boolean.  Default 1.  Clear blocks that were set during the process method.
+
+=item BLOCKS - no Template::Documents support
+
+A hashref of blocks that can be used by the process method.
+
+   BLOCKS => {
+       block_1 => sub { ... }, # coderef that returns a block
+       block_2 => 'A String',  # simple string
+   },
+
+Note that a Template::Document cannot be supplied as a value (TT
+supports this).  However, it is possible to supply a value that is
+equal to the hashref returned by the load_parsed_tree method.
+
+=item CACHE_SIZE
+
+Number of compiled templates to keep in memory.  Default undef.
+Undefined means to allow all templates to cache.  A value of 0 will
+force no caching.  The cache will clear templates that have not been
+used recently.
+
+=item COMPILE_DIR
+
+Base directory to store compiled templates.  Default undef. Compiled templates will only be stored if one of COMPILE_DIR and COMPILE_EXT is set.
+
+=item COMPILE_EXT
+
+Extension to add to stored compiled template filenames.  Default undef.
+
+=item CONSTANTS
+=item CONSTANT_NAMESPACE
+=item DEBUG
+=item DEBUG_FORMAT
+=item DEFAULT
+=item DELIMITER
+=item END_TAG
+=item EVAL_PERL
+=item FILTERS
+=item INCLUDE_PATH
+=item INTERPOLATE
+=item LOAD_PERL
+=item NAMESPACE - no Template::Namespace::Constants support
+=item OUTPUT
+=item OUTPUT_PATH
+=item PLUGINS
+=item PLUGIN_BASE
+=item POST_CHOMP
+=item PRE_CHOMP
+=item PRE_DEFINE
+=item RECURSION
+=item RELATIVE
+=item START_TAG
+=item TAG_STYLE
+=item TRIM
+=item VARIABLES
 
 =back
 
 =head1 UNSUPPORTED TT CONFIGURATION
 
 =over 4
+
+=item PRE_PROCESS
+=item POST_PROCESS
+=item PROCESS
+=item WRAPPER
+=item ERROR
+
+=item V1DOLLAR
+
+=item LOAD_TEMPLATES
+=item LOAD_PLUGINS
+=item LOAD_FILTERS
+=item TOLERANT
+=item SERVICE
+=item CONTEXT
+=item STASH
+=item PARSER
+=item GRAMMAR
 
 =back
 
