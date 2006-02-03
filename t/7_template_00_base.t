@@ -8,7 +8,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 443 - ($is_tt ? 57 : 0);
+use Test::More tests => 449 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
 use_ok($module);
 
@@ -146,6 +146,7 @@ process_ok("[% GET \${name}(7) %]" => 7,    {name => 'foo', foo => sub { $_[0] }
 
 process_ok("[% \${name} %]" => "",     {name => 'foo foo', foo => 7});
 process_ok("[% GET \${name} %]" => "", {name => 'foo foo', foo => 7});
+process_ok("[% GET \${'foo'} %]" => 'bar', {foo => 'bar'});
 
 process_ok("[% foo.\$name %]" => '', {name => 'bar'});
 process_ok("[% foo.\$name %]" => 7, {name => 'bar', foo => {bar => 7}});
@@ -219,6 +220,7 @@ process_ok("[% SET name = 'two' %][% SET foo.\${name}.foo = 3 %][% foo.two.foo %
 
 process_ok("[% SET foo = [1..10] %][% foo.6 %]" => 7);
 process_ok("[% SET foo = [10..1] %][% foo.6 %]" => '');
+process_ok("[% SET foo = 1 .. 10 %][% foo.6 %]" => 7) if ! $is_tt;
 process_ok("[% SET foo = [-10..-1] %][% foo.6 %]" => -4);
 process_ok("[% SET foo = [1..3..10] %][% foo.6 %]" => '7') if ! $is_tt;
 process_ok("[% SET foo = [1..2..10] %][% foo.6 %]" => '7') if ! $is_tt;
@@ -247,6 +249,7 @@ my $vars = {
 process_ok("[% GET %]" => '', $vars);
 process_ok("[% GET GET %]" => 'named_get', $vars) if ! $is_tt;
 process_ok("[% GET get %]" => 'lower_named_get', $vars);
+process_ok("[% GET \${'GET'} %]" => 'bar', {GET => 'bar'});
 
 process_ok("[% GET = 1 %][% GET GET %]" => '', $vars);
 process_ok("[% SET GET = 1 %][% GET GET %]" => '1', $vars) if ! $is_tt;
@@ -280,6 +283,7 @@ process_ok("[% 'This is a string'.length %]" => 16) if ! $is_tt;
 process_ok("[% 123.length %]" => 3) if ! $is_tt;
 process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
 process_ok("[% -123.2.length %]" => -5) if ! $is_tt; # the - doesn't bind as tight as the dot methods
+process_ok("[% (-123.2).length %]" => 6) if ! $is_tt;
 
 process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
 process_ok("[% n.repeat(0) %]" => '',   {n => 1});
@@ -351,6 +355,8 @@ process_ok("[% 2-1 %]" => 1) if ! $is_tt;
 process_ok("[% 2 - -1 %]" => 3);
 process_ok("[% 4 * 2 %]" => 8);
 process_ok("[% 4 / 2 %]" => 2);
+process_ok("[% 10 / 3 %]" => qr/^3.333/);
+process_ok("[% 10 div 3 %]" => '3');
 process_ok("[% 2 ** 3 %]" => 8) if ! $is_tt;
 process_ok("[% 1 + 2 * 3 %]" => 7);
 process_ok("[% 3 * 2 + 1 %]" => 7);
