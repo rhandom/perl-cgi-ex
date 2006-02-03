@@ -2574,8 +2574,8 @@ statement to clear generated content if an error occurs later.
 =item DEBUG
 
 Used to reset the DEBUG_FORMAT configuration variable, or to turn
-DEBUG on or off.  This only has effect if the DEBUG_DIRS or DEBUG_ALL
-flags were passed to the DEBUG configuration variable.
+DEBUG statements on or off.  This only has effect if the DEBUG_DIRS or
+DEBUG_ALL flags were passed to the DEBUG configuration variable.
 
     [% DEBUG format '($file) (line $line) ($text)' %]
     [% DEBUG on %]
@@ -2585,6 +2585,10 @@ flags were passed to the DEBUG configuration variable.
 
 Similar to SET, but only sets the value if a previous value was not
 defined or was zero length.
+
+    [% DEFAULT foo = 'bar' %][% foo %] => 'bar'
+
+    [% foo = 'baz' %][% DEFAULT foo = 'bar' %][% foo %] => 'baz'
 
 =item ELSE
 
@@ -2605,7 +2609,7 @@ Used to end a block directive.
 =item '|'
 
 Alias for the FILTER directive.  Note that | is similar to the
-'.' in CGI::Ex::Template.  So a pipe cannot be used directly after a
+'.' in CGI::Ex::Template.  Therefore a pipe cannot be used directly after a
 variable name in some situations (the pipe will act only on that variable).
 This is the behavior employed by TT3.
 
@@ -2625,9 +2629,24 @@ Alias for FOREACH
 
 
 
-=item IF
+=item IF (IF / ELSIF / ELSE)
 
+Allows for conditional testing.  Expects an expression as its only
+argument.  If the expression is true, the contents of its block are
+processed.  If false, the processor looks for an ELSIF block.  If an
+ELSIF's expression is true then it is processed.  Finally it looks for
+an ELSE block which is processed if none of the IF or ELSIF's
+expressions were true.
 
+    [% IF a == b %]A equaled B[% END %]
+
+    [% IF a == b -%]
+        A equaled B
+    [%- ELSIF a == c -%]
+        A equaled C
+    [%- ELSE -%]
+        Couldn't determine that A equaled anything.
+    [%- END %]
 
 =item INCLUDE
 
@@ -2683,7 +2702,23 @@ No content will be processed beyond this point.
 
 Change the type of enclosing braces used to delineate template tags.  This
 remains in effect until the end of the enclosing block or template or until
-the next TAGS directive.
+the next TAGS directive.  Either a named set of tags must be supplied, or
+two tags themselves must be supplied.
+
+    [% TAGS html %]
+
+    [% TAGS <!-- --> %]
+
+The named tags are (duplicated from TT):
+
+    template => ['[%',   '%]'],  # default
+    metatext => ['%%',   '%%'],  # Text::MetaText
+    star     => ['[*',   '*]'],  # TT alternate
+    php      => ['<?',   '?>'],  # PHP
+    asp      => ['<%',   '%>'],  # ASP
+    mason    => ['<%',   '>' ],  # HTML::Mason
+    html     => ['<!--', '-->'], # HTML comments
+
 
 =item THROW
 
@@ -2730,6 +2765,7 @@ This would print.
 
 
 =back
+
 
 
 =head1 OPERATORS
