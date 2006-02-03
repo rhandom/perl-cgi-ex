@@ -120,7 +120,7 @@ BEGIN {
             continue_block => {TRY => 1, CATCH => 1},
         },
         CLEAR   => { control => 1 },
-        COMMENT => {
+        '#'     => {
             parse  => sub {},
             play   => sub {},
         },
@@ -131,10 +131,6 @@ BEGIN {
         DEFAULT => {
             parse  => \&parse_DEFAULT,
             play   => \&play_DEFAULT,
-        },
-        DUMP    => {
-            parse  => \&parse_DUMP,
-            play   => \&play_DUMP,
         },
         ELSE    => {
             parse => sub {},
@@ -565,7 +561,7 @@ sub parse_tree {
                 splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
             }
             if ($pre =~ /\#/) { # leading # means to comment the entire section
-                $node->[0] = 'COMMENT';
+                $node->[0] = '#';
                 push @$pointer, $node;
                 next;
             }
@@ -1534,18 +1530,6 @@ sub play_DEFAULT {
     }
     return;
 }
-
-sub parse_DUMP {
-    my ($self, $tag_ref) = @_;
-    my $copy = $$tag_ref;
-    my $ref = $self->parse_variable($tag_ref);
-    my $val = $self->vivify_variable($ref);
-    require Data::Dumper;
-    my $str = Data::Dumper::Dumper($val);
-    $str =~ s/\$VAR1/$copy/g;
-    return $str;
-}
-
 
 sub parse_FILTER {
     my ($self, $tag_ref) = @_;
@@ -2657,170 +2641,204 @@ __END__
     Benchmark text processing
     Benchmark FOREACH types again
     Allow USE to use our Iterator
-    Look at other configs
-    Allow TRIM to work
     Get several test suites to pass
 
-=head1 SUPPORTED TT CONFIGURATION
+=head1 DIRECTIVES
 
-The following TT2 configuration variables are supported. (in alphabetical order)
+This section containts the alphabetical list of DIRECTIVES available in
+the TT language.  For further discussion and examples, please refer to the
+TT directives documentation.
+
 
 =over 4
 
-=item ABSOLUTE
-
-Boolean.  Default false.  Are absolute paths allowed for included files.
-
-=item ANYCASE
-
-Boolean.  Default false.  Allow directive names to be in any case.
-See the note about DIRECTIVE names in the differences from TT section.
-
-=item AUTO_RESET
-
-Boolean.  Default 1.  Clear blocks that were set during the process method.
-
-=item BLOCKS - no Template::Documents support
-
-A hashref of blocks that can be used by the process method.
-
-   BLOCKS => {
-       block_1 => sub { ... }, # coderef that returns a block
-       block_2 => 'A String',  # simple string
-   },
-
-Note that a Template::Document cannot be supplied as a value (TT
-supports this).  However, it is possible to supply a value that is
-equal to the hashref returned by the load_parsed_tree method.
-
-=item CACHE_SIZE
-
-Number of compiled templates to keep in memory.  Default undef.
-Undefined means to allow all templates to cache.  A value of 0 will
-force no caching.  The cache mechanism will clear templates that have
-not been used recently.
-
-=item COMPILE_DIR
-
-Base directory to store compiled templates.  Default undef. Compiled
-templates will only be stored if one of COMPILE_DIR and COMPILE_EXT is
-set.
-
-=item COMPILE_EXT
-
-Extension to add to stored compiled template filenames.  Default undef.
-
-=item CONSTANTS
-
-Hashref.  Used to define variables that will be "folded" into the
-compiled template.  Variables defined here cannot be overridden.
-
-    CONSTANTS => {my_constant => 42},
-
-    A template containing:
-
-    [% constants.my_constant %]
-
-    Will have the value 42 compiled in.
-
-Constants defined in this way can be chained as in [%
-constant.foo.bar.baz %] but may only interpolate values that are set
-before the compile process begins.  This goes one step beyond TT in
-that any variable set in VARIABLES, or PRE_DEFINE, or passed to the
-process method are allowed - they are not in TT.  Variables defined in
-the template are not available during the compile process.
-
-    GOOD:
-
-    CONSTANTS => {
-        foo  => {
-            bar => {baz => 42},
-            bim => 57,
-        },
-        bing => 'baz',
-        bang => 'bim',
-    },
-    VARIABLES => {
-        bam  => 'bar',
-    },
-
-    In the template
-
-    [% constants.foo.${constants.bang} %]
-
-    Will correctly print 42.
-
-    GOOD (non-tt behavior)
-
-    [% constants.foo.$bam.${constants.bing} %]
-
-    Will correctly print 42.  TT would print '' as the value of $bam
-    is not yet defined in the TT engine.
+=item BLOCK
 
 
-    BAD:
 
-    In the template:
+=item BREAK
 
-    [% bam = 'somethingelse' %]
-    [% constants.foo.$bam.${constants.bing} %]
+Alias for LAST.  Used for exiting FOREACH and WHILE loops.
 
-    Will still print 42 because the value of bam used comes from
-    variables defined before the template was compiled.
+=item CALL
 
-=item CONSTANT_NAMESPACE
+Calls the variable (and any underlying coderefs) as in the GET method, but
+always returns an empty string.
 
+=item CASE
+
+Used with the SWITCH directive.  See the L</"SWITCH"> directive.
+
+=item CATCH
+
+Used with the TRY directive.  See the L</"TRY"> directive.
+
+=item CLEAR
+
+Clears any of the content currently generated in the innermost block
+or template.  This can be useful when used in conjuction with the TRY
+statement to clear generated content if an error occurs later.
 
 =item DEBUG
-=item DEBUG_FORMAT
+
+Used to reset the DEBUG_FORMAT configuration variable, or to turn
+DEBUG on or off.  This only has effect if the DEBUG_DIRS or DEBUG_ALL
+flags were passed to the DEBUG configuration variable.
+
+    [% DEBUG format '($file) (line $line) ($text)' %]
+    [% DEBUG on %]
+    [% DEBUG off %]
+
 =item DEFAULT
-=item DELIMITER
-=item END_TAG
-=item EVAL_PERL
-=item FILTERS
-=item INCLUDE_PATH
-=item INTERPOLATE
-=item LOAD_PERL
-=item NAMESPACE - no Template::Namespace::Constants support
-=item OUTPUT
-=item OUTPUT_PATH
-=item PLUGINS
-=item PLUGIN_BASE
-=item POST_CHOMP
-=item PRE_CHOMP
-=item PRE_DEFINE
-=item RECURSION
-=item RELATIVE
-=item START_TAG
-=item TAG_STYLE
-=item TRIM
-=item VARIABLES
 
-=back
+Similar to SET, but only sets the value if a previous value was not
+defined or was zero length.
 
-=head1 UNSUPPORTED TT CONFIGURATION
+=item ELSE
 
-=over 4
+Used with the IF directive.  See the L</"IF"> directive.
 
-=item PRE_PROCESS
-=item POST_PROCESS
+=item ELSIF
+
+Used with the IF directive.  See the L</"IF"> directive.
+
+=item END
+
+Used to end a block directive.
+
+=item FILTER
+
+
+
+=item '|'
+
+Alias for the FILTER directive.  Note that | is similar to the
+'.' in CGI::Ex::Template.  So a pipe cannot be used directly after a
+variable name in some situations (the pipe will act only on that variable).
+This is the behavior employed by TT3.
+
+=item FINAL
+
+Used with the TRY directive.  See the L</"TRY"> directive.
+
+=item FOR
+
+Alias for FOREACH
+
+=item FOREACH
+
+
+
+=item GET
+
+
+
+=item IF
+
+
+
+=item INCLUDE
+
+
+
+=item INSERT
+
+
+
+=item LAST
+
+Used to exit out of a WHILE or FOREACH loop.
+
+=item MACRO
+
+
+
+=item META
+
+
+
+=item NEXT
+
+Used to go to the next iteration of a WHILE or FOREACH loop.
+
+=item PERL
+
+
+
 =item PROCESS
+
+
+
+=item RETURN
+
+Used to exit the innermost block or template and continue processing
+in the surrounding block or template.
+
+=item SET
+
+
+
+=item STOP
+
+Used to exit the entire process method (out of all blocks and templates).
+No content will be processed beyond this point.
+
+=item SWITCH
+
+
+
+=item TAGS
+
+Change the type of enclosing braces used to delineate template tags.  This
+remains in effect until the end of the enclosing block or template or until
+the next TAGS directive.
+
+=item THROW
+
+
+
+=item TRY
+
+
+
+=item UNLESS
+
+
+
+=item USE
+
+
+
+=item WHILE
+
+
+
+
 =item WRAPPER
-=item ERROR
 
-=item V1DOLLAR
+Block directive.  Processes contents of its block and then passes them
+in the [% content %] variable to the block or filename listed in the
+WRAPPER tag.
 
-=item LOAD_TEMPLATES
-=item LOAD_PLUGINS
-=item LOAD_FILTERS
-=item TOLERANT
-=item SERVICE
-=item CONTEXT
-=item STASH
-=item PARSER
-=item GRAMMAR
+    [% WRAPPER foo %]
+    My content to be processed.[% a = 2 %]
+    [% END %]
+
+    [% BLOCK foo %]
+    A header ([% a %]).
+    [% content %]
+    A footer ([% a %]).
+    [% END %]
+
+This would print.
+
+    A header (2).
+    My content to be processed.
+    A footer (2).
+
 
 =back
+
 
 =head1 OPERATORS
 
@@ -2957,6 +2975,315 @@ by CGI::Ex::Template to delay the creation of an arrayref until the
 execution of the compiled template.
 
 =back
+
+
+
+=head1 CONFIGURATION
+
+The following TT2 configuration variables are supported (in
+alphabetical order).  Note: for further discussion you can refer to
+the TT config documentation.
+
+These variables should be passed to the "new" constructor.
+
+   my $obj = CGI::Ex::Template->new(
+       VARIABLES  => \%hash_of_variables,
+       AUTO_RESET => 0,
+       TRIM       => 1,
+       POST_CHOMP => 2,
+       PRE_CHOMP  => 1,
+   );
+
+
+=over 4
+
+=item ABSOLUTE
+
+Boolean.  Default false.  Are absolute paths allowed for included files.
+
+=item ANYCASE
+
+Boolean.  Default false.  Allow directive names to be in any case.
+See the note about DIRECTIVE names in the differences from TT section.
+
+=item AUTO_RESET
+
+Boolean.  Default 1.  Clear blocks that were set during the process method.
+
+=item BLOCKS - no Template::Documents support
+
+A hashref of blocks that can be used by the process method.
+
+   BLOCKS => {
+       block_1 => sub { ... }, # coderef that returns a block
+       block_2 => 'A String',  # simple string
+   },
+
+Note that a Template::Document cannot be supplied as a value (TT
+supports this).  However, it is possible to supply a value that is
+equal to the hashref returned by the load_parsed_tree method.
+
+=item CACHE_SIZE
+
+Number of compiled templates to keep in memory.  Default undef.
+Undefined means to allow all templates to cache.  A value of 0 will
+force no caching.  The cache mechanism will clear templates that have
+not been used recently.
+
+=item COMPILE_DIR
+
+Base directory to store compiled templates.  Default undef. Compiled
+templates will only be stored if one of COMPILE_DIR and COMPILE_EXT is
+set.
+
+=item COMPILE_EXT
+
+Extension to add to stored compiled template filenames.  Default undef.
+
+=item CONSTANTS
+
+Hashref.  Used to define variables that will be "folded" into the
+compiled template.  Variables defined here cannot be overridden.
+
+    CONSTANTS => {my_constant => 42},
+
+    A template containing:
+
+    [% constants.my_constant %]
+
+    Will have the value 42 compiled in.
+
+Constants defined in this way can be chained as in [%
+constant.foo.bar.baz %] but may only interpolate values that are set
+before the compile process begins.  This goes one step beyond TT in
+that any variable set in VARIABLES, or PRE_DEFINE, or passed to the
+process method are allowed - they are not in TT.  Variables defined in
+the template are not available during the compile process.
+
+    GOOD:
+
+    CONSTANTS => {
+        foo  => {
+            bar => {baz => 42},
+            bim => 57,
+        },
+        bing => 'baz',
+        bang => 'bim',
+    },
+    VARIABLES => {
+        bam  => 'bar',
+    },
+
+    In the template
+
+    [% constants.foo.${constants.bang} %]
+
+    Will correctly print 42.
+
+    GOOD (non-tt behavior)
+
+    [% constants.foo.$bam.${constants.bing} %]
+
+    Will correctly print 42.  TT would print '' as the value of $bam
+    is not yet defined in the TT engine.
+
+
+    BAD:
+
+    In the template:
+
+    [% bam = 'somethingelse' %]
+    [% constants.foo.$bam.${constants.bing} %]
+
+    Will still print 42 because the value of bam used comes from
+    variables defined before the template was compiled.
+
+=item CONSTANT_NAMESPACE
+
+
+=item DEBUG
+
+
+
+=item DEBUG_FORMAT
+
+
+
+=item DEFAULT
+
+
+
+=item DELIMITER
+
+
+
+=item END_TAG
+
+
+
+=item EVAL_PERL
+
+
+
+=item FILTERS
+
+
+
+=item INCLUDE_PATH
+
+
+
+=item INTERPOLATE
+
+
+
+=item LOAD_PERL
+
+
+
+=item NAMESPACE - no Template::Namespace::Constants support
+
+
+
+=item OUTPUT
+
+
+
+=item OUTPUT_PATH
+
+
+
+=item PLUGINS
+
+
+
+=item PLUGIN_BASE
+
+
+
+=item POST_CHOMP
+
+
+
+=item PRE_CHOMP
+
+
+
+=item PRE_DEFINE
+
+
+
+=item RECURSION
+
+
+
+=item RELATIVE
+
+
+
+=item START_TAG
+
+
+
+=item TAG_STYLE
+
+
+=item TRIM
+
+Remove leading and trailing whitespace from blocks and templates.
+This operation is performed after all enclosed template tags have
+been executed.
+
+=item VARIABLES
+
+A hashref of variables to initialize the template stash with.  These
+variables are available for use in any of the executed templates.
+
+=back
+
+
+
+=head1 UNSUPPORTED TT CONFIGURATION
+
+=over 4
+
+=item PRE_PROCESS
+
+=item POST_PROCESS
+
+=item PROCESS
+
+=item WRAPPER
+
+=item ERROR
+
+=item V1DOLLAR
+
+=item LOAD_TEMPLATES
+
+CGI::Ex::Template has its own mechanism for loading and storing
+compiled templates.  TT would use a Template::Provider that would
+return a Template::Document.  The closest thing in CGI::Ex::Template
+is the load_parsed_template method.  There is no immediate plan to
+support the TT behavior.
+
+=item LOAD_PLUGINS
+
+CGI::Ex::Template uses its own mechanism for loading plugins.  TT
+would use a Template::Plugins object to load plugins requested via the
+USE directive.  The functionality for doing this in CGI::Ex::Template
+is contained in the list_plugins method and the play_USE method.  There
+is no immediate plan to support the TT behavior.
+
+Full support is offered for the PLUGINS and LOAD_PERL configuration items.
+
+Also note that CGI::Ex::Template only natively supports the Iterator plugin.
+Any of the other plugins requested will need to provided by installing
+Template::Toolkit or the appropriate module.
+
+=item LOAD_FILTERS
+
+CGI::Ex::Template uses its own mechanism for loading filters.  TT
+would use the Template::Filters object to load filters requested via the
+FILTER directive.  The functionality for doing this in CGI::Ex::Template
+is contained in the list_filters method and the vivify_variable method.
+
+Full support is offered for the FILTERS configuration item.
+
+=item TOLERANT
+
+This option is used by the LOAD_TEMPLATES and LOAD_PLUGINS options and
+is not available in CGI::Ex::Template.
+
+=item SERVICE
+
+CGI::Ex::Template has no concept of service.
+
+=item CONTEXT
+
+CGI::Ex::Template provides its own pseudo context object to plugins,
+filters, and perl blocks.  The CGI::Ex::Template model doesn't really
+allow for a separate context.  CGI::Ex::Template IS the context.
+
+=item STASH
+
+CGI::Ex::Template manages its own stash of variables.  A pseudo stash
+object is available via the pseudo context object for use in plugins,
+filters, and perl blocks.
+
+=item PARSER
+
+CGI::Ex::Template has its own built in parser.  It is available via
+the parse_tree method.
+
+=item GRAMMAR
+
+CGI::Ex::Template maintains its own grammar.  The grammar is defined
+in the parse_tree method and the callbacks listed in the global
+$DIRECTIVES hashref.
+
+=back
+
 
 =head1 VARIABLE PARSE TREE
 
