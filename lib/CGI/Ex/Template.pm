@@ -28,7 +28,6 @@ BEGIN {
         html     => ['<!--', '-->'], # HTML comments
     };
 
-    ### list out the virtual methods
     $SCALAR_OPS = {
         indent  => \&vmethod_indent,
         hash    => sub { {value => $_[0]} },
@@ -73,159 +72,46 @@ BEGIN {
     };
 
     $DIRECTIVES = {
-        BLOCK   => {
-            parse  => \&parse_BLOCK,
-            play   => \&play_BLOCK,
-            block  => 1,
-            move_to_front => 1,
-        },
-        BREAK   => { control => 1 },
-        CALL    => {
-            parse  => \&parse_CALL,
-            play   => \&play_CALL,
-        },
-        CASE    => {
-            parse => \&parse_CASE,
-            play  => sub {},
-            continue_block => {SWITCH => 1, CASE => 1},
-        },
-        CATCH   => {
-            parse => \&parse_CATCH,
-            play  => sub {},
-            continue_block => {TRY => 1, CATCH => 1},
-        },
-        CLEAR   => { control => 1 },
-        '#'     => {
-            parse  => sub {},
-            play   => sub {},
-        },
-        DEBUG   => {
-            parse  => \&parse_DEBUG,
-            play   => \&play_DEBUG,
-        },
-        DEFAULT => {
-            parse  => \&parse_DEFAULT,
-            play   => \&play_DEFAULT,
-        },
-        ELSE    => {
-            parse => sub {},
-            play  => sub {},
-            continue_block => {IF => 1, ELSIF => 1, UNLESS => 1},
-        },
-        ELSIF   => {
-            parse => \&parse_IF,
-            play  => sub {},
-            continue_block => {IF => 1, ELSIF => 1, UNLESS => 1},
-        },
-        END     => {}, # builtin that cannot be overridden
-        FILTER  => {
-            parse  => \&parse_FILTER,
-            play   => \&play_FILTER,
-            block  => 1,
-            postop => 1,
-        },
-        '|'     => {
-            parse  => \&parse_FILTER,
-            play   => \&play_FILTER,
-            block  => 1,
-            postop => 1,
-        },
-        FINAL   => {
-            parse  => sub {},
-            play   => sub {},
-            continue_block => {TRY => 1, CATCH => 1},
-        },
-        FOR     => {
-            parse  => \&parse_FOREACH,
-            play   => \&play_FOREACH,
-            block  => 1,
-            postop => 1,
-        },
-        FOREACH => {
-            parse  => \&parse_FOREACH,
-            play   => \&play_FOREACH,
-            block  => 1,
-            postop => 1,
-        },
-        GET     => {
-            parse  => \&parse_GET,
-            play   => \&play_GET,
-        },
-        IF      => {
-            parse  => \&parse_IF,
-            play   => \&play_IF,
-            block  => 1,
-            postop => 1,
-        },
-        INCLUDE => {
-            parse  => \&parse_INCLUDE,
-            play   => \&play_INCLUDE,
-        },
-        INSERT  => {
-            parse  => \&parse_INSERT,
-            play   => \&play_INSERT,
-        },
-        LAST    => { control => 1 },
-        MACRO   => {
-            parse  => \&parse_MACRO,
-            play   => \&play_MACRO,
-        },
-        META    => {
-            parse  => \&parse_META,
-            play   => \&play_META,
-        },
-        NEXT    => { control => 1 },
-        PERL    => {
-            parse  => \&parse_PERL,
-            play   => \&play_PERL,
-            block  => 1,
-        },
-        PROCESS => {
-            parse  => \&parse_PROCESS,
-            play   => \&play_PROCESS,
-        },
-        RETURN  => { control => 1 },
-        SET     => {
-            parse  => \&parse_SET,
-            play   => \&play_SET,
-        },
-        STOP    => { control => 1 },
-        SWITCH  => {
-            parse  => \&parse_SWITCH,
-            play   => \&play_SWITCH,
-            block  => 1,
-        },
-        TAGS    => {}, # builtin that cannot be overridden
-        THROW   => {
-            parse  => \&parse_THROW,
-            play   => \&play_THROW,
-        },
-        TRY     => {
-            parse  => sub {},
-            play   => \&play_TRY,
-            block  => 1,
-        },
-        UNLESS  => {
-            parse  => \&parse_UNLESS,
-            play   => \&play_UNLESS,
-            block  => 1,
-            postop => 1,
-        },
-        USE     => {
-            parse  => \&parse_USE,
-            play   => \&play_USE,
-        },
-        WHILE   => {
-            parse  => \&parse_WHILE,
-            play   => \&play_WHILE,
-            block  => 1,
-            postop => 1,
-        },
-        WRAPPER => {
-            parse  => \&parse_WRAPPER,
-            play   => \&play_WRAPPER,
-            block  => 1,
-        },
+        #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
+        BLOCK   => [\&parse_BLOCK,   \&play_BLOCK,    1,       0,       0,        1],
+        BREAK   => [sub {},          \&play_control],
+        CALL    => [\&parse_CALL,    \&play_CALL],
+        CASE    => [\&parse_CASE,    undef,           0,       0,       {SWITCH => 1, CASE => 1}],
+        CATCH   => [\&parse_CATCH,   undef,           0,       0,       {TRY => 1, CATCH => 1}],
+        CLEAR   => [sub {},          \&play_CLEAR],
+        '#'     => [sub {},          sub {}],
+        DEBUG   => [\&parse_DEBUG,   \&play_DEBUG],
+        DEFAULT => [\&parse_DEFAULT, \&play_DEFAULT],
+        ELSE    => [sub {},          undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
+        ELSIF   => [\&parse_IF,      undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
+        END     => [undef,           sub {}],
+        FILTER  => [\&parse_FILTER,  \&play_FILTER,   1,       1],
+        '|'     => [\&parse_FILTER,  \&play_FILTER,   1,       1],
+        FINAL   => [sub {},          undef,           0,       0,       {TRY => 1, CATCH => 1}],
+        FOR     => [\&parse_FOREACH, \&play_FOREACH,  1,       1],
+        FOREACH => [\&parse_FOREACH, \&play_FOREACH,  1,       1],
+        GET     => [\&parse_GET,     \&play_GET],
+        IF      => [\&parse_IF,      \&play_IF,       1,       1],
+        INCLUDE => [\&parse_INCLUDE, \&play_INCLUDE],
+        INSERT  => [\&parse_INSERT,  \&play_INSERT],
+        LAST    => [sub {},          \&play_control],
+        MACRO   => [\&parse_MACRO,   \&play_MACRO],
+        META    => [\&parse_META,    \&play_META],
+        NEXT    => [sub {},          \&play_control],
+        PERL    => [\&parse_PERL,    \&play_PERL,     1],
+        PROCESS => [\&parse_PROCESS, \&play_PROCESS],
+        RETURN  => [sub {},          \&play_control],
+        SET     => [\&parse_SET,     \&play_SET],
+        STOP    => [sub {},          \&play_control],
+        SWITCH  => [\&parse_SWITCH,  \&play_SWITCH,   1],
+        TAGS    => [undef,           sub {}],
+        THROW   => [\&parse_THROW,   \&play_THROW],
+        TRY     => [sub {},          \&play_TRY,      1],
+        UNLESS  => [\&parse_UNLESS,  \&play_UNLESS,   1,       1],
+        USE     => [\&parse_USE,     \&play_USE],
+        WHILE   => [\&parse_WHILE,   \&play_WHILE,    1,       1],
+        WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1],
+        #name       #parse_sub       #play_sub        #block   #postdir
     };
     $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= \s|$|;) }x;
 
@@ -577,7 +463,7 @@ sub parse_tree {
             }
 
             ### anything that behaves as a block ending
-            if ($func eq 'END' || $DIRECTIVES->{$func}->{'continue_block'}) {
+            if ($func eq 'END' || $DIRECTIVES->{$func}->[4]) {
                 if ($#state == -1) {
                     $self->throw('parse', "Found an $func while not in a block", $node);
                 }
@@ -587,7 +473,7 @@ sub parse_tree {
                     pop @$pointer; # we will store the node in the parent instead
                     $parent_node->[5] = $node;
                     my $parent_type = $parent_node->[0];
-                    if (! $DIRECTIVES->{$func}->{'continue_block'}->{$parent_type}) {
+                    if (! $DIRECTIVES->{$func}->[4]->{$parent_type}) {
                         $self->throw('parse', "Found unmatched nested block", $node, 0);
                     }
                 }
@@ -597,7 +483,7 @@ sub parse_tree {
 
                 ### normal end block
                 if ($func eq 'END') {
-                    if ($DIRECTIVES->{$parent_node->[0]}->{'move_to_front'}) { # move things like BLOCKS to front
+                    if ($DIRECTIVES->{$parent_node->[0]}->[5]) { # move things like BLOCKS to front
                         push @move_to_front, $parent_node;
                         if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
                             splice(@$pointer, -1, 1, ());
@@ -606,7 +492,7 @@ sub parse_tree {
 
                 ### continuation block - such as an elsif
                 } else {
-                    $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $node) };
+                    $node->[3] = eval { $DIRECTIVES->{$func}->[0]->($self, \$tag, $node) };
                     if (my $err = $@) {
                         $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                         die $err;
@@ -625,15 +511,13 @@ sub parse_tree {
                 $len_s = length $START;
                 $len_e = length $END;
 
-            } elsif ($DIRECTIVES->{$func}->{'control'}) {
-                # do nothing
             } else {
-                $node->[3] = eval { $DIRECTIVES->{$func}->{'parse'}->($self, \$tag, $node) };
+                $node->[3] = eval { $DIRECTIVES->{$func}->[0]->($self, \$tag, $node) };
                 if (my $err = $@) {
                     $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
                 }
-                if ($DIRECTIVES->{$func}->{'block'} && ! $postop) {
+                if ($DIRECTIVES->{$func}->[2] && ! $postop) {
                     push @state, $node;
                     $pointer = $node->[4] ||= [];
                 }
@@ -644,7 +528,7 @@ sub parse_tree {
             push @$pointer, $node;
             if ($tag =~ s{ ^ = \s* }{}x) {
                 $node->[0] = 'SET';
-                $node->[3] = eval { $DIRECTIVES->{'SET'}->{'parse'}->($self, \$tag, $node, $var) };
+                $node->[3] = eval { $DIRECTIVES->{'SET'}->[0]->($self, \$tag, $node, $var) };
                 if (my $err = $@) {
                     $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
@@ -686,7 +570,7 @@ sub parse_tree {
         } elsif ($tag =~ $QR_DIRECTIVE                         # find a word
                  && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
                  && $DIRECTIVES->{$func}                       # is it a directive
-                 && $DIRECTIVES->{$func}->{'postop'}) {
+                 && $DIRECTIVES->{$func}->[3]) {               # it is a postoperative directive
             $continue  = $j - length $tag;
             $node->[2] = $continue;
             $postop    = $node;
@@ -706,6 +590,7 @@ sub parse_tree {
         $self->throw('parse.missing.end', "Missing END", $state[-1], 0);
     }
 
+    ### pull off the last text portion - if any
     if ($last != length($$str_ref)) {
         my $text  = substr($$str_ref, $last, length($$str_ref) - $last);
         my $_last = $last;
@@ -744,25 +629,9 @@ sub execute_tree {
 
         $$out_ref .= $self->debug_node($node) if $self->{'_debug_dirs'} && ! $self->{'_debug_off'};
 
-        ### allow for the null directives
-        if ($node->[0] eq 'END' || $node->[0] eq 'TAGS') {
-            next;
-
-        ### allow for control directives
-        } elsif ($DIRECTIVES->{$node->[0]}->{'control'}) {
-            if ($node->[0] eq 'CLEAR') {
-                $$out_ref = '';
-                next;
-            }
-            $self->throw($node->[0], 'Control exception', $node);
-
-        ### normal directive
-        } else {
-            my $val = $DIRECTIVES->{$node->[0]}->{'play'}->($self, $node->[3], $node, $out_ref);
-            $$out_ref .= $val if defined $val;
-        }
+        my $val = $DIRECTIVES->{$node->[0]}->[1]->($self, $node->[3], $node, $out_ref);
+        $$out_ref .= $val if defined $val;
     }
-
 }
 
 ###----------------------------------------------------------------###
@@ -1459,9 +1328,9 @@ sub play_BLOCK {
     return;
 }
 
-sub parse_CALL { $DIRECTIVES->{'GET'}->{'parse'}->(@_) }
+sub parse_CALL { $DIRECTIVES->{'GET'}->[0]->(@_) }
 
-sub play_CALL { $DIRECTIVES->{'GET'}->{'play'}->(@_); return }
+sub play_CALL { $DIRECTIVES->{'GET'}->[1]->(@_); return }
 
 sub parse_CASE {
     my ($self, $tag_ref) = @_;
@@ -1472,6 +1341,16 @@ sub parse_CASE {
 sub parse_CATCH {
     my ($self, $tag_ref) = @_;
     return $self->parse_variable($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
+}
+
+sub play_control {
+    my ($self, $undef, $node) = @_;
+    $self->throw($node->[0], 'Control exception', $node);
+}
+
+sub play_CLEAR {
+    my ($self, $undef, $node, $out_ref) = @_;
+    $$out_ref = '';
 }
 
 sub parse_DEBUG {
@@ -1496,7 +1375,7 @@ sub play_DEBUG {
     }
 }
 
-sub parse_DEFAULT { $DIRECTIVES->{'SET'}->{'parse'}->(@_) }
+sub parse_DEFAULT { $DIRECTIVES->{'SET'}->[0]->(@_) }
 
 sub play_DEFAULT {
     my ($self, $set) = @_;
@@ -1545,7 +1424,7 @@ sub play_FILTER {
 
     my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
 
-    return $DIRECTIVES->{'GET'}->{'play'}->($self, $var, $node, $out_ref);
+    return $DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
 }
 
 sub parse_FOREACH {
@@ -1682,7 +1561,7 @@ sub play_IF {
     return;
 }
 
-sub parse_INCLUDE { $DIRECTIVES->{'PROCESS'}->{'parse'}->(@_) }
+sub parse_INCLUDE { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_INCLUDE {
     my ($self, $tag_ref, $node, $out_ref) = @_;
@@ -1695,7 +1574,7 @@ sub play_INCLUDE {
     my $blocks = $self->{'BLOCKS'};
     local $self->{'BLOCKS'} = {%$blocks};
 
-    my $str = $DIRECTIVES->{'PROCESS'}->{'play'}->($self, $tag_ref, $node, $out_ref);
+    my $str = $DIRECTIVES->{'PROCESS'}->[1]->($self, $tag_ref, $node, $out_ref);
 
     return $str;
 }
@@ -1956,7 +1835,7 @@ sub play_SET {
     return;
 }
 
-sub parse_SWITCH { $DIRECTIVES->{'GET'}->{'parse'}->(@_) }
+sub parse_SWITCH { $DIRECTIVES->{'GET'}->[0]->(@_) }
 
 sub play_SWITCH {
     my ($self, $var, $node, $out_ref) = @_;
@@ -2060,11 +1939,11 @@ sub play_TRY {
 }
 
 sub parse_UNLESS {
-    my $ref = $DIRECTIVES->{'IF'}->{'parse'}->(@_);
+    my $ref = $DIRECTIVES->{'IF'}->[0]->(@_);
     return [ \ [ '!', $ref ], 0 ];
 }
 
-sub play_UNLESS { return $DIRECTIVES->{'IF'}->{'play'}->(@_) }
+sub play_UNLESS { return $DIRECTIVES->{'IF'}->[1]->(@_) }
 
 sub parse_USE {
     my ($self, $tag_ref) = @_;
@@ -2200,7 +2079,7 @@ sub play_WHILE {
     return undef;
 }
 
-sub parse_WRAPPER { $DIRECTIVES->{'INCLUDE'}->{'parse'}->(@_) }
+sub parse_WRAPPER { $DIRECTIVES->{'INCLUDE'}->[0]->(@_) }
 
 sub play_WRAPPER {
     my ($self, $var, $node, $out_ref) = @_;
@@ -2210,7 +2089,7 @@ sub play_WRAPPER {
     $self->execute_tree($sub_tree, \$out);
 
     local $self->{'_vars'}->{'content'} = $out;
-    return $DIRECTIVES->{'INCLUDE'}->{'play'}->(@_)
+    return $DIRECTIVES->{'INCLUDE'}->[1]->(@_)
 }
 
 ###----------------------------------------------------------------###
