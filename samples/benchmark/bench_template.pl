@@ -42,9 +42,13 @@ my $swap = {
 #$swap->{$_} = $_ for (1 .. 1000); # swap size affects benchmark speed
 
 ### set a few globals that will be available in our subs
-my @run = @ARGV;
+my $show_list = grep {$_ eq '--list'} @ARGV;
+my $run_all   = grep {$_ eq '--all'}  @ARGV;
+my @run = $run_all ? () : @ARGV;
 my $str_ref;
 my $filename;
+
+
 
 ###----------------------------------------------------------------###
 
@@ -98,6 +102,17 @@ my $tests = {                                                            #      
     _39_filtervar => "[% 'hi' | \$filt %]",                              #  167%  #  738%  #  514%  #
     _40_filteruri => "[% ' ' | uri %]",                                  #  137%  #  742%  #  484%  #
 };
+
+if ($show_list) {
+    seek DATA, 0, 0;
+    local $/ = undef;
+    my $data = <DATA>;
+    foreach my $key (sort keys %$tests) {
+        $data =~ m/([^\S\n]+\Q$key\E.*)/ || next;
+        print "$1\n";
+    }
+    exit;
+}
 
 ###----------------------------------------------------------------###
 
@@ -241,11 +256,14 @@ foreach my $test_name (@run) {
             '1 cached_in_memory           ' => '',
             '2 new_object                 ' => '_n',
             '3 cached_on_file (new_object)' => '_c_n',
+            '4 string reference           ' => 'str',
         };
         foreach my $type (sort keys %$hash) {
             my $suffix = $hash->{$type};
-            my $ct = $r->{"file_CT$suffix"};
-            my $tt = $r->{"file_TT$suffix"};
+            my $prefix = 'file';
+            ($prefix, $suffix) = ('str', '') if $suffix eq 'str';
+            my $ct = $r->{"${prefix}_CT$suffix"};
+            my $tt = $r->{"${prefix}_TT$suffix"};
             my $ct_s = $ct->iters / ($ct->cpu_a || 1);
             my $tt_s = $tt->iters / ($tt->cpu_a || 1);
             my $p = int(100 * ($ct_s - $tt_s) / ($tt_s || 1));
@@ -277,3 +295,4 @@ foreach my $test_name (@run) {
 print $output;
 
 #print `ls -lR $tt_cache_dir`;
+__DATA__
