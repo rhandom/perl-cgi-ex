@@ -30,40 +30,15 @@ BEGIN {
 
     ### list out the virtual methods
     $SCALAR_OPS = {
-        indent  => sub {
-            my $str = shift; $str = '' if ! defined $str;
-            my $n   = shift; $n   = 4  if ! defined $n;
-            my $ind = ' ' x $n;
-            $str =~ s/^/$ind/mg;
-            return $str;
-        },
+        indent  => \&vmethod_indent,
         hash    => sub { {value => $_[0]} },
         length  => sub { defined($_[0]) ? length($_[0]) : 0 },
-        match   => sub {
-            my ($str, $pat, $global) = @_;
-            return [] if ! defined $str || ! defined $pat;
-            return [$str =~ /$pat/g] if $global;
-            return [$str =~ /$pat/ ];
-        },
-        repeat  => sub {
-            my ($str, $n, $join) = @_;
-            return if ! length $str;
-            $n = 1 if ! defined($n) || ! length $n;
-            $join = '' if ! defined $join;
-            return join $join, ($str) x $n;
-        },
+        match   => \&vmethod_match,
+        repeat  => \&vmethod_repeat,,
         replace => \&vmethod_replace,
         size    => sub { 1 },
-        split   => sub {
-            my ($str, $pat, @args) = @_;
-            $str = ''  if ! defined $str;
-            $pat = ' ' if ! defined $pat;
-            return [split $pat, $str, @args];
-        },
-        substr  => sub {
-            my ($str, $i, $len) = @_;
-            return substr $str, $i, $len;
-        },
+        split   => \&vmethod_split,
+        substr  => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
     };
 
     $LIST_OPS = {
@@ -306,7 +281,7 @@ sub new {
 
 ###----------------------------------------------------------------###
 
-sub swap {
+sub _swap {
     my $self = shift;
     my $file = shift;
     local $self->{'_vars'} = shift || {};
@@ -513,7 +488,7 @@ sub parse_tree {
     my $i = 0;            # start index
     my $j = 0;            # end index
     my $last = 0;         # previous end index
-    my $post_chomp = 0;   # previous post_chomp setting
+    my $post_chomp = '+'; # previous post_chomp setting
     my $continue;         # multiple directives in the same tag
     my $postop;           # found a post-operative DIRECTIVE
     my $capture;          # flag to start capture
@@ -530,18 +505,24 @@ sub parse_tree {
         } else {
             $i = index($$str_ref, $START, $last);
             last if $i == -1;
+
+            ### if we find a node and there is text inbetween this and the last, generate a text node
             if ($last != $i) {
                 my $text  = substr($$str_ref, $last, $i - $last);
                 my $_last = $last;
-                if ($post_chomp) {
-                    $_last -= length($1) + ($post_chomp == 2 ? 1 : 0)
-                        if $text =~ s{ ^ ([^\S\n]* \n) }{($post_chomp == 2) ? ' ' : ''}xe;
+                if ($post_chomp ne '+') {
+                    if    ($post_chomp eq '-') { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
+                    elsif ($post_chomp eq '~') { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
+                    elsif ($post_chomp eq '=') { $_last += length($1) + 1 if $text =~ s{ ^ ([^\S\n]* \n) }{ }x }
+                    elsif ($post_chomp eq '^') { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
                 }
                 if (length $text) {
                     push @$pointer, $text;
                     $self->interpolate_node($pointer, -1, $_last) if $self->{'INTERPOLATE'};
                 }
             }
+
+            ### finish getting the current tag node
             $j = index($$str_ref, $END, $i + $len_s);
             $last = $j + $len_e;
             if ($j == -1) { # missing closing tag
@@ -551,16 +532,17 @@ sub parse_tree {
             $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $node = [undef, $i + $len_s, $j];
 
-            ### take care of whitespace and comments
-            my $pre  = $tag =~ s{ ^ ([\#+=-]*) }{}x ? $1 : '';
-            my $post = $tag =~ s{ ([\#+=-]+) $ }{}x ? $1 : '';
-            my $pre_chomp = ($pre  =~ /([-=])/) ? ($1 eq '-' ? 1 : 2) : ($pre  =~ /\+/) ? 0 : $self->{'PRE_CHOMP'};
-            $post_chomp   = ($post =~ /([-=])/) ? ($1 eq '-' ? 1 : 2) : ($post =~ /\+/) ? 0 : $self->{'POST_CHOMP'};
-            if ($pre_chomp && $pointer->[-1] && ! ref $pointer->[-1]) {
-                $pointer->[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{($pre_chomp == 2) ? ' ' : ''}xme;
+            ### look for chomp flags and comments in the tag
+            my $pre_chomp = $tag =~ s{ ^ ([+=~^-]) }{}x ? $1 : $self->{'_pre_chomp'};
+            $post_chomp   = $tag =~ s{ ([+=~^-]) $ }{}x ? $1 : $self->{'_post_chomp'};
+            if ($pre_chomp ne '+' && $pointer->[-1] && ! ref $pointer->[-1]) {
+                if    ($pre_chomp eq '-') { $pointer->[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{}x  }
+                elsif ($pre_chomp eq '~') { $pointer->[-1] =~ s{             (\s+) \z }{}x  }
+                elsif ($pre_chomp eq '=') { $pointer->[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{ }x }
+                elsif ($pre_chomp eq '^') { $pointer->[-1] =~ s{             (\s+) \z }{ }x }
                 splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
             }
-            if ($pre =~ /\#/) { # leading # means to comment the entire section
+            if ($tag =~ m / ^ \# /x) { # leading # means to comment the entire section
                 $node->[0] = '#';
                 push @$pointer, $node;
                 next;
@@ -727,9 +709,11 @@ sub parse_tree {
     if ($last != length($$str_ref)) {
         my $text  = substr($$str_ref, $last, length($$str_ref) - $last);
         my $_last = $last;
-        if ($post_chomp) {
-            $_last -= length($1) + ($post_chomp == 2 ? 1 : 0)
-                if $text =~ s{ ^ ([^\S\n]* \n) }{($post_chomp == 2) ? ' ' : ''}xe;
+        if ($post_chomp ne '+') {
+            if    ($post_chomp eq '-') { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
+            elsif ($post_chomp eq '~') { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
+            elsif ($post_chomp eq '=') { $_last += length($1) + 1 if $text =~ s{ ^ ([^\S\n]* \n) }{ }x }
+            elsif ($post_chomp eq '^') { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
         }
         if (length $text) {
             push @$pointer, $text;
@@ -1903,7 +1887,7 @@ sub play_PROCESS {
 
         my $out = '';
         eval {
-            $self->swap($filename, $self->{'_vars'}, \$out); # restart the swap - passing it our current stash
+            $self->_swap($filename, $self->{'_vars'}, \$out); # restart the swap - passing it our current stash
         };
         $$out_ref .= $out if length $out;
         if (my $err = $@) {
@@ -2325,13 +2309,17 @@ sub process {
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
         local $self->{'_start_top_level'} = 1;
 
+        local $self->{'_pre_chomp'}  = $self->{'PRE_CHOMP'}  || '+';
+        local $self->{'_post_chomp'} = $self->{'POST_CHOMP'} || '+';
+        tr/01234/+-=~^/ for $self->{'_pre_chomp'}, $self->{'_post_chomp'};
+
         ### "enable" debugging - we only support DEBUG_DIRS
         local $self->{'_debug_dirs'} = $self->{'DEBUG'}
             && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 8 : $self->{'DEBUG'} =~ /dirs|all/);
         delete $self->{'_debug_off'};
         delete $self->{'_debug_format'};
 
-        return $self->swap($content, $copy, \$output);
+        return $self->_swap($content, $copy, \$output);
     };
     if (my $err = $@) {
         if ($err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/) {
@@ -2482,6 +2470,30 @@ sub get_line_number_by_index {
 }
 
 ###----------------------------------------------------------------###
+### vmethods
+
+sub vmethod_indent {
+    my $str = shift; $str = '' if ! defined $str;
+    my $n   = shift; $n   = 4  if ! defined $n;
+    my $ind = ' ' x $n;
+    $str =~ s/^/$ind/mg;
+    return $str;
+}
+
+sub vmethod_match {
+    my ($str, $pat, $global) = @_;
+    return [] if ! defined $str || ! defined $pat;
+    return [$str =~ /$pat/g] if $global;
+    return [$str =~ /$pat/ ];
+}
+
+sub vmethod_repeat {
+    my ($str, $n, $join) = @_;
+    return if ! length $str;
+    $n = 1 if ! defined($n) || ! length $n;
+    $join = '' if ! defined $join;
+    return join $join, ($str) x $n;
+}
 
 ### This method is a combination of my submissions along
 ### with work from Andy Wardley, Sergey Martynoff, Nik Clayton, and Josh Rosenbaum
@@ -2506,6 +2518,13 @@ sub vmethod_replace {
         $text =~ s{$pattern}{ $expand->($replace, [@-], [@+]) }e;
     }
     return $text;
+}
+
+sub vmethod_split {
+    my ($str, $pat, @args) = @_;
+    $str = ''  if ! defined $str;
+    $pat = ' ' if ! defined $pat;
+    return [split $pat, $str, @args];
 }
 
 ###----------------------------------------------------------------###
@@ -3342,6 +3361,10 @@ The following perl can be typed at the command line to view the parsed variable 
        use CGI::Ex::Template;
        use Data::Dumper;
        print Dumper(CGI::Ex::Template->new->parse_variable(\$a));'
+
+=head1 TODO
+
+Wait for TT3 and be sure to incorporate any remaining features.
 
 =head1 AUTHOR
 
