@@ -262,7 +262,7 @@ BEGIN {
                        !   95   unary_minus  95
                        *   90   /   90   div 90   DIV 90
                        %   90   mod 90   MOD 90
-                       +   85   -   85   _   85   ~   85   concat 85
+                       +   85   -   85   _   85   ~   85
                        <   80   >   80   <=  80   >=  80
                        lt  80   gt  80   le  80   ge  80
                        ==  75   !=  75   eq  75   ne  75
@@ -856,7 +856,7 @@ sub parse_variable {
                 push @var, \ $pieces[0];
                 $is_literal = 1;
             } else {
-                push @var, \ ['concat', @pieces];
+                push @var, \ ['~', @pieces];
             }
         }
         if ($ARGS->{'auto_quote'}){
@@ -1291,6 +1291,7 @@ sub vivify_variable {
                 $ref = $code->([$ref], $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } elsif (my $filter = $self->{'FILTERS'}->{$name} || $self->list_filters->{$name}) {
+                return if $ARGS->{'set_var'};
                 $filter = [$filter, 0] if UNIVERSAL::isa($filter, 'CODE');
                 if ($#$filter == 1 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
                     my $sub = $filter->[0];
@@ -1356,7 +1357,7 @@ sub play_operator {
     }
 
     ### do constructors and short-circuitable operators
-    if ($op eq 'concat' || $op eq '~' || $op eq '_') {
+    if ($op eq '~' || $op eq '_') {
         return join "", grep {defined} @{ $self->vivify_args($tree) };
     } elsif ($op eq 'arrayref') {
         return $self->vivify_args($tree, {list_context => 1});
@@ -1671,9 +1672,9 @@ sub parse_GET {
 }
 
 sub play_GET {
-    my ($self, $ref) = @_;
-    my $var = $self->vivify_variable($ref);
-    $var = $self->undefined($ref) if ! defined $var;
+    my ($self, $ident) = @_;
+    my $var = $self->vivify_variable($ident);
+    $var = $self->undefined($ident) if ! defined $var;
     my $ref = ref $var;
     return $var if ! $ref;
     return '' if $ref eq 'ARRAY' || $ref eq 'SCALAR' || $ref eq 'HASH';
@@ -2823,48 +2824,162 @@ the template are not available during the compile process.
 
 =head1 OPERATORS
 
-    # ..
-    # ()
-    # && and
-    # || or
-    # _ ~ concat
-    # +
-    # -
-    # / div
-    # *
-    # % mod
-    # ^ ** pow
-    # ! not
-    # arrayref
-    # hashref
-    # >
-    # >=
-    # <
-    # <=
-    # ==
-    # !=
-    # gt
-    # ge
-    # lt
-    # le
-    # eq
-    # ne
+The following operators are available in CGI::Ex::Template.  Except
+where noted these are the same operators available in TT.  They are
+listed in the order of their precedence (the higher the precedence the
+tighter it binds).
+
+=over 4
+
+=item C<**  ^  pow>
+
+Binary.  X raised to the Y power.  This isn't available in TT 2.14.
+
+    [% 2 ** 3 %] => 8
+
+=item C<!>
+
+Unary not.  Negation of the value.
+
+=item C<-  unary_minus>
+
+Unary minus.  Returns the value multiplied by -1.  The operator
+"unary_minus" is used internally by CGI::Ex::Template to provide for -
+to be listed in the precedence table twice.
+
+    [% a = 1 ; b = -a ; b %] => -1
+
+=item C<*>
+
+Binary. Multiplication.
+
+=item C</  div  DIV>
+
+Binary. Division.  Note that / is floating point division, but div and
+DIV are integer division.
+
+=item C<%  mod  MOD>
+
+Binary. Modulus.
+
+   [% 15 % 8 %] => 7
+
+=item C<+>
+
+Binary.  Addition.
+
+=item C<->
+
+Binary.  Minus.
+
+=item C<_  ~>
+
+Binary.  String concatenation.
+
+=item C<< <  >  <=  >= >>
+
+Binary.  Numerical comparators.
+
+=item C<lt  gt  le  ge>
+
+Binary.  String comparators.
+
+=item C<==  eq>
+
+Binary.  Equality test.  TT chose to use Perl's eq for both operators.
+
+=item C<!= ne>
+
+Binary.  Non-equality test.  TT chose to use Perl's ne for both
+operators.
+
+=item C<&&>
+
+Multiple arity.  And.  Both values must be true.  If all values are true, the last
+value is returned as the truth value.
+
+    [% 2 && 3 && 4 %] => 4
+
+=item C<||>
+
+Multiple arity.  Or.  The first true value is returned.
+
+    [% 0 || '' || 7 %] => 7
+
+=item C<..>
+
+Binary.  Range creator.  Returns an arrayref containing the values
+between and including the first and last arguments.
+
+    [% t = [1 .. 5] %] => variable t contains an array with 1,2,3,4, and 5
+
+In CGI::Ex::Template, because .. is an operator that returns an array, you may
+also specify the previous example as the following (this does not work in TT):
+
+    [% t = 1 .. 5 %] => variable t contains an array with 1,2,3,4, and 5
+
+CGI::Ex::Template provides special functionality to allow the arrayref
+returned by .. to be expanded fully into a [] construtor as in C<[1 .. 5]>.
+Because of this it is possible to place multiple ranges in the
+same [] constructor.  This is not available in TT.
+
+    [% t = [1..3, 5..7] %] => variable t contains an array with 1,2,3,5,6 and 7
+
+=item C<? :>
+
+Trinary.  Can be nested with other ?: pairs.
+
+    [% 1 ? 2 : 3 %] => 2
+    [% 0 ? 2 : 3 %] => 3
+
+=item C<not  NOT>
+
+Lower precedence version of the '!' operator.
+
+=item C<and  AND>
+
+Lower precedence version of the '&&' operator.
+
+=item C<or OR>
+
+Lower precedence version of the '||' operator.
+
+=item C<hashref>
+
+Multiple arity.  This operator is not used in TT.  It is used internally
+by CGI::Ex::Template to delay the creation of a hashref until the
+execution of the compiled template.
+
+=item C<arrayref>
+
+Multiple arity.  This operator is not used in TT.  It is used internally
+by CGI::Ex::Template to delay the creation of an arrayref until the
+execution of the compiled template.
+
+=back
 
 =head1 VARIABLE PARSE TREE
 
+CGI::Ex::Template parses templates into an tree of operations.  Even
+variable access is parsed into a tree.  This is done in a manner
+somewhat similar to the way that TT operates except that nested
+variables such as foo.bar|baz contain the '.' or '|' in between each
+name level.  The following table shows a variable and the
+corresponding parsed tree.
+
     one                [ 'one',  0 ]
     one()              [ 'one',  [] ]
-    one(two)           [ 'one',  [ ['two', 0] ] ]
     one.two            [ 'one',  0, '.', 'two',  0 ]
     one|two            [ 'one',  0, '|', 'two',  0 ]
-    one.$two           [ 'one',  0, '.', ['two', 0 ] ]
+    one.$two           [ 'one',  0, '.', ['two', 0 ], 0 ]
+    one(two)           [ 'one',  [ ['two', 0] ] ]
     one.${two().three} [ 'one',  0, '.', ['two', [], '.', 'three', 0], 0]
-    "one"              "one"
     2.34               2.34
+    "one"              "one"
     "one"|length       [ \"one", 0, '|', 'length', 0 ]
-    "one $a two"       [ \ [ 'concat', [\ 'one ', 0], ['a', 0], [\ ' two', 0 ] ], 0 ]
-    [0,1,2]            [ \ [ 'arrayref', 0, 1, 2 ], 0 ]
-    [0,1,2].size       [ \ [ 'arrayref', 0, 1, 2 ], 0, '.', 'size', 0 ]
+    "one $a two"       [ \ [ '~', 'one ', ['a', 0], ' two' ], 0 ]
+    [0, 1, 2]          [ \ [ 'arrayref', 0, 1, 2 ], 0 ]
+    [0, 1, 2].size     [ \ [ 'arrayref', 0, 1, 2 ], 0, '.', 'size', 0 ]
     ['a', a, $a ]      [ \ [ 'arrayref', 'a', ['a', 0], [['a', 0], 0] ], 0]
     {a  => 'b'}        [ \ [ 'hashref',  'a', 'b' ], 0 ]
     {a  => 'b'}.size   [ \ [ 'hashref',  'a', 'b' ], 0, '.', 'size', 0 ]
@@ -2874,10 +2989,36 @@ the template are not available during the compile process.
     a * (b + c)        [ \ [ '*', ['a', 0], [ \ ['+', ['b', 0], ['c', 0]], 0 ]], 0 ]
     (a + b)            [ \ [ '+', ['a', 0], ['b', 0] ]], 0 ]
     (a + b) * c        [ \ [ '*', [ \ [ '+', ['a', 0], ['b', 0] ], 0 ], ['c', 0] ], 0 ]
+    a ? b : c          [ \ [ '?', ['a', 0], ['b', 0], ['c', 0] ], 0 ]
+    a || b || c        [ \ [ '||', ['a', 0], ['b', 0], ['c', 0] ], 0 ]
+    ! a                [ \ [ '!', ['a', 0] ], 0 ]
 
-=head1 AUTHORS
+Some notes on the parsing.
 
-Paul Seamons <perlspam at seamons dot com>
+    Operators are parsed as part of the variable and become part of the variable tree.
+
+    Operators are stored in the variable tree using a reference to the arrayref - which
+    allows for quickly decending the parsed variable tree and determining that the next
+    node is an operator.
+
+    () can be used at any point to disambiguate precedence.
+
+    "Variables" that appear to be literal strings or literal numbers
+    are returned as the literal (no operator tree).
+
+    "Variables" that are literals that have an operator operating on them are stored
+    as a reference to that literal (scalar ref).
+
+The following perl can be typed at the command line to view the parsed variable tree.
+
+    perl -e 'my $a = "\"one \$a two\"";
+       use CGI::Ex::Template;
+       use Data::Dumper;
+       print Dumper(CGI::Ex::Template->new->parse_variable(\$a));'
+
+=head1 AUTHOR
+
+Paul Seamons <mail at seamons dot com>
 
 =cut
 
