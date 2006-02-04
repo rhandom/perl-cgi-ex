@@ -211,9 +211,9 @@ sub _swap {
 
     ### handle exceptions
     if (my $err = $@) {
-        $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
+        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
         $err->doc($doc) if $doc && $err->can('doc') && ! $err->doc;
-        die $err;
+        die $err if ! $self->{'_top_level'} || $err->type !~ /stop|return/;
     }
 
     return 1;
@@ -385,7 +385,7 @@ sub parse_tree {
     my $last = 0;         # previous end index
     my $post_chomp = 0;   # previous post_chomp setting
     my $continue;         # multiple directives in the same tag
-    my $postop;           # found a post-operative DIRECTIVE
+    my $post_op;           # found a post-operative DIRECTIVE
     my $capture;          # flag to start capture
     my $func;
     my $node;
@@ -446,7 +446,7 @@ sub parse_tree {
 
         if (! length $tag) {
             undef $continue;
-            undef $postop;
+            undef $post_op;
             next;
         }
 
@@ -458,11 +458,11 @@ sub parse_tree {
             $node->[0] = $func;
 
             ### store out this current node level
-            if ($postop) { # on a post operator - replace the original node with the new one
-                my @postop = @$postop;
-                @$postop = @$node;
-                $node = $postop;
-                $node->[4] = [\@postop];
+            if ($post_op) { # on a post operator - replace the original node with the new one
+                my @post_op = @$post_op;
+                @$post_op = @$node;
+                $node = $post_op;
+                $node->[4] = [\@post_op];
             } elsif ($capture) {
                 # do nothing
             } else{
@@ -534,7 +534,7 @@ sub parse_tree {
                     $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
                 }
-                if ($DIRECTIVES->{$func}->[2] && ! $postop) {
+                if ($DIRECTIVES->{$func}->[2] && ! $post_op) {
                     push @state, $node;
                     $pointer = $node->[4] ||= [];
                 }
@@ -574,28 +574,28 @@ sub parse_tree {
         if ($node->[6]) {
             $continue  = $j - length $tag;
             $node->[2] = $continue;
-            $postop    = undef;
+            $post_op   = undef;
             $capture   = $node;
 
         ### semi-colon = end of statement
         } elsif ($tag =~ s{ ^ ; \s* }{}x) {
             $continue  = $j - length $tag;
             $node->[2] = $continue;
-            $postop    = undef;
+            $post_op   = undef;
 
-        ### looking at a postoperator
+        ### looking at a post operator
         } elsif ($tag =~ $QR_DIRECTIVE                         # find a word
                  && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
                  && $DIRECTIVES->{$func}                       # is it a directive
-                 && $DIRECTIVES->{$func}->[3]) {               # it is a postoperative directive
+                 && $DIRECTIVES->{$func}->[3]) {               # it is a post operative directive
             $continue  = $j - length $tag;
             $node->[2] = $continue;
-            $postop    = $node;
+            $post_op   = $node;
 
         } else { # error
             $self->throw('parse', "Found trailing info \"$tag\"", $node) if length $tag;
             $continue = undef;
-            $postop   = undef;
+            $post_op  = undef;
         }
     }
 
@@ -1389,7 +1389,7 @@ sub parse_CATCH {
 
 sub play_control {
     my ($self, $undef, $node) = @_;
-    $self->throw($node->[0], 'Control exception', $node);
+    $self->throw(lc($node->[0]), 'Control exception', $node);
 }
 
 sub play_CLEAR {
@@ -1464,7 +1464,7 @@ sub play_FILTER {
     ### play the block
     my $out = '';
     eval { $self->execute_tree($sub_tree, \$out) };
-    die $@ if $@ && ! UNIVERSAL::isa($@, 'CGI::Ex::Template::Exception');
+    die $@ if $@ && ref($@) !~ /Template::Exception$/;
 
     my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
 
@@ -1515,8 +1515,8 @@ sub play_FOREACH {
             eval { $self->execute_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
                 if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
-                    next if $err->type =~ /NEXT/;
-                    last if $err->type =~ /LAST|BREAK/;
+                    next if $err->type =~ /next/;
+                    last if $err->type =~ /last|break/;
                 }
                 die $err;
             }
@@ -1543,8 +1543,8 @@ sub play_FOREACH {
             eval { $self->execute_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
                 if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
-                    next if $err->type =~ /NEXT/;
-                    last if $err->type =~ /LAST|BREAK/;
+                    next if $err->type =~ /next/;
+                    last if $err->type =~ /last|break/;
                 }
                 die $err;
             }
@@ -1736,7 +1736,7 @@ sub play_PERL {
     select $old_fh;
 
     if ($err) {
-        $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
+        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
         die $err;
     }
 
@@ -1811,9 +1811,8 @@ sub play_PROCESS {
 
             ### handle exceptions
             if (my $err = $@) {
-                $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
+                $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
                 $err->doc($doc) if $doc && $err->can('doc') && ! $err->doc;
-                die $err;
             }
 
         }
@@ -1821,7 +1820,7 @@ sub play_PROCESS {
         ### append any output
         $$out_ref .= $out if length $out;
         if (my $err = $@) {
-            die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
+            die $err if ref($err) !~ /Template::Exception$/ || $err->type !~ /return/;
         }
     }
 
@@ -1954,7 +1953,8 @@ sub play_TRY {
         $$out_ref = ''; # hack for tt behavior
         $self->throw('parse.missing', "Missing CATCH block", $node);
     }
-    $err = $self->exception('undef', $err) if $err && ! UNIVERSAL::can($err, 'type');
+    $err = $self->exception('undef', $err) if $err && ref($err) !~ /Template::Exception$/;
+    die $err if $err->type =~ /stop|return/;
 
     ### loop through the nested catch and final blocks
     my $catch_body_ref;
@@ -2121,8 +2121,8 @@ sub play_WHILE {
         eval { $self->execute_tree($sub_tree, $out_ref) };
         if (my $err = $@) {
             if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
-                next if $err->type =~ /NEXT/;
-                last if $err->type =~ /LAST|BREAK/;
+                next if $err->type =~ /next/;
+                last if $err->type =~ /last|break/;
             }
             die $err;
         }
@@ -2303,7 +2303,7 @@ sub process {
 
     };
     if (my $err = $@) {
-        if ($err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/) {
+        if ($err->type !~ /stop|return|next|last|break/) {
             $self->{'error'} = $err;
             return;
         }
@@ -3337,11 +3337,23 @@ the template are not available during the compile process.
 
 
 
+=item POST_PROCESS
+
+
+
 =item PRE_CHOMP
 
 
 
 =item PRE_DEFINE
+
+
+
+=item PRE_PROCESS
+
+
+
+=item PROCESS
 
 
 
@@ -3378,12 +3390,6 @@ variables are available for use in any of the executed templates.
 =head1 UNSUPPORTED TT CONFIGURATION
 
 =over 4
-
-=item PRE_PROCESS
-
-=item POST_PROCESS
-
-=item PROCESS
 
 =item WRAPPER
 
