@@ -29,6 +29,7 @@ BEGIN {
     };
 
     $SCALAR_OPS = {
+        chunk   => \&vmethod_chunk,
         indent  => \&vmethod_indent,
         hash    => sub { {value => $_[0]} },
         length  => sub { defined($_[0]) ? length($_[0]) : 0 },
@@ -41,18 +42,20 @@ BEGIN {
     };
 
     $LIST_OPS = {
+        first   => sub { $_[0]->[0] },
         grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
         hash    => sub { my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
         join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; return join $join, @$ref },
+        last    => sub { $_[0]->[-1] },
         list    => sub { $_[0] },
         max     => sub { $#{ $_[0] } },
-        nsort   => sub { [sort {$a->[1] <=> $b->[1]} @{ $_[0] } ] },
+        nsort   => \&vmethod_nsort,
         pop     => sub { pop @{ $_[0] } },
         push    => sub { my $ref = shift; push @$ref, @_; return '' },
         reverse => sub { [ reverse @{ $_[0] } ] },
         shift   => sub { shift @{ $_[0] } },
         size    => sub { $#{ $_[0] } + 1 },
-        sort    => sub { [map {$_->[0]} sort {$a->[1] cmp $b->[1]} map {[$_, lc $_]} @{ $_[0] } ] }, # case insensitive
+        sort    => \&vmethod_sort,
         unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
     };
 
@@ -525,7 +528,7 @@ sub parse_tree {
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_variable(\$tag))) {
             push @$pointer, $node;
-            if ($tag =~ s{ ^ = \s* }{}x) {
+            if ($tag =~ s{ ^ = >? \s* }{}x) {
                 $node->[0] = 'SET';
                 $node->[3] = eval { $DIRECTIVES->{'SET'}->[0]->($self, \$tag, $node, $var) };
                 if (my $err = $@) {
@@ -682,12 +685,16 @@ sub parse_variable {
     } elsif ($copy =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* }{}xs) {
         if ($1 eq "'") { # no interpolation on single quoted strings
             my $str = $2;
+            $str =~ s{ \\\' }{\'}xg;
             push @var, \ $str;
             $is_literal = 1;
         } else {
+            my $str = $2;
+            $str =~ s{ \\\" }{\"}xg;
+            $str =~ s{ \\n }{\n}xg;
             my @pieces = $ARGS->{'auto_quote'}
-                ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $2)  # autoquoted items get a single $\w+ - no nesting
-                : split(m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $2);
+                ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
+                : split(m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $str);
             my $n = 0;
             foreach my $piece (@pieces) {
                 next if ! ($n++ % 2);
@@ -1796,7 +1803,7 @@ sub parse_SET {
         } else {
             $set = $self->parse_variable($tag_ref);
             last if ! defined $set;
-            $get_val = $$tag_ref =~ s{ ^ = \s* }{}x;
+            $get_val = $$tag_ref =~ s{ ^ = >? \s* }{}x;
         }
         if (! $get_val) { # no next val
             $val = undef;
@@ -2363,6 +2370,22 @@ sub get_line_number_by_index {
 
 ###----------------------------------------------------------------###
 ### long virtual methods
+### many of these vmethods have used code from Template/Stash.pm to
+### assure conformance with the TT spec.
+
+sub vmethod_chunk {
+    my $str  = shift;
+    my $size = shift || 1;
+    my @list;
+    if ($size < 0) { # chunk from the opposite end
+        $str = reverse $str;
+        $size = -$size;
+        unshift(@list, scalar reverse $1) while $str =~ /( .{$size} | .+ )/xg;
+    } else {
+        push(@list, $1)                   while $str =~ /( .{$size} | .+ )/xg;
+    }
+    return \@list;
+}
 
 sub vmethod_indent {
     my $str = shift; $str = '' if ! defined $str;
@@ -2377,6 +2400,15 @@ sub vmethod_match {
     return [] if ! defined $str || ! defined $pat;
     return [$str =~ /$pat/g] if $global;
     return [$str =~ /$pat/ ];
+}
+
+sub vmethod_nsort {
+    my ($list, $field) = @_;
+    return defined($field)
+        ? [map {$_->[0]} sort {$a->[1] <=> $b->[1]} map {[$_, (ref $_ eq 'HASH' ? $_->{$field}
+                                                               : UNIVERSAL::can($_, $field) ? $_->$field()
+                                                               : $_)]} @$list ]
+        : [sort {$a <=> $b} @$list];
 }
 
 sub vmethod_repeat {
@@ -2410,6 +2442,15 @@ sub vmethod_replace {
         $text =~ s{$pattern}{ $expand->($replace, [@-], [@+]) }e;
     }
     return $text;
+}
+
+sub vmethod_sort {
+    my ($list, $field) = @_;
+    return defined($field)
+        ? [map {$_->[0]} sort {$a->[1] cmp $b->[1]} map {[$_, lc(ref $_ eq 'HASH' ? $_->{$field}
+                                                                 : UNIVERSAL::can($_, $field) ? $_->$field()
+                                                                 : $_)]} @$list ]
+        : [map {$_->[0]} sort {$a->[1] cmp $b->[1]} map {[$_, lc $_]} @$list ]; # case insensitive
 }
 
 sub vmethod_split {
