@@ -115,9 +115,9 @@ BEGIN {
     };
     $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= \s|$|;) }x;
 
-    $OPERATORS ||= {qw(**  99   ^   99   pow 99
-                       !   95   unary_minus  95
-                       \\  93
+    $OPERATORS ||= {qw(\\  99
+                       **  96   ^   96   pow 96
+                       !   93   unary_minus  93
                        *   90   /   90   div 90   DIV 90
                        %   90   mod 90   MOD 90
                        +   85   -   85   _   85   ~   85
@@ -989,10 +989,8 @@ sub vivify_variable {
             return if $ARGS->{'set_var'};
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') { # operator
-            if (${ $ref }->[0] eq '\\') {
-                return $self->play_operator($$ref);
-            }
             return if $ARGS->{'set_var'};
+            return $self->play_operator($$ref) if ${ $ref }->[0] eq '\\'; # return the closure
             $generated_list = 1 if ${ $ref }->[0] eq '..';
             $ref = $self->play_operator($$ref);
         } else { # a named variable access (ie via $name.foo)
@@ -2797,6 +2795,83 @@ listed in the order of their precedence (the higher the precedence the
 tighter it binds).
 
 =over 4
+
+=item C<.>
+
+Binary.  The dot operator.  Allows for accessing sub-members, methods, or
+virtual methods of nested data structures.
+
+    my $obj->process(\$content, {a => {b => [0, {c => [34, 57]}]}}, \$output);
+
+    [% a.b.1.c.0 %] => 34
+
+Note: on access to hashrefs, any hash keys that match the sub key
+name will be used before a virtual method of the same name.  For example if a
+passed hash contained pair with a keyname "defined" and a value of "2", then
+any calls to hash.defined(subkeyname) would always return 2 rather
+than using the vmethod named "defined."  To get around this limitation use the
+"|" operator (listed next).
+
+=item C<|>
+
+Binary.  The pipe operator.  Similar to the dot operator.  Allows for
+explicit calling of virtual methods and filters (filters are "merged"
+with virtual methods in CGI::Ex::Template and TT3) when accessing
+hashrefs.  See the note for the "." operator.
+
+The pipe character is similar to TT2 in that it can be used in place
+of a directive as an alias for FILTER.  It similar to TT3 in that it
+can be used for virtual method access.  This duality is one source of
+difference between CGI::Ex::Template and TT2 compatibility.  Templates
+that have directives that end with a variable name that then use the
+"|" directive to apply a filter will be broken as the "|" will be
+applied to the variable name.
+
+The following two cases will do the same thing.
+
+    [% foo | html %]
+
+    [% foo FILTER html %]
+
+Though they do the same thing, internally, foo|html is stored as a single
+variable while "foo FILTER html" is stored as the variable foo which is then
+passed to the the FILTER html.
+
+A TT2 sample that would break in CGI::Ex::Template or TT3 is:
+
+    [% PROCESS foo a = b | html %]
+
+Under TT2 the content returned by "PROCESS foo a = b" would all be
+passed to the html filter.  Under CGI::Ex::Template and TT3, b would
+be passed to the html filter before assigning it to the variable "a"
+before the template foo was processed.
+
+A simple fix is to do any of the following:
+
+    [% PROCESS foo a = b FILTER html %]
+
+    [% | html %][% PROCESS foo a = b %][% END %]
+
+    [% FILTER html %][% PROCESS foo a = b %][% END %]
+
+This shouldn't be too much hardship and offers the great return of disambiguating
+virtual method access.
+
+=item C<\>
+
+Unary.  The reference operator.  Not well publicized in TT.  Stores a reference
+to a variable for use later.  Can also be used to "alias" long names.
+
+    [% f = 7 ; foo = \f ; f = 8 ; foo %] => 8
+
+    [% foo = \f.g.h.i.j.k; f.g.h.i.j.k = 7; foo %] => 7
+
+    [% f = "abcd"; foo = \f.replace("ab", "-AB-") ; foo %] => -AB-cd
+
+    [% f = "abcd"; foo = \f.replace("bc") ; foo("-BC-") %] => a-BC-d
+
+    [% f = "abcd"; foo = \f.replace ; foo("cd", "-CD-") %] => ab-CD-
+
 
 =item C<**  ^  pow>
 
