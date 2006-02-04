@@ -100,7 +100,8 @@ BEGIN {
         INSERT  => [\&parse_INSERT,  \&play_INSERT],
         LAST    => [sub {},          \&play_control],
         MACRO   => [\&parse_MACRO,   \&play_MACRO],
-        META    => [\&parse_META,    \&play_META],
+        META    => [undef,           sub {}],
+        METADEF => [undef,           \&play_METADEF],
         NEXT    => [sub {},          \&play_control],
         PERL    => [\&parse_PERL,    \&play_PERL,     1],
         PROCESS => [\&parse_PROCESS, \&play_PROCESS],
@@ -115,7 +116,7 @@ BEGIN {
         USE     => [\&parse_USE,     \&play_USE],
         WHILE   => [\&parse_WHILE,   \&play_WHILE,    1,       1],
         WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1],
-        #name       #parse_sub       #play_sub        #block   #postdir
+        #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
     };
     $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= \s|$|;) }x;
 
@@ -270,6 +271,8 @@ sub load_parsed_tree {
                     my $_tree = $ref->{'tree'};
                     foreach my $node (@$_tree) {
                         next if ! ref $node;
+                        next if $node->[0] eq 'METADEF';
+                        last if $node->[0] ne 'BLOCK';
                         next if $block_name ne $node->[3];
                         $doc->{'content'} = $ref->{'content'};
                         $doc->{'tree'}    = $node->[4];
@@ -376,6 +379,7 @@ sub parse_tree {
     my @state;            # maintain block levels
     local $self->{'_state'} = \@state; # allow for items to introspect (usually BLOCKS)
     my @move_to_front;    # items that need to be declared first
+    my @meta;             # place to store any found meta information
     my $i = 0;            # start index
     my $j = 0;            # end index
     my $last = 0;         # previous end index
@@ -514,6 +518,16 @@ sub parse_tree {
                 $len_s = length $START;
                 $len_e = length $END;
 
+            } elsif ($func eq 'META') {
+                my $args = $self->parse_args(\$tag);
+                my $hash;
+                if (($hash = $self->vivify_args($args)->[-1])
+                    && UNIVERSAL::isa($hash, 'HASH')) {
+                    delete @{$hash}{qw(name modtime)};
+                    unshift @meta, %$hash; # first defined win
+                }
+
+            ### all other "normal" tags
             } else {
                 $node->[3] = eval { $DIRECTIVES->{$func}->[0]->($self, \$tag, $node) };
                 if (my $err = $@) {
@@ -587,6 +601,9 @@ sub parse_tree {
 
     if ($#move_to_front != -1) {
         unshift @tree, @move_to_front;
+    }
+    if ($#meta != -1) {
+        unshift @tree, ['METADEF', 0, 0, {@meta}];
     }
 
     if ($#state >  -1) {
@@ -1684,26 +1701,14 @@ sub play_MACRO {
     return;
 }
 
-sub parse_META {
-    my ($self, $tag_ref) = @_;
-
-    return $self->parse_args($tag_ref);
-}
-
-sub play_META {
-    my ($self, $args) = @_;
-    return if ! $args;
+sub play_METADEF {
+    my ($self, $hash) = @_;
     return if ! $self->{'_top_level'};
-
-    my $hash = $self->vivify_args($args)->[-1] || return;
-    return if ! UNIVERSAL::isa($hash, 'HASH');
-
     my $ref = $self->{'_vars'}->{'template'} ||= {};
     foreach my $key (keys %$hash) {
         next if $key eq 'name' || $key eq 'modtime';
         $ref->{$key} = $hash->{$key};
     }
-
     return;
 }
 
@@ -1783,11 +1788,37 @@ sub play_PROCESS {
     foreach my $ref (@$files) {
         next if ! defined $ref;
         my $filename = $self->vivify_variable($ref);
+        my $out = ''; # have temp item to allow clear to correctly clear
 
-        my $out = '';
-        eval {
-            $self->_swap($filename, $self->{'_vars'}, \$out); # restart the swap - passing it our current stash
-        };
+        ### normal blocks or filenames
+        if (! ref $filename) {
+            eval { $self->_swap($filename, $self->{'_vars'}, \$out) }; # restart the swap - passing it our current stash
+
+        ### allow for $template which is used in some odd instances
+        } else {
+            $self->throw('process', "Unable to process document $filename") if $ref->[0] ne 'template';
+            $self->throw('process', "Recursion detected in $node->[0] \$template") if $self->{'_process_dollar_template'};
+            local $self->{'_process_dollar_template'} = 1;
+            local $self->{'_template'} = my $doc = $filename;
+            return if ! $doc->{'tree'};
+
+            ### execute and trim
+            eval { $self->execute_tree($doc->{'tree'}, \$out) };
+            if ($self->{'TRIM'}) {
+                $out =~ s{ \s+ $ }{}x;
+                $out =~ s{ ^ \s+ }{}x;
+            }
+
+            ### handle exceptions
+            if (my $err = $@) {
+                $err = $self->exception('undef', $err) if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception');
+                $err->doc($doc) if $doc && $err->can('doc') && ! $err->doc;
+                die $err;
+            }
+
+        }
+
+        ### append any output
         $$out_ref .= $out if length $out;
         if (my $err = $@) {
             die $err if ! UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception') || $err->type !~ /RETURN/;
@@ -2143,12 +2174,7 @@ sub include_filename {
         $self->throw('file', "$file RELATIVE paths disabled") if ! $self->{'RELATIVE'};
         return $file if -e $file;
     } else {
-        my $paths = $self->include_path;
-        if (! ref $paths) {
-            my $delim = $self->{'DELIMITER'} || ':';
-            $delim = ($delim eq ':' && $^O eq 'MSWin32') ? qr|:(?!/)| : qr|\Q$delim\E|;
-            $paths = [split $delim, $paths];
-        }
+        my $paths = $self->split_paths($self->include_path);
         foreach my $item (@$paths) {
             my @path = UNIVERSAL::isa($item, 'CODE')  ? $item->()
                      : UNIVERSAL::can($item, 'paths') ? $item->paths
@@ -2161,6 +2187,14 @@ sub include_filename {
     }
 
     $self->throw('file', "$file: not found");
+}
+
+sub split_paths {
+    my ($self, $path) = @_;
+    return $path if ref $path;
+    my $delim = $self->{'DELIMITER'} || ':';
+    $delim = ($delim eq ':' && $^O eq 'MSWin32') ? qr|:(?!/)| : qr|\Q$delim\E|;
+    return [split $delim, $path];
 }
 
 sub include_file {
@@ -2218,9 +2252,9 @@ sub process {
         my $var2 = $self->{'VARIABLES'} || $self->{'PRE_DEFINE'} || {};
         $var1->{'global'} ||= {}; # allow for the "global" namespace - that continues in between processing
         my $copy = {%$var2, %$var1, %$swap};
+        local $copy->{'template'};
 
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
-        local $self->{'_start_top_level'} = 1;
 
         ### "enable" debugging - we only support DEBUG_DIRS
         local $self->{'_debug_dirs'} = $self->{'DEBUG'}
@@ -2228,7 +2262,45 @@ sub process {
         delete $self->{'_debug_off'};
         delete $self->{'_debug_format'};
 
-        return $self->_swap($content, $copy, \$output);
+        ### handle pre process items that go before every document
+        if ($self->{'PRE_PROCESS'}) {
+            foreach my $name (@{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
+                my $out = '';
+                $self->_swap($name, $copy, \$out);
+                $output = $out . $output if length $out;
+            }
+        }
+
+        ### handle the process config - which loads a template in place of the real one
+        if (exists $self->{'PROCESS'}) {
+            ### load the meta data for the top document
+            my $doc  = $self->load_parsed_tree($content) || {};
+            my $meta = ($doc->{'tree'} && ref($doc->{'tree'}->[0]) && $doc->{'tree'}->[0]->[0] eq 'METADEF')
+                ? $doc->{'tree'}->[0]->[3] : {};
+
+            $copy->{'template'} = $doc;
+            @{ $doc }{keys %$meta} = values %$meta;
+
+            ### process any other templates
+            foreach my $name (@{ $self->split_paths($self->{'PROCESS'}) }) {
+                next if ! length $name;
+                $self->_swap($name, $copy, \$output);
+            }
+
+        ### handle "normal" content
+        } else {
+            local $self->{'_start_top_level'} = 1;
+            $self->_swap($content, $copy, \$output);
+        }
+
+
+        ### handle post process items that go after every document
+        if ($self->{'POST_PROCESS'}) {
+            foreach my $name (@{ $self->split_paths($self->{'POST_PROCESS'}) }) {
+                $self->_swap($name, $copy, \$output);
+            }
+        }
+
     };
     if (my $err = $@) {
         if ($err->type !~ /STOP|RETURN|NEXT|LAST|BREAK/) {
@@ -2236,6 +2308,8 @@ sub process {
             return;
         }
     }
+
+
 
     ### clear blocks as asked (AUTO_RESET) defaults to on
     $self->{'BLOCKS'} = $blocks if exists($self->{'AUTO_RESET'}) && ! $self->{'AUTO_RESET'};
@@ -2367,7 +2441,7 @@ sub debug_node {
     my ($self, $node) = @_;
     my $doc = $self->{'_template'};
     my $i = $node->[1];
-    my $j = $node->[2];
+    my $j = $node->[2] || return ''; # METADEF can be 0
     $doc->{'content'} ||= do { my $s = $self->slurp($doc->{'filename'}) ; \$s };
     my $format = $self->{'_debug_format'} || $self->{'DEBUG_FORMAT'} || "\n## \$file line \$line : [% \$text %] ##\n";
     $format =~ s{\$file}{$doc->{name}}g;
