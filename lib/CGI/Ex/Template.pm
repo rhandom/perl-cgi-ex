@@ -1003,7 +1003,7 @@ sub vivify_variable {
         } else { # a named variable access (ie via $name.foo)
             $ref = $self->vivify_variable($ref);
             if (defined $ref) {
-                return if $ref =~ /^_/; # don't allow vars that begin with _
+                return if $ref =~ /^[_.]/; # don't allow vars that begin with _
                 if ($ARGS->{'set_var'}) {
                     if ($#$var <= $i) {
                         $self->{'_vars'}->{$ref} = $ARGS->{'var_val'};
@@ -1021,7 +1021,7 @@ sub vivify_variable {
         if ($ARGS->{'is_namespace_during_compile'}) {
             $ref = $self->{'NAMESPACE'}->{$ref};
         } else {
-            return if $ref =~ /^_/; # don't allow vars that begin with _
+            return if $ref =~ /^[_.]/; # don't allow vars that begin with _
             if ($ARGS->{'set_var'}) {
                 if ($#$var <= $i) {
                     $self->{'_vars'}->{$ref} = $ARGS->{'var_val'};
@@ -1054,7 +1054,6 @@ sub vivify_variable {
         my $name         = $var->[$i++];
         my $args         = $var->[$i++];
 
-
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
             if (ref($name) eq 'SCALAR') {
@@ -1063,16 +1062,26 @@ sub vivify_variable {
                 die "Shouldn't get a REF during a vivify on chain";
             } else {
                 $name = $self->vivify_variable($name);
-                if (! defined $name) {
+                if (! defined($name) || $name =~ /^[_.]/) {
                     $ref = undef;
                     next;
                 }
             }
         }
+        if ($name =~ /^_/) { # don't allow vars that begin with _
+            $ref = undef;
+            last;
+        }
 
         ### method calls on objects
         if (UNIVERSAL::can($ref, 'can')) {
-            my @results = eval { $ref->$name($args ? @{ $self->vivify_args($args) } : ()) };
+            my $lvalueish;
+            my @args = $args ? @{ $self->vivify_args($args) } : ();
+            if ($ARGS->{'set_var'} && $i >= $#$var) {
+                $lvalueish = 1;
+                push @args, $ARGS->{'var_val'};
+            }
+            my @results = eval { $ref->$name(@args) };
             if (! $@) {
                 if (defined $results[0]) {
                     $ref = ($#results > 0) ? \@results : $results[0];
@@ -1081,6 +1090,7 @@ sub vivify_variable {
                 } else {
                     $ref = undef;
                 }
+                return if $lvalueish;
                 next;
             }
             die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
@@ -1089,7 +1099,6 @@ sub vivify_variable {
 
         ### hash member access
         if (UNIVERSAL::isa($ref, 'HASH')) {
-            return if $name =~ /^_/; # don't allow vars that begin with _
             if ($ARGS->{'set_var'}) {
                 if ($#$var <= $i) {
                     $ref->{$name} = $ARGS->{'var_val'};
@@ -1913,6 +1922,7 @@ sub play_TRY {
         $$out_ref = ''; # hack for tt behavior
         $self->throw('parse.missing', "Missing CATCH block", $node);
     }
+    $err = $self->exception('undef', $err) if $err && ! UNIVERSAL::can($err, 'type');
 
     ### loop through the nested catch and final blocks
     my $catch_body_ref;
