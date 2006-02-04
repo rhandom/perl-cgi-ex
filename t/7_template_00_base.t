@@ -8,9 +8,10 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 449 - ($is_tt ? 59 : 0);
+use Test::More tests => 455 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
 use_ok($module);
+
 
 ###----------------------------------------------------------------###
 
@@ -709,3 +710,12 @@ process_ok("[% PERL %] print \"[% one %]\" [% END %]" => 'ONE', {one => 'ONE', t
 
 process_ok("[% BLOCK foo %][% PROCESS bar %][% END %][% BLOCK bar %][% PROCESS foo %][% END %][% PROCESS foo %]" => '') if ! $is_tt;
 
+###----------------------------------------------------------------###
+### refs
+
+process_ok("[% b=\\a; b %]" => 'a sub []', {a => sub { return "a sub [@_]" } });
+process_ok("[% \\a %]" => qr/^CODE/, {a => sub { return "a sub [@_]" } });
+process_ok("[% b=\\a(1); b %]" => 'a sub [1]', {a => sub { return "a sub [@_]" } });
+process_ok("[% b=\\a; b(2) %]" => 'a sub [2]', {a => sub { return "a sub [@_]" } });
+process_ok("[% b=\\a(1); b(2) %]" => 'a sub [1 2]', {a => sub { return "a sub [@_]" } });
+process_ok("[% f=\\j.k; j.k=7; f %]" => '7', {j => {k => 3}});
