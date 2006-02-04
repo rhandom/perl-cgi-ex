@@ -156,7 +156,7 @@ BEGIN {
 
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_AQ_NOTDOT = '(?! \s* \.)';
-    $QR_AQ_SPACE  = '(?: \s+ | $ | ;)';
+    $QR_AQ_SPACE  = '(?: \s+ | $ | (?=[;+]) )'; # the + comes into play on filenames
 
     $WHILE_MAX   = 1000;
     $EXTRA_COMPILE_EXT = '.sto';
@@ -1606,18 +1606,18 @@ sub play_INCLUDE {
     return $str;
 }
 
-sub parse_INSERT {
-    my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_variable($tag_ref, {auto_quote => qr{ ^ ($QR_FILENAME) $QR_AQ_SPACE }xo});
-    return $ref;
-}
+sub parse_INSERT { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_INSERT {
-    my ($self, $var) = @_;
-    return '' if ! $var;
-    my $filename = $self->vivify_variable($var);
+    my ($self, $var, $node, $out_ref) = @_;
+    my ($names, $args) = @$var;
 
-    return $self->include_file($filename);
+    foreach my $name (@$names) {
+        my $filename = $self->vivify_variable($name);
+        $$out_ref .= $self->include_file($filename);
+    }
+
+    return;
 }
 
 sub parse_MACRO {
@@ -2033,7 +2033,7 @@ sub play_USE {
         }
     }
     if (! $obj) {
-        my $err = $@ || "Unknown error while loading $module";
+        my $err = "$module: plugin not found";
         $self->throw('plugin', $err);
     }
 
@@ -2106,11 +2106,19 @@ sub play_WRAPPER {
     my ($self, $var, $node, $out_ref) = @_;
     my $sub_tree = $node->[4] || return;
 
+    my ($names, $args) = @$var;
+
     my $out = '';
     $self->execute_tree($sub_tree, \$out);
 
-    local $self->{'_vars'}->{'content'} = $out;
-    return $DIRECTIVES->{'INCLUDE'}->[1]->(@_)
+    foreach my $name (reverse @$names) {
+        local $self->{'_vars'}->{'content'} = $out;
+        $out = '';
+        $DIRECTIVES->{'INCLUDE'}->[1]->($self, [[$name], $args], $node, \$out);
+    }
+
+    $$out_ref .= $out;
+    return;
 }
 
 ###----------------------------------------------------------------###
@@ -2171,6 +2179,7 @@ sub slurp {
 
 sub process {
     my ($self, $in, $swap, $out, @ARGS) = @_;
+    delete $self->{'error'};
 
     my $args;
     $args = ($#ARGS == 0 && UNIVERSAL::isa($ARGS[0], 'HASH')) ? {%{$ARGS[0]}} : {@ARGS} if $#ARGS != -1;
