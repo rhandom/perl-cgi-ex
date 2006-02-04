@@ -15,6 +15,7 @@ use vars qw($TAGS
             $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
+            $DEBUG
             );
 
 BEGIN {
@@ -2169,7 +2170,11 @@ sub slurp {
 }
 
 sub process {
-    my ($self, $in, $swap, $out) = @_;
+    my ($self, $in, $swap, $out, @ARGS) = @_;
+
+    my $args;
+    $args = ($#ARGS == 0 && UNIVERSAL::isa($ARGS[0], 'HASH')) ? {%{$ARGS[0]}} : {@ARGS} if $#ARGS != -1;
+    $self->DEBUG("set binmode\n") if $DEBUG && $args->{'binmode'}; # holdover for TT2 tests
 
     ### get the content
     my $content;
@@ -2264,6 +2269,10 @@ sub process {
         if ($file) {
             local *FH;
             if (open FH, ">$file") {
+                if (my $bm = $args->{'binmode'}) {
+                    if (+$bm == 1) { binmode FH }
+                    else           { binmode FH, $bm }
+                }
                 print FH $output;
                 close FH;
             } else {
@@ -2279,6 +2288,11 @@ sub process {
 }
 
 sub error { shift->{'error'} }
+
+sub DEBUG {
+    my $self = shift;
+    print STDERR "DEBUG: ", @_;
+}
 
 ###----------------------------------------------------------------###
 
