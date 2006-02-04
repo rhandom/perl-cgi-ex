@@ -117,6 +117,7 @@ BEGIN {
 
     $OPERATORS ||= {qw(**  99   ^   99   pow 99
                        !   95   unary_minus  95
+                       \\  93
                        *   90   /   90   div 90   DIV 90
                        %   90   mod 90   MOD 90
                        +   85   -   85   _   85   ~   85
@@ -132,7 +133,7 @@ BEGIN {
                        or  40   OR  40
                        hashref 1 arrayref 1
                        )};
-    $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-'};
+    $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-', '\\' => '\\'};
     $OP_TRINARY ||= {'?' => ':'};
     $OP_FUNC    ||= {};
     sub _op_qr { # no mixed \w\W operators
@@ -988,6 +989,9 @@ sub vivify_variable {
             return if $ARGS->{'set_var'};
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') { # operator
+            if (${ $ref }->[0] eq '\\') {
+                return $self->play_operator($$ref);
+            }
             return if $ARGS->{'set_var'};
             $generated_list = 1 if ${ $ref }->[0] eq '..';
             $ref = $self->play_operator($$ref);
@@ -1231,9 +1235,19 @@ sub play_operator {
             return 0 if ! $var;
         }
         return $var;
+
     } elsif ($op eq '!') {
         my $var = ! $self->vivify_variable($tree->[0]);
         return defined($var) ? $var : '';
+
+    } elsif ($op eq '\\') { # return a closure "reference" that can access the variable later
+        my $self_copy = $self->weak_copy;
+        my $var = $tree->[0];
+        return sub {
+            local $var->[-1] = [@{ $var->[-1] || [] }, @_];
+            my $val = $self_copy->vivify_variable($var);
+            return defined($val) ? $val : '';
+        };
     }
 
     ### equality operators
@@ -1625,14 +1639,7 @@ sub play_MACRO {
         $sub_tree = $sub_tree->[0]->[4];
     }
 
-    my $self_copy; # get a copy of self without circular refs
-    if (eval { require Scalar::Util }
-        && defined &Scalar::Util::weaken) {
-        $self_copy = $self;
-        Scalar::Util::weaken($self_copy);
-    } else {
-        $self_copy = bless {%$self}, ref($self); # hackish way to avoid circular refs on old perls (pre 5.8)
-    }
+    my $self_copy = $self->weak_copy;
 
     ### install a closure in the stash that will handle the macro
     $self->vivify_variable($name, {
@@ -2302,6 +2309,20 @@ sub list_plugins {
 
         \@plugins; # return of the do
     };
+}
+
+### get a copy of self without circular refs for use in closures
+sub weak_copy {
+    my $self = shift;
+    my $self_copy;
+    if (eval { require Scalar::Util }
+        && defined &Scalar::Util::weaken) {
+        $self_copy = $self;
+        Scalar::Util::weaken($self_copy);
+    } else {
+        $self_copy = bless {%$self}, ref($self); # hackish way to avoid circular refs on old perls (pre 5.8)
+    }
+    return $self_copy;
 }
 
 sub debug_node {
