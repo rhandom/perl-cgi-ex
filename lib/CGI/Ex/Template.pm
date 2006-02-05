@@ -13,6 +13,7 @@ use vars qw($TAGS
             $DIRECTIVES $QR_DIRECTIVE
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $QR_OP $QR_OP_UNARY
             $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
+            $QR_DE_INTERP
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
@@ -158,6 +159,7 @@ BEGIN {
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_AQ_NOTDOT = '(?! \s* \.)';
     $QR_AQ_SPACE  = '(?: \s+ | $ | (?=[;+]) )'; # the + comes into play on filenames
+    $QR_DE_INTERP = '\\\\ (["n$])';
 
     $WHILE_MAX   = 1000;
     $EXTRA_COMPILE_EXT = '.sto';
@@ -196,8 +198,8 @@ sub _swap {
         if ($#{ $doc->{'tree'} } == -1) { # no tags found - just return the content
             $$out_ref = ${ $doc->{'content'} };
         } else {
-            local $self->{'_template'} = $doc;
-            $self->{'_vars'}->{'template'} = $doc if $self->{'_top_level'};
+            local $self->{'_vars'}->{'component'} = $doc;
+            $self->{'_vars'}->{'template'}  = $doc if $self->{'_top_level'};
             $self->execute_tree($doc->{'tree'}, $out_ref);
             delete $self->{'_vars'}->{'template'} if $self->{'_top_level'};
         }
@@ -324,7 +326,7 @@ sub load_parsed_tree {
             $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
         }
 
-        local $self->{'_template'} = $doc;
+        local $self->{'_vars'}->{'component'} = $doc;
         $doc->{'tree'} = $self->parse_tree($doc->{'content'}); # errors die
     }
 
@@ -708,8 +710,7 @@ sub parse_variable {
             $is_literal = 1;
         } else {
             my $str = $2;
-            $str =~ s{ \\\" }{\"}xg;
-            $str =~ s{ \\n }{\n}xg;
+            $str =~ s{ $QR_DE_INTERP }{$1}xog;
             my @pieces = $ARGS->{'auto_quote'}
                 ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
                 : split(m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $str);
@@ -971,14 +972,18 @@ sub parse_args {
 sub interpolate_node {
     my ($self, $tree, $index, $offset) = @_;
 
-    my @pieces = split m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $tree->[$index];
-    return if $#pieces <= 0;
+    my @pieces = split m{ (?: ^ | (?<! \\)) (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $tree->[$index];
+    if ($#pieces <= 0) {
+        $tree->[$index] =~ s{ $QR_DE_INTERP }{$1}xog;
+        return;
+    }
 
     my @sub_tree;
     my $n = 0;
     foreach my $piece (@pieces) {
         if (! ($n++ % 2)) {
             next if ! length $piece;
+            $piece =~ s{ $QR_DE_INTERP }{$1}xog;
             push @sub_tree, $piece;
         } elsif ($piece =~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                  || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
@@ -1366,7 +1371,7 @@ sub play_BLOCK {
     ### store a named reference - but do nothing until something processes it
     $self->{'BLOCKS'}->{$block_name} = {
         tree    => $node->[4],
-        name    => $self->{'_template'}->{'name'} .'/'. $block_name,
+        name    => $self->{'_vars'}->{'component'}->{'name'} .'/'. $block_name,
     };
 
     return;
@@ -1799,7 +1804,7 @@ sub play_PROCESS {
             $self->throw('process', "Unable to process document $filename") if $ref->[0] ne 'template';
             $self->throw('process', "Recursion detected in $node->[0] \$template") if $self->{'_process_dollar_template'};
             local $self->{'_process_dollar_template'} = 1;
-            local $self->{'_template'} = my $doc = $filename;
+            local $self->{'_vars'}->{'component'} = my $doc = $filename;
             return if ! $doc->{'tree'};
 
             ### execute and trim
@@ -1953,8 +1958,10 @@ sub play_TRY {
         $$out_ref = ''; # hack for tt behavior
         $self->throw('parse.missing', "Missing CATCH block", $node);
     }
-    $err = $self->exception('undef', $err) if $err && ref($err) !~ /Template::Exception$/;
-    die $err if $err->type =~ /stop|return/;
+    if ($err) {
+        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+        die $err if $err->type =~ /stop|return/;
+    }
 
     ### loop through the nested catch and final blocks
     my $catch_body_ref;
@@ -2439,7 +2446,7 @@ sub weak_copy {
 
 sub debug_node {
     my ($self, $node) = @_;
-    my $doc = $self->{'_template'};
+    my $doc = $self->{'_vars'}->{'component'};
     my $i = $node->[1];
     my $j = $node->[2] || return ''; # METADEF can be 0
     $doc->{'content'} ||= do { my $s = $self->slurp($doc->{'filename'}) ; \$s };
