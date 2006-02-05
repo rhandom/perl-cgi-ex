@@ -8,10 +8,9 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 455 - ($is_tt ? 59 : 0);
+use Test::More tests => 457 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
 use_ok($module);
-
 
 ###----------------------------------------------------------------###
 
@@ -704,6 +703,8 @@ process_ok("A[% TRY %]\nhi\n[% END %]" => "A\nhi", {tt_config => [TRIM => 1]});
 
 process_ok("[% TRY %][% PERL %][% END %][% CATCH ; error; END %]" => 'perl error - EVAL_PERL not set');
 process_ok("[% PERL %] print \"[% one %]\" [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
+process_ok("[% PERL %] print \$stash->get('one') [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
+process_ok("[% PERL %] print \$stash->set('a.b.c', 7) [% END %][% a.b.c %]" => '77', {tt_config => ['EVAL_PERL' => 1]});
 
 ###----------------------------------------------------------------###
 ### recursion prevention
