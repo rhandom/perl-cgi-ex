@@ -8,9 +8,10 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 457 - ($is_tt ? 59 : 0);
+use Test::More tests => 459 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
 use_ok($module);
+
 
 ###----------------------------------------------------------------###
 
@@ -684,6 +685,8 @@ process_ok("[% bam = 'somethingelse' %][% constants.foo.\$bam.\${constants.bing}
 ### interpolate / anycase / trim
 
 process_ok("Foo \$one Bar" => 'Foo ONE Bar', {one => 'ONE', tt_config => ['INTERPOLATE' => 1]});
+process_ok("[% PERL %] my \$n=7; print \$n [% END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
+process_ok("[% TRY ; PERL %] my \$n=7; print \$n [% END ; END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
 
 process_ok("[% get one %]" => 'ONE', {one => 'ONE', tt_config => ['ANYCASE' => 1]});
 process_ok("[% GET %]" => '', {GET => 'ONE'});
