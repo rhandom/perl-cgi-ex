@@ -380,14 +380,15 @@ sub parse_tree {
     my $pointer = \@tree; # pointer to current tree to handle nested blocks
     my @state;            # maintain block levels
     local $self->{'_state'} = \@state; # allow for items to introspect (usually BLOCKS)
-    my @move_to_front;    # items that need to be declared first
-    my @meta;             # place to store any found meta information
+    local $self->{'_in_perl'};         # no interpolation in perl
+    my @move_to_front;    # items that need to be declared first (usually BLOCKS)
+    my @meta;             # place to store any found meta information (to go into METADEF)
     my $i = 0;            # start index
     my $j = 0;            # end index
     my $last = 0;         # previous end index
     my $post_chomp = 0;   # previous post_chomp setting
     my $continue;         # multiple directives in the same tag
-    my $post_op;           # found a post-operative DIRECTIVE
+    my $post_op;          # found a post-operative DIRECTIVE
     my $capture;          # flag to start capture
     my $func;
     my $node;
@@ -401,8 +402,8 @@ sub parse_tree {
         ### look through the string using index
         } else {
             $i = index($$str_ref, $START, $last);
-            last if $i == -1;
-            if ($last != $i) {
+            last if $i == -1; # no start tag found - we are done
+            if ($last != $i) { # found a text portion - chomp it, interpolate it and store it
                 my $text  = substr($$str_ref, $last, $i - $last);
                 my $_last = $last;
                 if ($post_chomp) {
@@ -425,7 +426,7 @@ sub parse_tree {
             $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $node = [undef, $i + $len_s, $j];
 
-            ### take care of whitespace and comments
+            ### take care of whitespace and comments flags
             my $pre_chomp = $tag =~ s{ ^ ([+=~^-]) }{}x ? $1 : $self->{'PRE_CHOMP'};
             $post_chomp   = $tag =~ s{ ([+=~^-]) $ }{}x ? $1 : $self->{'POST_CHOMP'};
             $pre_chomp  =~ y/-=~^+/12340/ if $pre_chomp;
@@ -460,7 +461,7 @@ sub parse_tree {
             $node->[0] = $func;
 
             ### store out this current node level
-            if ($post_op) { # on a post operator - replace the original node with the new one
+            if ($post_op) { # on a post operator - replace the original node with the new one - store the old in the new
                 my @post_op = @$post_op;
                 @$post_op = @$node;
                 $node = $post_op;
@@ -472,9 +473,9 @@ sub parse_tree {
             }
 
             ### anything that behaves as a block ending
-            if ($func eq 'END' || $DIRECTIVES->{$func}->[4]) {
+            if ($func eq 'END' || $DIRECTIVES->{$func}->[4]) { # [4] means it is a continuation block (ELSE, CATCH, etc)
                 if ($#state == -1) {
-                    $self->throw('parse', "Found an $func while not in a block", $node);
+                    $self->throw('parse', "Found an $func tag while not in a block", $node);
                 }
                 my $parent_node = pop @state;
 
@@ -487,7 +488,7 @@ sub parse_tree {
                     }
                 }
 
-                ### restore the pointer up one level
+                ### restore the pointer up one level (because we hit the end of a block)
                 $pointer = ($#state == -1) ? \@tree : $state[0]->[4];
 
                 ### normal end block
@@ -497,6 +498,8 @@ sub parse_tree {
                         if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
                             splice(@$pointer, -1, 1, ());
                         }
+                    } elsif( $parent_node->[0] eq 'PERL') {
+                        delete $self->{'_in_perl'};
                     }
 
                 ### continuation block - such as an elsif
@@ -553,7 +556,6 @@ sub parse_tree {
                     die $err;
                 }
             } else {
-                #die "Found trailing info during variable access \"$tag" if $tag;
                 $node->[0] = 'GET';
                 $node->[3] = $var;
             }
@@ -565,14 +567,14 @@ sub parse_tree {
             $self->throw('parse', "Not sure how to handle tag \"$all\"");
         }
 
-        ### we now have the directive to capture - store it
+        ### we now have the directive to capture for an item like "SET foo = BLOCK" - store it
         if ($capture) {
             my $parent_node = $capture;
             push @{ $parent_node->[4] }, $node;
             undef $capture;
         }
 
-        ### we are capturing the output of the next directive - set it up
+        ### we are flagged to start capturing the output of the next directive - set it up
         if ($node->[6]) {
             $continue  = $j - length $tag;
             $node->[2] = $continue;
@@ -805,7 +807,7 @@ sub parse_variable {
 
     ### allow for nested items
     while ($copy =~ s{ ^ ( \.(?!\.) | \|(?!\|) ) \s* }{}x) {
-        push @var, $1;
+        push(@var, $1) if ! $ARGS->{'no_dots'};
 
         ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
         if ($copy =~ s{ ^ \$(\w+) \s* }{}x
@@ -841,7 +843,7 @@ sub parse_variable {
     if (! $self->{'_operator_precedence'}) {
         my $tree;
         my $found;
-        while ($copy =~ s{ ^ ($QR_OP) \s* }{}ox) {
+        while ($copy =~ s{ ^ ($QR_OP) \s* }{}ox) { ## look for operators - then move along
             local $self->{'_operator_precedence'} = 1;
             my $op   = $1;
             my $var2 = $self->parse_variable(\$copy);
@@ -889,16 +891,20 @@ sub parse_variable {
     return $var;
 }
 
+### this is used to put the parsed variables into the correct operations tree
 sub apply_precedence {
     my ($self, $tree, $found) = @_;
 
     my @var;
     my $trees;
+    ### look at the operators we found in the order we found them
     for my $op (sort {$found->{$a} <=> $found->{$b}} keys %$found) {
         local $found->{$op};
         delete $found->{$op};
         my @trees;
         my @trinary;
+
+        ### split the array on the current operator
         for (my $i = 0; $i <= $#$tree; $i ++) {
             next if $tree->[$i] ne $op && (! exists $OP_TRINARY->{$op} || $OP_TRINARY->{$op} ne $tree->[$i]);
             push @trees, [splice @$tree, 0, $i, ()]; # everything up to the operator
@@ -906,8 +912,10 @@ sub apply_precedence {
             shift @$tree; # pull off the operator
             $i = -1;
         }
-        next if $#trees == -1;
+        next if $#trees == -1; # this iteration didn't have the current operator
         push @trees, $tree if $#$tree != -1; # elements after last operator
+
+        ### now - for this level split on remaining operators, or add the variable to the tree
         for (@trees) {
             if ($#$_ == 0) {
                 $_ = $_->[0]; # single item - its not a tree
@@ -918,11 +926,12 @@ sub apply_precedence {
             }
         }
 
+        ### all done if we are looking at binary operations
         return [ \ [ $op, @trees ], 0 ] if $#trinary <= 1;
 
         ### reorder complex trinary - rare case
         while ($#trinary >= 1) {
-            ### if we look - starting from the back the first lead trinary op will always be next to its matching op
+            ### if we look starting from the back - the first lead trinary op will always be next to its matching op
             for (my $i = $#trinary; $i >= 0; $i --) {
                 next if ! exists $OP_TRINARY->{$trinary[$i]};
                 my ($op, $op2) = splice @trinary, $i, 2, (); # remove the pair of operators
@@ -937,7 +946,7 @@ sub apply_precedence {
     $self->throw('parse', "Couldn't apply precedence");
 }
 
-
+### look for arguments - both positional and named
 sub parse_args {
     my $self    = shift;
     my $str_ref = shift;
@@ -949,7 +958,7 @@ sub parse_args {
     while (length $$str_ref) {
         my $copy = $$str_ref;
         if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
-            && $copy =~ s{ ^ =>? \s* }{}x) {
+            && $copy =~ s{ ^ = >? \s* }{}x) {
             $self->throw('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
             my $val = $self->parse_variable(\$copy);
             $copy =~ s{ ^ , \s* }{}x;
@@ -969,9 +978,12 @@ sub parse_args {
     return \@args;
 }
 
+### allow for looking for $foo or ${foo.bar} in TEXT "nodes" of the parse tree.
 sub interpolate_node {
     my ($self, $tree, $index, $offset) = @_;
+    return if $self->{'_in_perl'};
 
+    ### split on variables while keeping the variables
     my @pieces = split m{ (?: ^ | (?<! \\)) (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $tree->[$index];
     if ($#pieces <= 0) {
         $tree->[$index] =~ s{ $QR_DE_INTERP }{$1}xog;
@@ -981,18 +993,18 @@ sub interpolate_node {
     my @sub_tree;
     my $n = 0;
     foreach my $piece (@pieces) {
-        if (! ($n++ % 2)) {
+        $offset += length $piece; # we track the offset to make sure DEBUG has the right location
+        if (! ($n++ % 2)) { # odds will always be text chunks
             next if ! length $piece;
             $piece =~ s{ $QR_DE_INTERP }{$1}xog;
             push @sub_tree, $piece;
         } elsif ($piece =~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                  || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
             my $name = $1;
-            push @sub_tree, ['GET', $offset, $offset + length($piece), $self->parse_variable(\$name)];
+            push @sub_tree, ['GET', $offset - length($piece), $offset, $self->parse_variable(\$name)];
         } else {
             $self->throw('parse', "Parse error during interpolate node");
         }
-        $offset += length $piece;
     }
 
     ### replace the tree
@@ -1073,7 +1085,7 @@ sub vivify_variable {
     ### vivify the chained levels
     my $seen_filters;
     while (defined $ref && $#$var > $i) {
-        my $was_dot_call = $var->[$i++] eq '.';
+        my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
         my $name         = $var->[$i++];
         my $args         = $var->[$i++];
 
@@ -1469,7 +1481,7 @@ sub play_FILTER {
     ### play the block
     my $out = '';
     eval { $self->execute_tree($sub_tree, \$out) };
-    die $@ if $@ && ref($@) !~ /Template::Exception$/;
+    die $@ if $@ && ref($@) !~ /Template::Exception$/; # TODO - fix
 
     my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
 
@@ -1480,7 +1492,7 @@ sub parse_FOREACH {
     my ($self, $tag_ref) = @_;
     my $items = $self->parse_variable($tag_ref);
     my $var;
-    if ($$tag_ref =~ s{ ^ (= | IN\b) \s* }{}x) {
+    if ($$tag_ref =~ s{ ^ (= | [Ii][Nn]\b) \s* }{}x) {
         $var = [@$items];
         $items = $self->parse_variable($tag_ref);
     }
@@ -1717,7 +1729,11 @@ sub play_METADEF {
     return;
 }
 
-sub parse_PERL {}
+sub parse_PERL {
+    my $self = shift;
+    $self->{'_in_perl'} = 1;
+    return;
+}
 
 sub play_PERL {
     my ($self, $info, $node, $out_ref) = @_;
@@ -1730,11 +1746,15 @@ sub play_PERL {
 
     ### setup a fake handle
     my $handle = $self->eval_perl_handle($out_ref);
-    local *OUTPUT = $handle;
-    my $old_fh = select OUTPUT;
+    local *PERLOUT = $handle;
+    my $old_fh = select PERLOUT;
 
     ### try the code
-    eval { eval $out };
+    eval {
+        my $context = $self->pseudo_context;
+        my $stash   = $context->stash;
+        eval $out;
+    };
     my $err = $@;
 
     ### put the handle back
@@ -1935,7 +1955,7 @@ sub parse_THROW {
     my ($self, $tag_ref, $node) = @_;
     my $name = $self->parse_variable($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
     $self->throw('parse.missing', "Missing name in THROW", $node) if ! $name;
-    my $msg  = $self->parse_variable($tag_ref);
+    my $msg  = $self->parse_variable($tag_ref); # TODO - use parse_args
     return [$name, $msg];
 }
 
@@ -2049,7 +2069,7 @@ sub play_USE {
     my $obj;
     if (eval {require $require}) {
         my $shape   = $package->load;
-        my $context = bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
+        my $context = $self->pseudo_context;
         my @args    = $args ? @{ $self->vivify_args($args) } : ();
         $obj = $shape->new($context, @args);
     } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
@@ -2058,7 +2078,7 @@ sub play_USE {
             $require =~ s|::|/|g;
             eval {require $require} || next;
             my $shape   = $package->load;
-            my $context = bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
+            my $context = $self->pseudo_context;
             my @args    = $args ? @{ $self->vivify_args($args) } : ();
             $obj = $shape->new($context, @args);
         }
@@ -2399,6 +2419,11 @@ sub eval_perl_handle {
     my $handle = CGI::Ex::Template::EvalPerlHandle->load($out_ref);
 }
 
+sub pseudo_context {
+    my $self = shift;
+    return bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
+}
+
 sub undefined { ''}
 
 sub list_filters {
@@ -2663,6 +2688,80 @@ use vars qw($AUTOLOAD);
 
 sub _template { shift->{'_template'} || die "Missing _template" }
 
+sub stash {
+    my $self = shift;
+    return $self->{'stash'} ||= bless {_template => $self->_template}, 'CGI::Ex::Template::_Stash';
+}
+
+sub insert { shift->_template->include_file(@_) }
+
+sub define_filter {
+    my ($self, $name, $filter, $is_dynamic) = @_;
+    ($filter, $is_dynamic) = @$filter if UNIVERSAL::isa($filter, 'ARRAY');
+    if ($is_dynamic) {
+        my $sub = $filter;
+        $filter = sub { $sub->($self, @_) };
+    }
+    $self->define_vmethod('scalar', $name, $filter);
+}
+
+sub define_vmethod {
+    my ($self, $type, $name, $sub) = @_;
+    if ($type =~ /scalar|item/i) {
+        $self->_template->scalar_op($name, $sub);
+    } elsif ($type =~ /array|list/i) {
+        $self->_template->list_op($name, $sub);
+    } elsif ($type =~ /hash/i) {
+        $self->_template->hash_op($name, $sub);
+    } else {
+        die "Invalid type vmethod type $type";
+    }
+    return 1;
+}
+
+sub throw {
+    my ($self, $type, $info) = @_;
+
+    if (UNIVERSAL::isa($type, $self->_template->{'exception_package'} || 'CGI::Ex::Template::Exception')) {
+	die $type;
+    } elsif (defined $info) {
+	die $self->_template->exception($type, $info);
+    } else {
+	die $self->_template->exception('undef', $type);
+    }
+}
+
+sub AUTOLOAD { shift->_template->throw('not_implemented', "The method $AUTOLOAD has not been implemented") }
+
+sub DESTROY {}
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::_Stash;
+
+use vars qw($AUTOLOAD);
+
+sub _template { shift->{'_template'} || die "Missing _template" }
+
+sub get {
+    my ($self, $var) = @_;
+    if (! ref $var) {
+        if ($var =~ /^\w+$/) {  $var = [$var, 0] }
+        else {                  $var = $self->_template->parse_variable(\$var, {no_dots => 1}) }
+    }
+    return $self->_template->vivify_variable($var, {no_dots => 1});
+}
+
+sub set {
+    my ($self, $var, $val) = @_;
+    if (! ref $var) {
+        if ($var =~ /^\w+$/) {  $var = [$var, 0] }
+        else {                  $var = $self->_template->parse_variable(\$var, {no_dots => 1}) }
+    }
+    $self->_template->vivify_variable($var, {no_dots => 1, set_var => 1, var_val => $val});
+    return $val;
+}
+
 sub AUTOLOAD { shift->_template->throw('not_implemented', "The method $AUTOLOAD has not been implemented") }
 
 sub DESTROY {}
@@ -2702,12 +2801,36 @@ __END__
 
 =head1 DESCRIPTION
 
+CGI::Ex::Template happened by accident.  The CGI::Ex suite included a
+base set of modules for doing anywhere from simple to complicated CGI
+applications.  Part of the suite was a simple variable interpolater
+that used TT2 style variables in TT2 style tags "[% foo.bar %]".  This
+was fine and dandy for a couple of years.
+
+
+
+CGI::Ex::Template (CET hereafter) is smaller, faster, uses less memory
+and less CPU than TT2.  However, it is most likely less portable, less
+extendable, and probably has many of the bugs that TT2 has already massaged
+out from years of bug reports and patches from a very active community
+and mailing list.  CET does not have a vibrant community behind it.  Fixes
+applied to TT2 will take longer to get into CET, should they get in at all.
+
 =head1 TODO
 
     Benchmark text processing
     Benchmark FOREACH types again
     Allow USE to use our Iterator
-    Get several test suites to pass
+    Add WRAPPER config item
+    Add ERROR config item
+    Add pseudo context
+    Add pseudo stash
+    Document which test suites pass
+
+=head1 HOW IS CGI::Ex::Template DIFFERENT
+
+
+
 
 =head1 DIRECTIVES
 
@@ -2821,6 +2944,10 @@ expressions were true.
     [%- ELSE -%]
         Couldn't determine that A equaled anything.
     [%- END %]
+
+If may also be used as a post operative directive.
+
+    [% 'A equaled B' IF a == b %]
 
 =item INCLUDE
 
