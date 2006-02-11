@@ -498,7 +498,7 @@ sub parse_tree {
                         if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
                             splice(@$pointer, -1, 1, ());
                         }
-                    } elsif( $parent_node->[0] eq 'PERL') {
+                    } elsif ($parent_node->[0] =~ /PERL$/i) {
                         delete $self->{'_in_perl'};
                     }
 
@@ -1513,14 +1513,12 @@ sub play_FOREACH {
     }
 
     my $sub_tree = $node->[4];
-    my $vals     = $items->items;
 
     ### if the FOREACH tag sets a var - then nothing gets localized
     if (defined $var) {
         $self->{'_vars'}->{'loop'} = $items;
-        foreach my $i ($items->index .. $#$vals) {
-            $items->index($i);
-            my $item = $vals->[$i];
+        my ($item, $error) = $items->get_first;
+        while (! $error) {
 
             $self->vivify_variable($var, {
                 set_var => 1,
@@ -1532,12 +1530,18 @@ sub play_FOREACH {
             eval { $self->execute_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
                 if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
-                    next if $err->type =~ /next/;
+                    if ($err->type eq 'next') {
+                        ($item, $error) = $items->get_next;
+                        next;
+                    }
                     last if $err->type =~ /last|break/;
                 }
                 die $err;
             }
+
+            ($item, $error) = $items->get_next;
         }
+        die $error if $error && $error != 3; # Template::Constants::STATUS_DONE;
     ### if the FOREACH tag doesn't set a var - then everything gets localized
     } else {
 
@@ -1548,9 +1552,8 @@ sub play_FOREACH {
 
         ### iterate use the iterator object
         #foreach (my $i = $items->index; $i <= $#$vals; $items->index(++ $i)) {
-        foreach my $i ($items->index .. $#$vals) {
-            $items->index($i);
-            my $item = $vals->[$i];
+        my ($item, $error) = $items->get_first;
+        while (! $error) {
 
             if (ref($item) eq 'HASH') {
                 @$copy{keys %$item} = values %$item;
@@ -1560,13 +1563,18 @@ sub play_FOREACH {
             eval { $self->execute_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
                 if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
-                    next if $err->type =~ /next/;
+                    if ($err->type eq 'next') {
+                        ($item, $error) = $items->get_next;
+                        next;
+                    }
                     last if $err->type =~ /last|break/;
                 }
                 die $err;
             }
-        }
 
+            ($item, $error) = $items->get_next;
+        }
+        die $error if $error && $error != 3; # Template::Constants::STATUS_DONE;
     }
 
     return undef;
@@ -1729,11 +1737,7 @@ sub play_METADEF {
     return;
 }
 
-sub parse_PERL {
-    my $self = shift;
-    $self->{'_in_perl'} = 1;
-    return;
-}
+sub parse_PERL { shift->{'_in_perl'} = 1; return }
 
 sub play_PERL {
     my ($self, $info, $node, $out_ref) = @_;
@@ -2646,18 +2650,31 @@ sub new {
     my ($class, $items) = @_;
     $items = [] if ! defined $items;
     $items = [$items] if ! UNIVERSAL::isa($items, 'ARRAY');
-    return bless {items => $items, i => 0}, $class;
+    return bless [$items, 0], $class;
 }
 
-sub items { shift->{'items'} }
+sub get_first {
+    my $self = shift;
+    return (undef, 3) if ! @{ $self->[0] };
+    return ($self->[0]->[$self->[1] = 0], undef);
+}
 
+sub get_next {
+    my $self = shift;
+    return (undef, 3) if ++ $self->[1] > $#{ $self->[0] };
+    return ($self->items->[$self->[1]], undef);
+}
+
+sub items { shift->[0] }
+
+#sub index { shift->[1] }
 sub index {
     my $self = shift;
-    $self->{'i'} = shift if $#_ == 0;
-    return $self->{'i'};
+    $self->[1] = shift if $#_ == 0;
+    return $self->[1];
 }
 
-sub max { $#{ shift->items } }
+sub max { $#{ shift->[0] } }
 
 sub size { shift->max + 1 }
 
@@ -2830,7 +2847,14 @@ applied to TT2 will take longer to get into CET, should they get in at all.
 =head1 HOW IS CGI::Ex::Template DIFFERENT
 
 
+CHOMP at the end of a string.
+CET will replace "[% 1 =%]\n" with "1 "
+TT will replace "[% 1 =%]\n" with "1"
 
+This is an internal one-off exception in TT that may or may not DWIM.
+In CET - it always means to always replace whitespace on the line with
+a space.  The template can be modified to either not have space - or
+to end with ~%] which will remove any following space.
 
 =head1 DIRECTIVES
 
