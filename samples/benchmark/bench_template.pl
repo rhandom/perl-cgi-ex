@@ -35,7 +35,7 @@ my $swap = {
     a_var => "a",
     hash  => {a => 1, b => 2, c => { d => [{hee => ["hmm"]}] }},
     array => [qw(A B C D E a A)],
-    code  => sub {"($_[0])"},
+    code  => sub {"(@_)"},
     cet   => $cet,
     filt  => sub {sub {$_[0]x2}},
 };
@@ -61,46 +61,49 @@ my $filename;
 #                                      This percent is compiled in memory (repeated calls) #        #
 #                                         New object each time (undef CACHE_SIZE) #        #        #
 my $tests = {                                                            #        #        #        #
-    _01_empty     => "",                                                 #  540%  # 1067%  #  608%  #
-    _02_mixed_sma => "".((" "x1000)."[% one %]\n")x10,                   #   79%  #  637%  #  265%  #
-    _03_mixed_med => "".((" "x1000)."[% one %]\n")x100,                  #   40%  #  560%  #  127%  #
-    _04_mixed_lar => "".((" "x10)."[% one %]\n")x1000,                   #   -6%  #  415%  #   24%  #
-    _05_str_sma   => "".("[% \"".(" "x1000)."\$one\" %]\n")x10,          #  -32%  # 313270%#  102%  #
-    _06_str_lar   => "".("[% \"".(" "x10)."\$one\" %]\n")x1000,          #  -59%  #  335%  #  -30%  #
-    _07_var_sma   => "[% one %]",                                        #  320%  #  902%  #  583%  #
-    _08_var_med   => "[% one %]"x20,                                     #   48%  #  470%  #  161%  #
-    _09_var_lar   => "[% one %]"x200,                                    #    8%  #  381%  #   36%  #
-    _10_plus      => "([% 1 + 2 %])",                                    #  134%  #  635%  #  382%  #
-    _11_plus_lar  => "[% 1 + 2 + 3 + 5 + 6 + 8 %]",                      #  110%  #  426%  #  384%  #
-    _12_set       => "[% SET one = 2 %]",                                #  296%  #  778%  #  528%  #
-    _13_set_range => "[% SET one = [0..30] %]",                          #   63%  #  441%  #  304%  #
-    _14_chained   => "[% c.d.0.hee.0 %]",                                #  356%  #  973%  #  572%  #
-    _15_chain_lar => "".((" "x10)."[% c.d.0.hee.0 %]\n")x1000,           #   66%  #  626%  #   61%  #
-    _16_cplx_comp => "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]",     #  108%  #  381%  #  316%  #
-    _17_if_simple => "[% a=1 %][% IF a %]Two[% END %]",                  #  193%  #  650%  #  419%  #
-    _18_for_i_sml => "[% FOREACH i = [0..10] %][% i %][% END %]",        #   18%  #  263%  #  160%  #
-    _19_for_i_med => "[%i=1 ; FOREACH i = [0..100] ; i ; END ; i%]",     #  -17%  #   46%  #   12%  #
-    _20_for_i_lar => "[%i=1 ; FOREACH i = [0..1000] ; i ; END ; i%]",    #  -19%  #  -12%  #  -17%  #
-    _21_for_sml   => "[%i=1 ; FOREACH [0..10] ; i ; END ; i %]",         #   34%  #  305%  #  181%  #
-    _22_for_med   => "[%i=1 ; FOREACH [0..100] ; i ; END ; i %]",        #    7%  #   82%  #   42%  #
-    _23_for_lar   => "[%i=1 ; FOREACH [0..1000] ; i ; END ; i %]",       #    0%  #   12%  #    6%  #
-    _24_while     => "[%f=10%][%WHILE f%][%f=f- 1%][%f%][% END %]",      #  -17%  #  153%  #   48%  #
-    _25_whl_set_l => "[%f=10; WHILE (g=f) ; f = f - 1 ; f ; END %]",     #   -9%  #  148%  #   53%  #
-    _26_whl_set_m => "[%f=5; WHILE (g=f) ; f = f - 1 ; f ; END %]",      #    6%  #  244%  #  102%  #
-    _27_whl_set_s => "[%f=1; WHILE (g=f) ; f = f - 1 ; f ; END %]",      #   74%  #  422%  #  252%  #
-    _28_process   => "[% BLOCK foo %]Hi[% END %][% PROCESS foo %]",      #  358%  #  843%  #  572%  #
-    _29_include   => "[% BLOCK foo %]Hi[% END %][% INCLUDE foo %]",      #  314%  #  798%  #  545%  #
-    _30_macro     => "[% MACRO foo BLOCK %]Hi[% END %][% foo %]",        #  135%  #  512%  #  356%  #
-    _31_macro_arg => "[% MACRO foo(n) BLOCK %]Hi[%n%][%END%][%foo(2)%]", #  102%  #  345%  #  308%  #
-    _32_macro_pro => "[% MACRO foo PROCESS bar;BLOCK bar%]7[%END;foo%]", #  174%  #  449%  #  415%  #
-    _33_filter    => "[% n = 1 %][% n FILTER repeat(2) %]",              #  114%  #  453%  #  343%  #
-    _34_fltr_name => "[% n=1; n FILTER echo=repeat(2); n FILTER echo%]", #   40%  #  375%  #  243%  #
-    _35_constant  => "[% constants.fefifo %]",                           #  355%  #  875%  #  633%  #
-    _36_constant2 => "[% constants.simple %]",                           #  346%  #  931%  #  628%  #
-#    _37_interp    => "Foo \$one Bar" => 'Foo ONE Bar'; # set INTERPOLATE #  287%  #  849%  #  536%  #
-    _38_perl      => "[%one='ONE'%][% PERL %]print \"[%one%]\"[%END%]",  #   98%  #  528%  #  304%  #
-    _39_filtervar => "[% 'hi' | \$filt %]",                              #  167%  #  738%  #  514%  #
-    _40_filteruri => "[% ' ' | uri %]",                                  #  137%  #  742%  #  484%  #
+    '01_empty'     => "",                                                 #  540%  # 1067%  #  608%  #
+    '02_mixed_sma' => "".((" "x1000)."[% one %]\n")x10,                   #   79%  #  637%  #  265%  #
+    '03_mixed_med' => "".((" "x1000)."[% one %]\n")x100,                  #   40%  #  560%  #  127%  #
+    '04_mixed_lar' => "".((" "x10)."[% one %]\n")x1000,                   #   -6%  #  415%  #   24%  #
+    '05_str_sma'   => "".("[% \"".(" "x1000)."\$one\" %]\n")x10,          #  -32%  # 313270%#  102%  #
+    '06_str_lar'   => "".("[% \"".(" "x10)."\$one\" %]\n")x1000,          #  -59%  #  335%  #  -30%  #
+    '07_var_sma'   => "[% one %]",                                        #  320%  #  902%  #  583%  #
+    '08_var_med'   => "[% one %]"x20,                                     #   48%  #  470%  #  161%  #
+    '09_var_lar'   => "[% one %]"x200,                                    #    8%  #  381%  #   36%  #
+    '10_plus'      => "([% 1 + 2 %])",                                    #  134%  #  635%  #  382%  #
+    '11_plus_lar'  => "[% 1 + 2 + 3 + 5 + 6 + 8 %]",                      #  110%  #  426%  #  384%  #
+    '12_set'       => "[% SET one = 2 %]",                                #  296%  #  778%  #  528%  #
+    '13_set_range' => "[% SET one = [0..30] %]",                          #   63%  #  441%  #  304%  #
+    '14_chained'   => "[% c.d.0.hee.0 %]",                                #  356%  #  973%  #  572%  #
+    '15_chain_set' => "[% SET c.d.0.hee.0 = 2 %]",                        #  356%  #  973%  #  572%  #
+    '16_chain_lar' => "".("[% c.d.0.hee.0 %]")x200,                       #   66%  #  626%  #   61%  #
+    '17_chain_sl'  => "".("[% SET c.d.0.hee.0 = 2 %]")x200,               #   66%  #  626%  #   61%  #
+    '18_cplx_comp' => "[% t = 1 || 0 ? 0 : 1 || 2 ? 2 : 3 %][% t %]",     #  108%  #  381%  #  316%  #
+    '19_if_simple' => "[% a=1 %][% IF a %]Two[% END %]",                  #  193%  #  650%  #  419%  #
+    '20_for_i_sml' => "[% FOREACH i = [0..10]   ; i ; END %]",            #   18%  #  263%  #  160%  #
+    '21_for_i_med' => "[% FOREACH i = [0..100]  ; i ; END %]",            #  -17%  #   46%  #   12%  #
+    '22_for_i_lar' => "[% FOREACH i = [0..1000] ; i ; END %]",            #  -19%  #  -12%  #  -17%  #
+    '23_for_sml'   => "[% FOREACH [0..10]       ; i ; END %]",            #   34%  #  305%  #  181%  #
+    '24_for_med'   => "[% FOREACH [0..100]      ; i ; END %]",            #    7%  #   82%  #   42%  #
+    '25_for_lar'   => "[% FOREACH [0..1000]     ; i ; END %]",            #    0%  #   12%  #    6%  #
+    '26_while'     => "[%f=10%][%WHILE f%][%f=f- 1%][%f%][% END %]",      #  -17%  #  153%  #   48%  #
+    '27_whl_set_l' => "[%f=10; WHILE (g=f) ; f = f - 1 ; f ; END %]",     #   -9%  #  148%  #   53%  #
+    '28_whl_set_m' => "[%f=5;  WHILE (g=f) ; f = f - 1 ; f ; END %]",     #    6%  #  244%  #  102%  #
+    '29_whl_set_s' => "[%f=1;  WHILE (g=f) ; f = f - 1 ; f ; END %]",     #   74%  #  422%  #  252%  #
+    '30_process'   => "[% BLOCK foo %]Hi[% END %][% PROCESS foo %]",      #  358%  #  843%  #  572%  #
+    '31_include'   => "[% BLOCK foo %]Hi[% END %][% INCLUDE foo %]",      #  314%  #  798%  #  545%  #
+    '32_macro'     => "[% MACRO foo BLOCK %]Hi[% END %][% foo %]",        #  135%  #  512%  #  356%  #
+    '33_macro_arg' => "[% MACRO foo(n) BLOCK %]Hi[%n%][%END%][%foo(2)%]", #  102%  #  345%  #  308%  #
+    '34_macro_pro' => "[% MACRO foo PROCESS bar;BLOCK bar%]7[%END;foo%]", #  174%  #  449%  #  415%  #
+    '35_filter'    => "[% n = 1 %][% n FILTER repeat(2) %]",              #  114%  #  453%  #  343%  #
+    '36_fltr_name' => "[% n=1; n FILTER echo=repeat(2); n FILTER echo%]", #   40%  #  375%  #  243%  #
+    '37_constant'  => "[% constants.fefifo %]",                           #  355%  #  875%  #  633%  #
+    '38_constant2' => "[% constants.simple %]",                           #  346%  #  931%  #  628%  #
+#   '39_interp'    => "Foo \$one Bar"' => 'Foo ONE Bar'; # set INTERPOLATE #  287%  #  849%  #  536%  #
+    '40_perl'      => "[%one='ONE'%][% PERL %]print \"[%one%]\"[%END%]",  #   98%  #  528%  #  304%  #
+    '41_filtervar' => "[% 'hi' | \$filt %]",                              #  167%  #  738%  #  514%  #
+    '42_filteruri' => "[% ' ' | uri %]",                                  #  137%  #  742%  #  484%  #
+    '43_refs'      => "[% b = \\code(1); b(2) %]",                        #   83%  #  383%  #  307%  #  248%  #
 };
 
 if ($show_list) {
@@ -113,6 +116,9 @@ if ($show_list) {
     }
     exit;
 }
+
+my $run = join("|", @run);
+@run = grep {/$run/} sort keys %$tests;
 
 ###----------------------------------------------------------------###
 
@@ -282,7 +288,8 @@ foreach my $test_name (@run) {
     debug "$@"
         if $@;
 
-    $output .= "#\n";
+    $output .= "# ".sprintf("%.1f", $r->{'file_CT'}->iters / ($r->{'file_CT'}->cpu_a || 1))."/s #\n";
+#    $output .= "#\n";
 
     foreach my $row (values %cumulative) {
         $row->[2] = sprintf('%.1f', $row->[0] / ($row->[1]||1));
