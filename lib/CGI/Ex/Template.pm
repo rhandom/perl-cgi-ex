@@ -408,9 +408,8 @@ sub parse_tree {
                 my $_last = $last;
                 if ($post_chomp) {
                     if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
-                    elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ ([^\S\n]* \n) }{ }x }
+                    elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
                     elsif ($post_chomp == 3) { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
-                    elsif ($post_chomp == 4) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
                 }
                 if (length $text) {
                     push @$pointer, $text;
@@ -427,15 +426,14 @@ sub parse_tree {
             $node = [undef, $i + $len_s, $j];
 
             ### take care of whitespace and comments flags
-            my $pre_chomp = $tag =~ s{ ^ ([+=~^-]) }{}x ? $1 : $self->{'PRE_CHOMP'};
-            $post_chomp   = $tag =~ s{ ([+=~^-]) $ }{}x ? $1 : $self->{'POST_CHOMP'};
-            $pre_chomp  =~ y/-=~^+/12340/ if $pre_chomp;
-            $post_chomp =~ y/-=~^+/12340/ if $post_chomp;
+            my $pre_chomp = $tag =~ s{ ^ ([+=~-]) }{}x ? $1 : $self->{'PRE_CHOMP'};
+            $post_chomp   = $tag =~ s{ ([+=~-]) $ }{}x ? $1 : $self->{'POST_CHOMP'};
+            $pre_chomp  =~ y/-=~+/1230/ if $pre_chomp;
+            $post_chomp =~ y/-=~+/1230/ if $post_chomp;
             if ($pre_chomp && $pointer->[-1] && ! ref $pointer->[-1]) {
                 if    ($pre_chomp == 1) { $pointer->[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{}x  }
-                elsif ($pre_chomp == 2) { $pointer->[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{ }x }
+                elsif ($pre_chomp == 2) { $pointer->[-1] =~ s{             (\s+) \z }{ }x }
                 elsif ($pre_chomp == 3) { $pointer->[-1] =~ s{             (\s+) \z }{}x  }
-                elsif ($pre_chomp == 4) { $pointer->[-1] =~ s{             (\s+) \z }{ }x }
                 splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
             }
             if ($tag =~ /^\#/) { # leading # means to comment the entire section
@@ -620,9 +618,8 @@ sub parse_tree {
         my $_last = $last;
         if ($post_chomp) {
             if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
-            elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ ([^\S\n]* \n) }{ }x }
+            elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
             elsif ($post_chomp == 3) { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
-            elsif ($post_chomp == 4) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
         }
         if (length $text) {
             push @$pointer, $text;
