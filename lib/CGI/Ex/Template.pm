@@ -195,7 +195,7 @@ sub _swap {
         local $self->{'_in'}->{$doc->{'name'}} = 1;
 
         ### execute the document
-        if ($#{ $doc->{'tree'} } == -1) { # no tags found - just return the content
+        if (! @{ $doc->{'tree'} }) { # no tags found - just return the content
             $$out_ref = ${ $doc->{'content'} };
         } else {
             local $self->{'_vars'}->{'component'} = $doc;
@@ -413,7 +413,7 @@ sub parse_tree {
                 }
                 if (length $text) {
                     push @$pointer, $text;
-                    $self->interpolate_node($pointer, -1, $_last) if $self->{'INTERPOLATE'};
+                    $self->interpolate_node($pointer, $_last) if $self->{'INTERPOLATE'};
                 }
             }
             $j = index($$str_ref, $END, $i + $len_s);
@@ -472,7 +472,7 @@ sub parse_tree {
 
             ### anything that behaves as a block ending
             if ($func eq 'END' || $DIRECTIVES->{$func}->[4]) { # [4] means it is a continuation block (ELSE, CATCH, etc)
-                if ($#state == -1) {
+                if (! @state) {
                     $self->throw('parse', "Found an $func tag while not in a block", $node);
                 }
                 my $parent_node = pop @state;
@@ -487,7 +487,7 @@ sub parse_tree {
                 }
 
                 ### restore the pointer up one level (because we hit the end of a block)
-                $pointer = ($#state == -1) ? \@tree : $state[0]->[4];
+                $pointer = (! @state) ? \@tree : $state[0]->[4];
 
                 ### normal end block
                 if ($func eq 'END') {
@@ -601,14 +601,14 @@ sub parse_tree {
         }
     }
 
-    if ($#move_to_front != -1) {
+    if (@move_to_front) {
         unshift @tree, @move_to_front;
     }
-    if ($#meta != -1) {
+    if (@meta) {
         unshift @tree, ['METADEF', 0, 0, {@meta}];
     }
 
-    if ($#state >  -1) {
+    if ($#state > -1) {
         $self->throw('parse.missing.end', "Missing END", $state[-1], 0);
     }
 
@@ -623,7 +623,7 @@ sub parse_tree {
         }
         if (length $text) {
             push @$pointer, $text;
-            $self->interpolate_node($pointer, -1, $_last) if $self->{'INTERPOLATE'};
+            $self->interpolate_node($pointer, $_last) if $self->{'INTERPOLATE'};
         }
     }
 
@@ -722,11 +722,11 @@ sub parse_variable {
                 $piece = $self->parse_variable(\$name);
             }
             @pieces = grep {defined && length} @pieces;
-            if ($#pieces == -1) {
-                push @var, \ '';
-                $is_literal = 1;
-            } elsif ($#pieces == 0 && ! ref $pieces[0]) {
+            if (@pieces == 1 && ! ref $pieces[0]) {
                 push @var, \ $pieces[0];
+                $is_literal = 1;
+            } elsif (! @pieces) {
+                push @var, \ '';
                 $is_literal = 1;
             } else {
                 push @var, \ ['~', @pieces];
@@ -909,8 +909,8 @@ sub apply_precedence {
             shift @$tree; # pull off the operator
             $i = -1;
         }
-        next if $#trees == -1; # this iteration didn't have the current operator
-        push @trees, $tree if $#$tree != -1; # elements after last operator
+        next if ! @trees; # this iteration didn't have the current operator
+        push @trees, $tree if scalar @$tree; # elements after last operator
 
         ### now - for this level split on remaining operators, or add the variable to the tree
         for (@trees) {
@@ -970,20 +970,20 @@ sub parse_args {
     }
 
     ### allow for named arguments to be added also
-    push @args, [\ ['hashref', @named], 0] if $#named != -1;
+    push @args, [\ ['hashref', @named], 0] if scalar @named;
 
     return \@args;
 }
 
 ### allow for looking for $foo or ${foo.bar} in TEXT "nodes" of the parse tree.
 sub interpolate_node {
-    my ($self, $tree, $index, $offset) = @_;
+    my ($self, $tree, $offset) = @_;
     return if $self->{'_in_perl'};
 
     ### split on variables while keeping the variables
-    my @pieces = split m{ (?: ^ | (?<! \\)) (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $tree->[$index];
+    my @pieces = split m{ (?: ^ | (?<! \\)) (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $tree->[-1];
     if ($#pieces <= 0) {
-        $tree->[$index] =~ s{ $QR_DE_INTERP }{$1}xog;
+        $tree->[-1] =~ s{ $QR_DE_INTERP }{$1}xog;
         return;
     }
 
@@ -1315,11 +1315,11 @@ sub play_operator {
 
     ### numeric operators
     my $args = $self->vivify_args($tree);
-    if ($#$args == -1) {
+    if (! @$args) {
         if ($op eq '-') { return - $n }
         $self->throw('operator', "Not enough args for operator \"$op\"");
     }
-    if ($op eq '..')        { return [($n||0) .. ($args->[-1]||0)] }
+    if ($op eq '..')        { return [($n || 0) .. ($args->[-1] || 0)] }
     elsif ($op eq '+')      { $n +=  $_ for @$args; return $n }
     elsif ($op eq '-')      { $n -=  $_ for @$args; return $n }
     elsif ($op eq '*')      { $n *=  $_ for @$args; return $n }
@@ -1368,7 +1368,7 @@ sub parse_BLOCK {
         $block_name = $1;
         ### allow for nested blocks to have nested names
         my @names = map {$_->[3]} grep {$_->[0] eq 'BLOCK'} @{ $self->{'_state'} };
-        $block_name = join("/", @names, $block_name) if $#names > -1;
+        $block_name = join("/", @names, $block_name) if scalar @names;
     }
 
     return $block_name;
@@ -1469,7 +1469,7 @@ sub play_FILTER {
     my ($self, $ref, $node, $out_ref) = @_;
     my ($name, $filter) = @$ref;
 
-    return '' if $#$filter == -1;
+    return '' if ! @$filter;
 
     $self->{'FILTERS'}->{$name} = $filter if length $name;
 
@@ -1844,7 +1844,7 @@ sub play_PROCESS {
         }
 
         ### append any output
-        $$out_ref .= $out if length $out;
+        $$out_ref .= $out;
         if (my $err = $@) {
             die $err if ref($err) !~ /Template::Exception$/ || $err->type !~ /return/;
         }
@@ -2244,7 +2244,7 @@ sub process {
     delete $self->{'error'};
 
     my $args;
-    $args = ($#ARGS == 0 && UNIVERSAL::isa($ARGS[0], 'HASH')) ? {%{$ARGS[0]}} : {@ARGS} if $#ARGS != -1;
+    $args = ($#ARGS == 0 && UNIVERSAL::isa($ARGS[0], 'HASH')) ? {%{$ARGS[0]}} : {@ARGS} if scalar @ARGS;
     $self->DEBUG("set binmode\n") if $DEBUG && $args->{'binmode'}; # holdover for TT2 tests
 
     ### get the content
@@ -2295,7 +2295,7 @@ sub process {
             foreach my $name (@{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
                 my $out = '';
                 $self->_swap($name, $copy, \$out);
-                $output = $out . $output if length $out;
+                $output = $out . $output;
             }
         }
 
