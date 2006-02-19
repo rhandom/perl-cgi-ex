@@ -1232,6 +1232,145 @@ sub vivify_variable {
     return $ref;
 }
 
+sub set_variable {
+    ### allow for the parse tree to store literals
+    return $_[1] if ! ref $_[1];
+
+    my ($self, $var, $val, $ARGS) = @_;
+    $ARGS ||= {};
+    my $i = 0;
+
+    ### determine the top level of this particular variable access
+    my $ref  = $var->[$i++];
+    my $args = $var->[$i++];
+    if (ref $ref) {
+        if (ref($ref) eq 'ARRAY') { # named access (ie via $name.foo)
+            $ref = $self->vivify_variable($ref);
+            if (defined $ref && $ref !~ /^[_.]/) { # don't allow vars that begin with _
+                if ($#$var <= $i) {
+                    $self->{'_vars'}->{$ref} = $val;
+                    return;
+                } else {
+                    $ref = $self->{'_vars'}->{$ref} ||= {};
+                }
+            } else {
+                return;
+            }
+        } else { # all other types can't be set
+            return;
+        }
+    } elsif (defined $ref) {
+        if ($ARGS->{'is_namespace_during_compile'}) {
+            $ref = $self->{'NAMESPACE'}->{$ref};
+        } else {
+            return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+            if ($#$var <= $i) {
+                $self->{'_vars'}->{$ref} = $val;
+                return;
+            } else {
+                $ref = $self->{'_vars'}->{$ref} ||= {};
+            }
+        }
+    }
+
+    ### let the top level thing be a code block
+    if (UNIVERSAL::isa($ref, 'CODE')) {
+        return;
+    }
+
+    ### vivify the chained levels
+    my $seen_filters;
+    while (defined $ref && $#$var > $i) {
+        my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
+        my $name         = $var->[$i++];
+        my $args         = $var->[$i++];
+
+        ### allow for named portions of a variable name (foo.$name.bar)
+        if (ref $name) {
+            if (ref($name) eq 'ARRAY') {
+                $name = $self->vivify_variable($name);
+                if (! defined($name) || $name =~ /^[_.]/) {
+                    $ref = undef;
+                    next;
+                }
+            } else {
+                die "Shouldn't get a ".ref($name)." during a vivify on chain";
+            }
+        }
+        if ($name =~ /^_/) { # don't allow vars that begin with _
+            return;
+        }
+
+        ### method calls on objects
+        if (UNIVERSAL::can($ref, 'can')) {
+            my $lvalueish;
+            my @args = $args ? @{ $self->vivify_args($args) } : ();
+            if ($i >= $#$var) {
+                $lvalueish = 1;
+                push @args, $val;
+            }
+            my @results = eval { $ref->$name(@args) };
+            if (! $@) {
+                if (defined $results[0]) {
+                    $ref = ($#results > 0) ? \@results : $results[0];
+                } elsif (defined $results[1]) {
+                    die $results[1]; # grr - TT behavior - why not just throw ?
+                } else {
+                    $ref = undef;
+                }
+                return if $lvalueish;
+                next;
+            }
+            die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
+            # fall on down to "normal" accessors
+        }
+
+        ### hash member access
+        if (UNIVERSAL::isa($ref, 'HASH')) {
+            if ($#$var <= $i) {
+                $ref->{$name} = $val;
+                return;
+            } else {
+                $ref = $ref->{$name} ||= {};
+                next;
+            }
+
+        ### array access
+        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+            if ($name =~ /^\d+$/) {
+                if ($#$var <= $i) {
+                    $ref->[$name] = $val;
+                    return;
+                } else {
+                    $ref = $ref->[$name] ||= {};
+                    next;
+                }
+            } else {
+                return;
+            }
+
+        ### scalar access
+        } elsif (! ref($ref) && defined($ref)) {
+            return;
+        }
+
+        ### check at each point if the rurned thing was a code
+        if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
+            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
+            if (defined $results[0]) {
+                $ref = ($#results > 0) ? \@results : $results[0];
+            } elsif (defined $results[1]) {
+                die $results[1]; # grr - TT behavior - why not just throw ?
+            } else {
+                return;
+            }
+        }
+
+    }
+
+    return $ref;
+}
+
 sub vivify_args {
     my $self = shift;
     my $vars = shift;
@@ -1443,10 +1582,7 @@ sub play_DEFAULT {
         my $val = $self->vivify_variable($set);
         if (! $val) {
             $default = defined($default) ? $self->vivify_variable($default) : '';
-            $self->vivify_variable($set, {
-                set_var => 1,
-                var_val => $default,
-            });
+            $self->set_variable($set, $default);
         }
     }
     return;
@@ -1517,11 +1653,7 @@ sub play_FOREACH {
         my ($item, $error) = $items->get_first;
         while (! $error) {
 
-            $self->vivify_variable($var, {
-                set_var => 1,
-                var_val => $item,
-            });
-
+            $self->set_variable($var, $item);
 
             ### execute the sub tree
             eval { $self->execute_tree($sub_tree, $out_ref) };
@@ -1687,7 +1819,7 @@ sub play_MACRO {
     ### get the sub tree
     my $sub_tree = $node->[4];
     if (! $sub_tree || ! $sub_tree->[0]) {
-        $self->vivify_var($name, {set_var => 1, var_val => undef});
+        $self->set_variable($name, undef);
         return;
     } elsif ($sub_tree->[0]->[0] eq 'BLOCK') {
         $sub_tree = $sub_tree->[0]->[4];
@@ -1696,28 +1828,25 @@ sub play_MACRO {
     my $self_copy = $self->weak_copy;
 
     ### install a closure in the stash that will handle the macro
-    $self->vivify_variable($name, {
-        set_var => 1,
-        var_val => sub {
-            ### macros localize
-            my $copy = $self_copy->{'_vars'};
-            local $self_copy->{'_vars'}= {%$copy};
+    $self->set_variable($name, sub {
+        ### macros localize
+        my $copy = $self_copy->{'_vars'};
+        local $self_copy->{'_vars'}= {%$copy};
 
-            ### set arguments
-            my $named = pop(@_) if $_[-1] && UNIVERSAL::isa($_[-1],'HASH') && $#_ > $#$args;
-            my @positional = @_;
-            foreach my $var (@$args) {
-                $self_copy->vivify_variable($var, {set_var => 1, var_val => shift(@positional)});
-            }
-            foreach my $name (sort keys %$named) {
-                $self_copy->vivify_variable([$name, 0], {set_var => 1, var_val => $named->{$name}});
-            }
+        ### set arguments
+        my $named = pop(@_) if $_[-1] && UNIVERSAL::isa($_[-1],'HASH') && $#_ > $#$args;
+        my @positional = @_;
+        foreach my $var (@$args) {
+            $self_copy->set_variable($var, shift(@positional));
+        }
+        foreach my $name (sort keys %$named) {
+            $self_copy->set_variable([$name, 0], $named->{$name});
+        }
 
-            ### finally - run the sub tree
-            my $out = '';
-            $self_copy->execute_tree($sub_tree, \$out);
-            return $out;
-        },
+        ### finally - run the sub tree
+        my $out = '';
+        $self_copy->execute_tree($sub_tree, \$out);
+        return $out;
     });
 
     return;
@@ -1804,10 +1933,7 @@ sub play_PROCESS {
     foreach (@$args) {
         my ($key, $val) = @$_;
         $val = $self->vivify_variable($val);
-        $self->vivify_variable($key, {
-            set_var => 1,
-            var_val => $val,
-        });
+        $self->set_variable($key, $val);
     }
 
     ### iterate on any passed block or filename
@@ -1903,10 +2029,7 @@ sub play_SET {
             $val = $self->vivify_variable($val);
         }
 
-        $self->vivify_variable($set, {
-            set_var => 1,
-            var_val => $val,
-        });
+        $self->set_variable($set, $val);
     }
     return;
 }
@@ -2097,10 +2220,7 @@ sub play_USE {
     }
 
     ### all good
-    $self->vivify_variable(\@var, {
-        set_var => 1,
-        var_val => $obj,
-    });
+    $self->set_variable(\@var, $obj);
 
     return;
 }
@@ -2138,10 +2258,7 @@ sub play_WHILE {
         my $value = $self->vivify_variable($var2);
 
         ### update vars as needed
-        $self->vivify_variable($var, {
-            set_var => 1,
-            var_val => $value,
-        }) if defined $var;
+        $self->set_variable($var, $value);
 
         last if ! $value;
 
@@ -2772,7 +2889,7 @@ sub set {
         if ($var =~ /^\w+$/) {  $var = [$var, 0] }
         else {                  $var = $self->_template->parse_variable(\$var, {no_dots => 1}) }
     }
-    $self->_template->vivify_variable($var, {no_dots => 1, set_var => 1, var_val => $val});
+    $self->_template->set_variable($var, $val, {no_dots => 1});
     return $val;
 }
 
