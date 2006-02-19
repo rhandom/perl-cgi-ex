@@ -833,7 +833,7 @@ sub parse_variable {
 
     ### flatten literals and constants as much as possible
     my $var = ($is_literal && $#var == 1) ? ${ $var[0] }
-            : $is_namespace               ? $self->vivify_variable(\@var, {is_namespace_during_compile => 1})
+            : $is_namespace               ? $self->get_variable(\@var, {is_namespace_during_compile => 1})
             :                               \@var;
 
     ### allow for all "operators"
@@ -1010,7 +1010,7 @@ sub interpolate_node {
 
 ###----------------------------------------------------------------###
 
-sub vivify_variable {
+sub get_variable {
     ### allow for the parse tree to store literals
     return $_[1] if ! ref $_[1];
 
@@ -1025,25 +1025,15 @@ sub vivify_variable {
     my $args = $var->[$i++];
     if (ref $ref) {
         if (ref($ref) eq 'SCALAR') { # a scalar literal
-            return if $ARGS->{'set_var'};
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') { # operator
-            return if $ARGS->{'set_var'};
             return $self->play_operator($$ref) if ${ $ref }->[0] eq '\\'; # return the closure
             $generated_list = 1 if ${ $ref }->[0] eq '..';
             $ref = $self->play_operator($$ref);
         } else { # a named variable access (ie via $name.foo)
-            $ref = $self->vivify_variable($ref);
+            $ref = $self->get_variable($ref);
             if (defined $ref) {
                 return if $ref =~ /^[_.]/; # don't allow vars that begin with _
-                if ($ARGS->{'set_var'}) {
-                    if ($#$var <= $i) {
-                        $self->{'_vars'}->{$ref} = $ARGS->{'var_val'};
-                        return;
-                    } else {
-                        $self->{'_vars'}->{$ref} ||= {};
-                    }
-                }
                 $ref = $self->{'_vars'}->{$ref};
             } else {
                 return if $ARGS->{'set_var'};
@@ -1054,21 +1044,12 @@ sub vivify_variable {
             $ref = $self->{'NAMESPACE'}->{$ref};
         } else {
             return if $ref =~ /^[_.]/; # don't allow vars that begin with _
-            if ($ARGS->{'set_var'}) {
-                if ($#$var <= $i) {
-                    $self->{'_vars'}->{$ref} = $ARGS->{'var_val'};
-                    return;
-                } else {
-                    $self->{'_vars'}->{$ref} ||= {};
-                }
-            }
             $ref = $self->{'_vars'}->{$ref};
         }
     }
 
     ### let the top level thing be a code block
     if (UNIVERSAL::isa($ref, 'CODE')) {
-        return if $ARGS->{'set_var'} && $#$var <= $i;
         my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
         if (defined $results[0]) {
             $ref = ($#results > 0) ? \@results : $results[0];
@@ -1088,16 +1069,14 @@ sub vivify_variable {
 
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
-            if (ref($name) eq 'SCALAR') {
-                die "Shouldn't get a SCALAR during a vivify on chain";
-            } elsif (ref($name) eq 'REF') {
-                die "Shouldn't get a REF during a vivify on chain";
-            } else {
-                $name = $self->vivify_variable($name);
+            if (ref($name) eq 'ARRAY') {
+                $name = $self->get_variable($name);
                 if (! defined($name) || $name =~ /^[_.]/) {
                     $ref = undef;
                     next;
                 }
+            } else {
+                die "Shouldn't get a ". ref($name) ." during a vivify on chain";
             }
         }
         if ($name =~ /^_/) { # don't allow vars that begin with _
@@ -1107,12 +1086,7 @@ sub vivify_variable {
 
         ### method calls on objects
         if (UNIVERSAL::can($ref, 'can')) {
-            my $lvalueish;
             my @args = $args ? @{ $self->vivify_args($args) } : ();
-            if ($ARGS->{'set_var'} && $i >= $#$var) {
-                $lvalueish = 1;
-                push @args, $ARGS->{'var_val'};
-            }
             my @results = eval { $ref->$name(@args) };
             if (! $@) {
                 if (defined $results[0]) {
@@ -1122,7 +1096,6 @@ sub vivify_variable {
                 } else {
                     $ref = undef;
                 }
-                return if $lvalueish;
                 next;
             }
             die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
@@ -1131,18 +1104,9 @@ sub vivify_variable {
 
         ### hash member access
         if (UNIVERSAL::isa($ref, 'HASH')) {
-            if ($ARGS->{'set_var'}) {
-                if ($#$var <= $i) {
-                    $ref->{$name} = $ARGS->{'var_val'};
-                    return;
-                } else {
-                    $ref = $ref->{$name} ||= {};
-                    next;
-                }
-            } elsif ($was_dot_call && exists($ref->{$name}) ) {
+            if ($was_dot_call && exists($ref->{$name}) ) {
                 $ref = $ref->{$name};
             } elsif (my $code = $self->hash_op($name)) {
-                return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } elsif ($ARGS->{'is_namespace_during_compile'}) {
@@ -1154,21 +1118,12 @@ sub vivify_variable {
         ### array access
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
             if ($name =~ /^\d+$/) {
-                if ($ARGS->{'set_var'}) {
-                    if ($#$var <= $i) {
-                        $ref->[$name] = $ARGS->{'var_val'};
-                        return;
-                    } else {
-                        $ref = $ref->[$name] ||= {};
-                        next;
-                    }
-                } elsif ($name <= $#$ref) {
+                if ($name <= $#$ref) {
                     $ref = $ref->[$name];
                 } else {
                     $ref = undef;
                 }
             } elsif (my $code = $self->list_op($name)) {
-                return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } else {
@@ -1180,15 +1135,12 @@ sub vivify_variable {
             if (UNIVERSAL::isa($name, 'CODE')) { ### looks like a filter access
                 $ref = $name->($ref);
             } elsif (my $code = $self->scalar_op($name)) {
-                return if $ARGS->{'set_var'};
                 $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } elsif ($code = $self->list_op($name)) {
-                return if $ARGS->{'set_var'};
                 $ref = $code->([$ref], $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } elsif (my $filter = $self->{'FILTERS'}->{$name} || $self->list_filters->{$name}) {
-                return if $ARGS->{'set_var'};
                 $filter = [$filter, 0] if UNIVERSAL::isa($filter, 'CODE');
                 if ($#$filter == 1 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
                     my $sub = $filter->[0];
@@ -1245,7 +1197,7 @@ sub set_variable {
     my $args = $var->[$i++];
     if (ref $ref) {
         if (ref($ref) eq 'ARRAY') { # named access (ie via $name.foo)
-            $ref = $self->vivify_variable($ref);
+            $ref = $self->get_variable($ref);
             if (defined $ref && $ref !~ /^[_.]/) { # don't allow vars that begin with _
                 if ($#$var <= $i) {
                     $self->{'_vars'}->{$ref} = $val;
@@ -1288,7 +1240,7 @@ sub set_variable {
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
             if (ref($name) eq 'ARRAY') {
-                $name = $self->vivify_variable($name);
+                $name = $self->get_variable($name);
                 if (! defined($name) || $name =~ /^[_.]/) {
                     $ref = undef;
                     next;
@@ -1375,7 +1327,7 @@ sub vivify_args {
     my $self = shift;
     my $vars = shift;
     my $args = shift || {};
-    return [map {$self->vivify_variable($_, $args)} @$vars];
+    return [map {$self->get_variable($_, $args)} @$vars];
 }
 
 ###----------------------------------------------------------------###
@@ -1402,27 +1354,27 @@ sub play_operator {
         push @$args, undef if ! ($#$args % 2);
         return {@$args};
     } elsif ($op eq '?') {
-        if ($self->vivify_variable($tree->[0])) {
-            return defined($tree->[1]) ? $self->vivify_variable($tree->[1]) : undef;
+        if ($self->get_variable($tree->[0])) {
+            return defined($tree->[1]) ? $self->get_variable($tree->[1]) : undef;
         } else {
-            return defined($tree->[2]) ? $self->vivify_variable($tree->[2]) : undef;
+            return defined($tree->[2]) ? $self->get_variable($tree->[2]) : undef;
         }
     } elsif ($op eq '||' || $op eq 'or' || $op eq 'OR') {
         for my $node (@$tree) {
-            my $var = $self->vivify_variable($node);
+            my $var = $self->get_variable($node);
             return $var if $var;
         }
         return '';
     } elsif ($op eq '&&' || $op eq 'and' || $op eq 'AND') {
         my $var;
         for my $node (@$tree) {
-            $var = $self->vivify_variable($node);
+            $var = $self->get_variable($node);
             return 0 if ! $var;
         }
         return $var;
 
     } elsif ($op eq '!') {
-        my $var = ! $self->vivify_variable($tree->[0]);
+        my $var = ! $self->get_variable($tree->[0]);
         return defined($var) ? $var : '';
 
     } elsif ($op eq '\\') { # return a closure "reference" that can access the variable later
@@ -1430,27 +1382,27 @@ sub play_operator {
         my $var = $tree->[0];
         return sub {
             local $var->[-1] = [@{ $var->[-1] || [] }, @_];
-            my $val = $self_copy->vivify_variable($var);
+            my $val = $self_copy->get_variable($var);
             return defined($val) ? $val : '';
         };
     }
 
     ### equality operators
     local $^W = 0;
-    my $n = $self->vivify_variable($tree->[0]);
+    my $n = $self->get_variable($tree->[0]);
     $tree = [@$tree[1..$#$tree]];
-    if ($op eq '==')    { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n eq $_) }; return 1 }
-    elsif ($op eq '!=') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n ne $_) }; return 1 }
-    elsif ($op eq 'eq') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n eq $_) }; return 1 }
-    elsif ($op eq 'ne') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n ne $_) }; return 1 }
-    elsif ($op eq '<')  { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n <  $_); $n = $_ }; return 1 }
-    elsif ($op eq '>')  { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n >  $_); $n = $_ }; return 1 }
-    elsif ($op eq '<=') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n <= $_); $n = $_ }; return 1 }
-    elsif ($op eq '>=') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n >= $_); $n = $_ }; return 1 }
-    elsif ($op eq 'lt') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n lt $_); $n = $_ }; return 1 }
-    elsif ($op eq 'gt') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n gt $_); $n = $_ }; return 1 }
-    elsif ($op eq 'le') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n le $_); $n = $_ }; return 1 }
-    elsif ($op eq 'ge') { for (@$tree) { $_ = $self->vivify_variable($_); return '' if ! ($n ge $_); $n = $_ }; return 1 }
+    if ($op eq '==')    { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n eq $_) }; return 1 }
+    elsif ($op eq '!=') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n ne $_) }; return 1 }
+    elsif ($op eq 'eq') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n eq $_) }; return 1 }
+    elsif ($op eq 'ne') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n ne $_) }; return 1 }
+    elsif ($op eq '<')  { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n <  $_); $n = $_ }; return 1 }
+    elsif ($op eq '>')  { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n >  $_); $n = $_ }; return 1 }
+    elsif ($op eq '<=') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n <= $_); $n = $_ }; return 1 }
+    elsif ($op eq '>=') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n >= $_); $n = $_ }; return 1 }
+    elsif ($op eq 'lt') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n lt $_); $n = $_ }; return 1 }
+    elsif ($op eq 'gt') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n gt $_); $n = $_ }; return 1 }
+    elsif ($op eq 'le') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n le $_); $n = $_ }; return 1 }
+    elsif ($op eq 'ge') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n ge $_); $n = $_ }; return 1 }
 
     ### numeric operators
     my $args = $self->vivify_args($tree);
@@ -1579,9 +1531,9 @@ sub play_DEFAULT {
     foreach (@$set) {
         my ($set, $default) = @$_;
         next if ! defined $set;
-        my $val = $self->vivify_variable($set);
+        my $val = $self->get_variable($set);
         if (! $val) {
-            $default = defined($default) ? $self->vivify_variable($default) : '';
+            $default = defined($default) ? $self->get_variable($default) : '';
             $self->set_variable($set, $default);
         }
     }
@@ -1638,7 +1590,7 @@ sub play_FOREACH {
     ### get the items - make sure it is an arrayref
     my ($var, $items) = @$ref;
 
-    $items = $self->vivify_variable($items);
+    $items = $self->get_variable($items);
     return '' if ! defined $items;
 
     if (! UNIVERSAL::isa($items, 'CGI::Ex::Template::Iterator')) {
@@ -1718,7 +1670,7 @@ sub parse_GET {
 
 sub play_GET {
     my ($self, $ident) = @_;
-    my $var = $self->vivify_variable($ident);
+    my $var = $self->get_variable($ident);
     $var = $self->undefined($ident) if ! defined $var;
     my $ref = ref $var;
     return $var if ! $ref;
@@ -1735,7 +1687,7 @@ sub parse_IF {
 sub play_IF {
     my ($self, $var, $node, $out_ref) = @_;
 
-    my $val = $self->vivify_variable($var);
+    my $val = $self->get_variable($var);
     if ($val) {
         my $body_ref = $node->[4] ||= [];
         $self->execute_tree($body_ref, $out_ref);
@@ -1749,7 +1701,7 @@ sub play_IF {
             return;
         }
         my $var = $node->[3];
-        my $val = $self->vivify_variable($var);
+        my $val = $self->get_variable($var);
         if ($val) {
             my $body_ref = $node->[4] ||= [];
             $self->execute_tree($body_ref, $out_ref);
@@ -1784,7 +1736,7 @@ sub play_INSERT {
     my ($names, $args) = @$var;
 
     foreach my $name (@$names) {
-        my $filename = $self->vivify_variable($name);
+        my $filename = $self->get_variable($name);
         $$out_ref .= $self->include_file($filename);
     }
 
@@ -1932,14 +1884,14 @@ sub play_PROCESS {
     ### set passed args
     foreach (@$args) {
         my ($key, $val) = @$_;
-        $val = $self->vivify_variable($val);
+        $val = $self->get_variable($val);
         $self->set_variable($key, $val);
     }
 
     ### iterate on any passed block or filename
     foreach my $ref (@$files) {
         next if ! defined $ref;
-        my $filename = $self->vivify_variable($ref);
+        my $filename = $self->get_variable($ref);
         my $out = ''; # have temp item to allow clear to correctly clear
 
         ### normal blocks or filenames
@@ -2026,7 +1978,7 @@ sub play_SET {
             $val = '';
             $self->execute_tree($sub_tree, \$val);
         } else { # normal var
-            $val = $self->vivify_variable($val);
+            $val = $self->get_variable($val);
         }
 
         $self->set_variable($set, $val);
@@ -2039,7 +1991,7 @@ sub parse_SWITCH { $DIRECTIVES->{'GET'}->[0]->(@_) }
 sub play_SWITCH {
     my ($self, $var, $node, $out_ref) = @_;
 
-    my $val = $self->vivify_variable($var);
+    my $val = $self->get_variable($var);
     $val = '' if ! defined $val;
     ### $node->[4] is thrown away
 
@@ -2051,7 +2003,7 @@ sub play_SWITCH {
             next;
         }
 
-        my $val2 = $self->vivify_variable($var);
+        my $val2 = $self->get_variable($var);
         $val2 = [$val2] if ! UNIVERSAL::isa($val2, 'ARRAY');
         for my $test (@$val2) { # find matching values
             next if ! defined $val && defined $test;
@@ -2086,7 +2038,7 @@ sub parse_THROW {
 sub play_THROW {
     my ($self, $ref, $node) = @_;
     my ($name, $info) = @$ref;
-    $name = $self->vivify_variable($name);
+    $name = $self->get_variable($name);
     $self->throw($name, $info, $node);
 }
 
@@ -2118,7 +2070,7 @@ sub play_TRY {
             next;
         }
         next if ! $err;
-        my $name = $self->vivify_variable($node->[3]);
+        my $name = $self->get_variable($node->[3]);
         $name = '' if ! defined $name;
         if ($type =~ / ^ \Q$name\E \b /x
             && (! defined($last_found) || length($last_found) < length($name))) { # more specific wins
@@ -2255,7 +2207,7 @@ sub play_WHILE {
     my $max = $WHILE_MAX;
     while (--$max > 0) {
 
-        my $value = $self->vivify_variable($var2);
+        my $value = $self->get_variable($var2);
 
         ### update vars as needed
         $self->set_variable($var, $value);
@@ -2880,7 +2832,7 @@ sub get {
         if ($var =~ /^\w+$/) {  $var = [$var, 0] }
         else {                  $var = $self->_template->parse_variable(\$var, {no_dots => 1}) }
     }
-    return $self->_template->vivify_variable($var, {no_dots => 1});
+    return $self->_template->get_variable($var, {no_dots => 1});
 }
 
 sub set {
@@ -3696,7 +3648,7 @@ Template::Toolkit or the appropriate module.
 CGI::Ex::Template uses its own mechanism for loading filters.  TT
 would use the Template::Filters object to load filters requested via the
 FILTER directive.  The functionality for doing this in CGI::Ex::Template
-is contained in the list_filters method and the vivify_variable method.
+is contained in the list_filters method and the get_variable method.
 
 Full support is offered for the FILTERS configuration item.
 
