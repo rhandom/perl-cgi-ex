@@ -195,12 +195,12 @@ sub _swap {
         local $self->{'_in'}->{$doc->{'name'}} = 1;
 
         ### execute the document
-        if (! @{ $doc->{'tree'} }) { # no tags found - just return the content
-            $$out_ref = ${ $doc->{'content'} };
+        if (! @{ $doc->{'_tree'} }) { # no tags found - just return the content
+            $$out_ref = ${ $doc->{'_content'} };
         } else {
             local $self->{'_vars'}->{'component'} = $doc;
             $self->{'_vars'}->{'template'}  = $doc if $self->{'_top_level'};
-            $self->execute_tree($doc->{'tree'}, $out_ref);
+            $self->execute_tree($doc->{'_tree'}, $out_ref);
             delete $self->{'_vars'}->{'template'} if $self->{'_top_level'};
         }
     };
@@ -221,6 +221,8 @@ sub _swap {
     return 1;
 }
 
+###----------------------------------------------------------------###
+
 sub load_parsed_tree {
     my $self = shift;
     my $file = shift;
@@ -230,14 +232,17 @@ sub load_parsed_tree {
 
     ### looks like a string reference
     if (ref $file) {
-        $doc->{'content'} = $file;
-        $doc->{'name'}    = 'input text';
-        $doc->{'is_ref'}  = 1;
+        $doc->{'_content'}   = $file;
+        $doc->{'name'}       = 'input text';
+        $doc->{'is_str_ref'} = 1;
 
     ### looks like a previously cached-in-memory document
-    } elsif ($self->{'_documents'}->{$file}) {
+    } elsif ($self->{'_documents'}->{$file}
+             && (   ($self->{'_documents'}->{$file}->{'_cache_time'} == time) # don't stat more than once a second
+                 || ($self->{'_documents'}->{$file}->{'modtime'}
+                     == (stat $self->{'_documents'}->{$file}->{'_filename'})[9]))) {
         $doc = $self->{'_documents'}->{$file};
-        $doc->{'cache_time'} = time if $self->{'CACHE_SIZE'};
+        $doc->{'_cache_time'} = time;
         return $doc;
 
     ### looks like a block name of some sort
@@ -254,13 +259,13 @@ sub load_parsed_tree {
             $block = eval { $self->load_parsed_tree(\$copy) }
                 || $self->throw('block', 'Parse error on predefined block');
         }
-        $doc->{'tree'} = $block->{'tree'} || $self->throw('block', "Invalid block definition (missing tree)");
+        $doc->{'_tree'} = $block->{'_tree'} || $self->throw('block', "Invalid block definition (missing tree)");
         return $doc;
 
 
     ### go and look on the file system
     } else {
-        $doc->{'filename'} = eval { $self->include_filename($file) };
+        $doc->{'_filename'} = eval { $self->include_filename($file) };
         if (my $err = $@) {
             ### allow for blocks in other files
             if ($self->{'EXPOSE_BLOCKS'}
@@ -270,77 +275,77 @@ sub load_parsed_tree {
                 while ($file =~ s|/([^/.]+)$||) {
                     $block_name = length($block_name) ? "$1/$block_name" : $1;
                     my $ref = eval { $self->load_parsed_tree($file) } || next;
-                    my $_tree = $ref->{'tree'};
+                    my $_tree = $ref->{'_tree'};
                     foreach my $node (@$_tree) {
                         next if ! ref $node;
                         next if $node->[0] eq 'METADEF';
                         last if $node->[0] ne 'BLOCK';
                         next if $block_name ne $node->[3];
-                        $doc->{'content'} = $ref->{'content'};
-                        $doc->{'tree'}    = $node->[4];
+                        $doc->{'_content'} = $ref->{'_content'};
+                        $doc->{'_tree'}    = $node->[4];
                         $doc->{'modtime'} = $ref->{'modtime'};
                         $file = $ref->{'name'};
                         last;
                     }
                 }
-                die $err if ! $doc->{'tree'};
+                die $err if ! $doc->{'_tree'};
             } elsif ($self->{'DEFAULT'}) {
-                $doc->{'filename'} = eval { $self->include_filename($self->{'DEFAULT'}) } || die $err;
+                $doc->{'_filename'} = eval { $self->include_filename($self->{'DEFAULT'}) } || die $err;
             } else {
                 die $err;
             }
         }
 
         ### no tree yet - look for a file cache
-        if (! $doc->{'tree'}) {
-            $doc->{'modtime'} = (stat $doc->{'filename'})[9];
+        if (! $doc->{'_tree'}) {
+            $doc->{'modtime'} = (stat $doc->{'_filename'})[9];
             if  ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'}) {
                 if ($self->{'COMPILE_DIR'}) {
-                    $doc->{'compile_filename'} = $self->{'COMPILE_DIR'} .'/'. $file;
+                    $doc->{'_compile_filename'} = $self->{'COMPILE_DIR'} .'/'. $file;
                 } else {
-                    $doc->{'compile_filename'} = $doc->{'filename'};
+                    $doc->{'_compile_filename'} = $doc->{'_filename'};
                 }
-                $doc->{'compile_filename'} .= $self->{'COMPILE_EXT'} if defined($self->{'COMPILE_EXT'});
-                $doc->{'compile_filename'} .= $EXTRA_COMPILE_EXT       if defined $EXTRA_COMPILE_EXT;
+                $doc->{'_compile_filename'} .= $self->{'COMPILE_EXT'} if defined($self->{'COMPILE_EXT'});
+                $doc->{'_compile_filename'} .= $EXTRA_COMPILE_EXT       if defined $EXTRA_COMPILE_EXT;
 
-                if (-e $doc->{'compile_filename'} && (stat _)[9] == $doc->{'modtime'}) {
+                if (-e $doc->{'_compile_filename'} && (stat _)[9] == $doc->{'modtime'}) {
                     require Storable;
-                    $doc->{'tree'} = Storable::retrieve($doc->{'compile_filename'});
+                    $doc->{'_tree'} = Storable::retrieve($doc->{'_compile_filename'});
                     $doc->{'compile_was_used'} = 1;
                 } else {
-                    my $str = $self->slurp($doc->{'filename'});
-                    $doc->{'content'}  = \$str;
+                    my $str = $self->slurp($doc->{'_filename'});
+                    $doc->{'_content'}  = \$str;
                 }
             } else {
-                my $str = $self->slurp($doc->{'filename'});
-                $doc->{'content'}  = \$str;
+                my $str = $self->slurp($doc->{'_filename'});
+                $doc->{'_content'}  = \$str;
             }
         }
 
     }
 
-    ### haven't found a parsed tree yet
-    if (! $doc->{'tree'}) {
+    ### haven't found a parsed tree yet - parse the content into a tree
+    if (! $doc->{'_tree'}) {
         if ($self->{'CONSTANTS'}) {
             my $key = $self->{'CONSTANT_NAMESPACE'} || 'constants';
             $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
         }
 
         local $self->{'_vars'}->{'component'} = $doc;
-        $doc->{'tree'} = $self->parse_tree($doc->{'content'}); # errors die
+        $doc->{'_tree'} = $self->parse_tree($doc->{'_content'}); # errors die
     }
 
     ### cache parsed_tree in memory unless asked not to do so
-    if (! $doc->{'is_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
+    if (! $doc->{'is_str_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
         $self->{'_documents'}->{$file} ||= $doc;
+        $doc->{'_cache_time'} = time;
 
         ### allow for config option to keep the cache size down
         if ($self->{'CACHE_SIZE'}) {
-            $doc->{'cache_time'} = time;
             my $all = $self->{'_documents'};
             if (scalar(keys %$all) > $self->{'CACHE_SIZE'}) {
                 my $n = 0;
-                foreach my $file (sort {$all->{$b}->{'cache_time'} <=> $all->{$a}->{'cache_time'}} keys %$all) {
+                foreach my $file (sort {$all->{$b}->{'_cache_time'} <=> $all->{$a}->{'_cache_time'}} keys %$all) {
                     delete($all->{$file}) if ++$n > $self->{'CACHE_SIZE'};
                 }
             }
@@ -348,16 +353,16 @@ sub load_parsed_tree {
     }
 
     ### save a cache on the fileside as asked
-    if ($doc->{'compile_filename'} && ! $doc->{'compile_was_used'}) {
-        my $dir = $doc->{'compile_filename'};
+    if ($doc->{'_compile_filename'} && ! $doc->{'compile_was_used'}) {
+        my $dir = $doc->{'_compile_filename'};
         $dir =~ s|/[^/]+$||;
         if (! -d $dir) {
             require File::Path;
             File::Path::mkpath($dir);
         }
         require Storable;
-        Storable::store($doc->{'tree'}, $doc->{'compile_filename'});
-        utime $doc->{'modtime'}, $doc->{'modtime'}, $doc->{'compile_filename'};
+        Storable::store($doc->{'_tree'}, $doc->{'_compile_filename'});
+        utime $doc->{'modtime'}, $doc->{'modtime'}, $doc->{'_compile_filename'};
     }
 
     return $doc;
@@ -465,7 +470,7 @@ sub parse_tree {
                 $node = $post_op;
                 $node->[4] = [\@post_op];
             } elsif ($capture) {
-                # do nothing
+                # do nothing - it will be handled further down
             } else{
                 push @$pointer, $node;
             }
@@ -537,7 +542,7 @@ sub parse_tree {
                     $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
                 }
-                if ($DIRECTIVES->{$func}->[2] && ! $post_op) {
+                if ($DIRECTIVES->{$func}->[2] && ! $post_op) { # this looks like a block directive
                     push @state, $node;
                     $pointer = $node->[4] ||= [];
                 }
@@ -562,7 +567,7 @@ sub parse_tree {
             my $all  = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
             $all =~ s/^\s+//;
             $all =~ s/\s+$//;
-            $self->throw('parse', "Not sure how to handle tag \"$all\"");
+            $self->throw('parse', "Not sure how to handle tag \"$all\"", $node);
         }
 
         ### we now have the directive to capture for an item like "SET foo = BLOCK" - store it
@@ -579,13 +584,13 @@ sub parse_tree {
             $post_op   = undef;
             $capture   = $node;
 
-        ### semi-colon = end of statement
+        ### semi-colon = end of statement - we will need to continue parsing this tag
         } elsif ($tag =~ s{ ^ ; \s* }{}x) {
             $continue  = $j - length $tag;
             $node->[2] = $continue;
             $post_op   = undef;
 
-        ### looking at a post operator
+        ### looking at a post operator ([% u FOREACH u IN [1..3] %])
         } elsif ($tag =~ $QR_DIRECTIVE                         # find a word
                  && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
                  && $DIRECTIVES->{$func}                       # is it a directive
@@ -1212,16 +1217,12 @@ sub set_variable {
             return;
         }
     } elsif (defined $ref) {
-        if ($ARGS->{'is_namespace_during_compile'}) {
-            $ref = $self->{'NAMESPACE'}->{$ref};
+        return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+        if ($#$var <= $i) {
+            $self->{'_vars'}->{$ref} = $val;
+            return;
         } else {
-            return if $ref =~ /^[_.]/; # don't allow vars that begin with _
-            if ($#$var <= $i) {
-                $self->{'_vars'}->{$ref} = $val;
-                return;
-            } else {
-                $ref = $self->{'_vars'}->{$ref} ||= {};
-            }
+            $ref = $self->{'_vars'}->{$ref} ||= {};
         }
     }
 
@@ -1266,7 +1267,7 @@ sub set_variable {
                 if (defined $results[0]) {
                     $ref = ($#results > 0) ? \@results : $results[0];
                 } elsif (defined $results[1]) {
-                    die $results[1]; # grr - TT behavior - why not just throw ?
+                    die $results[1]; # TT behavior - why not just throw ?
                 } else {
                     $ref = undef;
                 }
@@ -1306,13 +1307,13 @@ sub set_variable {
             return;
         }
 
-        ### check at each point if the rurned thing was a code
+        ### check at each point if the returned thing was a code
         if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
             my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
             if (defined $results[0]) {
                 $ref = ($#results > 0) ? \@results : $results[0];
             } elsif (defined $results[1]) {
-                die $results[1]; # grr - TT behavior - why not just throw ?
+                die $results[1]; # TT behavior - why not just throw ?
             } else {
                 return;
             }
@@ -1470,8 +1471,8 @@ sub play_BLOCK {
 
     ### store a named reference - but do nothing until something processes it
     $self->{'BLOCKS'}->{$block_name} = {
-        tree    => $node->[4],
-        name    => $self->{'_vars'}->{'component'}->{'name'} .'/'. $block_name,
+        _tree => $node->[4],
+        name  => $self->{'_vars'}->{'component'}->{'name'} .'/'. $block_name,
     };
 
     return;
@@ -1566,7 +1567,7 @@ sub play_FILTER {
     ### play the block
     my $out = '';
     eval { $self->execute_tree($sub_tree, \$out) };
-    die $@ if $@ && ref($@) !~ /Template::Exception$/; # TODO - fix
+    die $@ if $@ && ref($@) !~ /Template::Exception$/;
 
     my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
 
@@ -1904,10 +1905,10 @@ sub play_PROCESS {
             $self->throw('process', "Recursion detected in $node->[0] \$template") if $self->{'_process_dollar_template'};
             local $self->{'_process_dollar_template'} = 1;
             local $self->{'_vars'}->{'component'} = my $doc = $filename;
-            return if ! $doc->{'tree'};
+            return if ! $doc->{'_tree'};
 
             ### execute and trim
-            eval { $self->execute_tree($doc->{'tree'}, \$out) };
+            eval { $self->execute_tree($doc->{'_tree'}, \$out) };
             if ($self->{'TRIM'}) {
                 $out =~ s{ \s+ $ }{}x;
                 $out =~ s{ ^ \s+ }{}x;
@@ -2372,8 +2373,8 @@ sub process {
         if (exists $self->{'PROCESS'}) {
             ### load the meta data for the top document
             my $doc  = $self->load_parsed_tree($content) || {};
-            my $meta = ($doc->{'tree'} && ref($doc->{'tree'}->[0]) && $doc->{'tree'}->[0]->[0] eq 'METADEF')
-                ? $doc->{'tree'}->[0]->[3] : {};
+            my $meta = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'METADEF')
+                ? $doc->{'_tree'}->[0]->[3] : {};
 
             $copy->{'template'} = $doc;
             @{ $doc }{keys %$meta} = values %$meta;
@@ -2544,11 +2545,11 @@ sub debug_node {
     my $doc = $self->{'_vars'}->{'component'};
     my $i = $node->[1];
     my $j = $node->[2] || return ''; # METADEF can be 0
-    $doc->{'content'} ||= do { my $s = $self->slurp($doc->{'filename'}) ; \$s };
+    $doc->{'_content'} ||= do { my $s = $self->slurp($doc->{'_filename'}) ; \$s };
     my $format = $self->{'_debug_format'} || $self->{'DEBUG_FORMAT'} || "\n## \$file line \$line : [% \$text %] ##\n";
     $format =~ s{\$file}{$doc->{name}}g;
     $format =~ s{\$line}{ $self->get_line_number_by_index($doc, $i) }eg;
-    $format =~ s{\$text}{ my $s = substr(${ $doc->{'content'} }, $i, $j - $i); $s=~s/^\s+//; $s=~s/\s+$//; $s }eg;
+    $format =~ s{\$text}{ my $s = substr(${ $doc->{'_content'} }, $i, $j - $i); $s=~s/^\s+//; $s=~s/\s+$//; $s }eg;
     return $format;
 }
 
@@ -2556,11 +2557,11 @@ sub get_line_number_by_index {
     my ($self, $doc, $index) = @_;
     ### get the line offsets for the doc
     my $lines = $doc->{'line_offsets'} ||= do {
-        $doc->{'content'} ||= do { my $s = $self->slurp($doc->{'filename'}) ; \$s };
+        $doc->{'_content'} ||= do { my $s = $self->slurp($doc->{'_filename'}) ; \$s };
         my $i = 0;
         my @lines = (0);
         while (1) {
-            $i = index(${ $doc->{'content'} }, "\n", $i) + 1;
+            $i = index(${ $doc->{'_content'} }, "\n", $i) + 1;
             last if $i == 0;
             push @lines, $i;
         }
@@ -2901,6 +2902,7 @@ applied to TT2 will take longer to get into CET, should they get in at all.
 
 =head1 TODO
 
+    Combine ops and filters
     Benchmark text processing
     Benchmark FOREACH types again
     Allow USE to use our Iterator
