@@ -9,7 +9,7 @@ CGI::Ex::Template - Lightweight TT2/3 engine
 use CGI::Ex::Dump qw(debug);
 use strict;
 use vars qw($TAGS
-            $SCALAR_OPS $HASH_OPS $LIST_OPS
+            $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS
             $DIRECTIVES $QR_DIRECTIVE
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $QR_OP $QR_OP_UNARY
             $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
@@ -1111,13 +1111,14 @@ sub get_variable {
         if (UNIVERSAL::isa($ref, 'HASH')) {
             if ($was_dot_call && exists($ref->{$name}) ) {
                 $ref = $ref->{$name};
-            } elsif (my $code = $self->hash_op($name)) {
-                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
+            } elsif ($HASH_OPS->{$name}) {
+                $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } elsif ($ARGS->{'is_namespace_during_compile'}) {
                 return $var; # abort - can't fold namespace variable
             } else {
                 $ref = undef;
+                next;
             }
 
         ### array access
@@ -1127,43 +1128,52 @@ sub get_variable {
                     $ref = $ref->[$name];
                 } else {
                     $ref = undef;
+                    next;
                 }
-            } elsif (my $code = $self->list_op($name)) {
-                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
+            } elsif ($LIST_OPS->{$name}) {
+                $ref = $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
                 next;
             } else {
                 $ref = undef;
+                next;
             }
 
         ### scalar access
         } elsif (! ref($ref) && defined($ref)) {
-            if (UNIVERSAL::isa($name, 'CODE')) { ### looks like a filter access
-                $ref = $name->($ref);
-            } elsif (my $code = $self->scalar_op($name)) {
-                $ref = $code->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } elsif ($code = $self->list_op($name)) {
-                $ref = $code->([$ref], $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } elsif (my $filter = $self->{'FILTERS'}->{$name} || $self->list_filters->{$name}) {
-                $filter = [$filter, 0] if UNIVERSAL::isa($filter, 'CODE');
-                if ($#$filter == 1 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
+
+            if ($SCALAR_OPS->{$name}) {                        # normal scalar op
+                $ref = $SCALAR_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+
+            } elsif ($LIST_OPS->{$name}) {                     # auto-promote to list and use list op
+                $ref = $LIST_OPS->{$name}->([$ref], $args ? @{ $self->vivify_args($args) } : ());
+
+            } elsif (my $filter = $self->{'FILTERS'}->{$name}    # filter configured in Template args
+                     || $FILTER_OPS->{$name}                     # predefined filters in CET
+                     || (UNIVERSAL::isa($name, 'CODE') && $name) # looks like a filter sub passed in the stash
+                     || $self->list_filters->{$name}) {          # filter defined in Template::Filters
+
+                if (UNIVERSAL::isa($filter, 'CODE')) {
+                    $ref = $filter->($ref); # non-dynamic filter - no args
+
+                } elsif (@$filter == 2 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
                     my $sub = $filter->[0];
-                    if ($filter->[1]) {
+                    if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
                         $sub = $sub->({}, $args ? @{ $self->vivify_args($args) } : ()); # dynamic filter (empty context)
                     }
                     $ref = $sub->($ref);
-                } else { # this looks like our vmethods turned into "filters"
+
+                } else { # this looks like our vmethods turned into "filters" (a filter stored under a name)
                     $seen_filters ||= {};
                     if ($seen_filters->{$name} ++) {
                         $ref = undef;
                         next;
                     }
-                    $var = ['|', @$filter, splice(@$var, $i)];
+                    $var = ['|', @$filter, splice(@$var, $i)]; # splice the filter into our current tree
                     $i = 0;
                 }
             } else {
                 $ref = undef;
+                next;
             }
         }
 
@@ -1173,7 +1183,7 @@ sub get_variable {
             if (defined $results[0]) {
                 $ref = ($#results > 0) ? \@results : $results[0];
             } elsif (defined $results[1]) {
-                die $results[1]; # grr - TT behavior - why not just throw ?
+                die $results[1]; # TT behavior - why not just throw ?
             } else {
                 $ref = undef;
             }
@@ -1232,7 +1242,6 @@ sub set_variable {
     }
 
     ### vivify the chained levels
-    my $seen_filters;
     while (defined $ref && $#$var > $i) {
         my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
         my $name         = $var->[$i++];
@@ -1431,20 +1440,7 @@ sub play_operator {
 
 sub scalar_op {
     my ($self, $name) = @_;
-    $SCALAR_OPS->{$name} = $_[2] if $#_ == 2;
     return $SCALAR_OPS->{$name};
-}
-
-sub list_op {
-    my ($self, $name) = @_;
-    $LIST_OPS->{$name} = $_[2] if $#_ == 2;
-    return $LIST_OPS->{$name};
-}
-
-sub hash_op {
-    my ($self, $name) = @_;
-    $HASH_OPS->{$name} = $_[2] if $#_ == 2;
-    return $HASH_OPS->{$name};
 }
 
 ###----------------------------------------------------------------###
@@ -2583,6 +2579,18 @@ sub get_line_number_by_index {
 ### many of these vmethods have used code from Template/Stash.pm to
 ### assure conformance with the TT spec.
 
+sub define_vmethod {
+    my ($self, $type, $name, $sub) = @_;
+    if (   $type =~ /scalar|item/i) { $SCALAR_OPS->{$name} = $sub }
+    elsif ($type =~ /array|list/i ) { $LIST_OPS->{  $name} = $sub }
+    elsif ($type =~ /hash/i       ) { $HASH_OPS->{  $name} = $sub }
+    elsif ($type =~ /filter/i     ) { $FILTER_OPS->{$name} = $sub }
+    else {
+        die "Invalid type vmethod type $type";
+    }
+    return 1;
+}
+
 sub vmethod_chunk {
     my $str  = shift;
     my $size = shift || 1;
@@ -2786,22 +2794,10 @@ sub define_filter {
         my $sub = $filter;
         $filter = sub { $sub->($self, @_) };
     }
-    $self->define_vmethod('scalar', $name, $filter);
+    $self->define_vmethod('filter', $name, $filter);
 }
 
-sub define_vmethod {
-    my ($self, $type, $name, $sub) = @_;
-    if ($type =~ /scalar|item/i) {
-        $self->_template->scalar_op($name, $sub);
-    } elsif ($type =~ /array|list/i) {
-        $self->_template->list_op($name, $sub);
-    } elsif ($type =~ /hash/i) {
-        $self->_template->hash_op($name, $sub);
-    } else {
-        die "Invalid type vmethod type $type";
-    }
-    return 1;
-}
+sub define_vmethod { shift->_template->define_vmethod(@_) }
 
 sub throw {
     my ($self, $type, $info) = @_;
@@ -2886,7 +2882,7 @@ __END__
 =head1 DESCRIPTION
 
 CGI::Ex::Template happened by accident.  The CGI::Ex suite included a
-base set of modules for doing anywhere from simple to complicated CGI
+base set of modules for doing anything from simple to complicated CGI
 applications.  Part of the suite was a simple variable interpolater
 that used TT2 style variables in TT2 style tags "[% foo.bar %]".  This
 was fine and dandy for a couple of years.
@@ -2902,7 +2898,6 @@ applied to TT2 will take longer to get into CET, should they get in at all.
 
 =head1 TODO
 
-    Combine ops and filters
     Benchmark text processing
     Benchmark FOREACH types again
     Allow USE to use our Iterator
