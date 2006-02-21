@@ -54,7 +54,7 @@ BEGIN {
         uri      => sub { $_[0] =~ s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_[0] },
     };
 
-    $FILTER_OPS = {
+    $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
         eval   => [\&filter_eval, 1],
         evaltt => [\&filter_eval, 1],
     };
@@ -1455,13 +1455,6 @@ sub play_operator {
 
 ###----------------------------------------------------------------###
 
-sub scalar_op {
-    my ($self, $name) = @_;
-    return $SCALAR_OPS->{$name};
-}
-
-###----------------------------------------------------------------###
-
 sub parse_BLOCK {
     my ($self, $tag_ref, $node) = @_;
 
@@ -1840,21 +1833,28 @@ sub play_PERL {
     my $out  = '';
     $self->execute_tree($perl, \$out);
 
-    ### setup a fake handle
-    my $handle = $self->eval_perl_handle($out_ref);
-    local *PERLOUT = $handle;
-    my $old_fh = select PERLOUT;
-
     ### try the code
+    my $err;
     eval {
+        package CGI::Ex::Template::Perl;
+
         my $context = $self->pseudo_context;
         my $stash   = $context->stash;
-        eval $out;
-    };
-    my $err = $@;
 
-    ### put the handle back
-    select $old_fh;
+        ### setup a fake handle
+        local *PERLOUT;
+        tie *PERLOUT, 'CGI::Ex::Template::EvalPerlHandle', $out_ref;
+        my $old_fh = select PERLOUT;
+
+        eval $out;
+        $err = $@;
+
+        ### put the handle back
+        select $old_fh;
+
+    };
+    $err ||= $@;
+
 
     if ($err) {
         $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
@@ -2498,11 +2498,6 @@ sub exception {
 
 sub throw { die shift->exception(@_) }
 
-sub eval_perl_handle {
-    my ($self, $out_ref) = @_;
-    my $handle = CGI::Ex::Template::EvalPerlHandle->load($out_ref);
-}
-
 sub pseudo_context {
     my $self = shift;
     return bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
@@ -2891,12 +2886,6 @@ sub DESTROY {}
 ###----------------------------------------------------------------###
 
 package CGI::Ex::Template::EvalPerlHandle;
-
-sub load {
-    my ($class, $out_ref) = @_;
-    tie(*OUTPUT, $class, $out_ref);
-    return \*OUTPUT;
-}
 
 sub TIEHANDLE {
     my ($class, $out_ref) = @_;
