@@ -31,16 +31,32 @@ BEGIN {
     };
 
     $SCALAR_OPS = {
-        chunk   => \&vmethod_chunk,
-        indent  => \&vmethod_indent,
-        hash    => sub { {value => $_[0]} },
-        length  => sub { defined($_[0]) ? length($_[0]) : 0 },
-        match   => \&vmethod_match,
-        repeat  => \&vmethod_repeat,,
-        replace => \&vmethod_replace,
-        size    => sub { 1 },
-        split   => \&vmethod_split,
-        substr  => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
+        chunk    => \&vmethod_chunk,
+        collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
+        indent   => \&vmethod_indent,
+        format   => \&vmethod_format,
+        hash     => sub { {value => $_[0]} },
+        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
+        lcfirst  => sub { lcfirst $_[0] },
+        length   => sub { defined($_[0]) ? length($_[0]) : 0 },
+        lower    => sub { lc $_[0] },
+        match    => \&vmethod_match,
+        null     => sub { '' },
+        remove   => sub { vmethod_replace(shift, shift, '', 1) },
+        repeat   => \&vmethod_repeat,
+        replace  => \&vmethod_replace,
+        size     => sub { 1 },
+        split    => \&vmethod_split,
+        substr   => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
+        trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
+        ucfirst  => sub { ucfirst $_[0] },
+        upper    => sub { uc $_[0] },
+        uri      => sub { $_[0] =~ s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_[0] },
+    };
+
+    $FILTER_OPS = {
+        eval   => [\&filter_eval, 1],
+        evaltt => [\&filter_eval, 1],
     };
 
     $LIST_OPS = {
@@ -179,7 +195,7 @@ sub _swap {
     my $self = shift;
     my $file = shift;
     local $self->{'_vars'} = shift || {};
-    my $out_ref = shift || $self->throw('undef', "Missing output");
+    my $out_ref = shift || $self->throw('undef', "Missing output ref");
     local $self->{'_top_level'} = delete $self->{'_start_top_level'};
     my $i = length $$out_ref;
 
@@ -191,7 +207,7 @@ sub _swap {
 
         ### prevent recursion
         $self->throw('recursion', "Recursive call into $doc->{name}")
-            if ! $self->{'RECURSION'} && $self->{'_in'}->{$doc->{'name'}};
+            if ! $self->{'RECURSION'} && $self->{'_in'}->{$doc->{'name'}} && $doc->{'name'} ne 'input text';
         local $self->{'_in'}->{$doc->{'name'}} = 1;
 
         ### execute the document
@@ -1158,7 +1174,8 @@ sub get_variable {
                 } elsif (@$filter == 2 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
                     my $sub = $filter->[0];
                     if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
-                        $sub = $sub->({}, $args ? @{ $self->vivify_args($args) } : ()); # dynamic filter (empty context)
+                        my $c = $self->pseudo_context;
+                        $sub = $sub->($c, $args ? @{ $self->vivify_args($args) } : ()); # dynamic filter (empty context)
                     }
                     $ref = $sub->($ref);
 
@@ -2248,7 +2265,7 @@ sub play_WRAPPER {
 
 ###----------------------------------------------------------------###
 
-sub stash {
+sub vars {
     my $self = shift;
     $self->{'_vars'} = shift if $#_ == 0;
     return $self->{'_vars'} ||= {};
@@ -2575,7 +2592,7 @@ sub get_line_number_by_index {
 }
 
 ###----------------------------------------------------------------###
-### long virtual methods
+### long virtual methods or filters
 ### many of these vmethods have used code from Template/Stash.pm to
 ### assure conformance with the TT spec.
 
@@ -2611,6 +2628,12 @@ sub vmethod_indent {
     my $ind = ' ' x $n;
     $str =~ s/^/$ind/mg;
     return $str;
+}
+
+sub vmethod_format {
+    my $str = shift; $str = ''   if ! defined $str;
+    my $pat = shift; $pat = '%s' if ! defined $pat;
+    return join "\n", map{ sprintf $pat, $_ } split(/\n/, $str);
 }
 
 sub vmethod_match {
@@ -2676,6 +2699,14 @@ sub vmethod_split {
     $str = ''  if ! defined $str;
     $pat = ' ' if ! defined $pat;
     return [split $pat, $str, @args];
+}
+
+sub filter_eval {
+    my $context = shift;
+    return sub {
+        my $text = shift;
+        return $context->process(\$text);
+    };
 }
 
 ###----------------------------------------------------------------###
@@ -2786,6 +2817,17 @@ sub stash {
 }
 
 sub insert { shift->_template->include_file(@_) }
+
+sub eval_perl { shift->_template->{'EVAL_PERL'} }
+
+sub process {
+    my $self = shift;
+    my $ref  = shift;
+    my $vars = $self->_template->vars;
+    my $out  = '';
+    $self->_template->_swap($ref, $vars, \$out);
+    return $out;
+}
 
 sub define_filter {
     my ($self, $name, $filter, $is_dynamic) = @_;
