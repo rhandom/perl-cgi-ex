@@ -8,10 +8,17 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 459 - ($is_tt ? 59 : 0);
+use Test::More tests => 461 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
 use_ok($module);
 
+#process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; foo %]' => 'A');
+#process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; a = "b" ; foo %]' => 'A');
+#process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; a = "cd"; foo %]' => '-AB-cd');
+#process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; a = "cd"; foo %]' => '*cd');
+#process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; foo %]' => '-AB-cd');
+#process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*cd');
+#exit;
 
 ###----------------------------------------------------------------###
 
@@ -294,6 +301,9 @@ process_ok("[% n.repeat(2,'|') %]" => '1|1', {n => 1}) if ! $is_tt;
 
 process_ok("[% n.size %]", => 'SIZE', {n => {size => 'SIZE', a => 'A'}});
 process_ok("[% n|size %]", => '2',    {n => {size => 'SIZE', a => 'A'}}) if ! $is_tt; # tt2 | is alias for FILTER
+
+process_ok('[% foo | eval %]' => 'baz', {foo => '[% bar %]', bar => 'baz'});
+process_ok('[% "1" | indent(2) %]' => '  1');
 
 process_ok("[% n.replace('foo', 'bar') %]" => 'barbar', {n => 'foofoo'});
 process_ok("[% n.replace('(foo)', 'bar\$1') %]" => 'barfoobarfoo', {n => 'foofoo'}) if ! $is_tt;
