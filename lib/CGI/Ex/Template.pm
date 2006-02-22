@@ -1678,11 +1678,7 @@ sub parse_GET {
 sub play_GET {
     my ($self, $ident) = @_;
     my $var = $self->get_variable($ident);
-    $var = $self->undefined($ident) if ! defined $var;
-    my $ref = ref $var;
-    return $var if ! $ref;
-    return '' if $ref eq 'ARRAY' || $ref eq 'SCALAR' || $ref eq 'HASH';
-    return $var;
+    return (! defined $var) ? $self->undefined($ident) : $var;
 }
 
 sub parse_IF {
@@ -1832,6 +1828,7 @@ sub play_PERL {
     my $perl = $node->[4] || return;
     my $out  = '';
     $self->execute_tree($perl, \$out);
+    $out = $1 if $out =~ /^(.+)$/s; # blatant untaint - shouldn't use perl anyway
 
     ### try the code
     my $err;
