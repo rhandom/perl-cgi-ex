@@ -73,11 +73,11 @@ my $longer_template = "[% INCLUDE bar.tt %]"
     .("123"x200)
     ."[% FOREACH a IN array %]foobar[% IF a == 'A' %][% INCLUDE baz.tt %][% END %]bazbing[% END %]"
     .("456"x200)
-    ."[% FOREACH h IN hash.keys.sort %]([% hash.\$h %])[% END %]"
+    ."[% IF foo ; bar ; ELSIF baz ; bing ; ELSE ; bong ; END %]"
     .("789"x200)
-    ."[% SET n = 0 %]"
-    ."[% FOREACH i IN [0..10] ; n = n + i ; END ; n %]"
+    ."[% IF foo ; bar ; ELSIF baz ; bing ; ELSE ; bong ; END %]"
     .("012"x200)
+    ."[% IF foo ; bar ; ELSIF baz ; bing ; ELSE ; bong ; END %]"
     ."[% array.join('|') %]"
     ."[% PROCESS bar.tt %]";
 
