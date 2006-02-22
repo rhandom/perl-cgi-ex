@@ -10,8 +10,11 @@ BEGIN {
 use strict;
 use Test::More tests => 25 - ($is_tt ? 6 : 0);
 use Data::Dumper qw(Dumper);
+use constant test_taint => 0 && eval { require Taint::Runtime };
 
 use_ok($module);
+
+Taint::Runtime::taint_start() if test_taint;
 
 ### find a place to allow for testing
 my $test_dir = $0 .'.test_dir';
@@ -25,6 +28,9 @@ sub process_ok { # process the value
     my $test = shift;
     my $args = shift;
     my $out  = '';
+
+    Taint::Runtime::taint(\$str) if test_taint;
+
     my $obj = $module->new(ABSOLUTE => 1, INCLUDE_PATH => $test_dir);
     $obj->process(\$str, $args, \$out);
     my $ok = $out eq $test;

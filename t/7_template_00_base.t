@@ -2,15 +2,19 @@
 
 use vars qw($module $is_tt);
 BEGIN {
-    $module = 'CGI::Ex::Template'; #0.15user 0.00system 0:00.28elapsed 57%CPU
-    #$module = 'Template';         #0.72user 0.00system 0:01.16elapsed 63%CPU
+    $module = 'CGI::Ex::Template'; #0.44user 0.01system 0:00.82elapsed 56%CPU
+    #$module = 'Template';         #1.36user 0.01system 0:02.26elapsed 61%CPU
     $is_tt = $module eq 'Template';
 };
 
 use strict;
 use Test::More tests => 461 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
+use constant test_taint => 0 && eval { require Taint::Runtime };
+
 use_ok($module);
+
+Taint::Runtime::taint_start() if test_taint;
 
 #process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; foo %]' => 'A');
 #process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; a = "b" ; foo %]' => 'A');
@@ -28,6 +32,9 @@ sub process_ok { # process the value and say if it was ok
     my $vars = shift;
     my $obj  = shift || $module->new(@{ $vars->{tt_config} || [] }); # new object each time
     my $out  = '';
+
+    Taint::Runtime::taint(\$str) if test_taint;
+
     $obj->process(\$str, $vars, \$out);
     my $ok = ref($test) ? $out =~ $test : $out eq $test;
     ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
