@@ -122,6 +122,7 @@ BEGIN {
         NEXT    => [sub {},          \&play_control],
         PERL    => [\&parse_PERL,    \&play_PERL,     1],
         PROCESS => [\&parse_PROCESS, \&play_PROCESS],
+        RAWPERL => [\&parse_PERL,    \&play_RAWPERL,  1],
         RETURN  => [sub {},          \&play_control],
         SET     => [\&parse_SET,     \&play_SET],
         STOP    => [sub {},          \&play_control],
@@ -1941,6 +1942,40 @@ sub play_PROCESS {
     return;
 }
 
+sub play_RAWPERL {
+    my ($self, $info, $node, $out_ref) = @_;
+    $self->throw('perl', 'EVAL_PERL not set') if ! $self->{'EVAL_PERL'};
+
+    ### fill in any variables
+    my $tree = $node->[4] || return;
+    my $perl  = '';
+    $self->execute_tree($tree, \$perl);
+    $perl = $1 if $perl =~ /^(.+)$/s; # blatant untaint - shouldn't use perl anyway
+
+    ### try the code
+    my $err;
+    my $output = '';
+    eval {
+        package CGI::Ex::Template::Perl;
+
+        my $context = $self->pseudo_context;
+        my $stash   = $context->stash;
+
+        eval $perl;
+        $err = $@;
+    };
+    $err ||= $@;
+
+    $$out_ref .= $output;
+
+    if ($err) {
+        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+        die $err;
+    }
+
+    return;
+}
+
 sub parse_SET {
     my ($self, $tag_ref, $node, $initial_var) = @_;
     my @SET;
@@ -2812,6 +2847,22 @@ sub process {
     my $vars = $self->_template->vars;
     my $out  = '';
     $self->_template->_swap($ref, $vars, \$out);
+    return $out;
+}
+
+sub include {
+    my $self = shift;
+    my $file = shift;
+    my $args = shift || {};
+
+    $self->_template->set_variable($_, $args->{$_}) for keys %$args;
+
+    my $out = ''; # have temp item to allow clear to correctly clear
+    eval { $self->_template->_swap($file, $self->{'_vars'}, \$out) };
+    if (my $err = $@) {
+        die $err if ref($err) !~ /Template::Exception$/ || $err->type !~ /return/;
+    }
+
     return $out;
 }
 
