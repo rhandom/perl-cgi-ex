@@ -503,7 +503,7 @@ process_ok("[% FOREACH i = [1] %][% SET a = 1 %][% END %][% a %]" => '1');
 process_ok("[% f.b = 1 %][% FOREACH f.b = [1..10] %][% f.b %][% END %][% f.b %]" => '1234567891010') if ! $is_tt;
 process_ok("[% a = 1 %][% FOREACH [{a=>'A'},{a=>'B'}] %]bar[% a %][% END %][% a %]" => 'barAbarB1');
 process_ok("[% FOREACH [1..3] %][% loop.size %][% END %][% loop.size %]" => '333');
-process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '3333') if ! $is_tt;
+process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '333') if ! $is_tt;
 process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '3331') if $is_tt;
 
 ###----------------------------------------------------------------###
