@@ -730,7 +730,7 @@ sub parse_variable {
             $is_literal = 1;
         } else {
             my $str = $2;
-            $str =~ s{ $QR_DE_INTERP }{$1}xog;
+            #$str =~ s{ $QR_DE_INTERP }{$1}xog;
             my @pieces = $ARGS->{'auto_quote'}
                 ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
                 : split(m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $str);
@@ -787,7 +787,7 @@ sub parse_variable {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $hashref = ['hashref'];
         while (defined(my $key = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
-            $copy =~ s{ ^ => \s* }{}x;
+            $copy =~ s{ ^ = >? \s* }{}x;
             my $val = $self->parse_variable(\$copy);
             push @$hashref, $key, $val;
             $copy =~ s{ ^ , \s* }{}x;
@@ -1056,8 +1056,6 @@ sub get_variable {
             if (defined $ref) {
                 return if $ref =~ /^[_.]/; # don't allow vars that begin with _
                 $ref = $self->{'_vars'}->{$ref};
-            } else {
-                return if $ARGS->{'set_var'};
             }
         }
     } elsif (defined $ref) {
@@ -1213,6 +1211,7 @@ sub get_variable {
     if ($generated_list && $ARGS->{'list_context'} && UNIVERSAL::isa($ref, 'ARRAY')) {
         return @$ref;
     }
+
     return $ref;
 }
 
@@ -1600,15 +1599,16 @@ sub play_FOREACH {
     $items = $self->get_variable($items);
     return '' if ! defined $items;
 
-    if (! UNIVERSAL::isa($items, 'CGI::Ex::Template::Iterator')) {
+    if (ref($items) !~ /Iterator$/) {
         $items = CGI::Ex::Template::Iterator->new($items);
     }
 
     my $sub_tree = $node->[4];
 
-    ### if the FOREACH tag sets a var - then nothing gets localized
+    local $self->{'_vars'}->{'loop'} = $items;
+
+    ### if the FOREACH tag sets a var - then nothing but the loop var gets localized
     if (defined $var) {
-        $self->{'_vars'}->{'loop'} = $items;
         my ($item, $error) = $items->get_first;
         while (! $error) {
 
@@ -1636,7 +1636,6 @@ sub play_FOREACH {
         ### localize variable access for the foreach
         my $swap = $self->{'_vars'};
         local $self->{'_vars'} = my $copy = {%$swap};
-        $copy->{'loop'} = $items;
 
         ### iterate use the iterator object
         #foreach (my $i = $items->index; $i <= $#$vals; $items->index(++ $i)) {
@@ -2765,12 +2764,7 @@ sub get_next {
 
 sub items { shift->[0] }
 
-#sub index { shift->[1] }
-sub index {
-    my $self = shift;
-    $self->[1] = shift if $#_ == 0;
-    return $self->[1];
-}
+sub index { shift->[1] }
 
 sub max { $#{ shift->[0] } }
 
