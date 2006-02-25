@@ -13,7 +13,6 @@ use vars qw($TAGS
             $DIRECTIVES $QR_DIRECTIVE
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $QR_OP $QR_OP_UNARY
             $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
-            $QR_DE_INTERP
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
@@ -179,7 +178,6 @@ BEGIN {
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_AQ_NOTDOT = '(?! \s* \.)';
     $QR_AQ_SPACE  = '(?: \s+ | $ | (?=[;+]) )'; # the + comes into play on filenames
-    $QR_DE_INTERP = '\\\\ (["n$])';
 
     $WHILE_MAX   = 1000;
     $EXTRA_COMPILE_EXT = '.sto';
@@ -512,7 +510,7 @@ sub parse_tree {
                 }
 
                 ### restore the pointer up one level (because we hit the end of a block)
-                $pointer = (! @state) ? \@tree : $state[0]->[4];
+                $pointer = (! @state) ? \@tree : $state[-1]->[4];
 
                 ### normal end block
                 if ($func eq 'END') {
@@ -734,7 +732,8 @@ sub parse_variable {
             $is_literal = 1;
         } else {
             my $str = $2;
-            #$str =~ s{ $QR_DE_INTERP }{$1}xog;
+            $str =~ s/\\n/\n/g;
+            $str =~ s/\\\"/\"/g;
             my @pieces = $ARGS->{'auto_quote'}
                 ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
                 : split(m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $str);
@@ -1008,7 +1007,7 @@ sub interpolate_node {
     ### split on variables while keeping the variables
     my @pieces = split m{ (?: ^ | (?<! \\)) (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $tree->[-1];
     if ($#pieces <= 0) {
-        $tree->[-1] =~ s{ $QR_DE_INTERP }{$1}xog;
+        $tree->[-1] =~ s{ \\ ([\"\$]) }{$1}xg;
         return;
     }
 
@@ -1018,7 +1017,7 @@ sub interpolate_node {
         $offset += length $piece; # we track the offset to make sure DEBUG has the right location
         if (! ($n++ % 2)) { # odds will always be text chunks
             next if ! length $piece;
-            $piece =~ s{ $QR_DE_INTERP }{$1}xog;
+            $piece =~ s{ \\ ([\"\$]) }{$1}xg;
             push @sub_tree, $piece;
         } elsif ($piece =~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                  || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
@@ -2076,7 +2075,7 @@ sub play_SWITCH {
         for my $test (@$val2) { # find matching values
             next if ! defined $val && defined $test;
             next if defined $val && ! defined $test;
-            if ($val ne $test) { # check string wise first - then numerical
+            if ($val ne $test) { # check string-wise first - then numerical
                 next if $val  !~ /^ -? (?: \d*\.\d+ | \d+) $/x;
                 next if $test !~ /^ -? (?: \d*\.\d+ | \d+) $/x;
                 next if $val != $test;
