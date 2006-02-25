@@ -2216,13 +2216,15 @@ sub play_USE {
 
     ### look for a plugin_base
     my $base = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
-    my $package = $self->{'PLUGINS'}->{$module} ? $self->{'PLUGINS'}->{$module} : "${base}::${module}";
+    my $package = $self->{'PLUGINS'}->{$module} ? $self->{'PLUGINS'}->{$module}
+       : $self->{'PLUGIN_FACTORY'}->{$module} ? $self->{'PLUGIN_FACTORY'}->{$module}
+       : "${base}::${module}";
     my $require = "$package.pm";
     $require =~ s|::|/|g;
 
     ### try and load the module - fall back to bare module if allowed
     my $obj;
-    if (eval {require $require}) {
+    if ($self->{'PLUGIN_FACTORY'}->{$module} || eval {require $require}) {
         my $shape   = $package->load;
         my $context = $self->context;
         my @args    = $args ? @{ $self->vivify_args($args) } : ();
@@ -2889,7 +2891,7 @@ sub last { my $self = shift; return ($self->index == $self->max) || 0 }
 
 sub prev {
     my $self = shift;
-    return undef if $self->index == -1;
+    return undef if $self->index <= 0;
     return $self->items->[$self->index - 1];
 }
 
