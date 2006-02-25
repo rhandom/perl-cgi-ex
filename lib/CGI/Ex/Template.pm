@@ -47,6 +47,7 @@ BEGIN {
         replace  => \&vmethod_replace,
         size     => sub { 1 },
         split    => \&vmethod_split,
+        stderr   => sub { print STDERR $_[0]; '' },
         substr   => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
         trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
         ucfirst  => sub { ucfirst $_[0] },
@@ -55,8 +56,10 @@ BEGIN {
     };
 
     $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
-        eval   => [\&filter_eval, 1],
-        evaltt => [\&filter_eval, 1],
+        eval     => [\&filter_eval, 1],
+        evaltt   => [\&filter_eval, 1],
+        file     => [\&filter_redirect, 1],
+        redirect => [\&filter_redirect, 1],
     };
 
     $LIST_OPS = {
@@ -477,7 +480,7 @@ sub parse_tree {
         if ($tag =~ $QR_DIRECTIVE                         # find a word
             && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
             && $DIRECTIVES->{$func} ) {                   # is it a directive
-            $tag =~ s{ ^ \w+ \s* }{}x;
+            $tag =~ s{ ^ (\w+ | \|) \s* }{}x;
             $node->[0] = $func;
 
             ### store out this current node level
@@ -1069,7 +1072,7 @@ sub get_variable {
     }
 
     ### let the top level thing be a code block
-    if (UNIVERSAL::isa($ref, 'CODE')) {
+    if (ref $ref eq 'CODE') {
         my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
         if (defined $results[0]) {
             $ref = ($#results > 0) ? \@results : $results[0];
@@ -1081,7 +1084,7 @@ sub get_variable {
     }
 
     ### vivify the chained levels
-    my $seen_filters;
+    my %seen_filters;
     while (defined $ref && $#$var > $i) {
         my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
         my $name         = $var->[$i++];
@@ -1168,26 +1171,45 @@ sub get_variable {
                      || $self->list_filters->{$name}) {          # filter defined in Template::Filters
 
                 if (UNIVERSAL::isa($filter, 'CODE')) {
-                    $ref = $filter->($ref); # non-dynamic filter - no args
+                    $ref = eval { $filter->($ref) }; # non-dynamic filter - no args
+                    if (my $err = $@) {
+                        $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
+                        die $err;
+                    }
+
+                } elsif (! UNIVERSAL::isa($filter, 'ARRAY')) {
+                    $self->throw('filter', "invalid FILTER entry for '$name' (not a CODE ref)");
 
                 } elsif (@$filter == 2 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
-                    my $sub = $filter->[0];
-                    if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
-                        my $c = $self->pseudo_context;
-                        $sub = $sub->($c, $args ? @{ $self->vivify_args($args) } : ()); # dynamic filter (empty context)
+                    eval {
+                        my $sub = $filter->[0];
+                        if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
+                            ($sub, my $err) = $sub->($self->context, $args ? @{ $self->vivify_args($args) } : ());
+                            if (! $sub && $err) {
+                                $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
+                                die $err;
+                            } elsif (! UNIVERSAL::isa($sub, 'CODE')) {
+                                $self->throw('filter', "invalid FILTER for '$name' (not a CODE ref)")
+                                    if ref($sub) !~ /Template::Exception$/;
+                                die $sub;
+                            }
+                        }
+                        $ref = $sub->($ref);
+                    };
+                    if (my $err = $@) {
+                        $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
+                        die $err;
                     }
-                    $ref = $sub->($ref);
-
                 } else { # this looks like our vmethods turned into "filters" (a filter stored under a name)
-                    $seen_filters ||= {};
-                    if ($seen_filters->{$name} ++) {
-                        $ref = undef;
-                        next;
-                    }
-                    $var = ['|', @$filter, splice(@$var, $i)]; # splice the filter into our current tree
-                    $i = 0;
+                    $self->throw('filter', 'Recursive filter alias \"$name\"') if $seen_filters{$name} ++;
+                    $var = [$name, 0, '|', @$filter, splice(@$var, $i)]; # splice the filter into our current tree
+                    $i = 2;
                 }
             } else {
+                if (scalar keys %seen_filters
+                    && $seen_filters{$var->[$i - 5] || ''}) {
+                    $self->throw('filter', "invalid FILTER entry for '".$var->[$i - 5]."' (not a CODE ref)");
+                }
                 $ref = undef;
                 next;
             }
@@ -1577,6 +1599,7 @@ sub play_FILTER {
 
     my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
 
+
     return $DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
 }
 
@@ -1835,7 +1858,7 @@ sub play_PERL {
     eval {
         package CGI::Ex::Template::Perl;
 
-        my $context = $self->pseudo_context;
+        my $context = $self->context;
         my $stash   = $context->stash;
 
         ### setup a fake handle
@@ -1958,7 +1981,7 @@ sub play_RAWPERL {
     eval {
         package CGI::Ex::Template::Perl;
 
-        my $context = $self->pseudo_context;
+        my $context = $self->context;
         my $stash   = $context->stash;
 
         eval $perl;
@@ -2190,7 +2213,7 @@ sub play_USE {
     my $obj;
     if (eval {require $require}) {
         my $shape   = $package->load;
-        my $context = $self->pseudo_context;
+        my $context = $self->context;
         my @args    = $args ? @{ $self->vivify_args($args) } : ();
         $obj = $shape->new($context, @args);
     } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
@@ -2199,7 +2222,7 @@ sub play_USE {
             $require =~ s|::|/|g;
             eval {require $require} || next;
             my $shape   = $package->load;
-            my $context = $self->pseudo_context;
+            my $context = $self->context;
             my @args    = $args ? @{ $self->vivify_args($args) } : ();
             $obj = $shape->new($context, @args);
         }
@@ -2529,7 +2552,7 @@ sub exception {
 
 sub throw { die shift->exception(@_) }
 
-sub pseudo_context {
+sub context {
     my $self = shift;
     return bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
 }
@@ -2622,6 +2645,18 @@ sub get_line_number_by_index {
 ### many of these vmethods have used code from Template/Stash.pm to
 ### assure conformance with the TT spec.
 
+sub has_vmethod {
+    my ($self, $type, $name) = @_;
+    if (   $type =~ /scalar|item/i) { $SCALAR_OPS->{$name} }
+    elsif ($type =~ /array|list/i ) { $LIST_OPS->{  $name} }
+    elsif ($type =~ /hash/i       ) { $HASH_OPS->{  $name} }
+    elsif ($type =~ /filter/i     ) { $FILTER_OPS->{$name} }
+    else {
+        die "Invalid type vmethod type $type";
+    }
+    return 0;
+}
+
 sub define_vmethod {
     my ($self, $type, $name, $sub) = @_;
     if (   $type =~ /scalar|item/i) { $SCALAR_OPS->{$name} = $sub }
@@ -2650,9 +2685,9 @@ sub vmethod_chunk {
 
 sub vmethod_indent {
     my $str = shift; $str = '' if ! defined $str;
-    my $n   = shift; $n   = 4  if ! defined $n;
-    my $ind = ' ' x $n;
-    $str =~ s/^/$ind/mg;
+    my $pre = shift; $pre = 4  if ! defined $pre;
+    $pre = ' ' x $pre if $pre =~ /^\d+$/;
+    $str =~ s/^/$pre/mg;
     return $str;
 }
 
@@ -2732,6 +2767,28 @@ sub filter_eval {
     return sub {
         my $text = shift;
         return $context->process(\$text);
+    };
+}
+
+sub filter_redirect {
+    my ($context, $file, $options) = @_;
+    my $path = $context->config->{'OUTPUT_PATH'} || $context->throw('redirect', 'OUTPUT_PATH is not set');
+
+    return sub {
+        my $text = shift;
+        if (! -d $path) {
+            require File::Path;
+            File::Path::mkpath($path) || $context->throw('redirect', "Couldn't mkpath \"$path\": $!");
+        }
+        local *FH;
+        open (FH, ">$path/$file") || $context->throw('redirect', "Couldn't open \"$file\": $!");
+        if (my $bm = (! $options) ? 0 : ref($options) ? $options->{'binmode'} : $options) {
+            if (+$bm == 1) { binmode FH }
+            else { binmode FH, $bm}
+        }
+        print FH $text;
+        close FH;
+        return '';
     };
 }
 
@@ -2832,6 +2889,8 @@ use vars qw($AUTOLOAD);
 
 sub _template { shift->{'_template'} || die "Missing _template" }
 
+sub config { shift->_template }
+
 sub stash {
     my $self = shift;
     return $self->{'stash'} ||= bless {_template => $self->_template}, 'CGI::Ex::Template::_Stash';
@@ -2868,12 +2927,33 @@ sub include {
 
 sub define_filter {
     my ($self, $name, $filter, $is_dynamic) = @_;
-    ($filter, $is_dynamic) = @$filter if UNIVERSAL::isa($filter, 'ARRAY');
-    if ($is_dynamic) {
-        my $sub = $filter;
-        $filter = sub { $sub->($self, @_) };
-    }
+    $filter = [ $filter, 1 ] if $is_dynamic;
     $self->define_vmethod('filter', $name, $filter);
+}
+
+sub filter {
+    my ($self, $name, $args, $alias) = @_;
+    my $t = $self->_template;
+
+    my $filter;
+    if (! ref $name) {
+        $filter = $t->{'FILTERS'}->{$name} && ! $t->has_vmethod('filter|scalar', $name);
+        $t->throw('filter', $name) if ! $filter;
+    } elsif (UNIVERSAL::isa($name, 'CODE') || UNIVERSAL::isa($name, 'ARRAY')) {
+        $filter = $name;
+    } elsif (UNIVERSAL::can($name, 'factory')) {
+        $filter = $name->factory || $t->throw($name->error);
+    } else {
+        $t->throw('undef', "$name: filter not found");
+    }
+
+    if (UNIVERSAL::isa($filter, 'ARRAY')) {
+        $filter = ($filter->[1]) ? $filter->[0]->($t->context, @$args) : $filter->[0];
+    }
+
+    $t->{'FILTERS'}->{$alias} = $filter if $alias;
+
+    return $filter;
 }
 
 sub define_vmethod { shift->_template->define_vmethod(@_) }
