@@ -209,7 +209,7 @@ sub _swap {
         $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");;
 
         ### prevent recursion
-        $self->throw('recursion', "Recursive call into $doc->{name}")
+        $self->throw('file', "recursion into '$doc->{name}'")
             if ! $self->{'RECURSION'} && $self->{'_in'}->{$doc->{'name'}} && $doc->{'name'} ne 'input text';
         local $self->{'_in'}->{$doc->{'name'}} = 1;
 
@@ -549,7 +549,6 @@ sub parse_tree {
                 my $hash;
                 if (($hash = $self->vivify_args($args)->[-1])
                     && UNIVERSAL::isa($hash, 'HASH')) {
-                    delete @{$hash}{qw(name modtime)};
                     unshift @meta, %$hash; # first defined win
                 }
 
@@ -692,6 +691,11 @@ sub parse_variable {
             substr($$str_ref, 0, length($str), '');
             $$str_ref =~ s{ ^ \s* $QR_COMMENTS }{}ox;
             return $str;
+        ### allow for auto-quoted $foo or ${foo.bar} type constructs
+        } elsif ($$str_ref =~ s{ ^ \$ (\w+ (?:\.\w+)*) \b \s* $QR_COMMENTS }{}ox
+                 || $$str_ref =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* $QR_COMMENTS }{}ox) {
+            my $name = $1;
+            return $self->parse_variable(\$name);
         }
     }
 
@@ -768,10 +772,6 @@ sub parse_variable {
         || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* $QR_COMMENTS }{}ox) {
         my $name = $1;
         push @var, $self->parse_variable(\$name);
-        if ($ARGS->{'auto_quote'}){
-            $$str_ref = $copy;
-            return $var[-1];
-        }
 
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* $QR_COMMENTS }{}ox) {
@@ -1831,8 +1831,12 @@ sub play_MACRO {
 
 sub play_METADEF {
     my ($self, $hash) = @_;
-    return if ! $self->{'_top_level'};
-    my $ref = $self->{'_vars'}->{'template'} ||= {};
+    my $ref;
+    if ($self->{'_top_level'}) {
+        $ref = $self->{'_vars'}->{'template'} ||= {};
+    } else {
+        $ref = $self->{'_vars'}->{'component'} ||= {};
+    }
     foreach my $key (keys %$hash) {
         next if $key eq 'name' || $key eq 'modtime';
         $ref->{$key} = $hash->{$key};
@@ -1899,11 +1903,13 @@ sub parse_PROCESS {
 
         my $var = $self->parse_variable($tag_ref);
         last if ! defined $var;
-        if ($$tag_ref !~ s{ ^ = \s* }{}x) {
+        if ($$tag_ref !~ s{ ^ = >? \s* }{}x) {
             $self->throw('parse.missing.equals', 'Missing equals while parsing args');
         }
+
         my $val = $self->parse_variable($tag_ref);
         push @{$info->[1]}, [$var, $val];
+        $$tag_ref =~ s{ ^ , \s* $QR_COMMENTS }{}ox if $val;
     }
 
     return $info;
@@ -1918,6 +1924,12 @@ sub play_PROCESS {
     foreach (@$args) {
         my ($key, $val) = @$_;
         $val = $self->get_variable($val);
+        if (ref($key) && @$key == 2 && $key->[0] eq 'import' && UNIVERSAL::isa($val, 'HASH')) { # import ?! - whatever
+            foreach my $key (keys %$val) {
+                $self->set_variable([$key,0], $val->{$key});
+            }
+            next;
+        }
         $self->set_variable($key, $val);
     }
 
