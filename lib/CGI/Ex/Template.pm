@@ -12,7 +12,7 @@ use vars qw($TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS
             $DIRECTIVES $QR_DIRECTIVE
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $QR_OP $QR_OP_UNARY
-            $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
+            $QR_COMMENTS $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
@@ -138,7 +138,7 @@ BEGIN {
         WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1],
         #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
     };
-    $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= \s|$|;) }x;
+    $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= $|[\s;\#]) }x;
 
     $OPERATORS ||= {qw(\\  99
                        **  96   ^   96   pow 96
@@ -175,9 +175,10 @@ BEGIN {
     $QR_OP       ||= _build_op_qr();
     $QR_OP_UNARY ||= _build_op_qr_unary();
 
+    $QR_COMMENTS  = '(?-s: \# .* \s*)*';
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
-    $QR_AQ_NOTDOT = '(?! \s* \.)';
-    $QR_AQ_SPACE  = '(?: \s+ | $ | (?=[;+]) )'; # the + comes into play on filenames
+    $QR_AQ_NOTDOT = "(?! \\s* $QR_COMMENTS \\.)";
+    $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=[;+]) )'; # the + comes into play on filenames
 
     $WHILE_MAX   = 1000;
     $EXTRA_COMPILE_EXT = '.sto';
@@ -464,8 +465,7 @@ sub parse_tree {
                 push @$pointer, $node;
                 next;
             }
-            $tag =~ s{ (?<! \\) \# .* $ }{}xmg; # remove trailing comments
-            $tag =~ s{ ^ \s+ }{}x;
+            $tag =~ s{ ^ \s+ $QR_COMMENTS }{}ox;
         }
 
         if (! length $tag) {
@@ -478,7 +478,7 @@ sub parse_tree {
         if ($tag =~ $QR_DIRECTIVE                         # find a word
             && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
             && $DIRECTIVES->{$func} ) {                   # is it a directive
-            $tag =~ s{ ^ (\w+ | \|) \s* }{}x;
+            $tag =~ s{ ^ (\w+ | \|) \s* $QR_COMMENTS }{}ox;
             $node->[0] = $func;
 
             ### store out this current node level
@@ -536,9 +536,9 @@ sub parse_tree {
 
             } elsif ($func eq 'TAGS') {
                 if ($tag =~ / ^ (\w+) /x && $TAGS->{$1}) {
-                    $tag =~ s{ ^ (\w+) \s* }{}x;
+                    $tag =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox;
                     ($START, $END) = @{ $TAGS->{$1} };
-                } elsif ($tag =~ s{ ^ (\S+) \s+ (\S+) \s* }{}x) {
+                } elsif ($tag =~ s{ ^ (\S+) \s+ (\S+) \s* $QR_COMMENTS }{}ox) {
                     ($START, $END) = ($1, $2);
                 }
                 $len_s = length $START;
@@ -569,7 +569,7 @@ sub parse_tree {
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_variable(\$tag))) {
             push @$pointer, $node;
-            if ($tag =~ s{ ^ = >? \s* }{}x) {
+            if ($tag =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox) {
                 $node->[0] = 'SET';
                 $node->[3] = eval { $DIRECTIVES->{'SET'}->[0]->($self, \$tag, $node, $var) };
                 if (my $err = $@) {
@@ -603,7 +603,7 @@ sub parse_tree {
             $capture   = $node;
 
         ### semi-colon = end of statement - we will need to continue parsing this tag
-        } elsif ($tag =~ s{ ^ ; \s* }{}x) {
+        } elsif ($tag =~ s{ ^ ; \s* $QR_COMMENTS }{}ox) {
             $continue  = $j - length $tag;
             $node->[2] = $continue;
             $post_op   = undef;
@@ -690,7 +690,7 @@ sub parse_variable {
         if ($$str_ref =~ $ARGS->{'auto_quote'}) {
             my $str = $1;
             substr($$str_ref, 0, length($str), '');
-            $$str_ref =~ s{ ^ \s+ }{}x;
+            $$str_ref =~ s{ ^ \s* $QR_COMMENTS }{}ox;
             return $str;
         }
     }
@@ -699,7 +699,7 @@ sub parse_variable {
 
     ### test for leading unary operators
     my $has_unary;
-    if ($copy =~ s{ ^ ($QR_OP_UNARY) \s* }{}xo) {
+    if ($copy =~ s{ ^ ($QR_OP_UNARY) \s* $QR_COMMENTS }{}ox) {
         return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
         $has_unary = $1;
         if (! $OP_UNARY->{$has_unary}) {
@@ -713,18 +713,18 @@ sub parse_variable {
     my $is_namespace;
 
     ### allow for numbers
-    if ($copy =~ s{ ^ ( (?:\d*\.\d+ | \d+) ) \s* }{}x) {
+    if ($copy =~ s{ ^ ( (?:\d*\.\d+ | \d+) ) \s* $QR_COMMENTS }{}ox) {
         my $number = $1;
         push @var, \ $number;
         $is_literal = 1;
 
     ### looks like a normal variable start
-    } elsif ($copy =~ s{ ^ (\w+) \s* }{}x) {
+    } elsif ($copy =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox) {
         push @var, $1;
         $is_namespace = 1 if $self->{'NAMESPACE'} && $self->{'NAMESPACE'}->{$1};
 
     ### allow for literal strings
-    } elsif ($copy =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* }{}xs) {
+    } elsif ($copy =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* $QR_COMMENTS }{}sox) {
         if ($1 eq "'") { # no interpolation on single quoted strings
             my $str = $2;
             $str =~ s{ \\\' }{\'}xg;
@@ -764,8 +764,8 @@ sub parse_variable {
         }
 
     ### allow for leading $foo or ${foo.bar} type constructs
-    } elsif ($copy =~ s{ ^ \$ (\w+) \b \s* }{}x
-        || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* }{}x) {
+    } elsif ($copy =~ s{ ^ \$ (\w+) \b \s* $QR_COMMENTS }{}ox
+        || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* $QR_COMMENTS }{}ox) {
         my $name = $1;
         push @var, $self->parse_variable(\$name);
         if ($ARGS->{'auto_quote'}){
@@ -774,37 +774,37 @@ sub parse_variable {
         }
 
     ### looks like an array constructor
-    } elsif ($copy =~ s{ ^ \[ \s* }{}x) {
+    } elsif ($copy =~ s{ ^ \[ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset presedence
         my $arrayref = ['arrayref'];
         while (defined(my $var = $self->parse_variable(\$copy))) {
             push @$arrayref, $var;
-            $copy =~ s{ ^ , \s* }{}x;
+            $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         }
-        $copy =~ s{ ^ \] \s* }{}x || $self->throw('parse.missing.square', "Missing close \]", undef,
-                                                          length($$str_ref) - length($copy));
+        $copy =~ s{ ^ \] \s* $QR_COMMENTS }{}ox
+            || $self->throw('parse.missing.square', "Missing close \]", undef, length($$str_ref) - length($copy));
         push @var, \ $arrayref;
 
     ### looks like a hash constructor
-    } elsif ($copy =~ s{ ^ \{ \s* }{}x) {
+    } elsif ($copy =~ s{ ^ \{ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $hashref = ['hashref'];
         while (defined(my $key = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
-            $copy =~ s{ ^ = >? \s* }{}x;
+            $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox;
             my $val = $self->parse_variable(\$copy);
             push @$hashref, $key, $val;
-            $copy =~ s{ ^ , \s* }{}x;
+            $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         }
-        $copy =~ s{ ^ \} \s* }{}x || $self->throw('parse.missing.curly', "Missing close \} ($copy)", undef,
-                                                          length($$str_ref) - length($copy));
+        $copy =~ s{ ^ \} \s* $QR_COMMENTS }{}ox
+            || $self->throw('parse.missing.curly', "Missing close \} ($copy)", undef, length($$str_ref) - length($copy));
         push @var, \ $hashref;
 
     ### looks like a paren grouper
-    } elsif ($copy =~ s{ ^ \( \s* }{}x) {
+    } elsif ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $var = $self->parse_variable(\$copy);
-        $copy =~ s{ ^ \) \s* }{}x || $self->throw('parse.missing.paren', "Missing close \)", undef,
-                                                          length($$str_ref) - length($copy));
+        $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
+            || $self->throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
         @var = @$var;
         pop(@var); # pull off the trailing args of the paren group
 
@@ -816,38 +816,38 @@ sub parse_variable {
     return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
 
     ### looks for args for the initial
-    if ($copy =~ s{ ^ \( \s* }{}x) {
+    if ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $args = $self->parse_args(\$copy);
-        $copy =~ s{ ^ \) \s* }{}x || $self->throw('parse.missing.paren', "Missing close \)", undef,
-                                                          length($$str_ref) - length($copy));
+        $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
+            || $self->throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
         push @var, $args;
     } else {
         push @var, 0;
     }
 
     ### allow for nested items
-    while ($copy =~ s{ ^ ( \.(?!\.) | \|(?!\|) ) \s* }{}x) {
+    while ($copy =~ s{ ^ ( \.(?!\.) | \|(?!\|) ) \s* $QR_COMMENTS }{}ox) {
         push(@var, $1) if ! $ARGS->{'no_dots'};
 
         ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
-        if ($copy =~ s{ ^ \$(\w+) \s* }{}x
-            || $copy =~ s{ ^ \$\{ \s* ([^\}]+)\} \s* }{}x) {
+        if ($copy =~ s{ ^ \$(\w+) \s* $QR_COMMENTS }{}ox
+            || $copy =~ s{ ^ \$\{ \s* ([^\}]+)\} \s* $QR_COMMENTS }{}ox) {
             my $name = $1;
             my $var = $self->parse_variable(\$name);
             push @var, $var;
-        } elsif ($copy =~ s{ ^ (\w+) \s* }{}x) {
+        } elsif ($copy =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox) {
             push @var, $1;
         } else {
             $self->throw('parse', "Not sure how to continue parsing on \"$copy\" ($$str_ref)");
         }
 
         ### looks for args for the nested item
-        if ($copy =~ s{ ^ \( \s* }{}x) {
+        if ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
             local $self->{'_operator_precedence'} = 0; # reset precedence
             my $args = $self->parse_args(\$copy);
-            $copy =~ s{ ^ \) \s* }{}x || $self->throw('parse.missing.paren', "Missing close \)", undef,
-                                                              length($$str_ref) - length($copy));
+            $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
+                || $self->throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
             push @var, $args;
         } else {
             push @var, 0;
@@ -864,7 +864,7 @@ sub parse_variable {
     if (! $self->{'_operator_precedence'}) {
         my $tree;
         my $found;
-        while ($copy =~ s{ ^ ($QR_OP) \s* }{}ox) { ## look for operators - then move along
+        while ($copy =~ s{ ^ ($QR_OP) \s* $QR_COMMENTS }{}ox) { ## look for operators - then move along
             local $self->{'_operator_precedence'} = 1;
             my $op   = $1;
             my $var2 = $self->parse_variable(\$copy);
@@ -979,15 +979,15 @@ sub parse_args {
     while (length $$str_ref) {
         my $copy = $$str_ref;
         if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
-            && $copy =~ s{ ^ = >? \s* }{}x) {
+            && $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox) {
             $self->throw('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
             my $val = $self->parse_variable(\$copy);
-            $copy =~ s{ ^ , \s* }{}x;
+            $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
             push @named, $name, $val;
             $$str_ref = $copy;
         } elsif (defined(my $arg = $self->parse_variable($str_ref))) {
             push @args, $arg;
-            $$str_ref =~ s{ ^ , \s* }{}x;
+            $$str_ref =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         } else {
             last;
         }
@@ -2646,10 +2646,10 @@ sub get_line_number_by_index {
 
 sub has_vmethod {
     my ($self, $type, $name) = @_;
-    if (   $type =~ /scalar|item/i) { $SCALAR_OPS->{$name} }
-    elsif ($type =~ /array|list/i ) { $LIST_OPS->{  $name} }
-    elsif ($type =~ /hash/i       ) { $HASH_OPS->{  $name} }
-    elsif ($type =~ /filter/i     ) { $FILTER_OPS->{$name} }
+    if (   $type =~ /scalar|item/i) { return $SCALAR_OPS->{$name} }
+    elsif ($type =~ /array|list/i ) { return $LIST_OPS->{  $name} }
+    elsif ($type =~ /hash/i       ) { return $HASH_OPS->{  $name} }
+    elsif ($type =~ /filter/i     ) { return $FILTER_OPS->{$name} }
     else {
         die "Invalid type vmethod type $type";
     }
