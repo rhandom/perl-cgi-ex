@@ -14,13 +14,22 @@ use vars qw($TAGS
             $DIRECTIVES $QR_DIRECTIVE
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $QR_OP $QR_OP_UNARY
             $QR_COMMENTS $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
+            $PACKAGE_EXCEPTION $PACKAGE_E_INFO $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
             );
 
 BEGIN {
+    $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
+    $PACKAGE_E_INFO      = 'CGI::Ex::Template::_EInfo';
+    $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
+    $PACKAGE_CONTEXT     = 'CGI::Ex::Template::_Context';
+    $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
+    $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
+
     $TAGS ||= {
+        default  => ['[%',   '%]'],  # default
         template => ['[%',   '%]'],  # default
         metatext => ['%%',   '%%'],  # Text::MetaText
         star     => ['[*',   '*]'],  # TT alternate
@@ -396,7 +405,7 @@ sub parse_tree {
         $self->throw('parse.no_string', "No string or undefined during parse");
     }
 
-    my $STYLE = $self->{'TAG_STYLE'} || 'template';
+    my $STYLE = $self->{'TAG_STYLE'} || 'default';
     my $START = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
     my $END   = $self->{'END_TAG'}   || $TAGS->{$STYLE}->[1];
     my $len_s = length $START;
@@ -1630,7 +1639,7 @@ sub play_FOREACH {
     return '' if ! defined $items;
 
     if (ref($items) !~ /Iterator$/) {
-        $items = CGI::Ex::Template::Iterator->new($items);
+        $items = $PACKAGE_ITERATOR->new($items);
     }
 
     my $sub_tree = $node->[4];
@@ -1647,7 +1656,7 @@ sub play_FOREACH {
             ### execute the sub tree
             eval { $self->execute_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
-                if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
+                if (UNIVERSAL::isa($err, $PACKAGE_EXCEPTION)) {
                     if ($err->type eq 'next') {
                         ($item, $error) = $items->get_next;
                         next;
@@ -1679,7 +1688,7 @@ sub play_FOREACH {
             ### execute the sub tree
             eval { $self->execute_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
-                if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
+                if (UNIVERSAL::isa($err, $PACKAGE_EXCEPTION)) {
                     if ($err->type eq 'next') {
                         ($item, $error) = $items->get_next;
                         next;
@@ -1873,7 +1882,7 @@ sub play_PERL {
 
         ### setup a fake handle
         local *PERLOUT;
-        tie *PERLOUT, 'CGI::Ex::Template::EvalPerlHandle', $out_ref;
+        tie *PERLOUT, $CGI::Ex::Template::PACKAGE_PERL_HANDLE, $out_ref;
         my $old_fh = select PERLOUT;
 
         eval $out;
@@ -1887,7 +1896,7 @@ sub play_PERL {
 
 
     if ($err) {
-        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+        $self->throw('undef', $err) if ref($err) !~ /Template::Exception$/;
         die $err;
     }
 
@@ -2010,7 +2019,7 @@ sub play_RAWPERL {
     $$out_ref .= $output;
 
     if ($err) {
-        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+        $self->throw('undef', $err) if ref($err) !~ /Template::Exception$/;
         die $err;
     }
 
@@ -2117,15 +2126,16 @@ sub parse_THROW {
     my ($self, $tag_ref, $node) = @_;
     my $name = $self->parse_variable($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
     $self->throw('parse.missing', "Missing name in THROW", $node) if ! $name;
-    my $msg  = $self->parse_variable($tag_ref); # TODO - use parse_args
-    return [$name, $msg];
+    my $args = $self->parse_args($tag_ref);
+    return [$name, $args];
 }
 
 sub play_THROW {
     my ($self, $ref, $node) = @_;
-    my ($name, $info) = @$ref;
+    my ($name, $args) = @$ref;
     $name = $self->get_variable($name);
-    $self->throw($name, $info, $node);
+    my @args = $args ? @{ $self->vivify_args($args) } : ();
+    $self->throw($name, \@args, $node);
 }
 
 sub play_TRY {
@@ -2141,7 +2151,7 @@ sub play_TRY {
         $self->throw('parse.missing', "Missing CATCH block", $node);
     }
     if ($err) {
-        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+        $self->throw('undef', $err) if ref($err) !~ /Template::Exception$/;
         die $err if $err->type =~ /stop|return/;
     }
 
@@ -2307,7 +2317,7 @@ sub play_WHILE {
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $out_ref) };
         if (my $err = $@) {
-            if (UNIVERSAL::isa($err, 'CGI::Ex::Template::Exception')) {
+            if (UNIVERSAL::isa($err, $PACKAGE_EXCEPTION)) {
                 next if $err->type =~ /next/;
                 last if $err->type =~ /last|break/;
             }
@@ -2568,15 +2578,14 @@ sub DEBUG {
 
 sub exception {
     my $self = shift;
-    my $pkg  = $self->{'exception_package'} || 'CGI::Ex::Template::Exception';
-    return $pkg->new(@_);
+    return $PACKAGE_EXCEPTION->new(@_);
 }
 
 sub throw { die shift->exception(@_) }
 
 sub context {
     my $self = shift;
-    return bless {_template => $self}, 'CGI::Ex::Template::_Context'; # a fake context
+    return bless {_template => $self}, $PACKAGE_CONTEXT; # a fake context
 }
 
 sub undefined { ''}
@@ -2828,7 +2837,14 @@ sub new {
 
 sub type { shift->[0] }
 
-sub info { shift->[1] || '' }
+sub info {
+    my $self = shift;
+    if (ref($self->[1]) ne $CGI::Ex::Template::PACKAGE_E_INFO) {
+        my $info = ref($self->[1]) eq 'ARRAY' ? $self->[1] : [$self->[1]];
+        $self->[1] = bless $info, $CGI::Ex::Template::PACKAGE_E_INFO;
+    }
+    return $self->[1];
+}
 
 sub node {
     my $self = shift;
@@ -2851,6 +2867,33 @@ sub as_string {
         $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
     }
     return $msg;
+}
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::_EInfo;
+
+use overload '""' => \&as_string;
+use vars qw($AUTOLOAD);
+
+sub as_string { shift->[0] }
+
+sub args {
+    my @args = @{ +shift };
+    splice(@args, -1, 1, ()) if ref($args[-1]) eq 'HASH';
+    return \@args;
+}
+
+sub DESTROY {}
+
+sub AUTOLOAD {
+    my $self = shift;
+    if ($AUTOLOAD =~ /::(\d+)$/) {
+        return $self->[$1];
+    } elsif ($AUTOLOAD =~ /::(\w+)$/ && ref($self->[-1]) eq 'HASH' && exists $self->[-1]->{$1}) {
+        return $self->[-1]->{$1};
+    }
+    die "Can't locate object method $1 via package ".ref($self);
 }
 
 ###----------------------------------------------------------------###
@@ -2912,7 +2955,6 @@ sub next {
 
 ###----------------------------------------------------------------###
 
-
 package CGI::Ex::Template::_Context;
 
 use vars qw($AUTOLOAD);
@@ -2923,7 +2965,7 @@ sub config { shift->_template }
 
 sub stash {
     my $self = shift;
-    return $self->{'stash'} ||= bless {_template => $self->_template}, 'CGI::Ex::Template::_Stash';
+    return $self->{'stash'} ||= bless {_template => $self->_template}, $CGI::Ex::Template::PACKAGE_STASH;
 }
 
 sub insert { shift->_template->include_file(@_) }
@@ -2994,12 +3036,12 @@ sub define_vmethod { shift->_template->define_vmethod(@_) }
 sub throw {
     my ($self, $type, $info) = @_;
 
-    if (UNIVERSAL::isa($type, $self->_template->{'exception_package'} || 'CGI::Ex::Template::Exception')) {
+    if (UNIVERSAL::isa($type, $CGI::Ex::Template::PACKAGE_EXCEPTION)) {
 	die $type;
     } elsif (defined $info) {
-	die $self->_template->exception($type, $info);
+	$self->_template->throw($type, $info);
     } else {
-	die $self->_template->exception('undef', $type);
+	$self->_template->throw('undef', $type);
     }
 }
 
