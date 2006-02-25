@@ -8,6 +8,7 @@ CGI::Ex::Template - Lightweight TT2/3 engine
 
 use CGI::Ex::Dump qw(debug);
 use strict;
+use constant trace => $ENV{'CET_TRACE'} || 0; # enable for low level tracing
 use vars qw($TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS
             $DIRECTIVES $QR_DIRECTIVE
@@ -44,6 +45,7 @@ BEGIN {
         remove   => sub { vmethod_replace(shift, shift, '', 1) },
         repeat   => \&vmethod_repeat,
         replace  => \&vmethod_replace,
+        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
         size     => sub { 1 },
         split    => \&vmethod_split,
         stderr   => sub { print STDERR $_[0]; '' },
@@ -51,7 +53,7 @@ BEGIN {
         trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
         ucfirst  => sub { ucfirst $_[0] },
         upper    => sub { uc $_[0] },
-        uri      => sub { $_[0] =~ s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_[0] },
+        uri      => sub { local $_ = $_[0]; s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
     };
 
     $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
@@ -663,13 +665,14 @@ sub execute_tree {
     #                5: continuation sub trees for sub continuation block types (elsif, else, etc)
     #                6: flag to capture next directive
     for my $node (@$tree) {
-
         ### text nodes are just the bare text
         if (! ref $node) {
+            warn "NODE: TEXT\n" if trace;
             $$out_ref .= $node if defined $node;
             next;
         }
 
+        warn "NODE: $node->[0] (char $node->[1])\n" if trace;
         $$out_ref .= $self->debug_node($node) if $self->{'_debug_dirs'} && ! $self->{'_debug_off'};
 
         my $val = $DIRECTIVES->{$node->[0]}->[1]->($self, $node->[3], $node, $out_ref);
@@ -739,7 +742,7 @@ sub parse_variable {
             $str =~ s/\\n/\n/g;
             $str =~ s/\\t/\t/g;
             $str =~ s/\\r/\r/g;
-            $str =~ s/\\\"/\"/g;
+            $str =~ s/\\([\"\$])/$1/g;
             my @pieces = $ARGS->{'auto_quote'}
                 ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
                 : split(m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $str);
@@ -1049,6 +1052,7 @@ sub get_variable {
     ### determine the top level of this particular variable access
     my $ref  = $var->[$i++];
     my $args = $var->[$i++];
+    warn "get_variable: begin \"$ref\"\n" if trace;
     if (ref $ref) {
         if (ref($ref) eq 'SCALAR') { # a scalar literal
             $ref = $$ref;
@@ -1090,6 +1094,7 @@ sub get_variable {
         my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
         my $name         = $var->[$i++];
         my $args         = $var->[$i++];
+        warn "get_variable: nested \"$name\"\n" if trace;
 
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
@@ -1116,7 +1121,7 @@ sub get_variable {
                 if (defined $results[0]) {
                     $ref = ($#results > 0) ? \@results : $results[0];
                 } elsif (defined $results[1]) {
-                    die $results[1]; # grr - TT behavior - why not just throw ?
+                    die $results[1]; # TT behavior - why not just throw ?
                 } else {
                     $ref = undef;
                 }
@@ -2251,7 +2256,7 @@ sub play_USE {
             $obj = $module->new(@args);
         }
     }
-    if (! $obj) {
+    if (! defined $obj) {
         my $err = "$module: plugin not found";
         $self->throw('plugin', $err);
     }
@@ -2974,6 +2979,9 @@ sub filter {
 
     if (UNIVERSAL::isa($filter, 'ARRAY')) {
         $filter = ($filter->[1]) ? $filter->[0]->($t->context, @$args) : $filter->[0];
+    } elsif ($args && @$args) {
+        my $sub = $filter;
+        $filter = sub { $sub->(shift, @$args) };
     }
 
     $t->{'FILTERS'}->{$alias} = $filter if $alias;
