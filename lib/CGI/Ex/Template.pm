@@ -2837,7 +2837,13 @@ package CGI::Ex::Template::Iterator;
 sub new {
     my ($class, $items) = @_;
     $items = [] if ! defined $items;
-    $items = [$items] if ! UNIVERSAL::isa($items, 'ARRAY');
+    if (UNIVERSAL::isa($items, 'HASH')) {
+	$items = [ map { {key => $_, value => $items->{ $_ }} } sort keys %$items ];
+    } elsif (UNIVERSAL::can($items, 'as_list')) {
+	$items = $items->as_list;
+    } elsif (! UNIVERSAL::isa($items, 'ARRAY')) {
+        $items = [$items];
+    }
     return bless [$items, 0], $class;
 }
 
@@ -2862,6 +2868,8 @@ sub max { $#{ shift->[0] } }
 sub size { shift->max + 1 }
 
 sub count { shift->index + 1 }
+
+sub number { shift->index + 1 }
 
 sub first { (shift->index == 0) || 0 }
 
