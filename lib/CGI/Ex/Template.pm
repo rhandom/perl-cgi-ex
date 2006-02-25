@@ -737,6 +737,8 @@ sub parse_variable {
         } else {
             my $str = $2;
             $str =~ s/\\n/\n/g;
+            $str =~ s/\\t/\t/g;
+            $str =~ s/\\r/\r/g;
             $str =~ s/\\\"/\"/g;
             my @pieces = $ARGS->{'auto_quote'}
                 ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
@@ -2185,7 +2187,7 @@ sub parse_USE {
     my $var;
     my $copy = $$tag_ref;
     if (defined(my $_var = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
-        && $copy =~ s{ ^ = \s* }{}x) {
+        && $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox) {
         $var = $_var;
         $$tag_ref = $copy;
     }
@@ -2196,9 +2198,11 @@ sub parse_USE {
     $module =~ s/\./::/g;
 
     my $args;
-    if ($copy =~ s{ ^ \( \s* }{}x) {
-        $args = $self->parse_args(\$copy);
-        $copy =~ s { ^ \) \s* }{}x || $self->throw('parse.missing', "Missing close ')'");
+    my $open = $copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox;
+    $args = $self->parse_args(\$copy);
+
+    if ($open) {
+        $copy =~ s { ^ \) \s* $QR_COMMENTS }{}ox || $self->throw('parse.missing', "Missing close ')'");
     }
 
     $$tag_ref = $copy;
@@ -2958,7 +2962,7 @@ sub filter {
 
     my $filter;
     if (! ref $name) {
-        $filter = $t->{'FILTERS'}->{$name} && ! $t->has_vmethod('filter|scalar', $name);
+        $filter = $t->{'FILTERS'}->{$name} || $t->has_vmethod('filter|scalar', $name);
         $t->throw('filter', $name) if ! $filter;
     } elsif (UNIVERSAL::isa($name, 'CODE') || UNIVERSAL::isa($name, 'ARRAY')) {
         $filter = $name;
