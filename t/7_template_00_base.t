@@ -8,14 +8,13 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 467 - ($is_tt ? 59 : 0);
+use Test::More tests => 469 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
 use_ok($module);
 
 Taint::Runtime::taint_start() if test_taint;
-
 
 #process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; foo %]' => 'A');
 #process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; a = "b" ; foo %]' => 'A');
@@ -252,6 +251,9 @@ process_ok("[% foo = 1 %][% foo %]" => '1');
 process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo = 1 ; bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo.bar = 2 %][% foo.bar %]" => '2');
+
+process_ok('[% a = "a" %][% (b = a) %][% a %][% b %]' => 'aaa');
+process_ok('[% a = "a" %][% (c = (b = a)) %][% a %][% b %][% c %]' => 'aaaa');
 
 ###----------------------------------------------------------------###
 ### Reserved words
