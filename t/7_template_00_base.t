@@ -8,13 +8,14 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 462 - ($is_tt ? 59 : 0);
+use Test::More tests => 467 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
 use_ok($module);
 
 Taint::Runtime::taint_start() if test_taint;
+
 
 #process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; foo %]' => 'A');
 #process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; a = "b" ; foo %]' => 'A');
@@ -627,6 +628,12 @@ process_ok("[% TRY %]Foo[% FINAL %]Bar[% END %]hi" => 'FooBarhi');
 process_ok("[% TRY %]Foo[% THROW foo %][% FINAL %]Bar[% CATCH %]one[% END %]hi" => '');
 process_ok("[% TRY %]Foo[% THROW foo %][% CATCH %]one[% FINAL %]Bar[% END %]hi" => 'FoooneBarhi');
 process_ok("[% TRY %]Foo[% THROW foo %][% CATCH bar %]one[% FINAL %]Bar[% END %]hi" => '');
+
+process_ok("[% TRY %][% THROW foo 'bar' %][% CATCH %][% error %][% END %]" => 'foo error - bar');
+process_ok("[% TRY %][% THROW foo 'bar' %][% CATCH %][% error.type %][% END %]" => 'foo');
+process_ok("[% TRY %][% THROW foo 'bar' %][% CATCH %][% error.info %][% END %]" => 'bar');
+process_ok("[% TRY %][% THROW foo %][% CATCH %][% error.type %][% END %]" => 'undef');
+process_ok("[% TRY %][% THROW foo %][% CATCH %][% error.info %][% END %]" => 'foo');
 
 ###----------------------------------------------------------------###
 ### named args
