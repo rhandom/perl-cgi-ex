@@ -12,7 +12,7 @@ use constant trace => $ENV{'CET_TRACE'} || 0; # enable for low level tracing
 use vars qw($TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS
             $DIRECTIVES $QR_DIRECTIVE
-            $OPERATORS $OP_UNARY $OP_TRINARY $OP_FUNC $QR_OP $QR_OP_UNARY
+            $OPERATORS $OP_UNARY $OP_TRINARY $OP_EXTRA $OP_FUNC $QR_OP $QR_OP_UNARY $QR_OP_EXTRA
             $QR_COMMENTS $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
             $PACKAGE_EXCEPTION $PACKAGE_E_INFO $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
             $WHILE_MAX
@@ -145,7 +145,7 @@ BEGIN {
         TRY     => [sub {},          \&play_TRY,      1],
         UNLESS  => [\&parse_UNLESS,  \&play_UNLESS,   1,       1],
         USE     => [\&parse_USE,     \&play_USE],
-        WHILE   => [\&parse_WHILE,   \&play_WHILE,    1,       1],
+        WHILE   => [\&parse_IF,      \&play_WHILE,    1,       1],
         WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1],
         #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
     };
@@ -164,6 +164,7 @@ BEGIN {
                        ||  65
                        ..  60
                        ?   55
+                       =   52
                        not 50   NOT 50
                        and 45   AND 45
                        or  40   OR  40
@@ -171,6 +172,7 @@ BEGIN {
                        )};
     $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-', '\\' => '\\'};
     $OP_TRINARY ||= {'?' => ':'};
+    $OP_EXTRA   ||= {'=' => 1};
     $OP_FUNC    ||= {};
     sub _op_qr { # no mixed \w\W operators
         my %used;
@@ -181,10 +183,13 @@ BEGIN {
         $word = "\\b(?:$word)\\b" if $word;
         return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
     }
-    sub _build_op_qr       { _op_qr(sort(grep {! $OP_UNARY->{$_}} keys(%$OPERATORS), values(%$OP_TRINARY))) }
+    sub _build_op_qr       { _op_qr(sort(grep {! $OP_UNARY->{$_} && ! $OP_EXTRA->{$_}}
+                                         keys(%$OPERATORS), values(%$OP_TRINARY))) }
     sub _build_op_qr_unary { _op_qr(sort %$OP_UNARY) } # grab keys and values
+    sub _build_op_qr_extra { _op_qr(sort keys %$OP_EXTRA) }
     $QR_OP       ||= _build_op_qr();
     $QR_OP_UNARY ||= _build_op_qr_unary();
+    $QR_OP_EXTRA ||= _build_op_qr_extra();
 
     $QR_COMMENTS  = '(?-s: \# .* \s*)*';
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
@@ -816,7 +821,7 @@ sub parse_variable {
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
-        my $var = $self->parse_variable(\$copy);
+        my $var = $self->parse_variable(\$copy, {allow_parened_ops => 1});
         $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
             || $self->throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
         @var = @$var;
@@ -878,7 +883,9 @@ sub parse_variable {
     if (! $self->{'_operator_precedence'}) {
         my $tree;
         my $found;
-        while ($copy =~ s{ ^ ($QR_OP) \s* $QR_COMMENTS }{}ox) { ## look for operators - then move along
+        while ($copy =~ s{ ^ ($QR_OP) \s* $QR_COMMENTS }{}ox ## look for operators - then move along
+               || ($ARGS->{'allow_parened_ops'}
+                   && $copy =~ s{ ^ ($QR_OP_EXTRA) \s* $QR_COMMENTS }{}ox) ) {
             local $self->{'_operator_precedence'} = 1;
             my $op   = $1;
             my $var2 = $self->parse_variable(\$copy);
@@ -1411,6 +1418,11 @@ sub play_operator {
     ### do constructors and short-circuitable operators
     if ($op eq '~' || $op eq '_') {
         return join "", grep {defined} @{ $self->vivify_args($tree) };
+    } elsif ($op eq '=') { # this can't be parsed in normal operations (due to tt limitation)
+        my ($var, $val) = @$tree;
+        $val = $self->get_variable($val);
+        $self->set_variable($var, $val);
+        return $val;
     } elsif ($op eq 'arrayref') {
         return $self->vivify_args($tree, {list_context => 1});
     } elsif ($op eq 'hashref') {
@@ -1721,8 +1733,7 @@ sub play_GET {
 
 sub parse_IF {
     my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_variable($tag_ref);
-    return $ref;
+    return $self->parse_variable($tag_ref);
 }
 
 sub play_IF {
@@ -2292,29 +2303,9 @@ sub play_USE {
     return;
 }
 
-sub parse_WHILE {
-    my ($self, $tag_ref) = @_;
-    my $copy = $$tag_ref;
-    my $var;
-    my $var2;
-    if ($copy =~ s{ ^ \( \s* }{}x
-        && defined($var = $self->parse_variable(\$copy))
-        && $copy =~ s{ ^ = \s* }{}x) {
-        $var2 = $self->parse_variable(\$copy);
-        $copy =~ s{ ^ \) \s* }{}x || $self->throw('parse', "Missing close \")\"");
-        $$tag_ref = $copy;
-    } else {
-        $var2 = $self->parse_variable($tag_ref);
-    }
-    return [$var, $var2];
-}
-
 sub play_WHILE {
-    my ($self, $ref, $node, $out_ref) = @_;
-
-    ### get the items - make sure it is an arrayref
-    my ($var, $var2) = @$ref;
-    return '' if ! defined $var2;
+    my ($self, $var, $node, $out_ref) = @_;
+    return '' if ! defined $var;
 
     my $sub_tree = $node->[4];
 
@@ -2322,12 +2313,7 @@ sub play_WHILE {
     my $max = $WHILE_MAX;
     while (--$max > 0) {
 
-        my $value = $self->get_variable($var2);
-
-        ### update vars as needed
-        $self->set_variable($var, $value);
-
-        last if ! $value;
+        $self->get_variable($var) || last;
 
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $out_ref) };
@@ -2761,8 +2747,8 @@ sub vmethod_format {
 sub vmethod_match {
     my ($str, $pat, $global) = @_;
     return [] if ! defined $str || ! defined $pat;
-    return [$str =~ /$pat/g] if $global;
-    return [$str =~ /$pat/ ];
+    my @res = $global ? ($str =~ /$pat/g) : ($str =~ /$pat/);
+    return (@res >= 2) ? \@res : (@res == 1) ? $res[0] : '';
 }
 
 sub vmethod_nsort {
