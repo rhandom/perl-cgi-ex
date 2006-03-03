@@ -2140,19 +2140,25 @@ sub play_THROW {
 
 sub play_TRY {
     my ($self, $foo, $node, $out_ref) = @_;
+    my $out = '';
 
     my $body_ref = $node->[4];
-    eval { $self->execute_tree($body_ref, $out_ref) };
+    eval { $self->execute_tree($body_ref, \$out) };
     my $err = $@;
 
     if (! $node->[5]) { # no catch or final
-        return if ! $err; # no final block and no error
-        $$out_ref = ''; # hack for tt behavior
+        if (! $err) { # no final block and no error
+            $$out_ref .= $out;
+            return;
+        }
         $self->throw('parse.missing', "Missing CATCH block", $node);
     }
     if ($err) {
-        $self->throw('undef', $err) if ref($err) !~ /Template::Exception$/;
-        die $err if $err->type =~ /stop|return/;
+        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+        if ($err->type =~ /stop|return/) {
+            $$out_ref .= $out;
+            die $err;
+        }
     }
 
     ### loop through the nested catch and final blocks
@@ -2167,7 +2173,7 @@ sub play_TRY {
         }
         next if ! $err;
         my $name = $self->get_variable($node->[3]);
-        $name = '' if ! defined $name;
+        $name = '' if ! defined $name || lc($name) eq 'default';
         if ($type =~ / ^ \Q$name\E \b /x
             && (! defined($last_found) || length($last_found) < length($name))) { # more specific wins
             $catch_body_ref = $node->[4] || [];
@@ -2177,14 +2183,23 @@ sub play_TRY {
 
     ### play the best catch block
     if ($err) {
-        die $err if ! $catch_body_ref;
+        if (! $catch_body_ref) {
+            $$out_ref .= $out;
+            die $err;
+        }
         local $self->{'_vars'}->{'error'} = $err;
         local $self->{'_vars'}->{'e'}     = $err;
-        $self->execute_tree($catch_body_ref, $out_ref);
+        eval { $self->execute_tree($catch_body_ref, \$out) };
+        if (my $err = $@) {
+            $$out_ref .= $out;
+            die $err;
+        }
     }
 
     ### the final block
-    $self->execute_tree($final, $out_ref) if $final;
+    $self->execute_tree($final, \$out) if $final;
+
+    $$out_ref .= $out;
 
     return;
 }
@@ -2577,8 +2592,23 @@ sub DEBUG {
 ###----------------------------------------------------------------###
 
 sub exception {
-    my $self = shift;
-    return $PACKAGE_EXCEPTION->new(@_);
+    my ($self, $type, $info, $node) = @_;
+    return $type if ref($type) =~ /Template::Exception$/;
+    if (ref($info) eq 'ARRAY') {
+        my $hash = ref($info->[-1]) eq 'HASH' ? pop(@$info) : {};
+        if (@$info >= 2 || scalar keys %$hash) {
+            my $i = 0;
+            $hash->{$_} = $info->[$_] for 0 .. $#$info;
+            $hash->{'args'} = $info;
+            $info = $hash;
+        } elsif (@$info == 1) {
+            $info = $info->[0];
+        } else {
+            $info = $type;
+            $type = 'undef';
+        }
+    }
+    return $PACKAGE_EXCEPTION->new($type, $info, $node);
 }
 
 sub throw { die shift->exception(@_) }
@@ -2831,20 +2861,13 @@ use overload '""' => \&as_string;
 use overload bool => sub { defined shift };
 
 sub new {
-    my ($class, $type, $msg, $node, $pos, $str_ref) = @_;
-    return bless [$type, $msg, $node, $pos, $str_ref], $class;
+    my ($class, $type, $info, $node, $pos, $str_ref) = @_;
+    return bless [$type, $info, $node, $pos, $str_ref], $class;
 }
 
 sub type { shift->[0] }
 
-sub info {
-    my $self = shift;
-    if (ref($self->[1]) ne $CGI::Ex::Template::PACKAGE_E_INFO) {
-        my $info = ref($self->[1]) eq 'ARRAY' ? $self->[1] : [$self->[1]];
-        $self->[1] = bless $info, $CGI::Ex::Template::PACKAGE_E_INFO;
-    }
-    return $self->[1];
-}
+sub info { shift->[1] }
 
 sub node {
     my $self = shift;
@@ -2864,36 +2887,9 @@ sub as_string {
     my $self = shift;
     my $msg  = $self->type .' error - '. $self->info;
     if (my $node = $self->node) {
-        $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
+#        $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
     }
     return $msg;
-}
-
-###----------------------------------------------------------------###
-
-package CGI::Ex::Template::_EInfo;
-
-use overload '""' => \&as_string;
-use vars qw($AUTOLOAD);
-
-sub as_string { shift->[0] }
-
-sub args {
-    my @args = @{ +shift };
-    splice(@args, -1, 1, ()) if ref($args[-1]) eq 'HASH';
-    return \@args;
-}
-
-sub DESTROY {}
-
-sub AUTOLOAD {
-    my $self = shift;
-    if ($AUTOLOAD =~ /::(\d+)$/) {
-        return $self->[$1];
-    } elsif ($AUTOLOAD =~ /::(\w+)$/ && ref($self->[-1]) eq 'HASH' && exists $self->[-1]->{$1}) {
-        return $self->[-1]->{$1};
-    }
-    die "Can't locate object method $1 via package ".ref($self);
 }
 
 ###----------------------------------------------------------------###
