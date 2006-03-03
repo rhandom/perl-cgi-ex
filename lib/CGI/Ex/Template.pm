@@ -151,7 +151,7 @@ BEGIN {
         UNLESS  => [\&parse_UNLESS,  \&play_UNLESS,   1,       1],
         USE     => [\&parse_USE,     \&play_USE],
         WHILE   => [\&parse_IF,      \&play_WHILE,    1,       1],
-        WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1],
+        WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1,       1],
         #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
     };
     $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= $|[\s;\#]) }x;
@@ -2315,8 +2315,8 @@ sub play_WHILE {
     my $sub_tree = $node->[4];
 
     ### iterate use the iterator object
-    my $max = $WHILE_MAX;
-    while (--$max > 0) {
+    my $count = $WHILE_MAX;
+    while (--$count > 0) {
 
         $self->get_variable($var) || last;
 
@@ -2330,6 +2330,7 @@ sub play_WHILE {
             die $err;
         }
     }
+    die "WHILE loop terminated (> $WHILE_MAX iterations)\n" if ! $count;
 
     return undef;
 }
