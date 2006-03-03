@@ -22,7 +22,6 @@ use vars qw($TAGS
 
 BEGIN {
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
-    $PACKAGE_E_INFO      = 'CGI::Ex::Template::_EInfo';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
     $PACKAGE_CONTEXT     = 'CGI::Ex::Template::_Context';
     $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
@@ -96,6 +95,7 @@ BEGIN {
         each    => sub { [each %{ $_[0] }] },
         exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
         hash    => sub { $_[0] },
+        import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
         keys    => sub { [keys %{ $_[0] }] },
         list    => sub { [$_[0]] },
         pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
@@ -1254,12 +1254,12 @@ sub get_variable {
 }
 
 sub set_variable {
-    ### allow for the parse tree to store literals
-    return $_[1] if ! ref $_[1];
-
     my ($self, $var, $val, $ARGS) = @_;
     $ARGS ||= {};
     my $i = 0;
+
+    ### allow for the parse tree to store literals - the literal is used as a name (like [% 'a' = 'A' %])
+    $var = [$var, 0] if ! ref $var;
 
     ### determine the top level of this particular variable access
     my $ref  = $var->[$i++];
