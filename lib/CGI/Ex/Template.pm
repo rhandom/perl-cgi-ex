@@ -41,6 +41,7 @@ BEGIN {
     $SCALAR_OPS = {
         chunk    => \&vmethod_chunk,
         collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
+        defined  => sub { 1 },
         indent   => \&vmethod_indent,
         format   => \&vmethod_format,
         hash     => sub { {value => $_[0]} },
@@ -72,27 +73,31 @@ BEGIN {
     };
 
     $LIST_OPS = {
-        first   => sub { $_[0]->[0] },
+        first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
         grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
         hash    => sub { my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
-        join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; return join $join, @$ref },
-        last    => sub { $_[0]->[-1] },
+        join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
+        last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
         list    => sub { $_[0] },
         max     => sub { $#{ $_[0] } },
+        merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
         nsort   => \&vmethod_nsort,
         pop     => sub { pop @{ $_[0] } },
         push    => sub { my $ref = shift; push @$ref, @_; return '' },
         reverse => sub { [ reverse @{ $_[0] } ] },
-        shift   => sub { shift @{ $_[0] } },
-        size    => sub { $#{ $_[0] } + 1 },
+        shift   => sub { shift  @{ $_[0] } },
+        size    => sub { scalar @{ $_[0] } },
+        slice   => sub { my ($ref, $a, $b) = @_; $a ||= 0; $b = $#$ref if ! defined $b; return [@{$ref}[$a .. $b]] },
         sort    => \&vmethod_sort,
+        splice  => \&vmethod_splice,
+        unique  => sub { my %u; return [ grep { ! $u{$_} ++ } @{ $_[0] } ] },
         unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
     };
 
     $HASH_OPS = {
         defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
         delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
-        each    => sub { [each %{ $_[0] }] },
+        each    => sub { [%{ $_[0] }] },
         exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
         hash    => sub { $_[0] },
         import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
@@ -1224,7 +1229,7 @@ sub get_variable {
                     }
                 } else { # this looks like our vmethods turned into "filters" (a filter stored under a name)
                     $self->throw('filter', 'Recursive filter alias \"$name\"') if $seen_filters{$name} ++;
-                    $var = [$name, 0, '|', @$filter, splice(@$var, $i)]; # splice the filter into our current tree
+                    $var = [$name, 0, '|', @$filter, @{$var}[$i..$#$var]]; # splice the filter into our current tree
                     $i = 2;
                 }
             } else {
@@ -2802,11 +2807,20 @@ sub vmethod_sort {
         : [map {$_->[0]} sort {$a->[1] cmp $b->[1]} map {[$_, lc $_]} @$list ]; # case insensitive
 }
 
+sub vmethod_splice {
+    my ($ref, $i, $len, @replace) = @_;
+    @replace = @{ $replace[0] } if @replace == 1 && ref $replace[0] eq 'ARRAY';
+    if (defined $len) {
+        return [splice @$ref, $i || 0, $len, @replace];
+    } else {
+        return [splice @$ref, $i || 0];
+    }
+}
+
 sub vmethod_split {
     my ($str, $pat, @args) = @_;
-    $str = ''  if ! defined $str;
-    $pat = ' ' if ! defined $pat;
-    return [split $pat, $str, @args];
+    $str = '' if ! defined $str;
+    return defined $pat ? [split $pat, $str, @args] : [split ' ', $str, @args];
 }
 
 sub filter_eval {
