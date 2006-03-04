@@ -3128,8 +3128,6 @@ applied to TT2 will take longer to get into CET, should they get in at all.
     Allow USE to use our Iterator
     Add WRAPPER config item
     Add ERROR config item
-    Add pseudo context
-    Add pseudo stash
     Document which test suites pass
 
 =head1 HOW IS CGI::Ex::Template DIFFERENT
@@ -3293,6 +3291,10 @@ Used to go to the next iteration of a WHILE or FOREACH loop.
 
 
 
+=item RAWPERL
+
+
+
 =item RETURN
 
 Used to exit the innermost block or template and continue processing
@@ -3300,7 +3302,14 @@ in the surrounding block or template.
 
 =item SET
 
+Used to set variables.
 
+   [% SET a = 1 %][% a %]             => "1"
+   [% a = 1 %][% a %]                 => "1"
+   [% b = 1 %][% SET a = b %][% a %]  => "1"
+   [% a = 1 %][% SET a %][% a %]      => ""
+   [% SET a = [1, 2, 3] %][% a.1 %]   => "2"
+   [% SET a = {b => 'c'} %][% a.b %]  => "c"
 
 =item STOP
 
@@ -3376,6 +3385,14 @@ This would print.
     My content to be processed.
     A footer (2).
 
+The WRAPPER directive may also be used as a post directive.
+
+    [% BLOCK baz %]([% content %])[% END -%]
+    [% "foobar" WRAPPER baz %]
+
+Would print
+
+    (foobar)');
 
 =back
 
@@ -3494,6 +3511,9 @@ Binary. Multiplication.
 Binary. Division.  Note that / is floating point division, but div and
 DIV are integer division.
 
+   [% 10  /  4 %] => 2.5
+   [% 10 div 4 %] => 2
+
 =item C<%  mod  MOD>
 
 Binary. Modulus.
@@ -3512,6 +3532,8 @@ Binary.  Minus.
 
 Binary.  String concatenation.
 
+    [% "a" ~ "b" %] => ab
+
 =item C<< <  >  <=  >= >>
 
 Binary.  Numerical comparators.
@@ -3523,15 +3545,16 @@ Binary.  String comparators.
 =item C<==  eq>
 
 Binary.  Equality test.  TT chose to use Perl's eq for both operators.
+There is no test for numeric equality.
 
 =item C<!= ne>
 
 Binary.  Non-equality test.  TT chose to use Perl's ne for both
-operators.
+operators.  There is no test for numeric non-equality.
 
 =item C<&&>
 
-Multiple arity.  And.  Both values must be true.  If all values are true, the last
+Multiple arity.  And.  All values must be true.  If all values are true, the last
 value is returned as the truth value.
 
     [% 2 && 3 && 4 %] => 4
@@ -3559,7 +3582,7 @@ returned by .. to be expanded fully into a [] construtor as in C<[1 .. 5]>.
 Because of this it is possible to place multiple ranges in the
 same [] constructor.  This is not available in TT.
 
-    [% t = [1..3, 5..7] %] => variable t contains an array with 1,2,3,5,6 and 7
+    [% t = [1..3, 6..8] %] => variable t contains an array with 1,2,3,6,7,8
 
 =item C<? :>
 
@@ -3567,6 +3590,14 @@ Trinary.  Can be nested with other ?: pairs.
 
     [% 1 ? 2 : 3 %] => 2
     [% 0 ? 2 : 3 %] => 3
+
+=item C<=>
+
+Assignment.  Sets the lefthand side to the value of the righthand side.  In order
+to not conflict with SET, FOREACH and other operations, this operator is only
+available in parenthesis.  Returns the value of the righthand side.
+
+   [% (a = 1) %] --- [% a %] => 1 --- 1
 
 =item C<not  NOT>
 
@@ -3696,15 +3727,15 @@ the template are not available during the compile process.
 
     [% constants.foo.${constants.bang} %]
 
-    Will correctly print 42.
+    Will correctly print 57.
 
     GOOD (non-tt behavior)
 
     [% constants.foo.$bam.${constants.bing} %]
 
-    Will correctly print 42.  TT would print '' as the value of $bam
+    CGI::Ex::Template will print 42 because the value of bam is
+    known at compile time.  TT would print '' because the value of $bam
     is not yet defined in the TT engine.
-
 
     BAD:
 
@@ -3714,7 +3745,7 @@ the template are not available during the compile process.
     [% constants.foo.$bam.${constants.bing} %]
 
     Will still print 42 because the value of bam used comes from
-    variables defined before the template was compiled.
+    variables defined before the template was compiled.  TT will still print ''.
 
 =item CONSTANT_NAMESPACE
 
@@ -3741,7 +3772,10 @@ the template are not available during the compile process.
 
 =item EVAL_PERL
 
-
+Boolean.  Default false.  If set to a true value, PERL and RAWPERL blocks
+will be allowed to run.  This is a potential security hole, as arbitrary
+perl can be included in the template.  If Template::Toolkit is installed,
+a true EVAL_PERL value also allows the perl and evalperl filters to be used.
 
 =item FILTERS
 
@@ -3749,7 +3783,8 @@ the template are not available during the compile process.
 
 =item INCLUDE_PATH
 
-
+A string or an array containing directories too look for files included by
+processed templates.
 
 =item INTERPOLATE
 
