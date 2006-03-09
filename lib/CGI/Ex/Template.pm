@@ -3092,8 +3092,6 @@ sub PRINT {
     return 1;
 }
 
-sub PRINTF { shift->PRINT(sprintf @_) }
-
 ###----------------------------------------------------------------###
 
 1;
@@ -3132,6 +3130,82 @@ applied to TT2 will take longer to get into CET, should they get in at all.
 
 =head1 HOW IS CGI::Ex::Template DIFFERENT
 
+Numerical hash keys work [% a = {1 => 2} %]
+
+Quoted hash key interpolation is fine [% a = {"$foo" => 1} %]
+
+Range operator returns an arrayref [% a = 1 .. 10 %]
+
+Multiple ranges in same constructor [% a = [1..10, 21..30] %]
+
+Construtor types can call virtual methods
+
+   [% a = [1..10].reverse %]
+
+   [% "$foo".length %]
+
+   [% 123.length %]   # = 3
+
+   [% 123.4.length %]  # = 5
+
+   [% -123.4.length %] # = -5 ("." binds tighter than "-")
+
+   [% (a ~ b).length %]
+
+   [% "hi".repeat(3) %]
+
+   [% {a => b}.size %]
+
+Reserved names are less reserved
+
+   [% GET GET %] # gets the variable named "GET"
+
+   [% GET $GET %] # gets the variable who's name is stored in "GET"
+
+Filters and SCALAR_OPS are interchangeable.
+
+Pipe "|" can be used anywhere dot "." can be and means to call
+the virtual method.
+
+   [% a = {size => "foo"} %][% a.size %] # = foo
+   [% a = {size => "foo"} %][% a|size %] # = 1 (size of hash)
+
+Pipe "|" and "." can have space around them.
+
+   [% a = {size => "foo"} %][% a . size %] # = foo
+
+Pipe "|" and "." can be mixed.
+
+   [% "aa" | repeat(2) . length %] # = 4
+
+Whitespace is less meaningful.
+
+   [% 2-1 %] # 1 (fails in TT)
+
+Added pow operator.
+
+   [% 2 ** 3 %] [% 2 pow 3 %] # = 8 8
+
+FOREACH variables can be nested
+
+   [% FOREACH f.b = [1..10] ; f.b ; END %]
+
+   Note that nested variables are subject to scoping issues.
+   f.b will not be reset to its value before the FOREACH.
+
+Post operative directives can be nested.
+
+   [% one IF two IF three %]
+
+   same as
+
+   [% IF three %][% IF two %][% one %][% END %][% END %]
+
+
+   [% a = [[1..3], [5..7]] %][% i FOREACH i = j FOREACH j = a %] # = 123567
+
+CATCH blocks can be empty.
+
 
 CHOMP at the end of a string.
 CET will replace "[% 1 =%]\n" with "1 "
@@ -3141,6 +3215,19 @@ This is an internal one-off exception in TT that may or may not DWIM.
 In CET - it always means to always replace whitespace on the line with
 a space.  The template can be modified to either not have space - or
 to end with ~%] which will remove any following space.
+
+
+CET does not generate Perl code.  It generates an "opcode" tree.
+
+CET uses storable for its compiled templates.  If EVAL_PERL is off, CET will
+not eval_string on any piece of information.
+
+There is no context.  CET provides a context object that mimics the Template::Context
+interface for use by some TT filters, eval perl blocks, and plugins.
+
+There is no stash.  CET provides a stash object that mimics the Template::Stash
+interface for use by some TT filters, eval perl blocks, and plugins.
+
 
 =head1 DIRECTIVES
 
@@ -3153,6 +3240,33 @@ TT directives documentation.
 
 =item BLOCK
 
+Saves a block of text under a name for later use in PROCESS, INCLUDE,
+and WRAPPER directives.  Blocks may be placed anywhere within the
+template being processed including after where they are used.
+
+    [% BLOCK foo %]Some text[% END %]
+    [% PROCESS foo %]
+
+    Would print
+
+    Some text
+
+    [% INCLUDE foo %]
+    [% BLOCK foo %]Some text[% END %]
+
+    Would print
+
+    Some text
+
+Anonymous BLOCKS can be used for capturing.
+
+    [% a = BLOCK %]Some text[% END %][% a %]
+
+    Would print
+
+    Some text
+
+Anonymous BLOCKS can be used with macros.
 
 
 =item BREAK
