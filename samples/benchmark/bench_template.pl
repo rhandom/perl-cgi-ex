@@ -315,23 +315,25 @@ foreach my $test_name (@run) {
 
     eval {
         my $hash = {
-            '1 cached_in_memory           ' => '',
-            '2 new_object                 ' => '_n',
-            '3 cached_on_file (new_object)' => '_c_n',
-            '4 string reference           ' => 'str',
+            '1 cached_in_memory           ' => ['file_CT',     'file_TT'],
+            '2 new_object                 ' => ['file_CT_n',   'file_TT_n'],
+            '3 cached_on_file (new_object)' => ['file_CT_c_n', 'file_TT_c_n'],
+            '4 string reference           ' => ['str_CT',      'str_TT'],
+            '5 CT new vs TT in mem        ' => ['file_CT_n',   'file_TT'],
+            '6 CT in mem vs TT new        ' => ['file_CT',     'file_TT_n'],
+            '7 CT in mem vs CT new        ' => ['file_CT',     'file_CT_n'],
+            '8 TT in mem vs TT new        ' => ['file_TT',     'file_TT_n'],
         };
         foreach my $type (sort keys %$hash) {
-            my $suffix = $hash->{$type};
-            my $prefix = 'file';
-            ($prefix, $suffix) = ('str', '') if $suffix eq 'str';
-            my $ct = $r->{"${prefix}_CT$suffix"};
-            my $tt = $r->{"${prefix}_TT$suffix"};
+            my ($key1, $key2) = @{ $hash->{$type} };
+            my $ct = $r->{$key1};
+            my $tt = $r->{$key2};
             my $ct_s = $ct->iters / ($ct->cpu_a || 1);
             my $tt_s = $tt->iters / ($tt->cpu_a || 1);
             my $p = int(100 * ($ct_s - $tt_s) / ($tt_s || 1));
             print "$type - CT is $p% faster than TT\n";
 
-            $output .= sprintf('#  %3s%%  ', $p);
+            $output .= sprintf('#  %3s%%  ', $p) if $type =~ /^[1234]/;
 
             ### store cumulatives
             if (abs($p) < 10000) {
@@ -351,14 +353,20 @@ foreach my $test_name (@run) {
         $row->[2] = sprintf('%.1f', $row->[0] / ($row->[1]||1));
     }
 
-    debug \%cumulative
-        if $#run > 0;
+    if ($#run > 0) {
+        foreach (sort keys %cumulative) {
+            printf "Cumulative $_: %6.1f\n", $cumulative{$_}->[2];
+        }
+    }
+
 }
 
 ### add the final total row
 if ($#run > 0) {
     $output .= "    # overall" . (" "x61);
-    $output .= sprintf('#  %3s%%  ', int $cumulative{$_}->[2]) foreach sort keys %cumulative;
+    foreach my $type (sort keys %cumulative) {
+        $output .= sprintf('#  %3s%%  ', int $cumulative{$type}->[2]) if $type =~ /^[1234]/;
+    }
     $output .= "#\n";
 
     print $output;
