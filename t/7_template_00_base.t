@@ -8,21 +8,13 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 469 - ($is_tt ? 59 : 0);
+use Test::More tests => 475 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
 use_ok($module);
 
 Taint::Runtime::taint_start() if test_taint;
-
-#process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; foo %]' => 'A');
-#process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; a = "b" ; foo %]' => 'A');
-#process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; a = "cd"; foo %]' => '-AB-cd');
-#process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; a = "cd"; foo %]' => '*cd');
-#process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; foo %]' => '-AB-cd');
-#process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*cd');
-#exit;
 
 ###----------------------------------------------------------------###
 
@@ -750,3 +742,15 @@ process_ok("[% b=\\a(1); b %]" => 'a sub [1]', {a => sub { return "a sub [@_]" }
 process_ok("[% b=\\a; b(2) %]" => 'a sub [2]', {a => sub { return "a sub [@_]" } });
 process_ok("[% b=\\a(1); b(2) %]" => 'a sub [1 2]', {a => sub { return "a sub [@_]" } });
 process_ok("[% f=\\j.k; j.k=7; f %]" => '7', {j => {k => 3}});
+
+process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; foo %]' => 'A');
+process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; a = "b" ; foo %]' => 'A');
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; a = "cd"; foo %]' => '-AB-cd');
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; a = "cd"; foo %]' => '*cd');
+
+### tt does odd things with partially vivifying methods
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; foo %]' => '-AB-cd') if $is_tt;
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*cd') if $is_tt;
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; foo %]' => '-AB-') if ! $is_tt;
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*') if ! $is_tt;
+
