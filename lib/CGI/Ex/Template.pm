@@ -1399,6 +1399,54 @@ sub set_variable {
     return $ref;
 }
 
+sub get_variable_reference {
+    ### allow for the parse tree to store literals
+    return [\ $_[1], 0] if ! ref $_[1];
+
+    my $self = shift;
+    my $var  = shift;
+    my $ARGS = shift || {};
+    my $i    = 0;
+    my @ret;
+
+    ### determine the top level of this particular variable access
+    my $ref  = $var->[$i++];
+    my $args = $var->[$i++];
+    warn "get_variable: begin \"$ref\"\n" if trace;
+    if (ref $ref) {
+        if (ref($ref) eq 'SCALAR') { # a scalar literal
+            push @ret, $ref;
+        } elsif (ref($ref) eq 'REF') { # operator
+            my $val = $self->play_operator($$ref);
+            push @ret, \ $val;
+        } else { # a named variable access (ie via $name.foo)
+            my $name = $self->get_variable($ref);
+            push @ret, \ $name;
+        }
+    } else {
+        push @ret, $ref;
+    }
+    push @ret, $args ? $self->vivify_args($args) : 0;
+
+    ### go through the chained levels
+    while ($#$var > $i) {
+        push @ret, $var->[$i++] if ! $ARGS->{'no_dots'};
+        my $name = $var->[$i++];
+        my $args = $var->[$i++];
+
+        ### allow for named portions of a variable name (foo.$name.bar)
+        if (ref $name) {
+            die "Shouldn't get a ". ref($name) ." during a vivify on chain" if ref($name) ne 'ARRAY';
+            push @ret, scalar $self->get_variable($name);
+        } else {
+            push @ret, $name;
+        }
+        push @ret, $args ? $self->vivify_args($args) : 0;
+    }
+
+    return \ @ret;
+}
+
 sub vivify_args {
     my $self = shift;
     my $vars = shift;
@@ -1459,11 +1507,13 @@ sub play_operator {
         return defined($var) ? $var : '';
 
     } elsif ($op eq '\\') { # return a closure "reference" that can access the variable later
+        return $tree->[0] if ! ref $tree->[0];
         my $self_copy = $self->weak_copy;
-        my $var = $tree->[0];
+        my $ref = $self->get_variable_reference($tree->[0]);
+        $ref->[-1] ||= [];
         return sub {
-            local $var->[-1] = [@{ $var->[-1] || [] }, @_];
-            my $val = $self_copy->get_variable($var);
+            local $ref->[-1] = [@{ $ref->[-1] || [] }, @_];
+            my $val = $self_copy->get_variable($ref);
             return defined($val) ? $val : '';
         };
     }
@@ -3227,6 +3277,11 @@ interface for use by some TT filters, eval perl blocks, and plugins.
 
 There is no stash.  CET provides a stash object that mimics the Template::Stash
 interface for use by some TT filters, eval perl blocks, and plugins.
+
+References are less interpolated. TT partially resolves some of the names filter keys and
+other elements rather than wait until the reference is actually used. CET only resolves
+interpolated values and arguments to subroutines.  All other resolution is delayed until
+the reference is actually used.
 
 
 =head1 DIRECTIVES
