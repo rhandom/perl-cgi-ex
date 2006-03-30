@@ -2,13 +2,13 @@
 
 use vars qw($module $is_tt);
 BEGIN {
-    $module = 'CGI::Ex::Template'; #0.44user 0.01system 0:00.82elapsed 56%CPU
-    #$module = 'Template';         #1.36user 0.01system 0:02.26elapsed 61%CPU
+    $module = 'CGI::Ex::Template'; #real    0m1.243s #user    0m0.695s #sys     0m0.018s
+    #$module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => 475 - ($is_tt ? 59 : 0);
+use Test::More tests => 477 - ($is_tt ? 59 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -674,6 +674,9 @@ process_ok("1\n2\n3[% one %]" => "1\n2\n3(3)ONE", {one=>'ONE', tt_config => ['DE
 process_ok("[% one;\n one %]" => "(1)ONE(2)ONE", {one=>'ONE', tt_config => ['DEBUG' => 8,
                                                                             'DEBUG_FORMAT' => '($line)']}) if ! $is_tt;
 process_ok("[% DEBUG format '(\$line)' %][% one %]" => qr/\(1\)/, {one=>'ONE', tt_config => ['DEBUG' => 8]});
+
+process_ok("[% TRY %][% abc %][% CATCH %][% error %][% END %]" => "undef error - abc is undefined\n", {tt_config => ['DEBUG' => 2]});
+process_ok("[% TRY %][% abc.def %][% CATCH %][% error %][% END %]" => "undef error - def is undefined\n", {abc => {}, tt_config => ['DEBUG' => 2]});
 
 ###----------------------------------------------------------------###
 ### constants
