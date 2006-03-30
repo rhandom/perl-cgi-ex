@@ -210,7 +210,15 @@ BEGIN {
 sub new {
   my $class = shift;
   my $args  = ref($_[0]) ? { %{ shift() } } : {@_};
-  return bless $args, $class;
+  my $self  = bless $args, $class;
+
+  ### "enable" debugging - we only support DEBUG_DIRS and DEBUG_UNDEF
+  if ($self->{'DEBUG'}) {
+      $self->{'_debug_dirs'}  = 1 if $self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 8 : $self->{'DEBUG'} =~ /dirs|all/;
+      $self->{'_debug_undef'} = 1 if $self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 2 : $self->{'DEBUG'} =~ /undef|all/;
+  }
+
+  return $self;
 }
 
 ###----------------------------------------------------------------###
@@ -1793,9 +1801,9 @@ sub parse_GET {
 }
 
 sub play_GET {
-    my ($self, $ident) = @_;
+    my ($self, $ident, $node) = @_;
     my $var = $self->get_variable($ident);
-    return (! defined $var) ? $self->undefined_get($ident) : $var;
+    return (! defined $var) ? $self->undefined_get($ident, $node) : $var;
 }
 
 sub parse_IF {
@@ -1856,7 +1864,7 @@ sub play_INSERT {
 
     foreach my $name (@$names) {
         my $filename = $self->get_variable($name);
-        $$out_ref .= $self->include_file($filename);
+        $$out_ref .= $self->_insert($filename);
     }
 
     return;
@@ -2341,6 +2349,8 @@ sub play_USE {
         my $context = $self->context;
         my @args    = $args ? @{ $self->vivify_args($args) } : ();
         $obj = $shape->new($context, @args);
+    } elsif (lc($module) eq 'iterator') { # use our iterator if none found (TT's works just fine)
+        $obj = $PACKAGE_ITERATOR->new($args ? $self->get_variable($args->[0]) : []);
     } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
         foreach my $package (@packages) {
             my $require = "$package.pm";
@@ -2420,15 +2430,10 @@ sub play_WRAPPER {
 
 ###----------------------------------------------------------------###
 
-sub vars {
+sub _vars {
     my $self = shift;
     $self->{'_vars'} = shift if $#_ == 0;
     return $self->{'_vars'} ||= {};
-}
-
-sub include_path {
-    my $self = shift;
-    return $self->{'INCLUDE_PATH'} ||= [];
 }
 
 sub include_filename {
@@ -2440,8 +2445,9 @@ sub include_filename {
         $self->throw('file', "$file RELATIVE paths disabled") if ! $self->{'RELATIVE'};
         return $file if -e $file;
     } else {
-        my $paths = $self->split_paths($self->include_path);
-        foreach my $item (@$paths) {
+        my $paths = $self->{'INCLUDE_PATH'} || $self->throw('file', "INCLUDE_PATH not set");
+        $paths = $self->split_paths($paths) if ! ref $paths;
+        foreach my $item (@$paths) { # TT does this everytime - would be better in "new"
             my @path = UNIVERSAL::isa($item, 'CODE')  ? $item->()
                      : UNIVERSAL::can($item, 'paths') ? $item->paths
                      :                                  ($item);
@@ -2463,7 +2469,7 @@ sub split_paths {
     return [split $delim, $path];
 }
 
-sub include_file {
+sub _insert {
     my ($self, $file) = @_;
     return $self->slurp($self->include_filename($file));
 }
@@ -2475,6 +2481,27 @@ sub slurp {
     read FH, my $txt, -s $file;
     close FH;
     return $txt;
+}
+
+sub process_simple {
+    my $self = shift;
+    my $in   = shift || die "Missing input";
+    my $swap = shift || die "Missing variable hash";
+    my $out  = shift || die "Missing output handle";
+
+    eval {
+        delete $self->{'_debug_off'};
+        delete $self->{'_debug_format'};
+        local $self->{'_start_top_level'} = 1;
+        $self->_process($in, $swap, \$out);
+    };
+    if (my $err = $@) {
+        if ($err->type !~ /stop|return|next|last|break/) {
+            $self->{'error'} = $err;
+            return;
+        }
+    }
+    return 1;
 }
 
 sub process {
@@ -2522,11 +2549,6 @@ sub process {
 
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
 
-        ### "enable" debugging - we only support DEBUG_DIRS
-        local $self->{'_debug_dirs'}  = $self->{'DEBUG'}
-            && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 8 : $self->{'DEBUG'} =~ /dirs|all/);
-        local $self->{'_debug_undef'} = $self->{'DEBUG'}
-            && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 2 : $self->{'DEBUG'} =~ /undef|all/);
         delete $self->{'_debug_off'};
         delete $self->{'_debug_format'};
 
@@ -2675,8 +2697,8 @@ sub context {
 }
 
 sub undefined_get {
-    my ($self, $ident) = @_;
-    return $self->{'UNDEFINED_GET'}->($self, $ident) if $self->{'UNDEFINED_GET'};
+    my ($self, $ident, $node) = @_;
+    return $self->{'UNDEFINED_GET'}->($self, $ident, $node) if $self->{'UNDEFINED_GET'};
     return '';
 }
 
@@ -2771,18 +2793,6 @@ sub get_line_number_by_index {
 ### long virtual methods or filters
 ### many of these vmethods have used code from Template/Stash.pm to
 ### assure conformance with the TT spec.
-
-sub has_vmethod {
-    my ($self, $type, $name) = @_;
-    if (   $type =~ /scalar|item/i) { return $SCALAR_OPS->{$name} }
-    elsif ($type =~ /array|list/i ) { return $LIST_OPS->{  $name} }
-    elsif ($type =~ /hash/i       ) { return $HASH_OPS->{  $name} }
-    elsif ($type =~ /filter/i     ) { return $FILTER_OPS->{$name} }
-    else {
-        die "Invalid type vmethod type $type";
-    }
-    return 0;
-}
 
 sub define_vmethod {
     my ($self, $type, $name, $sub) = @_;
@@ -3039,14 +3049,14 @@ sub stash {
     return $self->{'stash'} ||= bless {_template => $self->_template}, $CGI::Ex::Template::PACKAGE_STASH;
 }
 
-sub insert { shift->_template->include_file(@_) }
+sub insert { shift->_template->_insert(@_) }
 
 sub eval_perl { shift->_template->{'EVAL_PERL'} }
 
 sub process {
     my $self = shift;
     my $ref  = shift;
-    my $vars = $self->_template->vars;
+    my $vars = $self->_template->_vars;
     my $out  = '';
     $self->_template->_process($ref, $vars, \$out);
     return $out;
@@ -3080,7 +3090,7 @@ sub filter {
 
     my $filter;
     if (! ref $name) {
-        $filter = $t->{'FILTERS'}->{$name} || $t->has_vmethod('filter|scalar', $name);
+        $filter = $t->{'FILTERS'}->{$name} || $CGI::Ex::Template::FILTER_OPS->{$name} || $CGI::Ex::Template::SCALAR_OPS->{$name};
         $t->throw('filter', $name) if ! $filter;
     } elsif (UNIVERSAL::isa($name, 'CODE') || UNIVERSAL::isa($name, 'ARRAY')) {
         $filter = $name;
@@ -3195,7 +3205,7 @@ base set of modules for doing anything from simple to complicated CGI
 applications.  Part of the suite was a simple variable interpolater
 that used TT2 style variables in TT2 style tags "[% foo.bar %]".  This
 was fine and dandy for a couple of years.  In winter of 2005-2006 CET
-was revamped and provided for all of the features of TT2 as well as some
+was revamped and provided for most of the features of TT2 as well as some
 from TT3.
 
 CGI::Ex::Template (CET hereafter) is smaller, faster, uses less memory
@@ -3207,56 +3217,145 @@ applied to TT2 will take longer to get into CET, should they get in at all.
 
 =head1 PUBLIC METHODS
 
-sub new {
-sub process {
-sub error { shift->{'error'} }
-sub define_vmethod {
+=over 4
 
-sub load_parsed_tree {
-sub parse_tree {
-sub execute_tree {
-sub parse_variable {
-sub parse_args {
-sub get_variable {
-sub set_variable {
-sub vivify_args {
-sub exception {
-sub throw { die shift->exception(@_) }
-sub context {
-sub vars {
-sub include_filename {
-sub undefined_get
-sub undefined_any
+=item new
 
-sub _process {
-sub apply_precedence {
-sub interpolate_node {
-sub get_variable_reference {
-sub play_operator {
-sub parse_*
-sub play_*
-sub include_path {
-sub split_paths {
-sub include_file {
-sub slurp {
-sub DEBUG {
-sub list_filters {
-sub list_plugins {
-sub weak_copy {
-sub debug_node {
-sub get_line_number_by_index {
-sub has_vmethod {
-sub vmethod_*
-sub filter_*
+=item process
+
+=item process_simple
+
+=item error
+
+=item define_vmethod
+
+=back
+
+=head1 SEMI PUBLIC METHODS
+
+The following list of methods are other interesting methods of CET that
+may be re-implemented by subclasses of CET.
+
+
+exception - Creates an exception object blessed into the package listed in
+$CGI::Ex::Template::PACKAGE_EXCEPTION.
+
+execute_tree - Executes a parsed tree (returned from parse_tree)
+
+get_variable - Turns a variable identity array into the parsed variable.  This
+method is also repsonsible for playing opererators and running virtual methods
+and filters.  The method could more accurately be called play_expression.
+
+get_variable_reference - similar to get_variable but returns a variable identity
+that can be used repeatedly to lookup the stored variable name.  This is different
+from TT2 currently in that it resolves arguments but makes no attempt to auto-vivify
+the structure.  The reference is more literally a name lookup while TT returns an actual perl
+reference to the appropriate data structure.
+
+include_filename - Takes a file path, and resolves it into the full filename using
+paths from INCLUDE_PATH.
+
+_insert - Resolves the file passed, and then returns its contents.
+
+list_filters - Dynamically loads the filters list from Template::Filters when a filter
+is used that is not natively implemented in CET.
+
+list_plugins - Returns an arrayref of modules that are under a base Namespace.
+
+  my @modules = @{ $self->list_plugins({base => 'Template::Plugins'}) }:
+
+load_parsed_tree - Given a filename or a string reference will return a parsed document
+hash that contains the parsed tree.
+
+  my $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");
+
+parse_args - Allow for the multitudinous ways that TT parses arguments.  This allows
+for positional as well as named arguments.  Named arguments can be separated with a "=" or "=>",
+and positional arguments should be separated by " " or ",".  This only returns an array
+of parsed variables.  Use vivify_args to translate to the actual values.
+
+parse_tree - Used by load_parsed_tree.  This is the main grammar engine of the program.  It
+uses method in the $DIRECTIVES hashref to parse different DIRECTIVE TYPES.
+
+parse_variable - Used to parse a variable, an expression, a literal string, or a number.  It
+returns a parsed variable tree.  Samples of parsed variables can be found in the VARIABLE PARSE TREE
+section.
+
+set_variable - Used to set a variable.  Expects a variable identity array and the value to set.  It
+will autovifiy as necessary.
+
+throw - Creates an exception object from the arguments and dies.
+
+undefined_any - Called during get_variable if a value is returned that is undefined.  This could
+be used to magically create variables on the fly.  This is similar to Template::Stash::undefined.
+It is suggested that undefined_get be used instead.  Default behavior returns undef.  You
+may also pass a coderef via the UNDEFINED_ANY configuration variable.  Also, you can try using
+the DEBUG => 'undef', configuration option which will throw an error on undefined variables.
+
+undefined_get - Called when a variable is undefined during a GET directive.  This is useful to
+see if a value that is about to get inserted into the text is undefined.  undefined_any is a little
+too general for most cases.  Also, you may pass a coderef via the UNDEFINED_GET configuration variable.
+
+vivify_args - Turns an arrayref of arg identities parsed by parse_args and turns
+them into the actual values.
+
+
+=head1 OTHER UTILITY METHODS
+
+The following is a brief list of other methods used by CET.  Generally, these
+shouldn't be overwritten by subclasses.
+
+apply_precedence - allows for parsed operator array to be translated to a tree based
+upon operator precedence.
+
+context - used to create a "pseudo" context object that allows for portability
+of TT plugins, filters, and perl blocks that need a context object.
+
+DEBUG - TT2 Holdover that is used once for binmode setting during a TT2 test.
+
+debug_node - used to get debug info on a directive if DEBUG_DIRS is set.
+
+filter_* - implement filters that are more than one line.
+
+get_line_number_by_index - used to turn string index position into line number
+
+interpolate_node - used for parsing text nodes for dollar variables when interpolate is on.
+
+parse_* - used by parse_tree to parse the template.  These are the grammar.
+
+play_* - used by execute_tree to execute the parsed tree.
+
+play_operator - to execute any found operators
+
+_process - called by process and the PROCESS, INCLUDE and other directives.
+
+slurp - reads contents of passed filename - throws file exception on error.
+
+split_paths - used to split INCLUDE_PATH or other directives if an arrayref is not passed.
+
+_vars - Return a reference to the current stash of variables.  This is currently only used
+by the pseudo context object and may disappear at some point.
+
+vmethod_* - implement virtual methods that are more than one line.
+
+weak_copy - used to create a weak reference to self to avoid circular references. (this
+is needed by macros and references.
+
 
 =head1 TODO
 
-    Allow USE to use our Iterator
     Add WRAPPER config item
     Add ERROR config item
-    Document which test suites pass
+    Document which TT2 test suites pass
 
 =head1 HOW IS CGI::Ex::Template DIFFERENT
+
+CET uses the same template syntax and configuration items
+as TT2, but the internals of CET were written from scratch.  In
+addition to this, the following is a list of some of the ways that
+configuration and syntax of CET different from that of TT.
+
+=over 4
 
 Numerical hash keys work [% a = {1 => 2} %]
 
@@ -3368,6 +3467,7 @@ The DEBUG directive only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 When debug dirs is on, directives separated by colon show the line they
 are on rather than a general line range.
 
+=back
 
 =head1 DIRECTIVES
 
@@ -4008,7 +4108,20 @@ the template are not available during the compile process.
 
 =item DEBUG
 
+    Takes a list of constants |'ed together which enables different
+    debugging modes.  Alternately the lowercase names may be used (multiple
+    values joined by a ",".
 
+    The only supported TT values are:
+    DEBUG_UNDEF (2)    - debug when an undefined value is used.
+    DEBUG_DIRS  (8)    - debug when a directive is used.
+    DEBUG_ALL   (2047) - turn on all debugging.
+
+    Either of the following would turn on undef and directive debugging:
+
+    DEBUG => 'undef, dirs',            # preferred
+    DEBUG => 2 | 8,
+    DEBUG => DEBUG_UNDEF | DEBUG_DIRS, # constants from Template::Constants
 
 =item DEBUG_FORMAT
 
@@ -4178,7 +4291,7 @@ Full support is offered for the PLUGINS and LOAD_PERL configuration items.
 
 Also note that CGI::Ex::Template only natively supports the Iterator plugin.
 Any of the other plugins requested will need to provided by installing
-Template::Toolkit or the appropriate module.
+Template::Toolkit or the appropriate plugin module.
 
 =item LOAD_FILTERS
 
