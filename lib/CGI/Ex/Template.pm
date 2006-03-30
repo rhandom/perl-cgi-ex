@@ -215,7 +215,7 @@ sub new {
 
 ###----------------------------------------------------------------###
 
-sub _swap {
+sub _process {
     my $self = shift;
     my $file = shift;
     local $self->{'_vars'} = shift || {};
@@ -1258,7 +1258,19 @@ sub get_variable {
 
     #debug $ref;
 
-    if ($generated_list && $ARGS->{'list_context'} && UNIVERSAL::isa($ref, 'ARRAY')) {
+    ### allow for undefinedness
+    if (! defined $ref) {
+        if ($self->{'_debug_undef'}) {
+            my $chunk = $var->[$i - 2];
+            $chunk = $self->get_variable($chunk) if ref($chunk) eq 'ARRAY';
+            die "$chunk is undefined\n";
+        } else {
+            $ref = $self->undefined_any($var);
+        }
+    }
+
+    ### allow for special behavior for the '..' operator
+    if ($generated_list && $ARGS->{'list_context'} && ref($ref) eq 'ARRAY') {
         return @$ref;
     }
 
@@ -1783,7 +1795,7 @@ sub parse_GET {
 sub play_GET {
     my ($self, $ident) = @_;
     my $var = $self->get_variable($ident);
-    return (! defined $var) ? $self->undefined($ident) : $var;
+    return (! defined $var) ? $self->undefined_get($ident) : $var;
 }
 
 sub parse_IF {
@@ -2023,7 +2035,7 @@ sub play_PROCESS {
 
         ### normal blocks or filenames
         if (! ref $filename) {
-            eval { $self->_swap($filename, $self->{'_vars'}, \$out) }; # restart the swap - passing it our current stash
+            eval { $self->_process($filename, $self->{'_vars'}, \$out) }; # restart the swap - passing it our current stash
 
         ### allow for $template which is used in some odd instances
         } else {
@@ -2511,8 +2523,10 @@ sub process {
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
 
         ### "enable" debugging - we only support DEBUG_DIRS
-        local $self->{'_debug_dirs'} = $self->{'DEBUG'}
+        local $self->{'_debug_dirs'}  = $self->{'DEBUG'}
             && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 8 : $self->{'DEBUG'} =~ /dirs|all/);
+        local $self->{'_debug_undef'} = $self->{'DEBUG'}
+            && ($self->{'DEBUG'} =~ /^\d+$/ ? $self->{'DEBUG'} & 2 : $self->{'DEBUG'} =~ /undef|all/);
         delete $self->{'_debug_off'};
         delete $self->{'_debug_format'};
 
@@ -2520,7 +2534,7 @@ sub process {
         if ($self->{'PRE_PROCESS'}) {
             foreach my $name (@{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
                 my $out = '';
-                $self->_swap($name, $copy, \$out);
+                $self->_process($name, $copy, \$out);
                 $output = $out . $output;
             }
         }
@@ -2538,20 +2552,20 @@ sub process {
             ### process any other templates
             foreach my $name (@{ $self->split_paths($self->{'PROCESS'}) }) {
                 next if ! length $name;
-                $self->_swap($name, $copy, \$output);
+                $self->_process($name, $copy, \$output);
             }
 
         ### handle "normal" content
         } else {
             local $self->{'_start_top_level'} = 1;
-            $self->_swap($content, $copy, \$output);
+            $self->_process($content, $copy, \$output);
         }
 
 
         ### handle post process items that go after every document
         if ($self->{'POST_PROCESS'}) {
             foreach my $name (@{ $self->split_paths($self->{'POST_PROCESS'}) }) {
-                $self->_swap($name, $copy, \$output);
+                $self->_process($name, $copy, \$output);
             }
         }
 
@@ -2660,7 +2674,17 @@ sub context {
     return bless {_template => $self}, $PACKAGE_CONTEXT; # a fake context
 }
 
-sub undefined { ''}
+sub undefined_get {
+    my ($self, $ident) = @_;
+    return $self->{'UNDEFINED_GET'}->($self, $ident) if $self->{'UNDEFINED_GET'};
+    return '';
+}
+
+sub undefined_any {
+    my ($self, $ident) = @_;
+    return $self->{'UNDEFINED_ANY'}->($self, $ident) if $self->{'UNDEFINED_ANY'};
+    return;
+}
 
 sub list_filters {
     my $self = shift;
@@ -3024,7 +3048,7 @@ sub process {
     my $ref  = shift;
     my $vars = $self->_template->vars;
     my $out  = '';
-    $self->_template->_swap($ref, $vars, \$out);
+    $self->_template->_process($ref, $vars, \$out);
     return $out;
 }
 
@@ -3036,7 +3060,7 @@ sub include {
     $self->_template->set_variable($_, $args->{$_}) for keys %$args;
 
     my $out = ''; # have temp item to allow clear to correctly clear
-    eval { $self->_template->_swap($file, $self->{'_vars'}, \$out) };
+    eval { $self->_template->_process($file, $self->{'_vars'}, \$out) };
     if (my $err = $@) {
         die $err if ref($err) !~ /Template::Exception$/ || $err->type !~ /return/;
     }
@@ -3150,7 +3174,19 @@ __END__
 
 =head1 SYNOPSIS
 
-  None yet.
+  my $t = CGI::Ex::Template->new(
+      INCLUDE_PATH => ['/path/to/templates'],
+  );
+
+  my $swap = {
+      key1 => 'val1',
+      key2 => 'val2',
+      code => sub { 42 },
+      hash => {a => 'b'},
+  };
+
+  $t->process('my/template.tt', $swap)
+      || die $t->error;
 
 =head1 DESCRIPTION
 
@@ -3158,9 +3194,9 @@ CGI::Ex::Template happened by accident.  The CGI::Ex suite included a
 base set of modules for doing anything from simple to complicated CGI
 applications.  Part of the suite was a simple variable interpolater
 that used TT2 style variables in TT2 style tags "[% foo.bar %]".  This
-was fine and dandy for a couple of years.
-
-
+was fine and dandy for a couple of years.  In winter of 2005-2006 CET
+was revamped and provided for all of the features of TT2 as well as some
+from TT3.
 
 CGI::Ex::Template (CET hereafter) is smaller, faster, uses less memory
 and less CPU than TT2.  However, it is most likely less portable, less
@@ -3169,10 +3205,52 @@ out from years of bug reports and patches from a very active community
 and mailing list.  CET does not have a vibrant community behind it.  Fixes
 applied to TT2 will take longer to get into CET, should they get in at all.
 
+=head1 PUBLIC METHODS
+
+sub new {
+sub process {
+sub error { shift->{'error'} }
+sub define_vmethod {
+
+sub load_parsed_tree {
+sub parse_tree {
+sub execute_tree {
+sub parse_variable {
+sub parse_args {
+sub get_variable {
+sub set_variable {
+sub vivify_args {
+sub exception {
+sub throw { die shift->exception(@_) }
+sub context {
+sub vars {
+sub include_filename {
+sub undefined_get
+sub undefined_any
+
+sub _process {
+sub apply_precedence {
+sub interpolate_node {
+sub get_variable_reference {
+sub play_operator {
+sub parse_*
+sub play_*
+sub include_path {
+sub split_paths {
+sub include_file {
+sub slurp {
+sub DEBUG {
+sub list_filters {
+sub list_plugins {
+sub weak_copy {
+sub debug_node {
+sub get_line_number_by_index {
+sub has_vmethod {
+sub vmethod_*
+sub filter_*
+
 =head1 TODO
 
-    Benchmark text processing
-    Benchmark FOREACH types again
     Allow USE to use our Iterator
     Add WRAPPER config item
     Add ERROR config item
@@ -3220,10 +3298,6 @@ the virtual method.
    [% a = {size => "foo"} %][% a.size %] # = foo
    [% a = {size => "foo"} %][% a|size %] # = 1 (size of hash)
 
-Pipe "|" and "." can have space around them.
-
-   [% a = {size => "foo"} %][% a . size %] # = foo
-
 Pipe "|" and "." can be mixed.
 
    [% "aa" | repeat(2) . length %] # = 4
@@ -3270,7 +3344,7 @@ to end with ~%] which will remove any following space.
 CET does not generate Perl code.  It generates an "opcode" tree.
 
 CET uses storable for its compiled templates.  If EVAL_PERL is off, CET will
-not eval_string on any piece of information.
+not eval_string on ANY piece of information.
 
 There is no context.  CET provides a context object that mimics the Template::Context
 interface for use by some TT filters, eval perl blocks, and plugins.
@@ -3278,10 +3352,21 @@ interface for use by some TT filters, eval perl blocks, and plugins.
 There is no stash.  CET provides a stash object that mimics the Template::Stash
 interface for use by some TT filters, eval perl blocks, and plugins.
 
+There is no provider.  CET uses the load_parsed_tree method to get and cache templates.
+
+There is no grammar.  CET has its own built in grammar system.
+
+There is no service.
+
 References are less interpolated. TT partially resolves some of the names filter keys and
 other elements rather than wait until the reference is actually used. CET only resolves
 interpolated values and arguments to subroutines.  All other resolution is delayed until
 the reference is actually used.
+
+The DEBUG directive only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
+
+When debug dirs is on, directives separated by colon show the line they
+are on rather than a general line range.
 
 
 =head1 DIRECTIVES
@@ -3640,7 +3725,9 @@ virtual method access.
 =item C<\>
 
 Unary.  The reference operator.  Not well publicized in TT.  Stores a reference
-to a variable for use later.  Can also be used to "alias" long names.
+to a variable for use later.  Can also be used to "alias" long names.  Note
+that a minimum of name resolution occurs at reference creation time (including
+resolving any arguments to functions or variable name interpolation).
 
     [% f = 7 ; foo = \f ; f = 8 ; foo %] => 8
 
@@ -4028,6 +4115,24 @@ Remove leading and trailing whitespace from blocks and templates.
 This operation is performed after all enclosed template tags have
 been executed.
 
+=item UNDEFINED_ANY
+
+This is not a TT configuration option.  This option expects to be a code
+ref that will be called if a variable is undefined during a call to get_variable.
+It is passed the variable identity array as a single argument.  This
+is most similar to the "undefined" method of Template::Stash.  It allows
+for the "auto-defining" of a variable for use in the template.  It is
+suggested that UNDEFINED_GET be used instead as UNDEFINED_ANY is a little
+to general in defining variables.
+
+=item UNDEFINED_GET
+
+This is not a TT configuration option.  This option expects to be a code
+ref that will be called if a variable is undefined during a call to GET.
+It is passed the variable identity array as a single argument.  This is more useful
+than UNDEFINED_ANY in that it is only called during a GET directive
+rather than in embedded expressions (such as [% a || b || c %]).
+
 =item VARIABLES
 
 A hashref of variables to initialize the template stash with.  These
@@ -4043,9 +4148,15 @@ variables are available for use in any of the executed templates.
 
 =item WRAPPER
 
+This will be supported - just not done yet.
+
 =item ERROR
 
+This will be supported - just not done yet.
+
 =item V1DOLLAR
+
+This will not be supported.
 
 =item LOAD_TEMPLATES
 
@@ -4081,11 +4192,12 @@ Full support is offered for the FILTERS configuration item.
 =item TOLERANT
 
 This option is used by the LOAD_TEMPLATES and LOAD_PLUGINS options and
-is not available in CGI::Ex::Template.
+is not applicable in CGI::Ex::Template.
 
 =item SERVICE
 
-CGI::Ex::Template has no concept of service.
+CGI::Ex::Template has no concept of service (theoretically the CGI::Ex::Template
+is the "service").
 
 =item CONTEXT
 
@@ -4101,8 +4213,9 @@ filters, and perl blocks.
 
 =item PARSER
 
-CGI::Ex::Template has its own built in parser.  It is available via
-the parse_tree method.
+CGI::Ex::Template has its own built in parser.  The closest similarity is
+the parse_tree method.  The output of parse_tree is an optree that is
+later run by execute_tree.
 
 =item GRAMMAR
 
@@ -4119,8 +4232,11 @@ CGI::Ex::Template parses templates into an tree of operations.  Even
 variable access is parsed into a tree.  This is done in a manner
 somewhat similar to the way that TT operates except that nested
 variables such as foo.bar|baz contain the '.' or '|' in between each
-name level.  The following table shows a variable and the
-corresponding parsed tree.
+name level.  Opererators are parsed and stored as part of the variable (it
+may be more appropriate to say we are parsing a term or an expression).
+
+The following table shows a variable or expression and the corresponding parsed tree
+(this is what the parse_variable method would return).
 
     one                [ 'one',  0 ]
     one()              [ 'one',  [] ]
@@ -4156,13 +4272,10 @@ Some notes on the parsing.
     allows for quickly decending the parsed variable tree and determining that the next
     node is an operator.
 
-    () can be used at any point to disambiguate precedence.
+    Parens () can be used at any point in an expression to disambiguate precedence.
 
     "Variables" that appear to be literal strings or literal numbers
     are returned as the literal (no operator tree).
-
-    "Variables" that are literals that have an operator operating on them are stored
-    as a reference to that literal (scalar ref).
 
 The following perl can be typed at the command line to view the parsed variable tree.
 
