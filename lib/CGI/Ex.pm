@@ -176,7 +176,6 @@ sub get_cookies {
   return $self->{'cookies'} if $self->{'cookies'};
 
   my $obj  = shift || $self->object;
-  use CGI::Ex::Dump qw(debug);
   my %hash = ();
   foreach my $key ($obj->cookie) {
     my @val = $obj->cookie($key);
@@ -215,8 +214,13 @@ sub apache_request {
   die 'Usage: $cgix_obj->apache_request' if ! ref $self;
   $self->{'apache_request'} = shift if $#_ != -1;
   if (! defined $self->{'apache_request'}) {
-    return if ! $self->mod_perl_version;
-    $self->{'apache_request'} = Apache->request;
+    if ($self->is_mod_perl_1) {
+        require Apache;
+        $self->{'apache_request'} = Apache->request;
+    } elsif ($self->is_mod_perl_2) {
+        require Apache2::RequestUtil;
+        $self->{'apache_request'} = Apache2::RequestUtil->request;
+    }
   }
   return $self->{'apache_request'};
 }
@@ -228,10 +232,10 @@ sub mod_perl_version {
   die 'Usage: $cgix_obj->mod_perl_version' if ! ref $self;
   if (! defined $self->{'mod_perl_version'}) {
     return 0 if ! $ENV{'MOD_PERL'};
-    # mod_perl/1.27 or mod_perl/1.99_16
+    # mod_perl/1.27 or mod_perl/1.99_16 or mod_perl/2.0.1
     # if MOD_PERL is set - don't die if regex fails - just assume 1.0
-    $self->{'mod_perl_version'} = ($ENV{'MOD_PERL'} =~ m|^mod_perl/(\d+\.[\d_]+)$|)
-      ? $1 : '1.0_0';
+    $self->{'mod_perl_version'} = ($ENV{'MOD_PERL'} =~ m{ ^ mod_perl / (\d+\.[\d_]+) (?: \.\d+)? $ }x)
+        ? $1 : '1.0_0';
   }
   return $self->{'mod_perl_version'};
 }
