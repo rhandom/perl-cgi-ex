@@ -752,8 +752,8 @@ sub print_out {
 sub swap_template {
   my ($self, $step, $file, $swap) = @_;
 
-  require Template;
-  my $t = Template->new($self->template_args($step));
+  require CGI::Ex::Template;
+  my $t = CGI::Ex::Template->new($self->template_args($step));
 
   ### process the document
   my $out = '';
