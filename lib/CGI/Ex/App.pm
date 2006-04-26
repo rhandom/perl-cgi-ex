@@ -17,7 +17,6 @@ use vars qw($VERSION
             %CLEANUP_EXCLUDE);
 
 $VERSION = '1.14';
-use CGI::Ex::Dump qw(debug);
 
 BEGIN {
   ### Default file locations
@@ -452,7 +451,7 @@ sub history {
 sub handle_error {
   my $self = shift;
   my $err  = shift;
-  debug $err, $self->path, $self->history;
+
   die $err;
 }
 
@@ -516,7 +515,6 @@ sub morph {
         } else {
           $$sref .= " - failed from $cur to $new: $@";
           my $err = "Trouble while morphing to $file: $@";
-          debug $err;
           warn $err;
         }
       }
