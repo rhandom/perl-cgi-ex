@@ -3221,13 +3221,32 @@ applied to TT2 will take longer to get into CET, should they get in at all.
 
 =item new
 
+    my $obj = CGI::Ex::Template->new({
+        INCLUDE_PATH => ['/my/path/to/content', '/my/path/to/content2'],
+    });
+
+    Arguments may be passed as a hash or as a hashref.  Returns a CGI::Ex::Template object.
+
+    There are currently no errors during CGI::Ex::Template object creation.
+
 =item process
+
+    
 
 =item process_simple
 
 =item error
 
+Should something go wrong during a "process" command, the error that occured can
+be retrieved via the error method.
+
+    $obj->process('somefile.html', {a => 'b'}, \$string_ref)
+        || die $obj->error;
+
 =item define_vmethod
+
+This method is available for defining extra Virtual methods or filters.  This method is similar
+to Template::Stash::define_vmethod.
 
 =back
 
@@ -3375,7 +3394,7 @@ Construtor types can call virtual methods
 
    [% 123.4.length %]  # = 5
 
-   [% -123.4.length %] # = -5 ("." binds tighter than "-")
+   [% -123.4.length %] # = -5 ("." binds more tightly than "-")
 
    [% (a ~ b).length %]
 
@@ -3391,10 +3410,15 @@ Reserved names are less reserved
 
 Filters and SCALAR_OPS are interchangeable.
 
+   [% a | length %]
+
+   [% b . lower %]
+
 Pipe "|" can be used anywhere dot "." can be and means to call
 the virtual method.
 
    [% a = {size => "foo"} %][% a.size %] # = foo
+
    [% a = {size => "foo"} %][% a|size %] # = 1 (size of hash)
 
 Pipe "|" and "." can be mixed.
@@ -3403,7 +3427,7 @@ Pipe "|" and "." can be mixed.
 
 Whitespace is less meaningful.
 
-   [% 2-1 %] # 1 (fails in TT)
+   [% 2-1 %] # = 1 (fails in TT)
 
 Added pow operator.
 
@@ -3429,29 +3453,34 @@ Post operative directives can be nested.
 
 CATCH blocks can be empty.
 
-
 CHOMP at the end of a string.
-CET will replace "[% 1 =%]\n" with "1 "
-TT will replace "[% 1 =%]\n" with "1"
 
-This is an internal one-off exception in TT that may or may not DWIM.
-In CET - it always means to always replace whitespace on the line with
-a space.  The template can be modified to either not have space - or
-to end with ~%] which will remove any following space.
+  CET will replace "[% 1 =%]\n" with "1 "
+
+  TT will replace "[% 1 =%]\n" with "1"
+
+  This is an internal one-off exception in TT that may or may not DWIM.
+  In CET - it always means to always replace whitespace on the line with
+  a space.  The template can be modified to either not have space - or
+  to end with ~%] which will remove any following space.
 
 
 CET does not generate Perl code.  It generates an "opcode" tree.
 
-CET uses storable for its compiled templates.  If EVAL_PERL is off, CET will
-not eval_string on ANY piece of information.
+CET uses storable for its compiled templates.  If EVAL_PERL is off,
+CET will not eval_string on ANY piece of information.
 
-There is no context.  CET provides a context object that mimics the Template::Context
-interface for use by some TT filters, eval perl blocks, and plugins.
+There is no context.  CET provides a context object that mimics the
+Template::Context interface for use by some TT filters, eval perl
+blocks, and plugins.
 
-There is no stash.  CET provides a stash object that mimics the Template::Stash
-interface for use by some TT filters, eval perl blocks, and plugins.
+There is no stash.  CET only supports the variables passed in
+VARIABLES, PRE_DEFINE, and those passed to the process method.  CET
+provides a stash object that mimics the Template::Stash interface for
+use by some TT filters, eval perl blocks, and plugins.
 
-There is no provider.  CET uses the load_parsed_tree method to get and cache templates.
+There is no provider.  CET uses the load_parsed_tree method to get and
+cache templates.
 
 There is no grammar.  CET has its own built in grammar system.
 
@@ -3464,7 +3493,7 @@ the reference is actually used.
 
 The DEBUG directive only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 
-When debug dirs is on, directives separated by colon show the line they
+When debug dirs is on, directives on different lines separated by colons show the line they
 are on rather than a general line range.
 
 =back
@@ -3472,7 +3501,8 @@ are on rather than a general line range.
 =head1 DIRECTIVES
 
 This section containts the alphabetical list of DIRECTIVES available in
-the TT language.  For further discussion and examples, please refer to the
+the TT language.  DIRECTIVES are the "functions" that implement the Template Toolkit
+mini-language.  For further discussion and examples, please refer to the
 TT directives documentation.
 
 
@@ -3565,7 +3595,12 @@ Used to end a block directive.
 
 =item FILTER
 
+Used to apply different treatments to blocks of text.  It may operate as a BLOCK
+directive or as a post operative directive.  CET supports all of the filters in
+Template::Filters.  The lines between scalar virtual methods and filters is blurred (or
+non-existent) in CET.  Anything that is a scalar virtual method may be used as a FILTER.
 
+TODO - enumerate the at least 7 ways to pass and use filters.
 
 =item '|'
 
@@ -3588,7 +3623,13 @@ Alias for FOREACH
 
 =item GET
 
+Return the value of a variable.
 
+    [% GET a %]
+
+The GET keyword may be omitted.
+
+    [% a %]
 
 =item IF (IF / ELSIF / ELSE)
 
