@@ -504,11 +504,10 @@ sub parse_tree {
         }
 
         ### look for DIRECTIVES
-        if ($tag =~ $QR_DIRECTIVE                         # find a word
-            && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
-            && $DIRECTIVES->{$func} ) {                   # is it a directive
+        if ($tag =~ $QR_DIRECTIVE     # find a word
+            && $DIRECTIVES->{$1} ) {  # is it a directive
+            $node->[0] = $func = $1;
             $tag =~ s{ ^ (\w+ | \|) \s* $QR_COMMENTS }{}ox;
-            $node->[0] = $func;
 
             ### store out this current node level
             if ($post_op) { # on a post operator - replace the original node with the new one - store the old in the new
@@ -548,7 +547,7 @@ sub parse_tree {
                         if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
                             splice(@$pointer, -1, 1, ());
                         }
-                    } elsif ($parent_node->[0] =~ /PERL$/i) {
+                    } elsif ($parent_node->[0] =~ /PERL$/) {
                         delete $self->{'_in_perl'};
                     }
 
@@ -637,10 +636,9 @@ sub parse_tree {
             $post_op   = undef;
 
         ### looking at a post operator ([% u FOREACH u IN [1..3] %])
-        } elsif ($tag =~ $QR_DIRECTIVE                         # find a word
-                 && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
-                 && $DIRECTIVES->{$func}                       # is it a directive
-                 && $DIRECTIVES->{$func}->[3]) {               # it is a post operative directive
+        } elsif ($tag =~ $QR_DIRECTIVE         # find a word
+                 && $DIRECTIVES->{$1}          # is it a directive
+                 && $DIRECTIVES->{$1}->[3]) {  # it is a post operative directive
             $continue  = $j - length $tag;
             $node->[2] = $continue;
             $post_op   = $node;
@@ -2132,9 +2130,8 @@ sub parse_SET {
         }
         if (! $get_val) { # no next val
             $val = undef;
-        } elsif ($$tag_ref =~ $QR_DIRECTIVE                    # find a word
-                 && ($func = $self->{'ANYCASE'} ? uc($1) : $1) # case ?
-                 && $DIRECTIVES->{$func}) {                    # is it a directive - if so set up capturing
+        } elsif ($$tag_ref =~ $QR_DIRECTIVE   # find a word
+                 && $DIRECTIVES->{$1}) {      # is it a directive - if so set up capturing
             $node->[6] = 1;           # set a flag to keep parsing
             $val = $node->[4] ||= []; # setup storage
             push @SET, [$set, $val];
@@ -4047,16 +4044,11 @@ These variables should be passed to the "new" constructor.
 
 Boolean.  Default false.  Are absolute paths allowed for included files.
 
-=item ANYCASE
-
-Boolean.  Default false.  Allow directive names to be in any case.
-See the note about DIRECTIVE names in the differences from TT section.
-
 =item AUTO_RESET
 
 Boolean.  Default 1.  Clear blocks that were set during the process method.
 
-=item BLOCKS - no Template::Documents support
+=item BLOCKS
 
 A hashref of blocks that can be used by the process method.
 
@@ -4279,6 +4271,8 @@ for the "auto-defining" of a variable for use in the template.  It is
 suggested that UNDEFINED_GET be used instead as UNDEFINED_ANY is a little
 to general in defining variables.
 
+You can also sub class the module and override the undefined_any method.
+
 =item UNDEFINED_GET
 
 This is not a TT configuration option.  This option expects to be a code
@@ -4286,6 +4280,8 @@ ref that will be called if a variable is undefined during a call to GET.
 It is passed the variable identity array as a single argument.  This is more useful
 than UNDEFINED_ANY in that it is only called during a GET directive
 rather than in embedded expressions (such as [% a || b || c %]).
+
+You can also sub class the module and override the undefined_get method.
 
 =item VARIABLES
 
@@ -4299,6 +4295,11 @@ variables are available for use in any of the executed templates.
 =head1 UNSUPPORTED TT CONFIGURATION
 
 =over 4
+
+=item ANYCASE
+
+This will not be supported.  You will have to use the full case directive names.
+(It was in the beta code but was removed prior to release).
 
 =item WRAPPER
 
