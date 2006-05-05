@@ -121,6 +121,7 @@ BEGIN {
         '#'     => [sub {},          sub {}],
         DEBUG   => [\&parse_DEBUG,   \&play_DEBUG],
         DEFAULT => [\&parse_DEFAULT, \&play_DEFAULT],
+        DUMP    => [\&parse_DUMP,    \&play_DUMP],
         ELSE    => [sub {},          undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
         ELSIF   => [\&parse_IF,      undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
         END     => [undef,           sub {}],
@@ -1669,6 +1670,38 @@ sub play_DEFAULT {
     return;
 }
 
+sub parse_DUMP {
+    my ($self, $tag_ref) = @_;
+    my $ref = $self->parse_variable($tag_ref);
+    return $ref;
+}
+
+sub play_DUMP {
+    my ($self, $ident, $node) = @_;
+    require Data::Dumper;
+    my $info = $self->node_info($node);
+    my $out;
+    my $var;
+    if ($ident) {
+        $out = Data::Dumper::Dumper($self->get_variable($ident));
+        $var = $info->{'text'};
+        $var =~ s/^\s*DUMP\s+//;
+    } else {
+        local @{ $self->{'_vars'} }{qw(template component)};
+        delete @{ $self->{'_vars'} }{qw(template component)};
+        $out = Data::Dumper::Dumper($self->{'_vars'});
+        $var = 'EntireStash';
+    }
+    if ($ENV{'REQUEST_METHOD'}) {
+        $out =~ s/</&lt;/g;
+        $out = "<pre>$out</pre>";
+        $out =~ s/\$VAR1/$var/g;
+        $out = "<b>DUMP: File \"$info->{file}\" line $info->{line}</b>$out";
+    };
+
+    return $out;
+}
+
 sub parse_FILTER {
     my ($self, $tag_ref) = @_;
     my $name = '';
@@ -2750,15 +2783,26 @@ sub weak_copy {
 
 sub debug_node {
     my ($self, $node) = @_;
+    my $info = $self->node_info($node);
+    my $format = $self->{'_debug_format'} || $self->{'DEBUG_FORMAT'} || "\n## \$file line \$line : [% \$text %] ##\n";
+    $format =~ s{\$(file|line|text)}{$info->{$1}}g;
+    return $format;
+}
+
+sub node_info {
+    my ($self, $node) = @_;
     my $doc = $self->{'_vars'}->{'component'};
     my $i = $node->[1];
     my $j = $node->[2] || return ''; # METADEF can be 0
     $doc->{'_content'} ||= do { my $s = $self->slurp($doc->{'_filename'}) ; \$s };
-    my $format = $self->{'_debug_format'} || $self->{'DEBUG_FORMAT'} || "\n## \$file line \$line : [% \$text %] ##\n";
-    $format =~ s{\$file}{$doc->{name}}g;
-    $format =~ s{\$line}{ $self->get_line_number_by_index($doc, $i) }eg;
-    $format =~ s{\$text}{ my $s = substr(${ $doc->{'_content'} }, $i, $j - $i); $s=~s/^\s+//; $s=~s/\s+$//; $s }eg;
-    return $format;
+    my $s = substr(${ $doc->{'_content'} }, $i, $j - $i);
+    $s =~ s/^\s+//;
+    $s =~ s/\s+$//;
+    return {
+        file => $doc->{'name'},
+        line => $self->get_line_number_by_index($doc, $i),
+        text => $s,
+    };
 }
 
 sub get_line_number_by_index {
