@@ -1687,8 +1687,9 @@ sub play_DUMP {
         $var = $info->{'text'};
         $var =~ s/^\s*DUMP\s+//;
     } else {
-        local @{ $self->{'_vars'} }{qw(template component)};
-        delete @{ $self->{'_vars'} }{qw(template component)};
+        my @were_never_here = (qw(template component), grep {/^_/} keys %{ $self->{'_vars'} });
+        local @{ $self->{'_vars'} }{ @were_never_here };
+        delete @{ $self->{'_vars'} }{ @were_never_here };
         $out = Data::Dumper::Dumper($self->{'_vars'});
         $var = 'EntireStash';
     }
