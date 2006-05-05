@@ -6,7 +6,6 @@ CGI::Ex::Template - Lightweight TT2/3 engine
 
 =cut
 
-use CGI::Ex::Dump qw(debug);
 use strict;
 use constant trace => $ENV{'CET_TRACE'} || 0; # enable for low level tracing
 use vars qw($TAGS
@@ -940,7 +939,6 @@ sub parse_variable {
         $var = [ \ [ $op_unary, $var ], 0 ];
     }
 
-#    debug $var, $copy;
     $$str_ref = $copy; # commit the changes
     return $var;
 }
@@ -1262,8 +1260,6 @@ sub get_variable {
         }
 
     }
-
-    #debug $ref;
 
     ### allow for undefinedness
     if (! defined $ref) {
