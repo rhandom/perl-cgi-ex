@@ -1686,6 +1686,7 @@ sub play_DUMP {
         $out = Data::Dumper::Dumper($self->get_variable($ident));
         $var = $info->{'text'};
         $var =~ s/^[+-~=]?\s*DUMP\s+//;
+        $var =~ s/\s*[+-~=]?$//;
     } else {
         my @were_never_here = (qw(template component), grep {/^_/} keys %{ $self->{'_vars'} });
         local @{ $self->{'_vars'} }{ @were_never_here };
