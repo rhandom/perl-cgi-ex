@@ -1,290 +1,218 @@
 package CGI::Ex::Auth;
 
-### CGI Extended Application
+=head1 NAME
+
+CGI::Ex::Auth - Handle logins nicely.
+
+=cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2004 - Paul Seamons                                     #
+#  Copyright 2006 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
-### See perldoc at bottom
-
-
 use strict;
-use vars qw($USE_PLAINTEXT
-            $CHECK_CRYPTED
-            $EXPIRE_LOGINS
-            $FAILED_SLEEP
-            $VERSION
-            );
+use vars qw($VERSION);
 
-use CGI::Ex::Dump qw(debug);
-use MIME::Base64 qw(encode_base64 decode_base64);
+use Digest::MD5 qw(md5_hex);
+use CGI::Ex;
 
-BEGIN {
-  $VERSION = '0.10';
-  $CHECK_CRYPTED = 1        if ! defined $CHECK_CRYPTED;
-  $FAILED_SLEEP  = 2        if ! defined $FAILED_SLEEP;
-  $EXPIRE_LOGINS = 6 * 3600 if ! defined $EXPIRE_LOGINS;
-  #if ($ENV{MOD_PERL}) {
-  #  require Digest::SHA1;
-  #  require Digest::MD5;
-  #}
-}
+$VERSION = '2.00';
 
 ###----------------------------------------------------------------###
 
 sub new {
-  my $class = shift || __PACKAGE__;
-  my $self  = ref($_[0]) ? shift : {@_};
-  bless $self, $class;
-  $self->init();
-  return $self;
+    my $class = shift || __PACKAGE__;
+    my $args  = shift || {};
+    return bless {%$args}, $class;
 }
-
-sub init {}
-
-###----------------------------------------------------------------###
 
 sub require_auth {
-  my $self = shift;
-  $self = __PACKAGE__->new($self) if ! UNIVERSAL::isa($self, __PACKAGE__);
+    my $self = shift;
+    $self = $self->new(@_) if ! ref $self;
 
-  ### shortcut that will print a js file as needed
-  if ($ENV{PATH_INFO} && $ENV{PATH_INFO} =~ m|^/js/(CGI/Ex/\w+\.js)$|) {
-    $self->cgix->print_js($1);
-    return 0;
-  }
-
-  my $form    = $self->form;
-  my $cookies = $self->cookies;
-  my $key_l   = $self->key_logout;
-  my $key_c   = $self->key_cookie;
-  my $key_u   = $self->key_user;
-  my $key_p   = $self->key_pass;
-  my $key_chk = $self->key_cookie_check;
-  my $had_form_info = 0;
-
-  ### if they've passed us information - try and use it
-  if ($form->{$key_l}) {
-    $self->delete_cookie;
-
-  } elsif (exists($form->{$key_u}) && exists($form->{$key_p})) {
-    if ($self->verify_userpass($form->{$key_u}, $form->{$key_p})) {
-      my $has_cookies = scalar keys %$cookies;
-      my $user  = $form->{$key_u};
-      my $str   = encode_base64(join(":", delete($form->{$key_u}), delete($form->{$key_p})), "");
-      my $key_s = $self->key_save;
-      $self->set_cookie($str, delete($form->{$key_s}));
-      #return $self->success($user); # assume that cookies will work - if not next page will cause login
-      #### this may actually be the nicer thing to do in the common case - except for the nasty looking
-      #### url - all things considered - should really get location boucing to work properly while being
-      #### able to set a cookie at the same time
-
-      if ($has_cookies) {
-        return $self->success($user); # assuming if they have cookies - the one we set will work
-      } else {
-        $form->{$key_chk} = time();
-        my $key_r = $self->key_redirect;
-        if (! $form->{$key_r}) {
-          my $script = $ENV{SCRIPT_NAME} || die "Missing SCRIPT_NAME";
-          my $info   = $ENV{PATH_INFO} || '';
-          my $query  = $self->cgix->make_form($form);
-          $form->{$key_r} = $script . $info . ($query ? "?$query" : "");
-        }
-        $self->location_bounce($form->{$key_r});
+    ### shortcut that will print a js file as needed (such as the md5.js)
+    my $path    = $self->script_name . $self->path_info;
+    my $js_path = $self->js_path;
+    if ($path =~ m|^\Q$js_path\E/(CGI/Ex/\w+\.js)$|) {
+        $self->cgix->print_js($1);
         return 0;
-      }
-    } else {
-      $had_form_info = 1;
-      $self->delete_cookie;
     }
 
-  ### otherwise look for an already set cookie
-  } elsif ($cookies->{$key_c}) {
-    my ($user, $pass) = split /:/, decode_base64($cookies->{$key_c}), 2;
-    return $self->success($user) if $self->verify_userpass($user, $pass);
-    $self->delete_cookie;
+    my $form    = $self->form;
+    my $cookies = $self->cookies;
+    my $key_l   = $self->key_logout;
+    my $key_c   = $self->key_cookie;
+    my $key_u   = $self->key_user;
+    my $key_p   = $self->key_pass;
+    my $key_chk = $self->key_cookie_check;
+    my $had_form_info = 0;
 
-  ### cases to handle no cookies
-  } elsif ($form->{$key_chk}) {
-    my $value = delete $form->{$key_chk};
-    if ($self->allow_htauth) {
-      die "allow_htauth is not implemented - yet";
-    } elsif (abs(time() - $value) < 3600) {
-      # fail down to below where we ask for auth
-      # this is assuming that all webservers in the cluster are within 3600 of each other
-    } else {
-      $self->hook_print("no_cookies", $form);
-      return 0;
+    ### if they've passed us information - try and use it
+    if ($form->{$key_l}) {
+        $self->delete_cookie;
+
+    } elsif (exists($form->{$key_u}) && exists($form->{$key_p})) {
+        if ($self->verify_userpass($form->{$key_u}, $form->{$key_p})) {
+            my $has_cookies = scalar keys %$cookies;
+            my $user  = $form->{$key_u};
+            my $str   = encode_base64(join(":", delete($form->{$key_u}), delete($form->{$key_p})), "");
+            my $key_s = $self->key_save;
+            $self->set_cookie($str, delete($form->{$key_s}));
+            #return $self->success($user); # assume that cookies will work - if not next page will cause login
+            #### this may actually be the nicer thing to do in the common case - except for the nasty looking
+            #### url - all things considered - should really get location boucing to work properly while being
+            #### able to set a cookie at the same time
+
+            if ($has_cookies) {
+                return $self->success($user); # assuming if they have cookies - the one we set will work
+            } else {
+                $form->{$key_chk} = time();
+                my $key_r = $self->key_redirect;
+                if (! $form->{$key_r}) {
+                    my $query = $self->cgix->make_form($form);
+                    $form->{$key_r} = $self->script_name . $self->path_info . ($query ? "?$query" : "");
+                }
+                $self->location_bounce($form->{$key_r});
+                return 0;
+            }
+        } else {
+            $had_form_info = 1;
+            $self->delete_cookie;
+        }
+
+    ### otherwise look for an already set cookie
+    } elsif ($cookies->{$key_c}) {
+        my ($user, $pass) = split /:/, decode_base64($cookies->{$key_c}), 2;
+        return $self->success($user) if $self->verify_userpass($user, $pass);
+        $self->delete_cookie;
+
+        ### cases to handle no cookies
+    } elsif ($form->{$key_chk}) {
+        my $value = delete $form->{$key_chk};
+        if (abs(time() - $value) < 3600) {
+            # fail down to below where we ask for auth
+            # this is assuming that all webservers in the cluster are within 3600 of each other
+        } else {
+            $self->no_cookies_print;
+            return 0;
+        }
     }
-  }
 
-  ### oh - you're still here - well then - ask for login credentials
-  my $key_r = $self->key_redirect;
-  if (! $form->{$key_r}) {
-    my $script = $ENV{SCRIPT_NAME} || die "Missing SCRIPT_NAME";
-    my $info   = $ENV{PATH_INFO} || '';
-    my $query  = $self->cgix->make_form($form);
-    $form->{$key_r} = $script . $info . ($query ? "?$query" : "");
-  }
-  $form->{login_error} = $had_form_info;
-  $self->hook_print("get_login_info", $form);
-  return 0;
-}
+    ### oh - you're still here - well then - ask for login credentials
+    my $key_r = $self->key_redirect;
+    if (! $form->{$key_r}) {
+        my $query = $self->cgix->make_form($form);
+        $form->{$key_r} = $self->script_name . $self->path_info . ($query ? "?$query" : "");
+    }
 
-###----------------------------------------------------------------###
-
-sub hook_print {
-  my $self = shift;
-  my $page = shift;
-  my $form = shift;
-
-  ### copy the form and add various pieces
-  my $FORM = {%$form};
-  $FORM->{payload}      = $self->payload;
-  $FORM->{error}        = ($form->{login_error}) ? "Login Failed" : "";
-  $FORM->{key_user}     = $self->key_user;
-  $FORM->{key_pass}     = $self->key_pass;
-  $FORM->{key_save}     = $self->key_save;
-  $FORM->{key_redirect} = $self->key_redirect;
-  $FORM->{form_name}    = $self->form_name;
-  $FORM->{script_name}  = $ENV{SCRIPT_NAME};
-  $FORM->{path_info}    = $ENV{PATH_INFO} || '';
-  $FORM->{login_script} = $self->login_script($FORM);
-  delete $FORM->{$FORM->{key_pass}};
-
-  ### allow for custom hook
-  if (my $meth = $self->{hook_print}) {
-    $self->$meth($page, $FORM);
+    $form->{'login_error'} = $had_form_info;
+    $self->login_print;
     return 0;
-  }
-
-  ### no hook - give basic functionality
-  my $content;
-  if ($page eq 'no_cookies') {
-    $content = qq{<div style="border: 2px solid black;background:red;color:white">You do not appear to have cookies enabled.</div>};
-  } elsif ($page eq 'get_login_info') {
-    $content = $self->basic_login_page($FORM);
-  } else {
-    $content = "No content for page \"$page\"";
-  }
-
-  $self->cgix->print_content_type();
-  print $content;
-  return 0;
 }
 
 ###----------------------------------------------------------------###
 
-sub success {
-  my $self = shift;
-  my $user = shift;
-  $self->{user} = $ENV{REMOTE_USER} = $user;
-  $self->hook_success($user);
-  return 1;
+sub script_name { $ENV{'SCRIPT_NAME'} || die "Missing SCRIPT_NAME" }
+
+sub path_info { $ENV{'PATH_INFO'} || '' }
+
+sub cgix {
+    my $self = shift;
+    $self->{'cgix'} = shift if $#_ != -1;
+    return $self->{'cgix'} ||= CGI::Ex->new;
 }
 
-sub user {
-  my $self = shift;
-  return $self->{user};
+sub form {
+    my $self = shift;
+    $self->{'form'} = shift if $#_ != -1;
+    return $self->{'form'} ||= $self->cgix->get_form;
 }
 
-sub hook_success {
-  my $self = shift;
-  my $user = shift;
-  my $meth;
-  if ($meth = $self->{hook_success}) {
-    $self->$meth($user);
-  }
+sub cookies {
+    my $self = shift;
+    $self->{'cookies'} = shift if $#_ != -1;
+    return $self->{cookies} ||= $self->cgix->get_cookies;
 }
-
-###----------------------------------------------------------------###
 
 sub delete_cookie {
-  my $self  = shift;
-  my $key_c = $self->key_cookie;
+  my $self = shift;
+  my $key  = $self->key_cookie;
   $self->cgix->set_cookie({
-    -name    => $key_c,
+    -name    => $key,
     -value   => '',
     -expires => '-10y',
     -path    => '/',
   });
-}      
+}
 
 sub set_cookie {
-  my $self  = shift;
-  my $key_c = $self->key_cookie;
-  my $value = shift || '';
+  my $self = shift;
+  my $key  = $self->key_cookie;
+  my $val  = shift || '';
   my $save_pass = shift;
   $self->cgix->set_cookie({
-    -name    => $key_c,
-    -value   => $value,
+    -name    => $key,
+    -value   => $val,
     ($save_pass ? (-expires => '+10y') : ()),
     -path    => '/',
   });
 }
 
 sub location_bounce {
-  my $self = shift;
-  my $url = shift;
-  return $self->cgix->location_bounce($url);
+    my $self = shift;
+    my $url  = shift;
+    return $self->cgix->location_bounce($url);
 }
 
 ###----------------------------------------------------------------###
 
 sub key_logout {
-  my $self = shift;
-  $self->{key_logout} = shift if $#_ != -1;
-  return $self->{key_logout} ||= 'logout';
+    my $self = shift;
+    $self->{'key_logout'} = shift if $#_ != -1;
+    return $self->{'key_logout'} ||= 'logout';
 }
 
 sub key_cookie {
-  my $self = shift;
-  $self->{key_cookie} = shift if $#_ != -1;
-  return $self->{key_cookie} ||= 'ce_auth';
+    my $self = shift;
+    $self->{'key_cookie'} = shift if $#_ != -1;
+    return $self->{'key_cookie'} ||= 'ce_auth';
 }
 
 sub key_cookie_check {
-  my $self = shift;
-  $self->{key_cookie_check} = shift if $#_ != -1;
-  return $self->{key_cookie_check} ||= 'ccheck';
+    my $self = shift;
+    $self->{'key_cookie_check'} = shift if $#_ != -1;
+    return $self->{'key_cookie_check'} ||= 'ccheck';
 }
 
 sub key_user {
-  my $self = shift;
-  $self->{key_user} = shift if $#_ != -1;
-  return $self->{key_user} ||= 'ce_user';
+    my $self = shift;
+    $self->{'key_user'} = shift if $#_ != -1;
+    return $self->{'key_user'} ||= 'ce_user';
 }
 
 sub key_pass {
-  my $self = shift;
-  $self->{key_pass} = shift if $#_ != -1;
-  return $self->{key_pass} ||= 'ce_pass';
+    my $self = shift;
+    $self->{'key_pass'} = shift if $#_ != -1;
+    return $self->{'key_pass'} ||= 'ce_pass';
 }
 
 sub key_save {
-  my $self = shift;
-  $self->{key_save} = shift if $#_ != -1;
-  return $self->{key_save} ||= 'ce_save';
+    my $self = shift;
+    $self->{'key_save'} = shift if $#_ != -1;
+    return $self->{'key_save'} ||= 'ce_save';
 }
 
 sub key_redirect {
-  my $self = shift;
-  $self->{key_redirect} = shift if $#_ != -1;
-  return $self->{key_redirect} ||= 'redirect';
+    my $self = shift;
+    $self->{'key_redirect'} = shift if $#_ != -1;
+    return $self->{'key_redirect'} ||= 'redirect';
 }
 
 sub form_name {
-  my $self = shift;
-  $self->{form_name} = shift if $#_ != -1;
-  return $self->{form_name} ||= 'ce_form';
-}
-
-sub allow_htauth {
-  my $self = shift;
-  $self->{allow_htauth} = shift if $#_ != -1;
-  return $self->{allow_htauth} ||= 0;
+    my $self = shift;
+    $self->{'form_name'} = shift if $#_ != -1;
+    return $self->{'form_name'} ||= 'ce_form';
 }
 
 sub payload {
@@ -297,6 +225,107 @@ sub payload {
     push @payload, $self->$meth($user);
   }
   return join "/", @payload;
+}
+
+sub js_path {
+    my $self = shift;
+    return $self->{'js_path'} ||= $self->script_name ."/js";
+}
+
+sub use_plaintext { shift->{'use_plaintext'} ||= 0 }
+
+sub expire_min { shift->{'expire_min'} ||= 6 * 60 }
+
+###----------------------------------------------------------------###
+
+sub no_cookies_print {
+    my $self = shift;
+    $self->cgix->print_content_type;
+    print qq{<div style="border: 2px solid black;background:red;color:white">You do not appear to have cookies enabled.</div>};
+    return 1;
+}
+
+sub login_print {
+    my $self = shift;
+    my $hash = $self->login_hash_swap;
+
+    ### allow for a hooked override
+    if (my $meth = $self->{'hook_print'}) {
+        $self->$meth($hash);
+        return 0;
+    }
+
+    ### get, fill, and print a basic login template
+    my $text = ""
+        . $self->login_header
+        . $self->login_form
+        . $self->login_script
+        . $self->login_footer;
+
+    ### process the document
+    require CGI::Ex::Template;
+    my $t   = CGI::Ex::Template->new($self->template_args);
+    my $out = '';
+    my $status = $t->process(\$text, $hash, \$out) || die $Template::ERROR;
+
+    ### fill in form fields
+    require CGI::Ex::Fill;
+    CGI::Ex::Fill::form_fill(\$out, $hash);
+
+    ### print it
+    $self->cgix->print_content_type;
+    print $out;
+
+    return 0;
+}
+
+sub template_args {
+    my $self = shift;
+    return $self->{'template_args'} ||= {
+        INCLUDE_PATH => $self->template_include_path,
+    };
+}
+
+sub template_include_path { shift->{'template_include_path'} || '' }
+
+sub login_hash_swap {
+    my $self = shift;
+    my $form = $self->form;
+
+    return {
+        %$form,
+        payload         => $self->payload,
+        error           => ($form->{'login_error'}) ? "Login Failed" : "",
+        key_user        => $self->key_user,
+        key_pass        => $self->key_pass,
+        key_save        => $self->key_save,
+        key_redirect    => $self->key_redirect,
+        form_name       => $self->form_name,
+        script_name     => $self->script_name,
+        path_info       => $self->path_info,
+        md5_js_path     => $self->js_path ."/CGI/Ex/md5.js",
+        use_plaintext   => $self->use_plaintext,
+        $self->key_pass => '', # don't allow for this to get filled into the form
+    };
+}
+
+###----------------------------------------------------------------###
+
+sub success {
+  my $self = shift;
+  my $user = shift;
+  $self->{'user'} = $ENV{'REMOTE_USER'} = $user;
+
+  if (my $meth = $self->{'hook_success'}) {
+    $self->$meth($user);
+  }
+
+  return 1;
+}
+
+sub user {
+  my $self = shift;
+  return $self->{'user'};
 }
 
 ###----------------------------------------------------------------###
@@ -334,7 +363,7 @@ sub hook_verify_userpass {
   if ($type_real eq 'plainorcrypt'
       && $type_test eq 'plainorcrypt') {
     return 1 if $pass_real eq $pass_test;
-    if ($CHECK_CRYPTED && $pass_real =~ m|^([./0-9A-Za-z]{2})(.{,11})$|) {
+    if ($self->use_plaintext && $pass_real =~ m|^([./0-9A-Za-z]{2})(.{,11})$|) {
       return 1 if crypt($pass_test, $1) eq $pass_real;
     }
     return 0;
@@ -342,17 +371,17 @@ sub hook_verify_userpass {
   } else {
     ### if test type is plaintext - then hash it and compare it alone
     if ($type_test eq 'plainorcrypt') {
-      $pass_test = $self->enc_func($type_real, $pass_test); # encode same as real
+      $pass_test = md5_hex($pass_test); # encode same as real
       $pass_test = "$type_real($pass_test)";
       return $pass_test eq $pass_real;
 
     ### if real type is plaintext - then hash it to get ready for test
     } elsif ($type_real eq 'plainorcrypt') {
-      $pass_real = $self->enc_func($type_test, $pass_real);
+      $pass_real = md5_hex($pass_real);
       $pass_real = "$type_test($pass_real)";
       $type_real = $type_test;
     }
-    
+
     ### the types should be the same (unless a system stored sha1 and md5 passwords)
     if ($type_real ne $type_test) {
       warn "Test types for user \"$user\" are of two different types - very bad";
@@ -369,29 +398,16 @@ sub hook_verify_userpass {
       my $compare = $2; # a checksum which is the enc of the payload + '/' + enc of password
       my @payload = split /\//, $payload;
 
-      return 0 if $self->enc_func($type_test, "$payload/$hash_real") ne $compare;
+      return 0 if md5_hex("$payload/$hash_real") ne $compare;
 
       ### if no save password && greater than expire time- expire
-      if ($EXPIRE_LOGINS && ! $payload[1] && $payload[0] =~ m/^(\d+)/) {
-        return 0 if time() > $1 + $EXPIRE_LOGINS;
+      if ($self->expire_min && ! $payload[1] && $payload[0] =~ m/^(\d+)/) {
+        return 0 if time() > $1 + $self->expire_min * 60;
       }
       return 1;
     }
   }
   return 0; # nothing should make it this far
-}
-
-sub enc_func {
-  my $self = shift;
-  my $type = shift;
-  my $str  = shift;
-  if ($type eq 'md5') {
-    require Digest::MD5;
-    return &Digest::MD5::md5_hex($str);
-  } elsif ($type eq 'sha1') {
-    require Digest::SHA1;
-    return &Digest::SHA1::sha1_hex($str);
-  }
 }
 
 sub set_hook_get_pass_by_user {
@@ -412,31 +428,6 @@ sub hook_get_pass_by_user {
 
 ###----------------------------------------------------------------###
 
-sub cgix {
-  my $self = shift;
-  $self->{cgix} = shift if $#_ != -1;
-  return $self->{cgix} ||= do {
-    require CGI::Ex;
-    CGI::Ex->new(); # return of the do
-  };
-}
-
-sub form {
-  my $self = shift;
-  if ($#_ != -1) {
-    $self->{form} = shift || die "Invalid form";
-  }
-  return $self->{form} ||= $self->cgix->get_form;
-}
-
-sub cookies {
-  my $self = shift;
-  if ($#_ != -1) {
-    $self->{cookies} = shift || die "Invalid cookies";
-  }
-  return $self->{cookies} ||= $self->cgix->get_cookies;
-}
-
 sub host {
   my $self = shift;
   return $self->{host} = shift if $#_ != -1;
@@ -452,127 +443,71 @@ sub host {
 
 ###----------------------------------------------------------------###
 
-sub basic_login_page {
-  my $self = shift;
-  my $form = shift;
-
-  my $text = $self->basic_login_template();
-  $self->cgix->swap_template(\$text, $form);
-  $self->cgix->fill(\$text, $form);
-
-  return $text;
+sub login_header {
+    return shift->{'login_header'} || qq {
+    [%~ TRY ; PROCESS 'login_header' ; CATCH %]<!-- [% error %] -->[% END ~%]
+    };
 }
 
-sub basic_login_template {
-  return qq{
-    [% header %]
-    <div align="center">
-    <span class="error" style="color:red">[% error %]</span>
-    <form name="[% form_name %]" method="get" action="[% script_name %]">
-    <table border="0" class="login_table">
-    <tr>
+sub login_footer {
+    return shift->{'login_footer'} || qq {
+    [%~ TRY ; PROCESS 'login_footer' ; CATCH %]<!-- [% error %] -->[% END ~%]
+    };
+}
+
+sub login_form {
+    return shift->{'login_form'} || qq {
+    <div class="login_chunk">
+    <span class="login_error">[% error %]</span>
+    <form class="login_form" name="[% form_name %]" method="post" action="[% script_name %]">
+    <table class="login_table">
+    <tr class="login_username">
       <td>Username:</td>
       <td><input name="[% key_user %]" type="text" size="30" value=""></td>
     </tr>
-    <tr>
+    <tr class="login_password">
       <td>Password:</td>
       <td><input name="[% key_pass %]" type="password" size="30" value=""></td>
     </tr>
-    <tr>
+    <tr class="login_save">
       <td colspan="2">
         <input type="checkbox" name="[% key_save %]" value="1"> Save Password ?
       </td>
     </tr>
-    <tr>
+    <tr class="login_submit">
       <td colspan="2" align="right">
-        <input type="hidden" name="[% key_redirect %]">
-        <input type="hidden" name="payload">
+        <input type="hidden" name="[% key_redirect %]" value="">
+        <input type="hidden" name="payload" value="">
         <input type="submit" value="Submit">
       </td>
     </tr>
-    [% extra_table %]
     </table>
     </form>
     </div>
-    [% login_script %]
-    [% footer %]
-  };
+};
 }
-
-sub login_type {
-  my $self = shift;
-  if ($#_ != -1) {
-    $self->{login_type} = defined($_[0]) ? lc(shift) : undef;
-  }
-  $self->{login_type} = do {
-    my $type;
-    if ($USE_PLAINTEXT) {
-      $type = '';
-    } elsif (eval {require Digest::SHA1}) {
-      $type = 'sha1';
-    } elsif (eval {require Digest::MD5}) {
-      $type = 'md5';
-    } else {
-      $type = "";
-    }
-    $type; # return of the do
-  } if ! defined $self->{login_type};
-  return $self->{login_type};
-}
-
 
 sub login_script {
-  my $self = shift;
-  my $form = shift;
-  my $type = $self->login_type;
-  return if ! $type || $type !~ /^(sha1|md5)$/;
-
-  return qq{
-    <script src="$form->{script_name}/js/CGI/Ex/$type.js"></script>
+  return qq {
+    [%~ IF ! use_plaintext %]
+    <script src="[% md5_js_src %]"></script>
     <script>
-    function send_it () {
-      var f = document.$form->{form_name};
-      var s = (f.$form->{key_save}.checked) ? 1 : 0;
+    if (document.md5_hex) document.[% form_name %].onsubmit = function () {
+      var f = document.[% form_name %];
+      var s = (f.[% key_save %].checked) ? 1 : 0;
       var l = f.payload.value + '/' + s;
-      var r = f.$form->{key_redirect}.value;
-      var q = document.$form->{form_name}.action;
-      var sum = document.${type}_hex(l+'/'+document.${type}_hex(f.$form->{key_pass}.value));
-      q += '?$form->{key_user}='+escape(f.$form->{key_user}.value);
-      q += '&$form->{key_save}='+escape(s);
-      q += '&$form->{key_pass}='+escape('$type('+l+'/'+sum+')');
+      var r = f.[% key_redirect %].value;
+      var q = f.action;
+      var sum = document.md5_hex(l+'/'+document.md5_hex(f.[% key_pass %].value));
+      q += '?[% key_user %]='+escape(f.[% key_user %].value);
+      q += '&[% key_save %]='+escape(s);
+      q += '&[% key_pass %]='+escape('md5('+l+'/'+sum+')');
       location.href = q;
       return false;
     }
-    if (document.${type}_hex) document.$form->{form_name}.onsubmit = function () { return send_it() }
     </script>
+    [% END ~%]
   };
-}
-
-###----------------------------------------------------------------###
-
-### return arguments to add on to a url to allow login (for emails)
-sub auth_string_sha1 {
-  my $self = shift;
-  my $user = shift;
-  my $pass = shift;
-  my $save = shift || 0;
-  my $time = shift || time;
-  my $payload = $self->payload($time);
-
-  require Digest::SHA1;
-
-  if ($pass =~ /^sha1\((.+)\)$/) {
-    $pass = $1;
-  } else {
-    $pass = &Digest::SHA1::sha1_hex($pass);
-  }
-  $pass = &Digest::SHA1::sha1_hex("$payload/$save/$pass");
-
-  return $self->cgix->make_form({
-    $self->key_user => $user,
-    $self->key_pass => "sha1($payload/$save/$pass)",
-    $self->key_save => $save,
-  });
 }
 
 ###----------------------------------------------------------------###
@@ -581,19 +516,12 @@ sub auth_string_sha1 {
 
 __END__
 
-=head1 NAME
-
-CGI::Ex::Auth - Handle logins nicely.
-
 =head1 SYNOPSIS
 
   ### authorize the user
   my $auth = $self->auth({
     hook_get_pass_by_user => \&get_pass_by_user,
-    hook_print            => \&my_print,
-    login_type            => 'sha1',
   });
-  ### login_type may be sha1, md5, or plaintext
 
 
   sub get_pass_by_user {
@@ -662,9 +590,11 @@ NOT automatically stop execution.
 
   $auth->require_auth || exit;
 
-=item C<hook_print>
+=item C<print_login_page>
 
-Called if login failed.  Defaults to printing a very basic page.
+Called if login failed.  Defaults to printing a very basic page
+loaded from login_template.  The basic login template can be updated.
+
 You will want to override it with a template from your own system.
 The hook that is called will be passed the step to print (currently
 only "get_login_info" and "no_cookies"), and a hash containing the
@@ -679,7 +609,6 @@ form variables as well as the following:
   form_name    - $self->form_name;
   script_name  - $ENV{SCRIPT_NAME}
   path_info    - $ENV{PATH_INFO} || ''
-  login_script - $self->login_script($FORM); # The javascript that does the login
 
 =item C<success>
 
@@ -688,10 +617,6 @@ Method called on successful login.  Sets $self->user as well as $ENV{REMOTE_USER
 =item C<user>
 
 Returns the user that was successfully logged in (undef if no success).
-
-=item C<hook_success>
-
-Called from success.  May be overridden or a subref may be given as a property.
 
 =item C<key_logout>
 
@@ -719,7 +644,7 @@ The form field name used to pass the password.  Default is "ce_pass".
 The form field name used to pass whether they would like to save the cookie for
 a longer period of time.  Default is "ce_save".  The value of this form field
 should be 1 or 0.  If it is zero, the cookie installed will be a session cookie
-and will expire in $EXPIRE_LOGINS seconds (default of 6 hours).
+and will expire in expire_min seconds (default of 6 hours).
 
 =item C<form_name>
 
@@ -774,55 +699,18 @@ The current cookies.  Defaults to CGI::Ex::get_cookies.
 
 What host are we on.  Defaults to a cleaned $ENV{HTTP_HOST}.
 
-=item C<basic_login_page>
+=item C<login_page>
 
 Calls the basic_login_template, swaps in the form variables (including
 form name, login_script, etc).  Then prints content_type, the content, and
 returns.
 
-=item C<basic_login_template>
+=item C<login_template>
 
 Returns a bare essentials form that will handle the login.  Has place
 holders for all of the form name, and login variables, and errors and
 login javascript.  Variable place holders are of the form
-[% login_script %] which should work with Template::Toolkit or CGI::Ex::swap_template.
-
-=item C<login_type>
-
-Either sha1, md5, or plaintext.  If global $USE_PLAINTEXT is set,
-plaintext password will be used.  login_type will then look for
-Digest::SHA1, then Digest::MD5, and then fail to plaintext.
-
-SHA1 comparison will work with passwords stored as plaintext password,
-or stored as the string "sha1(".sha1_hex($password).")".
-
-MD5 comparison will work with passwords stored as plaintext password,
-or stored as the string "md5(".md5_hex($password).")".
-
-Plaintext comparison will work with passwords stored as sha1(string),
-md5(string), plaintext password string, or crypted password.
-
-=item C<login_script>
-
-Returns a chunk of javascript that will encode the password before
-the html form is ever submitted.  It does require that $ENV{PATH_TRANSLATED}
-is not modified before calling the require_auth method so that any
-external javascript files may be served (also by the require_auth).
-
-=item C<auth_string_sha1>
-
-Arguments are username, password, save_password, and time.  This will
-return a valid login string.  You probably will want to pass 1 for the
-save_password or else the login will only be good for 6 hours.
-
-  my $login = $self->auth->auth_string_sha1($user, $pass, 1);
-  my $url   = "http://$ENV{HTTP_HOST}$ENV{SCRIPT_NAME}?$login";
-
-=head1 TODO
-
-Using plaintext allows for the password to be passed in the querystring.
-It should at least be Base64 encoded.  I'll add that soon - BUT - really
-you should be using the SHA1 or MD5 login types.
+[% form_name %] which should work with Template::Toolkit or CGI::Ex::swap_template.
 
 =head1 AUTHORS
 
