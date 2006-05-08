@@ -81,7 +81,7 @@ sub new {
   my $class = shift || __PACKAGE__;
   my $args  = shift || {};
 
-  return bless $args, $class;
+  return bless {%$args}, $class;
 }
 
 sub paths {
