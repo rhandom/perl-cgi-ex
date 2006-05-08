@@ -1,13 +1,15 @@
 package CGI::Ex::Conf;
 
-### CGI Extended Conf Reader
+=head1 NAME
+
+CGI::Ex::Conf - Conf Reader/Writer for many different data format types
+
+=cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2004 - Paul Seamons                                     #
+#  Copyright 2006 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
-
-### See perldoc at bottom
 
 use strict;
 use base qw(Exporter);
@@ -630,10 +632,6 @@ sub preload_files {
 1;
 
 __END__
-
-=head1 NAME
-
-CGI::Ex::Conf - CGI Extended Conf Reader
 
 =head1 SYNOPSIS
 
