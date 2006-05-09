@@ -126,7 +126,7 @@ sub get_valid_auth {
     $self->login_print;
     my $data = $self->last_auth_data;
     eval { die defined($data) ? $data : "Requesting credentials" };
-    return 0;
+    return;
 }
 
 ###----------------------------------------------------------------###
@@ -198,8 +198,9 @@ sub form_name        { shift->{'form_name'}        ||= 'cea_form'     }
 sub key_verify       { shift->{'key_verify'}       ||= 'cea_verify'   }
 sub key_redirect     { shift->{'key_redirect'}     ||= 'cea_redirect' }
 sub key_payload      { shift->{'key_payload'}      ||= 'cea_payload'  }
-sub use_plaintext    { shift->{'use_plaintext'}    ||= 0              }
 sub no_cookie_verify { shift->{'no_cookie_verify'} ||= 0              }
+sub use_crypt        { shift->{'use_crypt'}        ||= 0              }
+sub use_plaintext    { my $s = shift; $s->use_crypt || ($s->{'use_plaintext'} ||= 0) }
 sub use_base64       { my $s = shift; $s->{'use_base64'}  = 1      if ! defined $s->{'use_base64'};  $s->{'use_base64'}  }
 sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined $s->{'expires_min'}; $s->{'expires_min'} }
 
@@ -422,18 +423,22 @@ sub verify_token {
         }
 
     ### plaintext_crypt
-    } elsif ($data->{'real_pass'} =~ m|^([./0-9A-Za-z]{2})([./0-9A-Za-z]{,11})$|
+    } elsif ($data->{'real_pass'} =~ m|^([./0-9A-Za-z]{2})([./0-9A-Za-z]{11})$|
              && crypt($data->{'test_pass'}, $1) eq $data->{'real_pass'}) {
         $data->add_data(type => 'crypt', was_plaintext => 1);
 
-    ### plaintext_plaintext, plaintext_md5, md5_plaintext, md5_md5
+    ### failed plaintext crypt
+    } elsif ($self->use_crypt) {
+        $data->error('Invalid login');
+        $data->add_data(type => 'crypt', was_plaintext => ($data->{'test_pass'} =~ /^[a-f0-9]{32}$/ ? 0 : 1));
+
+    ### plaintext and md5
     } else {
         my $is_md5_t = $data->{'test_pass'} =~ /^[a-f0-9]{32}$/;
         my $is_md5_r = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/;
         my $test = $is_md5_t ? lc($data->{'test_pass'}) : md5_hex($data->{'test_pass'});
         my $real = $is_md5_r ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
-        my $type = ($is_md5_t ? 'md5' : 'plaintext') .'_'. ($is_md5_r ? 'md5' : 'plaintext');
-        $data->add_data(type => $type);
+        $data->add_data(type => ($is_md5_r ? 'md5' : 'plaintext'), was_plaintext => ($is_md5_t ? 0 : 1));
         $data->error('Invalid login')
             if $test ne $real;
     }
@@ -453,21 +458,30 @@ sub generate_token {
 
     my $token;
 
-    if ($data->{'use_plaintext'} || ($data->{'type'} && $data->{'type'} eq 'plaintext_crypt')) {
+    ### do kinds that require staying plaintext
+    if ($data->{'use_plaintext'}
+        || $data->{'use_crypt'}
+        || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
         $token = $data->{'user'} .'/'. $data->{'real_pass'};
 
-    } elsif ($data->{'type'} && $data->{'type'} eq 'secure_hash_cram') {
-        die "Unsupported type $data->{type}";
-
-    } else { # cram, plaintext_plaintext, md5_plaintext, plaintext_md5, md5_md5
+    ### all other types go to cram - secure_hash_cram, cram, plaintext and md5
+    } else {
         my $user = $data->{'user'} || die "Missing user";
         my $real = defined($data->{'real_pass'})   ? ($data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'}))
                                                    : die "Missing real_pass";
         my $load = defined($data->{'payload'})     ? $data->{'payload'}     : '';
         my $exp  = defined($data->{'expires_min'}) ? $data->{'expires_min'} : $self->expires_min;
-        my $str  = join("/", $user, $self->server_time, $exp, $load);
-        my $sum  = md5_hex($str .'/'. $real);
-        $token = $str .'/'. $sum;
+
+        my $array;
+        if (! $data->{'prefer_cram'}
+            && ($array = eval {$self->secure_hash_keys })
+            && @$array) {
+
+        } else {
+            my $str  = join("/", $user, $self->server_time, $exp, $load);
+            my $sum  = md5_hex($str .'/'. $real);
+            $token = $str .'/'. $sum;
+        }
     }
 
     $token = encode_base64($token, '') if $data->{'use_base64'};
