@@ -322,12 +322,7 @@ sub verify_token {
     my $self  = shift;
     my $args  = shift;
     my $token = delete $args->{'token'} || die "Missing token";
-    my $data  = $self->{'_last_auth_data'} = $self->new_auth({
-        token         => $token,               # what is the original token
-        use_plaintext => $self->use_plaintext, # generated tokens should use plaintext password
-        use_base64    => $self->use_base64,    # generated tokens should be base64 encoded
-        %$args,
-    });
+    my $data  = $self->{'_last_auth_data'} = $self->new_auth({token => $token, %$args});
 
     ### token already parsed
     if (ref $token) {
@@ -397,8 +392,6 @@ sub verify_token {
             $data->error('secure_hash_keys not implemented');
         } elsif (! @$array) {
             $data->error('secure_hash_keys empty');
-        } elsif ($data->{'use_plaintext'}) {
-            $data->error('Found secure_hash_cram during use_plaintext');
         } else {
             $data->error('secure_hash not implemented yet');
         }
@@ -410,10 +403,7 @@ sub verify_token {
         my $str  = join("/", @{$data}{qw(user cram_time expires_min payload)});
         my $sum  = md5_hex($str .'/'. $real);
 
-        if ($data->{'use_plaintext'}) {
-            $data->error('Found cram during use_plaintext');
-
-        } elsif ($data->{'expires_min'} > 0
+        if ($data->{'expires_min'} > 0
                  && ($self->server_time - $data->{'cram_time'}) > $data->{'expires_min'} * 60) {
             $data->error('Login expired');
 
@@ -459,9 +449,9 @@ sub generate_token {
     my $token;
 
     ### do kinds that require staying plaintext
-    if ($data->{'use_plaintext'}
-        || $data->{'use_crypt'}
-        || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
+    if (   (defined($data->{'use_plaintext'}) ?  $data->{'use_plaintext'} : $self->use_plaintext)
+        || (defined($data->{'use_crypt'})     ?  $data->{'use_crypt'}     : $self->use_crypt)
+        || (defined($data->{'type'})          && $data->{'type'} eq 'crypt')) {
         $token = $data->{'user'} .'/'. $data->{'real_pass'};
 
     ### all other types go to cram - secure_hash_cram, cram, plaintext and md5
@@ -484,7 +474,9 @@ sub generate_token {
         }
     }
 
-    $token = encode_base64($token, '') if $data->{'use_base64'};
+    if (defined($data->{'use_base64'}) ? $data->{'use_base64'} : $self->use_base64) {
+        $token = encode_base64($token, '');
+    }
 
     return $token;
 }
