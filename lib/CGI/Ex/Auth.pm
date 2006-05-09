@@ -389,11 +389,23 @@ sub verify_token {
         $data->add_data(type => 'secure_hash_cram');
         my $array = eval {$self->secure_hash_keys };
         if (! $array) {
-            $data->error('secure_hash_keys not implemented');
+            $data->error('secure_hash_keys not found');
         } elsif (! @$array) {
             $data->error('secure_hash_keys empty');
+        } elsif ($data->{'secure_hash'} !~ /^sh\.(\d+)\.(\d+)$/ || $1 > $#$array) {
+            $data->error('Invalid secure hash');
         } else {
-            $data->error('secure_hash not implemented yet');
+            my $rand1 = $1;
+            my $rand2 = $2;
+            my $real  = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
+            my $str  = join("/", @{$data}{qw(user cram_time expires_min payload)});
+            my $sum = md5_hex($str .'/'. $real .('/sh.'.$array->[$rand1].'.'.$rand2));
+            if ($data->{'expires_min'} > 0
+                && ($self->server_time - $data->{'cram_time'}) > $data->{'expires_min'} * 60) {
+                $data->error('Login expired');
+            } elsif (lc($data->{'test_pass'}) ne $sum) {
+                $data->error('Invalid login');
+            }
         }
 
     ### looks like a normal cram
@@ -402,14 +414,11 @@ sub verify_token {
         my $real = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
         my $str  = join("/", @{$data}{qw(user cram_time expires_min payload)});
         my $sum  = md5_hex($str .'/'. $real);
-
         if ($data->{'expires_min'} > 0
                  && ($self->server_time - $data->{'cram_time'}) > $data->{'expires_min'} * 60) {
             $data->error('Login expired');
-
         } elsif (lc($data->{'test_pass'}) ne $sum) {
             $data->error('Invalid login');
-
         }
 
     ### plaintext_crypt
@@ -466,11 +475,15 @@ sub generate_token {
         if (! $data->{'prefer_cram'}
             && ($array = eval {$self->secure_hash_keys })
             && @$array) {
-
+            my $rand1 = int(rand @$array);
+            my $rand2 = int(rand 100000);
+            my $str = join("/", $user, $self->server_time, $exp, $load);
+            my $sum = md5_hex($str .'/'. $real .('/sh.'.$array->[$rand1].'.'.$rand2));
+            $token  = $str .'/'. $sum . '/sh.'.$rand1.'.'.$rand2;
         } else {
-            my $str  = join("/", $user, $self->server_time, $exp, $load);
-            my $sum  = md5_hex($str .'/'. $real);
-            $token = $str .'/'. $sum;
+            my $str = join("/", $user, $self->server_time, $exp, $load);
+            my $sum = md5_hex($str .'/'. $real);
+            $token  = $str .'/'. $sum;
         }
     }
 
