@@ -198,6 +198,7 @@ sub form_name        { shift->{'form_name'}        ||= 'cea_form'     }
 sub key_verify       { shift->{'key_verify'}       ||= 'cea_verify'   }
 sub key_redirect     { shift->{'key_redirect'}     ||= 'cea_redirect' }
 sub key_payload      { shift->{'key_payload'}      ||= 'cea_payload'  }
+sub secure_hash_keys { shift->{'secure_hash_keys'} ||= []             }
 sub no_cookie_verify { shift->{'no_cookie_verify'} ||= 0              }
 sub use_crypt        { shift->{'use_crypt'}        ||= 0              }
 sub use_plaintext    { my $s = shift; $s->use_crypt || ($s->{'use_plaintext'} ||= 0) }
@@ -473,7 +474,7 @@ sub generate_token {
 
         my $array;
         if (! $data->{'prefer_cram'}
-            && ($array = eval {$self->secure_hash_keys })
+            && ($array = eval { $self->secure_hash_keys })
             && @$array) {
             my $rand1 = int(rand @$array);
             my $rand2 = int(rand 100000);
