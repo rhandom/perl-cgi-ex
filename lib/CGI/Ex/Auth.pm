@@ -70,10 +70,14 @@ sub get_valid_auth {
             };
         }
 
-        my $data = $self->verify_token($hash->{$key}) || next;
+        my $data = $self->verify_token({token => $hash->{$key}, from => ($is_form ? 'form' : 'cookie')}) || next;
 
-        ### generate a fresh cookie each time
-        $self->set_cookie($self->generate_token($data), $data->{'expires_min'});
+        ### generate a fresh cookie if they submitted info - or if it is a non plaintext type
+        if ($is_form
+            || (! $data->{'use_plaintext'} && ! $data->{'type'} eq 'plaintext_crypt')) {
+            $self->set_cookie($self->generate_token($data), $data->{'expires_min'});
+        }
+
         #return $self->success($user); # assume that cookies will work - if not next page will cause login
         #### this may actually be the nicer thing to do in the common case - except for the nasty looking
         #### url - all things considered - should really get location boucing to work properly while being
@@ -313,8 +317,9 @@ sub last_auth_data { shift->{'_last_auth_data'} }
 
 sub verify_token {
     my $self  = shift;
-    my $token = shift;
-    my $data  = $self->{'_last_auth_data'} = $self->new_auth({token => $token, use_plaintext => $self->use_plaintext});
+    my $args  = shift;
+    my $token = delete $args->{'token'} || die "Missing token";
+    my $data  = $self->{'_last_auth_data'} = $self->new_auth({token => $token, use_plaintext => $self->use_plaintext, %$args});
 
     ### token already parsed
     if (ref $token) {
@@ -334,7 +339,7 @@ sub verify_token {
         } elsif ($token =~ m|^ ([^/]+) / (.*) $|x) {
             $data->add_data({
                 user      => $1,
-                test_pass => lc($5),
+                test_pass => $2,
             });
         } else {
             $data->error('Invalid token');
@@ -349,7 +354,7 @@ sub verify_token {
         $data->error('Missing user');
 
     } elsif (! $self->verify_user($data->{'user'})) {
-        $data->error('Invalid User');
+        $data->error('Invalid user');
 
     } elsif (! defined($pass = eval { $self->get_pass_by_user($data->{'user'}) })) {
         $data->add_data({details => $@});
@@ -388,7 +393,7 @@ sub verify_token {
 
         } elsif ($data->{'expires_min'} > 0
                  && ($self->server_time - $data->{'cram_time'}) > $data->{'expires_min'} * 60) {
-            $data->error('Login Expired');
+            $data->error('Login expired');
 
         } elsif (lc($data->{'test_pass'}) ne $sum) {
             $data->error('Invalid login');
@@ -595,42 +600,17 @@ __END__
     return $pass;
   }
 
-  sub my_print {
-    my $auth = shift;
-    my $step = shift;
-    my $form = shift; # form includes login_script at this point
-    my $content = get_content_from_somewhere;
-    $auth->cgix->swap_template(\$content, $form);
-    $auth->cgix->print_content_type;
-    print $content;
-  }
-
 =head1 DESCRIPTION
 
-CGI::Ex::Auth allows for autoexpiring, safe logins.  Auth uses
-javascript modules that perform SHA1 and MD5 encoding to encode
+CGI::Ex::Auth allows for auto-expiring, safe logins.  Auth uses
+javascript modules that perform MD5 encoding to encode
 the password on the client side before passing them through the
 internet.
 
-If SHA1 is used the storage of the password can be described by
-the following code:
-
-  my $pass = "plaintextpassword";
-  my $save = ($save_the_password) ? 1 : 0;
-  my $time = time;
-  my $store = sha1_hex("$time/$save/" . sha1_hex($pass));
-
-This allows for passwords to be stored as sha1 in a database.
-Passwords stored in the database this way are still susceptible to bruteforce
-attack, but are much more secure than storing plain text.
-
-If MD5 is used, the above procedure is replaced with md5_hex.
-
 A downside to this module is that it does not use a session to preserve state
 so authentication has to happen on every request.  A plus is that you don't
-need to use a session.  With later releases, a method will be added to allow
-authentication to look inside of a stored session somewhat similar to
-CGI::Session::Auth.
+need to use a session.  It is up to the interested reader to add session caching
+to the get_pass_by_user method.
 
 =head1 METHODS
 
@@ -640,20 +620,16 @@ CGI::Session::Auth.
 
 Constructor.  Takes a hash or hashref of properties as arguments.
 
-=item C<init>
+=item C<get_valid_auth>
 
-Called automatically near the end of new.
+Performs the core logic.  Returns an auth object on successful login.
+Returns false on errored login (with the details of the error stored in
+$@).  If a false value is returned, execution of the CGI should be halted.
+get_valid_auth WILL NOT automatically stop execution.
 
-=item C<require_auth>
+  $auth->get_valid_auth || exit;
 
-Performs the core logic.  Returns true on successful login.
-Returns false on errored login.  If a false value is returned,
-execution of the CGI should be halted.  require_auth WILL
-NOT automatically stop execution.
-
-  $auth->require_auth || exit;
-
-=item C<print_login_page>
+=item C<login_print>
 
 Called if login errored.  Defaults to printing a very basic page
 loaded from login_template.  The basic login template can be updated.
