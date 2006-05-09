@@ -240,8 +240,8 @@ sub mod_perl_version {
   return $self->{'mod_perl_version'};
 }
 
-sub is_mod_perl_1 { shift->mod_perl_version <  1.98 }
-sub is_mod_perl_2 { shift->mod_perl_version >= 1.98 }
+sub is_mod_perl_1 { my $m = shift->mod_perl_version; return $m <  1.98 && $m > 0 }
+sub is_mod_perl_2 { my $m = shift->mod_perl_version; return $m >= 1.98 }
 
 ### Allow for a setter
 #   $cgix->set_apache_request($r)
@@ -715,8 +715,7 @@ __END__
   $cgix->location_bounce($new_url_location);
 
   ### set a cookie (works even if content has been printed)
-  ### using CGI to generate the cookie
-  $cgix->set_cookie({
+  $cgix->set_cookie({ # uses CGI by default
       name  => ...,
       value => ...,
   });
