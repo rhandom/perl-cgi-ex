@@ -61,20 +61,25 @@ sub get_valid_auth {
         $had_form_info ++ if $is_form;
 
         ### if it looks like a bare username (as in they didn't have javascript)- add in other items
+        my $data;
         if ($hash->{$key} !~ m|^[^/]+/| && $is_form) {
-            $hash->{$key} = {
-                user        => $hash->{$key},
-                test_pass   => delete $hash->{ $self->key_pass },
-                expires_min => delete($hash->{ $self->key_save }) ? -1 : delete($hash->{ $self->key_expires_min }) || $self->expires_min,
-                payload     => delete $hash->{ $self->key_payload } || '',
-            };
-        }
+            $data = $self->verify_token({
+                token => {
+                    user        => $hash->{$key},
+                    test_pass   => delete $hash->{ $self->key_pass },
+                    expires_min => delete($hash->{ $self->key_save }) ? -1 : delete($hash->{ $self->key_expires_min }) || $self->expires_min,
+                    payload     => delete $hash->{ $self->key_payload } || '',
+                },
+                from => 'form',
+            }) || next;
 
-        my $data = $self->verify_token({token => $hash->{$key}, from => ($is_form ? 'form' : 'cookie')}) || next;
+        } else {
+            $data = $self->verify_token({token => $hash->{$key}, from => ($is_form ? 'form' : 'cookie')}) || next;
+        }
 
         ### generate a fresh cookie if they submitted info - or if it is a non plaintext type
         if ($is_form
-            || (! $data->{'use_plaintext'} && ! $data->{'type'} eq 'plaintext_crypt')) {
+            || (! $data->{'use_plaintext'} && $data->{'type'} ne 'crypt')) {
             $self->set_cookie($self->generate_token($data), $data->{'expires_min'});
         }
 
@@ -193,6 +198,7 @@ sub key_expires_min { shift->{'key_expires_min'} ||= 'cea_expires_min' }
 sub form_name       { shift->{'form_name'}       ||= 'cea_form'     }
 sub key_verify      { shift->{'key_verify'}      ||= 'cea_verify'   }
 sub use_plaintext   { shift->{'use_plaintext'}   ||= 0              }
+sub use_base64      { shift->{'use_base64'}      ||= 1              }
 sub expires_min     { shift->{'expires_min'}     ||= 6 * 60         }
 sub key_redirect    { shift->{'key_redirect'}    ||= 'cea_redirect' }
 sub key_payload     { shift->{'key_payload'}     ||= 'cea_payload'  }
@@ -319,7 +325,12 @@ sub verify_token {
     my $self  = shift;
     my $args  = shift;
     my $token = delete $args->{'token'} || die "Missing token";
-    my $data  = $self->{'_last_auth_data'} = $self->new_auth({token => $token, use_plaintext => $self->use_plaintext, %$args});
+    my $data  = $self->{'_last_auth_data'} = $self->new_auth({
+        token         => $token,               # what is the original token
+        use_plaintext => $self->use_plaintext, # generated tokens should use plaintext password
+        use_base64    => $self->use_base64,    # generated tokens should be base64 encoded
+        %$args,
+    });
 
     ### token already parsed
     if (ref $token) {
@@ -327,21 +338,32 @@ sub verify_token {
 
     ### parse token for info
     } else {
-        if ($token =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
-            $data->add_data({
-                user        => $1,
-                cram_time   => $2,
-                expires_min => $3,
-                payload     => $4,
-                test_pass   => $5,
-                secure_hash => $6 || '',
-            });
-        } elsif ($token =~ m|^ ([^/]+) / (.*) $|x) {
-            $data->add_data({
-                user      => $1,
-                test_pass => $2,
-            });
-        } else {
+        my $found;
+        for my $is_base64 (0, 1) { # try with and without base64 encoding
+            $token = decode_base64($token) if $is_base64;;
+            if ($token =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
+                $data->add_data({
+                    user        => $1,
+                    cram_time   => $2,
+                    expires_min => $3,
+                    payload     => $4,
+                    test_pass   => $5,
+                    secure_hash => $6 || '',
+                    was_base64  => $is_base64,
+                });
+                $found ++;
+                last;
+            } elsif ($token =~ m|^ ([^/]+) / (.*) $|x) {
+                $data->add_data({
+                    user       => $1,
+                    test_pass  => $2,
+                    was_base64 => $is_base64,
+                });
+                $found ++;
+                last;
+            }
+        }
+        if (! $found) {
             $data->error('Invalid token');
             return $data;
         }
@@ -352,6 +374,9 @@ sub verify_token {
     my $pass;
     if (! defined($data->{'user'})) {
         $data->error('Missing user');
+
+    } elsif (! defined $data->{'test_pass'}) {
+        $data->error('Missing test_pass');
 
     } elsif (! $self->verify_user($data->{'user'})) {
         $data->error('Invalid user');
@@ -403,7 +428,7 @@ sub verify_token {
     ### plaintext_crypt
     } elsif ($data->{'real_pass'} =~ m|^([./0-9A-Za-z]{2})([./0-9A-Za-z]{,11})$|
              && crypt($data->{'test_pass'}, $1) eq $data->{'real_pass'}) {
-        $data->add_data(type => 'plaintext_crypt');
+        $data->add_data(type => 'crypt', was_plaintext => 1);
 
     ### plaintext_plaintext, plaintext_md5, md5_plaintext, md5_md5
     } else {
@@ -429,8 +454,11 @@ sub generate_token {
     my $self  = shift;
     my $data  = shift || $self->last_auth_data;
     die "Can't generate a token off of a failed auth" if ! $data;
+
+    my $token;
+
     if ($data->{'use_plaintext'} || $data->{'type'} eq 'plaintext_crypt') {
-        return $data->{'user'} .'/'. $data->{'real_pass'};
+        $token = $data->{'user'} .'/'. $data->{'real_pass'};
 
     } elsif ($data->{'type'} eq 'secure_hash_cram') {
         die "Unsupported type $data->{type}";
@@ -439,8 +467,12 @@ sub generate_token {
         my $real = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
         my $str  = join("/", $data->{'user'}, $self->server_time, $data->{'expires_min'}, $data->{'payload'});
         my $sum  = md5_hex($str .'/'. $real);
-        return $str .'/'. $sum;
+        $token = $str .'/'. $sum;
     }
+
+    $token = encode_base64($token, '') if $data->{'use_base64'};
+
+    return $token;
 }
 
 sub verify_user {
