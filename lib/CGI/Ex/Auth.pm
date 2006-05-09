@@ -62,10 +62,12 @@ sub get_valid_auth {
 
         ### if it looks like a bare username (as in they didn't have javascript)- add in other items
         my $data;
-        if ($hash->{$key} !~ m|^[^/]+/| && $is_form) {
+        if ($is_form
+            && $hash->{$key} !~ m|^[^/]+/|
+            && defined $hash->{ $self->key_pass }) {
             $data = $self->verify_token({
                 token => {
-                    user        => $hash->{$key},
+                    user        => delete $hash->{$key},
                     test_pass   => delete $hash->{ $self->key_pass },
                     expires_min => delete($hash->{ $self->key_save }) ? -1 : delete($hash->{ $self->key_expires_min }) || $self->expires_min,
                     payload     => delete $hash->{ $self->key_payload } || '',
@@ -75,6 +77,7 @@ sub get_valid_auth {
 
         } else {
             $data = $self->verify_token({token => $hash->{$key}, from => ($is_form ? 'form' : 'cookie')}) || next;
+            delete $hash->{$key} if $is_form;
         }
 
         ### generate a fresh cookie if they submitted info - or if it is a non plaintext type
@@ -83,17 +86,13 @@ sub get_valid_auth {
             $self->set_cookie($self->generate_token($data), $data->{'expires_min'});
         }
 
-        #return $self->success($user); # assume that cookies will work - if not next page will cause login
-        #### this may actually be the nicer thing to do in the common case - except for the nasty looking
-        #### url - all things considered - should really get location boucing to work properly while being
-        #### able to set a cookie at the same time
-
-        if ($has_cookies) {
-#            $self->success($data->{'user'}); # assuming if they have cookies - the one we set will work
+        ### successful login - if they have cookies we are done
+        if ($has_cookies || $self->no_cookie_verify) {
             return $self;
+
+        ### need to verify cookies are set-able
         } elsif ($is_form) {
-            delete $form->{$self->key_user};      # remove token from the form
-            $form->{$self->key_verify} = time();  # add verify token
+            $form->{$self->key_verify} = $self->server_time;
             my $key_r = $self->key_redirect;
             if (! $form->{$key_r}) {              # make sure there is a redirect value
                 my $query = $self->cgix->make_form($form);
@@ -147,7 +146,7 @@ sub cgix {
 sub form {
     my $self = shift;
     $self->{'form'} = shift if $#_ != -1;
-    return $self->{'form'} ||= $self->cgix->get_form || {};
+    return $self->{'form'} ||= $self->cgix->get_form;
 }
 
 sub cookies {
@@ -188,20 +187,21 @@ sub location_bounce {
 
 ###----------------------------------------------------------------###
 
-sub key_logout      { shift->{'key_logout'}      ||= 'logout'       }
-sub key_cookie      { shift->{'key_cookie'}      ||= 'cea_cookie'   }
-sub key_user        { shift->{'key_user'}        ||= 'cea_user'     }
-sub key_pass        { shift->{'key_pass'}        ||= 'cea_pass'     }
-sub key_time        { shift->{'key_time'}        ||= 'cea_time'     }
-sub key_save        { shift->{'key_save'}        ||= 'cea_save'     }
-sub key_expires_min { shift->{'key_expires_min'} ||= 'cea_expires_min' }
-sub form_name       { shift->{'form_name'}       ||= 'cea_form'     }
-sub key_verify      { shift->{'key_verify'}      ||= 'cea_verify'   }
-sub use_plaintext   { shift->{'use_plaintext'}   ||= 0              }
-sub use_base64      { shift->{'use_base64'}      ||= 1              }
-sub expires_min     { shift->{'expires_min'}     ||= 6 * 60         }
-sub key_redirect    { shift->{'key_redirect'}    ||= 'cea_redirect' }
-sub key_payload     { shift->{'key_payload'}     ||= 'cea_payload'  }
+sub key_logout       { shift->{'key_logout'}       ||= 'logout'       }
+sub key_cookie       { shift->{'key_cookie'}       ||= 'cea_user'     }
+sub key_user         { shift->{'key_user'}         ||= 'cea_user'     }
+sub key_pass         { shift->{'key_pass'}         ||= 'cea_pass'     }
+sub key_time         { shift->{'key_time'}         ||= 'cea_time'     }
+sub key_save         { shift->{'key_save'}         ||= 'cea_save'     }
+sub key_expires_min  { shift->{'key_expires_min'}  ||= 'cea_expires_min' }
+sub form_name        { shift->{'form_name'}        ||= 'cea_form'     }
+sub key_verify       { shift->{'key_verify'}       ||= 'cea_verify'   }
+sub key_redirect     { shift->{'key_redirect'}     ||= 'cea_redirect' }
+sub key_payload      { shift->{'key_payload'}      ||= 'cea_payload'  }
+sub use_plaintext    { shift->{'use_plaintext'}    ||= 0              }
+sub no_cookie_verify { shift->{'no_cookie_verify'} ||= 0              }
+sub use_base64       { my $s = shift; $s->{'use_base64'}  = 1      if ! defined $s->{'use_base64'};  $s->{'use_base64'}  }
+sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined $s->{'expires_min'}; $s->{'expires_min'} }
 
 sub logout_redirect {
     my $self = shift;
@@ -233,17 +233,13 @@ sub login_print {
     }
 
     ### get, fill, and print a basic login template
-    my $text = ""
-        . $self->login_header
-        . $self->login_form
-        . $self->login_script
-        . $self->login_footer;
+    my $template = $self->login_template;
 
     ### process the document
     require CGI::Ex::Template;
-    my $t   = CGI::Ex::Template->new($self->template_args);
+    my $cet = CGI::Ex::Template->new($self->template_args);
     my $out = '';
-    $t->process_simple(\$text, $hash, \$out) || die $t->error;
+    $cet->process_simple($template, $hash, \$out) || die $cet->error;
 
     ### fill in form fields
     require CGI::Ex::Fill;
@@ -457,15 +453,19 @@ sub generate_token {
 
     my $token;
 
-    if ($data->{'use_plaintext'} || $data->{'type'} eq 'plaintext_crypt') {
+    if ($data->{'use_plaintext'} || ($data->{'type'} && $data->{'type'} eq 'plaintext_crypt')) {
         $token = $data->{'user'} .'/'. $data->{'real_pass'};
 
-    } elsif ($data->{'type'} eq 'secure_hash_cram') {
+    } elsif ($data->{'type'} && $data->{'type'} eq 'secure_hash_cram') {
         die "Unsupported type $data->{type}";
 
     } else { # cram, plaintext_plaintext, md5_plaintext, plaintext_md5, md5_md5
-        my $real = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
-        my $str  = join("/", $data->{'user'}, $self->server_time, $data->{'expires_min'}, $data->{'payload'});
+        my $user = $data->{'user'} || die "Missing user";
+        my $real = defined($data->{'real_pass'})   ? ($data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'}))
+                                                   : die "Missing real_pass";
+        my $load = defined($data->{'payload'})     ? $data->{'payload'}     : '';
+        my $exp  = defined($data->{'expires_min'}) ? $data->{'expires_min'} : $self->expires_min;
+        my $str  = join("/", $user, $self->server_time, $exp, $load);
         my $sum  = md5_hex($str .'/'. $real);
         $token = $str .'/'. $sum;
     }
@@ -504,6 +504,17 @@ sub verify_payload {
 }
 
 ###----------------------------------------------------------------###
+
+sub login_template {
+    my $self = shift;
+
+    my $text = ""
+        . $self->login_header
+        . $self->login_form
+        . $self->login_script
+        . $self->login_footer;
+    return \$text;
+}
 
 sub login_header {
     return shift->{'login_header'} || qq {
@@ -635,14 +646,14 @@ __END__
 =head1 DESCRIPTION
 
 CGI::Ex::Auth allows for auto-expiring, safe logins.  Auth uses
-javascript modules that perform MD5 encoding to encode
-the password on the client side before passing them through the
-internet.
+javascript modules that perform MD5 encoding to encode the password on
+the client side before passing them through the internet.
 
-A downside to this module is that it does not use a session to preserve state
-so authentication has to happen on every request.  A plus is that you don't
-need to use a session.  It is up to the interested reader to add session caching
-to the get_pass_by_user method.
+A downside to this module is that it does not use a session to
+preserve state so authentication has to happen on every request.  A
+plus is that you don't need to use a session.  It is up to the
+interested reader to add session caching to the get_pass_by_user
+method.
 
 =head1 METHODS
 
