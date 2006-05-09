@@ -28,16 +28,15 @@ sub new {
     return bless {%$args}, $class;
 }
 
-sub require_auth {
+sub get_valid_auth {
     my $self = shift;
     $self = $self->new(@_) if ! ref $self;
-
-    use Debug;
 
     ### shortcut that will print a js file as needed (such as the md5.js)
     if ($self->script_name . $self->path_info eq $self->js_path . "/CGI/Ex/md5.js") {
         $self->cgix->print_js('CGI/Ex/md5.js');
-        return 0;
+        eval { die "Printed Javascript" };
+        return;
     }
 
     my $form    = $self->form;
@@ -49,7 +48,8 @@ sub require_auth {
     if ($form->{$key_l}) {
         $self->delete_cookie;
         $self->location_bounce($self->logout_redirect);
-        return 0;
+        eval { die "Logging out" };
+        return;
     }
 
     my $had_form_info;
@@ -60,26 +60,27 @@ sub require_auth {
         next if ! defined $hash->{$key};
         $had_form_info ++ if $is_form;
 
-        if ($hash->{$key} !~ m|^[^/]+/| && $is_form) { # if it looks like a bare username - add on /password
-            my $p = delete $hash->{ $self->key_pass };
-            my $s = delete($hash->{ $self->key_save }) ? -1 : $self->expires_min;
-            my $l = delete $hash->{ $self->key_payload } || '';
-            my $t = $self->server_time;
-            $hash->{$key} .= "$t/$s/$l/" . (defined $p ? $p : '');
+        ### if it looks like a bare username (as in they didn't have javascript)- add in other items
+        if ($hash->{$key} !~ m|^[^/]+/| && $is_form) {
+            $hash->{$key} = {
+                user        => $hash->{$key},
+                test_pass   => delete $hash->{ $self->key_pass },
+                expires_min => delete($hash->{ $self->key_save }) ? -1 : delete($hash->{ $self->key_expires_min }) || $self->expires_min,
+                payload     => delete $hash->{ $self->key_payload } || '',
+            };
         }
 
-        eval { $self->verify_token($hash->{$key}) } || next;
-        my $token = $self->last_token || next;
+        my $data = $self->verify_token($hash->{$key}) || next;
 
         ### generate a fresh cookie each time
-        $self->set_cookie($self->generate_token, $token->{'save'});
+        $self->set_cookie($self->generate_token($data), $data->{'expires_min'});
         #return $self->success($user); # assume that cookies will work - if not next page will cause login
         #### this may actually be the nicer thing to do in the common case - except for the nasty looking
         #### url - all things considered - should really get location boucing to work properly while being
         #### able to set a cookie at the same time
 
         if ($has_cookies) {
-#            $self->success($token->{'user'}); # assuming if they have cookies - the one we set will work
+#            $self->success($data->{'user'}); # assuming if they have cookies - the one we set will work
             return $self;
         } elsif ($is_form) {
             delete $form->{$self->key_user};      # remove token from the form
@@ -90,16 +91,19 @@ sub require_auth {
                 $form->{$key_r} = $self->script_name . $self->path_info . ($query ? "?$query" : "");
             }
             $self->location_bounce($form->{$key_r});
-            return 0;
+            eval { die "Success login - bouncing to test cookie" };
+            return;
         }
     }
-    debug $self->last_token;
+
+    ### make sure the cookie is gone
+    $self->delete_cookie if $cookies->{ $self->key_cookie };
 
     ### nothing found - see if they have cookies
     if (my $value = delete $form->{$self->key_verify}) {
-        if (abs(time() - $value) < 3600) {
+        if (abs(time() - $value) < 15) {
             $self->no_cookies_print;
-            return 0;
+            return;
         }
     }
 
@@ -110,8 +114,10 @@ sub require_auth {
         $form->{$key_r} = $self->script_name . $self->path_info . ($query ? "?$query" : "");
     }
 
-    $form->{'login_error'} = $had_form_info;
+    $form->{'had_form_data'} = $had_form_info;
     $self->login_print;
+    my $data = $self->last_auth_data;
+    eval { die defined($data) ? $data : "Requesting credentials" };
     return 0;
 }
 
@@ -132,7 +138,7 @@ sub cgix {
 sub form {
     my $self = shift;
     $self->{'form'} = shift if $#_ != -1;
-    return $self->{'form'} ||= $self->cgix->get_form;
+    return $self->{'form'} ||= $self->cgix->get_form || {};
 }
 
 sub cookies {
@@ -157,11 +163,10 @@ sub set_cookie {
   my $self = shift;
   my $key  = $self->key_cookie;
   my $val  = shift || '';
-  my $save_pass = shift;
   $self->cgix->set_cookie({
     -name    => $key,
     -value   => $val,
-    ($save_pass ? (-expires => '+10y') : ()),
+    -expires => '+20y', # let the expires time take care of things
     -path    => '/',
   });
 }
@@ -180,6 +185,7 @@ sub key_user        { shift->{'key_user'}        ||= 'cea_user'     }
 sub key_pass        { shift->{'key_pass'}        ||= 'cea_pass'     }
 sub key_time        { shift->{'key_time'}        ||= 'cea_time'     }
 sub key_save        { shift->{'key_save'}        ||= 'cea_save'     }
+sub key_expires_min { shift->{'key_expires_min'} ||= 'cea_expires_min' }
 sub form_name       { shift->{'form_name'}       ||= 'cea_form'     }
 sub key_verify      { shift->{'key_verify'}      ||= 'cea_verify'   }
 sub use_plaintext   { shift->{'use_plaintext'}   ||= 0              }
@@ -211,7 +217,7 @@ sub login_print {
     my $hash = $self->login_hash_swap;
 
     ### allow for a hooked override
-    if (my $meth = $self->{'hook_print'}) {
+    if (my $meth = $self->{'login_print'}) {
         $self->$meth($hash);
         return 0;
     }
@@ -227,7 +233,7 @@ sub login_print {
     require CGI::Ex::Template;
     my $t   = CGI::Ex::Template->new($self->template_args);
     my $out = '';
-    my $status = $t->process(\$text, $hash, \$out) || die $Template::ERROR;
+    $t->process_simple(\$text, $hash, \$out) || die $t->error;
 
     ### fill in form fields
     require CGI::Ex::Fill;
@@ -252,10 +258,13 @@ sub template_include_path { shift->{'template_include_path'} || '' }
 sub login_hash_swap {
     my $self = shift;
     my $form = $self->form;
+    my $data = $self->last_auth_data;
+    $data = {} if ! defined $data;
 
     return {
         %$form,
-        error           => ($form->{'login_error'}) ? "Login Failed" : "",
+        error           => ($form->{'had_form_data'}) ? "Login Failed" : "",
+        login_data      => $data,
         key_user        => $self->key_user,
         key_pass        => $self->key_pass,
         key_time        => $self->key_time,
@@ -268,7 +277,7 @@ sub login_hash_swap {
         md5_js_path     => $self->js_path ."/CGI/Ex/md5.js",
         use_plaintext   => $self->use_plaintext,
         expires_min     => $self->expires_min,
-        $self->key_user => $self->last_token->{'user'} || '',
+        $self->key_user => $data->{'user'} || '',
         $self->key_pass => '', # don't allow for this to get filled into the form
         $self->key_time => $self->server_time,
     };
@@ -295,89 +304,137 @@ sub user {
 
 ###----------------------------------------------------------------###
 
-sub last_token { shift->{'_last_token'} }
+sub new_auth {
+    my $self = shift;
+    return CGI::Ex::Auth::Data->new(@_);
+}
+
+sub last_auth_data { shift->{'_last_auth_data'} }
 
 sub verify_token {
     my $self  = shift;
     my $token = shift;
+    my $data  = $self->{'_last_auth_data'} = $self->new_auth({token => $token, use_plaintext => $self->use_plaintext});
+
+    ### token already parsed
+    if (ref $token) {
+        $data->add_data({%$token});
 
     ### parse token for info
-    my $secure_hash = ($token =~ s| /sh\.(\d+\.\d+) $ ||x) ? $1 : '';
-    if ($token =~ m|^ ([^/]+) / (\d+) / (-?\d+) / ([^/]*) / (.+) $|x) {
-        my $h = $self->{'_last_token'} = {
-            type  => 'cram',
-            user  => $1,
-            time  => $2,
-            save  => ($3 <= 0 ? 1 : 0),
-            exp   => $3,
-            load  => $4,
-            pass  => $5,
-            token => $token,
-        };
     } else {
-        $self->{'_last_token'} = {
-            fail  => 'Invalid token',
-            token => $token,
-        };
-        return 0;
-    }
-
-    ### verify the user
-    my $token = $self->{'_last_token'};
-    if (! defined($token->{'user'}) || ! $self->verify_user($token->{'user'})) {
-        $token->{'fail'} = 'Invalid User';
-        return 0;
-    }
-
-    ### get the pass
-    my $pass = eval { $self->get_pass_by_user($token) };
-    if (! defined $pass || $@) {
-        $token->{'fail'} = 'Could not get pass';
-        $token->{'fail_error'} = $@;
-        return 0;
-    }
-    $token->{'pass_real'} = ($pass =~ /^[a-f0-9]{32}$/) ? lc($pass) : md5_hex($pass);
-
-    if ($secure_hash) {
-        $self->{'_last_token'}->{'fail'} = 'secure_hash not implemented';
-        return 0;
-
-    } elsif ($token->{'type'} eq 'cram') {
-        my $str = join("/", @{$token}{qw(user time exp load)});
-        my $sum = md5_hex($str .'/'. $token->{'pass_real'});
-        if ($token->{'pass'} ne $sum) {
-            $token->{'fail'} = "Did not match";
-        } elsif (! $token->{'save'}
-                 && ($self->server_time - $token->{'time'}) > $token->{'exp'} * 60) {
-            $token->{'fail'} = "Login Expired";
+        if ($token =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
+            $data->add_data({
+                user        => $1,
+                cram_time   => $2,
+                expires_min => $3,
+                payload     => $4,
+                test_pass   => $5,
+                secure_hash => $6 || '',
+            });
+        } elsif ($token =~ m|^ ([^/]+) / (.*) $|x) {
+            $data->add_data({
+                user      => $1,
+                test_pass => lc($5),
+            });
         } else {
-            return 1;
+            $data->error('Invalid token');
+            return $data;
+        }
+    }
+
+
+    ### verify the user and get the pass
+    my $pass;
+    if (! defined($data->{'user'})) {
+        $data->error('Missing user');
+
+    } elsif (! $self->verify_user($data->{'user'})) {
+        $data->error('Invalid User');
+
+    } elsif (! defined($pass = eval { $self->get_pass_by_user($data->{'user'}) })) {
+        $data->add_data({details => $@});
+        $data->error('Could not get pass');
+    }
+    return $data if $data->error;
+
+
+    ### store - to allow generate_token to not need to relookup the pass
+    $data->add_data({real_pass => $pass});
+
+
+    ### looks like a secure_hash cram
+    if ($data->{'secure_hash'}) {
+        $data->add_data(type => 'secure_hash_cram');
+        my $array = eval {$self->secure_hash_keys };
+        if (! $array) {
+            $data->error('secure_hash_keys not implemented');
+        } elsif (! @$array) {
+            $data->error('secure_hash_keys empty');
+        } elsif ($data->{'use_plaintext'}) {
+            $data->error('Found secure_hash_cram during use_plaintext');
+        } else {
+            $data->error('secure_hash not implemented yet');
         }
 
-    } elsif ($self->use_plaintext && $pass =~ m|^([./0-9A-Za-z]{2})(.{,11})$|) {
-        $token->{'type'} = 'used_crypt';
-        return 1 if crypt($token->{'pass'}, $1) eq $pass;
-        $token->{'fail'} = "Did not match";
+    ### looks like a normal cram
+    } elsif ($data->{'cram_time'}) {
+        $data->add_data(type => 'cram');
+        my $real = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
+        my $str  = join("/", @{$data}{qw(user cram_time expires_min payload)});
+        my $sum  = md5_hex($str .'/'. $real);
 
+        if ($data->{'use_plaintext'}) {
+            $data->error('Found cram during use_plaintext');
+
+        } elsif ($data->{'expires_min'} > 0
+                 && ($self->server_time - $data->{'cram_time'}) > $data->{'expires_min'} * 60) {
+            $data->error('Login Expired');
+
+        } elsif (lc($data->{'test_pass'}) ne $sum) {
+            $data->error('Invalid login');
+
+        }
+
+    ### plaintext_crypt
+    } elsif ($data->{'real_pass'} =~ m|^([./0-9A-Za-z]{2})([./0-9A-Za-z]{,11})$|
+             && crypt($data->{'test_pass'}, $1) eq $data->{'real_pass'}) {
+        $data->add_data(type => 'plaintext_crypt');
+
+    ### plaintext_plaintext, plaintext_md5, md5_plaintext, md5_md5
     } else {
-        $token->{'type'} = 'plain_or_md5';
-        my $test_pass = ($token->{'pass'} =~ /^[a-f0-9]{32}$/i) ? lc($token->{'pass'}) : md5_hex($token->{'pass'});
-        return 1 if $test_pass eq $token->{'pass_real'};
-        $token->{'fail'} = "Did not match";
+        my $is_md5_t = $data->{'test_pass'} =~ /^[a-f0-9]{32}$/;
+        my $is_md5_r = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/;
+        my $test = $is_md5_t ? lc($data->{'test_pass'}) : md5_hex($data->{'test_pass'});
+        my $real = $is_md5_r ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
+        my $type = ($is_md5_t ? 'md5' : 'plaintext') .'_'. ($is_md5_r ? 'md5' : 'plaintext');
+        $data->add_data(type => $type);
+        $data->error('Invalid login')
+            if $test ne $real;
     }
 
-    return 0;
+    ### check the payload
+    if (! $data->error && ! $self->verify_payload($data->{'payload'})) {
+        $data->error('Invalid payload');
+    }
+
+    return $data;
 }
 
 sub generate_token {
     my $self  = shift;
-    my $token = shift || $self->last_token;
-    if ($token->{'type'} eq 'cram') {
-        my $str = join("/", $token->{'user'}, $self->server_time, ($token->{'save'} ? -1 : $token->{'exp'}), $token->{'load'});
-        my $sum = md5_hex($str .'/'. $token->{'pass_real'});
+    my $data  = shift || $self->last_auth_data;
+    die "Can't generate a token off of a failed auth" if ! $data;
+    if ($data->{'use_plaintext'} || $data->{'type'} eq 'plaintext_crypt') {
+        return $data->{'user'} .'/'. $data->{'real_pass'};
+
+    } elsif ($data->{'type'} eq 'secure_hash_cram') {
+        die "Unsupported type $data->{type}";
+
+    } else { # cram, plaintext_plaintext, md5_plaintext, plaintext_md5, md5_md5
+        my $real = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
+        my $str  = join("/", $data->{'user'}, $self->server_time, $data->{'expires_min'}, $data->{'payload'});
+        my $sum  = md5_hex($str .'/'. $real);
         return $str .'/'. $sum;
-    } else {
-        die "Unsupported type $token->{type}";
     }
 }
 
@@ -398,6 +455,15 @@ sub get_pass_by_user {
     }
 
     die "Please override get_pass_by_user";
+}
+
+sub verify_payload {
+    my $self    = shift;
+    my $payload = shift;
+    if (my $meth = $self->{'verify_payload'}) {
+        return $self->$meth($payload);
+    }
+    return 1;
 }
 
 ###----------------------------------------------------------------###
@@ -474,6 +540,42 @@ sub login_script {
 
 ###----------------------------------------------------------------###
 
+package CGI::Ex::Auth::Data;
+
+use strict;
+use overload
+    'bool'   => sub { ! shift->error },
+    '0+'     => sub { 1 },
+    '""'     => sub { shift->as_string },
+    fallback => 1;
+
+sub new {
+    my ($class, $args) = @_;
+    return bless {%{ $args || {} }}, $class;
+}
+
+sub add_data {
+    my $self = shift;
+    my $args = @_ == 1 ? shift : {@_};
+    @{ $self }{keys %$args} = values %$args;
+}
+
+sub error {
+    my $self = shift;
+    if (@_ == 1) {
+        $self->{'error'} = shift;
+        $self->{'error_caller'} = [caller];
+    }
+    return $self->{'error'};
+}
+
+sub as_string {
+    my $self = shift;
+    return $self->error || ($self->{'user'} && $self->{'type'}) ? "Valid auth data" : "Unverified auth data";
+}
+
+###----------------------------------------------------------------###
+
 1;
 
 __END__
@@ -481,17 +583,16 @@ __END__
 =head1 SYNOPSIS
 
   ### authorize the user
-  my $auth = $self->auth({
-    hook_get_pass_by_user => \&get_pass_by_user,
+  my $auth = $self->get_valid_auth({
+    get_pass_by_user => \&get_pass_by_user,
   });
 
 
   sub get_pass_by_user {
     my $auth = shift;
-    my $username = shift;
-    my $host = shift;
-    my $password = some_way_of_getting_password;
-    return $password;
+    my $user = shift;
+    my $pass = some_way_of_getting_password($user);
+    return $pass;
   }
 
   sub my_print {
@@ -546,7 +647,7 @@ Called automatically near the end of new.
 =item C<require_auth>
 
 Performs the core logic.  Returns true on successful login.
-Returns false on failed login.  If a false value is returned,
+Returns false on errored login.  If a false value is returned,
 execution of the CGI should be halted.  require_auth WILL
 NOT automatically stop execution.
 
@@ -554,7 +655,7 @@ NOT automatically stop execution.
 
 =item C<print_login_page>
 
-Called if login failed.  Defaults to printing a very basic page
+Called if login errored.  Defaults to printing a very basic page
 loaded from login_template.  The basic login template can be updated.
 
 You will want to override it with a template from your own system.
@@ -621,10 +722,9 @@ Called by verify_userpass.  Arguments are the username, cookie or info to be tes
 and the hostname.  Default method calls hook_get_pass_by_user to get the real password.
 Then based upon how the real password is stored (sha1, md5, plaintext, or crypted) and
 how the login info was passed from the html form (or javascript), will attempt to compare
-the two and return success or failure.  It should be noted that if the javascript method
+the two and return success or errorure.  It should be noted that if the javascript method
 used is SHA1 and the password is stored crypted or md5'ed - the comparison will not work
-and the login will fail.  SHA1 logins require either plaintext password or sha1 stored passwords.
-MD5 logins require either plaintext password or md5 stored passwords.  Plaintext logins
+and the login will fail.  MD5 logins require either plaintext password or md5 stored passwords.  Plaintext logins
 allow for SHA1 or MD5 or crypted or plaintext storage - but should be discouraged because
 they are plaintext and the users password can be discovered.
 
