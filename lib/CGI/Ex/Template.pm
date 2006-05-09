@@ -2521,7 +2521,7 @@ sub process_simple {
         delete $self->{'_debug_off'};
         delete $self->{'_debug_format'};
         local $self->{'_start_top_level'} = 1;
-        $self->_process($in, $swap, \$out);
+        $self->_process($in, $swap, $out);
     };
     if (my $err = $@) {
         if ($err->type !~ /stop|return|next|last|break/) {
