@@ -1,7 +1,13 @@
 #!/usr/bin/perl -w
 
+=head1 NAME
+
+cgi_ex_1.cgi - Show a basic example using some of the CGI::Ex tools
+
+=cut
+
 if (__FILE__ eq $0) {
-  &handler();
+  handler();
 }
 
 ###----------------------------------------------------------------###
@@ -9,14 +15,13 @@ if (__FILE__ eq $0) {
 use strict;
 use CGI::Ex;
 use CGI::Ex::Validate ();
-use CGI::Ex::Fill ();
 use CGI::Ex::Dump qw(debug);
 
 ###----------------------------------------------------------------###
 
 sub handler {
-  my $cgix = CGI::Ex->new();
-  my $vob  = CGI::Ex::Validate->new();
+  my $cgix = CGI::Ex->new;
+  my $vob  = CGI::Ex::Validate->new;
   my $form = $cgix->get_form();
 
   ### allow for js validation libraries
@@ -25,7 +30,7 @@ sub handler {
   my $info = $ENV{PATH_INFO} || '';
   if ($info =~ m|^(/\w+)+.js$|) {
     $info =~ s|^/+||;
-    CGI::Ex->new->print_js($info);
+    $cgix->print_js($info);
     return;
   }
 
@@ -35,14 +40,14 @@ sub handler {
 
   ### check for errors - if they have submitted information
   my $has_info = ($form->{processing}) ? 1 : 0;
-  my $errob = $has_info ? $vob->validate($form, &validation_hash()) : undef;
+  my $errob = $has_info ? $vob->validate($form, validation_hash()) : undef;
   my $form_name = 'formfoo';
 
   ### failed validation - send out the template
   if (! $has_info || $errob) {
 
     ### get a template and swap defaults
-    my $swap = &defaults_hash();
+    my $swap = defaults_hash();
 
     ### add errors to the swap (if any)
     if ($errob) {
@@ -53,27 +58,27 @@ sub handler {
 
     ### get js validation ready
     $swap->{'form_name'} = $form_name;
-    $swap->{'js_val'} = $vob->generate_js(&validation_hash(), # filename or valhash
+    $swap->{'js_val'} = $vob->generate_js(validation_hash(), # filename or valhash
                                           $form_name,         # name of form
                                           $ENV{SCRIPT_NAME}); # browser path to cgi that calls print_js
 
     ### swap in defaults, errors and js_validation
-    my $content = $cgix->swap_template(&get_content_form(), $swap);
+    my $content = $cgix->swap_template(get_content_form(), $swap);
 
     ### fill form fields
     $cgix->fill(\$content, $form);
     #debug $content;
 
     ### print it out
-    &CGI::Ex::print_content_type();
+    $cgix->print_content_type();
     print $content;
     return;
   }
 
 
   ### show some sort of success if there were no errors
-  &CGI::Ex::print_content_type();
-  my $content = $cgix->swap_template(&get_content_success(), &defaults_hash());
+  $cgix->print_content_type;
+  my $content = $cgix->swap_template(get_content_success(), defaults_hash());
   print $content;
   return;
 
