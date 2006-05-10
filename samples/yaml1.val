@@ -1,5 +1,3 @@
-### this file is very simplistic
-### but it shows how easy the file can be
 user:
   required: 1
 foo:

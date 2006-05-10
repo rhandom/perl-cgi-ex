@@ -1,7 +1,3 @@
-### this file is the same as yaml2.val
-### except that the groups are separated as documents rather than as
-### an arrayref
-
 ---
 group validate_if: foo
 bar:
