@@ -1,9 +1,13 @@
 # -*- Mode: Perl; -*-
 
-use Test;
-use strict;
+=head1 NAME
 
-BEGIN {plan tests => 3};
+4_app_01_runthrought.t - Check for the functionality of the various tests
+
+=cut
+
+use Test::More tests => 3;
+use strict;
 
 {
   package Foo;

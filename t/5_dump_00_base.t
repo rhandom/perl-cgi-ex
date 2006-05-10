@@ -1,9 +1,12 @@
 # -*- Mode: Perl; -*-
 
-use Test;
+=head1 NAME
 
-BEGIN {plan tests => 1};
+5_dump_00_base.t - Very basic testing of CGI::Ex::Dump.
 
-use CGI::Ex::Dump ();
-ok(1);
+=cut;
+
+use Test::More tests => 1;
+
+use_ok('CGI::Ex::Dump');
 
