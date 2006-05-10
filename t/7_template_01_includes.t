@@ -1,5 +1,11 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+7_template_01_includes.t - Test the file include functionality of CGI::Ex::Template - including some edge cases
+
+=cut
+
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template';

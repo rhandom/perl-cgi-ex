@@ -1,5 +1,11 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+7_template_00_base.t - Test the basic language functionality of CGI::Ex::Template - including many edge cases
+
+=cut
+
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template'; #real    0m1.243s #user    0m0.695s #sys     0m0.018s

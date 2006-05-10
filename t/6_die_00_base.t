@@ -1,11 +1,8 @@
 # -*- Mode: Perl; -*-
 
-use Test;
+use Test::More tests => 2;
 
-BEGIN {plan tests => 2};
-
-use CGI::Ex::Die;
-ok(1);
+use_ok('CGI::Ex::Die');
 
 ok(eval {
   import CGI::Ex::Die register => 1;
