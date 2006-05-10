@@ -1,39 +1,30 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+2_fill_05_textarea.t - Test CGI::Ex::Fill's ability to fill textarea fields
+
+=cut
+
 use strict;
+use Test::More tests => 3;
 
-$^W = 1;
-
-print "1..3\n";
-
-use CGI::Ex;
-
-print "ok 1\n";
+use_ok('CGI::Ex::Fill');
 
 my $hidden_form_in = qq{<TEXTAREA NAME="foo">blah</TEXTAREA>};
 
 my %fdat = (foo => 'bar>bar');
 
-my $fif = new CGI::Ex;
-my $output = $fif->fill(scalarref => \$hidden_form_in,
-			fdat => \%fdat);
-if ($output eq '<TEXTAREA NAME="foo">bar&gt;bar</TEXTAREA>'){
-	print "ok 2\n";
-} else {
-	print "Got unexpected out for $hidden_form_in:\n$output\n";
-	print "not ok 2\n";
-}
+my $output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                      \%fdat);
+ok($output eq '<TEXTAREA NAME="foo">bar&gt;bar</TEXTAREA>',
+   "Output should match ($output)");
 
 # empty fdat test
 
 %fdat = (foo => '');
 
-$fif = new CGI::Ex;
-$output = $fif->fill(scalarref => \$hidden_form_in,
-			fdat => \%fdat);
-if ($output eq '<TEXTAREA NAME="foo"></TEXTAREA>'){
-	print "ok 3\n";
-} else {
-	print "Got unexpected out for $hidden_form_in:\n$output\n";
-	print "not ok 3\n";
-}
+$output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                   \%fdat);
+ok($output eq '<TEXTAREA NAME="foo"></TEXTAREA>',
+   "Output should match ($output)");
