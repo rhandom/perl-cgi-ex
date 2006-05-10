@@ -1,10 +1,15 @@
 # -*- Mode: Perl; -*-
 
-use strict;
-use Test;
-BEGIN { plan tests => 3 }
+=head1 NAME
 
-use CGI::Ex;
+2_fill_11_target.t - Test CGI::Ex::Fill's ability to fill hidden fields
+
+=cut
+
+use strict;
+use Test::More tests => 4;
+
+use_ok('CGI::Ex::Fill');
 
 my $form = <<EOF;
 <FORM name="foo1">
@@ -18,21 +23,16 @@ my $form = <<EOF;
 </FORM>
 EOF
   ;
-  
+
 my %fdat = (
   foo1 => 'bar1',
   foo2 => 'bar2',
   foo3 => 'bar3',
 );
 
-my $fif = new CGI::Ex;
-my $output = $fif->fill(
-  scalarref => \$form,
-  fdat => \%fdat,
-  target => 'foo2',
-);
+my $output = CGI::Ex::Fill::form_fill($form, \%fdat, 'foo2');
 
 my @v = $output =~ m/<input .*?value="(.*?)"/ig;
-ok($v[0], 'nada');
-ok($v[1], 'bar2');
-ok($v[2], 'nada');
+ok($v[0] eq 'nada');
+ok($v[1] eq 'bar2');
+ok($v[2] eq 'nada');
