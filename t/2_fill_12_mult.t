@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 3;
+use Test::More tests => 4;
 
 use_ok('CGI::Ex::Fill');
 
@@ -29,3 +29,9 @@ $output = CGI::Ex::Fill::form_fill($hidden_form_in,
 ok($output =~ m/^<input( (type="TEXT"|name="foo1"|value="bar1")){3}>\s*<input( (type="text"|name="foo1"|value="")){3}\s*\/>$/i,
    "Should match ($output)");
 
+%fdat = (foo1 => 'bar1');
+
+$output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                   \%fdat);
+ok($output =~ m/^<input( (type="TEXT"|name="foo1"|value="bar1")){3}>\s*<input( (type="text"|name="foo1"|value="bar1")){3}\s*\/>$/i,
+   "Should match ($output)");
