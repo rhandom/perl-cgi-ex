@@ -1,6 +1,13 @@
 # -*- Mode: Perl; -*-
 
-use Test::More tests => 12;
+=head1 NAME
+
+3_conf_01_write.t - Test CGI::Ex::Conf's ability to write and read the various file types.
+
+=cut
+
+use strict;
+use Test::More tests => 18;
 
 use_ok('CGI::Ex::Conf');
 
@@ -27,18 +34,8 @@ my $hash = {
     bar => 'Bar',
   },
 };
-
-my $file = $tmpfile .'.yaml';
-ok( eval { $obj->write_ref($file, $hash) } );
-my $in = $obj->read_ref($file);
-ok($in->{'three'}->{'foo'} eq 'Foo');
-unlink $file;
-
-$file = $tmpfile .'.sto';
-ok( eval { $obj->write_ref($file, $hash) } );
-$in = $obj->read_ref($file);
-ok($in->{'three'}->{'foo'} eq 'Foo');
-unlink $file;
+my $file;
+my $in;
 
 $file = $tmpfile .'.pl';
 ok( eval { $obj->write_ref($file, $hash) } );
@@ -46,23 +43,59 @@ $in = $obj->read_ref($file);
 ok($in->{'three'}->{'foo'} eq 'Foo');
 unlink $file;
 
-#$file = $tmpfile .'.xml';
-#ok( eval { $obj->write_ref($file, $hash) } );
-#$in = $obj->read_ref($file);
-#ok($in->{'three'}->{'foo'} eq 'Foo');
-#unlink $file;
-#
-#### ini likes hash O' hashes
-#$hash->{'one'} = {};
-#$hash->{'two'} = {};
-#$file = $tmpfile .'.ini';
-#ok( eval { $obj->write_ref($file, $hash) } );
-#$in = $obj->read_ref($file);
-#ok($in->{'three'}->{'foo'} eq 'Foo');
-#unlink $file;
+SKIP: {
+    skip("YAML.pm not found", 2) if ! eval { require YAML };
+    my $file = $tmpfile .'.yaml';
+    ok( eval { $obj->write_ref($file, $hash) } );
+    my $in = $obj->read_ref($file);
+    ok($in->{'three'}->{'foo'} eq 'Foo');
+    unlink $file;
+};
 
-ok (eval { $obj->write('FooSpace', $hash) });
-ok (unlink $obj->{'paths'}->[1] . '/FooSpace.conf');
+SKIP: {
+    skip("JSON.pm not found", 2) if ! eval { require JSON };
+    my $file = $tmpfile .'.json';
+    ok( eval { $obj->write_ref($file, $hash) } );
+    my $in = $obj->read_ref($file);
+    ok($in->{'three'}->{'foo'} eq 'Foo');
+    unlink $file;
+};
 
-ok (eval { $obj->write('FooSpace', $hash, {directive => 'FIRST'}) });
-ok (unlink $obj->{'paths'}->[0] . '/FooSpace.conf');
+SKIP: {
+    skip("Storable.pm not found", 2) if ! eval { require Storable };
+    $file = $tmpfile .'.sto';
+    ok( eval { $obj->write_ref($file, $hash) } );
+    $in = $obj->read_ref($file);
+    ok($in->{'three'}->{'foo'} eq 'Foo');
+    unlink $file;
+};
+
+SKIP: {
+    skip("XML::Simple not found", 2) if ! eval { require XML::Simple };
+    $file = $tmpfile .'.xml';
+    ok( eval { $obj->write_ref($file, $hash) } );
+    $in = $obj->read_ref($file);
+    ok($in->{'three'}->{'foo'} eq 'Foo');
+    unlink $file;
+};
+
+SKIP: {
+    skip("Config::IniHash not found", 2) if ! eval { require Conifg::IniHash };
+    ### ini likes hash O' hashes
+    $hash->{'one'} = {};
+    $hash->{'two'} = {};
+    $file = $tmpfile .'.ini';
+    ok( eval { $obj->write_ref($file, $hash) } );
+    $in = $obj->read_ref($file);
+    ok($in->{'three'}->{'foo'} eq 'Foo');
+    unlink $file;
+};
+
+SKIP: {
+    skip('YAML.pm still not found', 4) if ! eval { require YAML };
+    ok (eval { $obj->write('FooSpace', $hash) });
+    ok (unlink $obj->{'paths'}->[1] . '/FooSpace.conf');
+
+    ok (eval { $obj->write('FooSpace', $hash, {directive => 'FIRST'}) });
+    ok (unlink $obj->{'paths'}->[0] . '/FooSpace.conf');
+};

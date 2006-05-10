@@ -1,14 +1,15 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+2_fill_03_checkbox.t - Test CGI::Ex::Fill's ability to fill checkboxes fields
+
+=cut
+
+use Test::More tests => 2;
 use strict;
 
-$^W = 1;
-
-print "1..2\n";
-
-use CGI::Ex;
-
-print "ok 1\n";
+use_ok('CGI::Ex::Fill');
 
 my $hidden_form_in = qq{<input type="checkbox" name="foo1" value="bar1">
 <input type="checkbox" name="foo1" value="bar2">
@@ -35,15 +36,11 @@ my %fdat = (foo1 => 'bar1',
 	   foo7 => 'on',
 	   foo8 => '');
 
-my $fif = new CGI::Ex;
-my $output = $fif->fill(scalarref => \$hidden_form_in,
-                       fdat => \%fdat);
+my $output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                      \%fdat);
 
 my $is_checked = join(" ",map { m/checked/i ? "yes" : "no" } split ("\n",$output));
 
-if ($is_checked eq "yes no no yes yes no no no no no yes no yes no yes no"){
-       print "ok 2\n";
-} else {
-       print "Got unexpected is_checked for checkboxes:\n$is_checked\n";
-       print "not ok 2\n";
-}
+ok($is_checked eq "yes no no yes yes no no no no no yes no yes no yes no",
+   "Checkboxes should match ($is_checked)");
+
