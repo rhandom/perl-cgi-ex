@@ -1,5 +1,12 @@
 # -*-perl-*-
 
+=head1 NAME
+
+2_fill_00_base.t - Test CGI::Ex::Fill's base ability.
+
+=cut
+
+use strict;
 use Test::More tests => 6;
 
 use_ok qw(CGI::Ex::Fill);

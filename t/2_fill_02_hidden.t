@@ -9,8 +9,6 @@
 use strict;
 use Test::More tests => 2;
 
-local $^W = 1;
-
 use_ok('CGI::Ex::Fill');
 
 my $hidden_form_in = qq{<input type="hidden" name="foo1">
