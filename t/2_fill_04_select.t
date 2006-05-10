@@ -11,10 +11,6 @@ use Test::More tests => 5;
 
 use_ok('CGI::Ex::Fill');
 
-SKIP: {
-
-skip("CGI.pm not found", 4) if ! eval { require CGI };
-
 my $hidden_form_in = qq{<select multiple name="foo1">
 	<option value="0">bar1</option>
 	<option value="bar2">bar2</option>
@@ -35,10 +31,11 @@ my $hidden_form_in = qq{<select multiple name="foo1">
 	<option selected value="bar2">bar2</option>
 	<option value="bar3">bar3</option>
 </select>};
-my $q = CGI->new( { foo1 => '0',
-           foo2 => ['bar1', 'bar2',],
-	   foo3 => '' }
-	);
+my $q = {
+    foo1 => '0',
+    foo2 => ['bar1', 'bar2',],
+    foo3 => '',
+};
 
 my $output = CGI::Ex::Fill::form_fill($hidden_form_in,
                                       $q);
@@ -70,11 +67,11 @@ $hidden_form_in = qq{<select multiple name="foo1">
 	<option>bar3  </option>
 </select>};
 
-$q = CGI->new( {
+$q = {
     foo1 => 'bar1',
     foo2 => ['bar1', 'bar2',],
     foo3 => '',
-});
+};
 
 $output = CGI::Ex::Fill::form_fill($hidden_form_in,
                                    $q);
@@ -99,4 +96,3 @@ $output = CGI::Ex::Fill::form_fill($hidden_form_in,
 ok($output =~ m!^<select name="foo1"><option><option( selected(="selected")?| value="bar1"){2}></select>$!,
    "Should match ($output)");
 
-}; # end of SKIP
