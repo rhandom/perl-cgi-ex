@@ -2,13 +2,19 @@ package CGI::Ex::Template;
 
 =head1
 
-CGI::Ex::Template - Lightweight TT2/3 engine
+CGI::Ex::Template - Fast and lightweight TT2/3 template engine
 
 =cut
 
+###----------------------------------------------------------------###
+#  Copyright 2006 - Paul Seamons                                     #
+#  Distributed under the Perl Artistic License without warranty      #
+###----------------------------------------------------------------###
+
 use strict;
 use constant trace => $ENV{'CET_TRACE'} || 0; # enable for low level tracing
-use vars qw($TAGS
+use vars qw($VERSION
+            $TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS
             $DIRECTIVES $QR_DIRECTIVE
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_EXTRA $OP_FUNC $QR_OP $QR_OP_UNARY $QR_OP_EXTRA
@@ -20,6 +26,8 @@ use vars qw($TAGS
             );
 
 BEGIN {
+    $VERSION = '2.00';
+
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
     $PACKAGE_CONTEXT     = 'CGI::Ex::Template::_Context';
