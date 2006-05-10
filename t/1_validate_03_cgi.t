@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-1_validate_03_cgi.t - Test CGI::Ex::Validate's ability to interact with CGI.pm.
+1_validate_03_cgi.t - Test CGI::Ex::Fill's ability to interact with CGI.pm.
 
 =cut
 

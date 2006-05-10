@@ -1,30 +1,25 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+1_validate_07_yaml.t - Check for CGI::Ex::Validate's ability to use YAML.
+
+=cut
+
 use strict;
+use Test::More tests => 15;
 
-$^W = 1;
+SKIP: {
 
-### determine number of tests
-seek(DATA,0,0);
-my $prog  = join "", <DATA>;
-my @tests = ($prog =~ /&print_ok\(/g);
-my $tests = @tests;
-print "1..$tests\n";
+skip("Missing YAML.pm", 15) if ! eval { require 'YAML' };
 
-require CGI::Ex::Validate;
+use_ok('CGI::Ex::Validate');
 
-my ($N, $v, $e, $ok) = (0);
+my $N = 0;
+my $v;
+my $e;
 
-sub validate {
-  return scalar &CGI::Ex::Validate::validate(@_);
-}
-sub print_ok {
-  my $ok = shift;
-  $N ++;
-  warn "Test failed at line ".(caller)[2]."\n" if ! $ok;
-  print "" . ($ok ? "" : "not ") . "ok $N\n";
-}
-&print_ok(1);
+sub validate { scalar CGI::Ex::Validate::validate(@_) }
 
 ###----------------------------------------------------------------###
 
@@ -36,14 +31,14 @@ foo:
   required_if: bar
 ';
 
-$e = &validate({}, $v);
-&print_ok($e);
-$e = &validate({user => 1}, $v);
-&print_ok(! $e);
-$e = &validate({user => 1, bar => 1}, $v);
-&print_ok($e);
-$e = &validate({user => 1, bar => 1, foo => 1}, $v);
-&print_ok(! $e);
+$e = validate({}, $v);
+ok($e);
+$e = validate({user => 1}, $v);
+ok(! $e);
+$e = validate({user => 1, bar => 1}, $v);
+ok($e);
+$e = validate({user => 1, bar => 1, foo => 1}, $v);
+ok(! $e);
 
 
 ### three groups, some with validate_if's - using arrayref
@@ -57,43 +52,43 @@ $v = '
     required: 1
 ';
 
-$e = &validate({}, $v);
-&print_ok($e);
+$e = validate({}, $v);
+ok($e);
 
-$e = &validate({
+$e = validate({
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   haw => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
 
 ### three groups, some with validate_if's - using documents
@@ -109,42 +104,42 @@ raspberry:
   required: 1
 ';
 
-$e = &validate({}, $v);
-&print_ok($e);
+$e = validate({}, $v);
+ok($e);
 
-$e = &validate({
+$e = validate({
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   haw => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-__DATA__
+} # end of SKIP

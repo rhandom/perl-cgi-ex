@@ -1,19 +1,20 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+1_validate_05_types.t - Test CGI::Ex::Validate's ability to do multitudinous types of validate
+
+=cut
+
 use strict;
 use Test::More tests => 104;
 
-$^W = 1;
-
 use_ok('CGI::Ex::Validate');
 
-my $N = 0;
 my $v;
 my $e;
 
-sub validate {
-  return scalar &CGI::Ex::Validate::validate(@_);
-}
+sub validate { scalar &CGI::Ex::Validate::validate(@_) }
 
 ### required
 $v = {foo => {required => 1}};

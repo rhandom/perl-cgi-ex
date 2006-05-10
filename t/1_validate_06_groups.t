@@ -1,30 +1,19 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+1_validate_06_groups.t - Test CGI::Ex::Validate's ability to use groups of validation
+
+=cut
+
 use strict;
+use Test::More tests => 7;
 
-$^W = 1;
+use_ok('CGI::Ex::Validate');
 
-### determine number of tests
-seek(DATA,0,0);
-my $prog  = join "", <DATA>;
-my @tests = ($prog =~ /&print_ok\(/g);
-my $tests = @tests;
-print "1..$tests\n";
+my ($v, $e);
 
-require CGI::Ex::Validate;
-
-my ($N, $v, $e, $ok) = (0);
-
-sub validate {
-  return scalar &CGI::Ex::Validate::validate(@_);
-}
-sub print_ok {
-  my $ok = shift;
-  $N ++;
-  warn "Test failed at line ".(caller)[2]."\n" if ! $ok;
-  print "" . ($ok ? "" : "not ") . "ok $N\n";
-}
-&print_ok(1);
+sub validate { scalar CGI::Ex::Validate::validate(@_) }
 
 ###----------------------------------------------------------------###
 
@@ -41,42 +30,41 @@ $v = [{
   raspberry => {required => 1},
 }];
 
-$e = &validate({}, $v);
-&print_ok($e);
+$e = validate({}, $v);
+ok($e);
 
-$e = &validate({
+$e = validate({
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   haw => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-__DATA__
