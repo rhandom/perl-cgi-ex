@@ -7,7 +7,7 @@ CGI::Ex::Fill - Regex based form filler
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2005 - Paul Seamons                                     #
+#  Copyright 2006 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -26,7 +26,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION   = '1.4';
+    $VERSION   = '2.0';
     @EXPORT    = qw(form_fill);
     @EXPORT_OK = qw(form_fill html_escape get_tagval_by_key swap_tagval_by_key);
 };
@@ -432,25 +432,27 @@ __END__
 
 =head1 DESCRIPTION
 
-form_fill is directly comparable to HTML::FillInForm.  It will pass the
-same suite of tests (actually - it is a little bit kinder on the parse as
-it won't change case, reorder your attributes, or alter miscellaneous spaces
-and it won't require the HTML to be well formed).
+form_fill is directly comparable to HTML::FillInForm.  It will pass
+the same suite of tests (actually - it is a little bit kinder on the
+parse as it won't change case, reorder your attributes, or alter
+miscellaneous spaces and it won't require the HTML to be well formed).
 
-HTML::FillInForm is based upon HTML::Parser while CGI::Ex::Fill is purely regex
-driven.  The performance of CGI::Ex::Fill will be better on HTML with
-many markup tags because HTML::Parser will parse each tag while CGI::Ex::Fill will
-search only for those tags it knows how to handle.
+HTML::FillInForm is based upon HTML::Parser while CGI::Ex::Fill is
+purely regex driven.  The performance of CGI::Ex::Fill will be better
+on HTML with many markup tags because HTML::Parser will parse each tag
+while CGI::Ex::Fill will search only for those tags it knows how to
+handle.
 
-On tiny forms (< 1 k) form_fill was ~ 13% slower than FillInForm.
-If the html document incorporated very many entities at all, the
-performace of FillInForm goes down (adding 360 <br> tags pushed form_fill to
-~ 350% faster).  However, if you are only filling in one form every so often,
-then it shouldn't matter which you use - but form_fill
-will be nicer on the tags and won't balk at ugly html and will decrease performance
-only at a slow rate as the size of the html increases.
-See the benchmarks in the t/samples/bench_cgix_hfif.pl file for more information (ALL
-BENCHMARKS SHOULD BE TAKEN WITH A GRAIN OF SALT).
+On tiny forms (< 1 k) form_fill was ~ 13% slower than FillInForm.  If
+the html document incorporated very many entities at all, the
+performace of FillInForm goes down (adding 360 <br> tags pushed
+form_fill to ~ 350% faster).  However, if you are only filling in one
+form every so often, then it shouldn't matter which you use - but
+form_fill will be nicer on the tags and won't balk at ugly html and
+will decrease performance only at a slow rate as the size of the html
+increases.  See the benchmarks in the t/samples/bench_cgix_hfif.pl
+file for more information (ALL BENCHMARKS SHOULD BE TAKEN WITH A GRAIN
+OF SALT).
 
 =head1 ARGUMENTS
 
@@ -460,27 +462,28 @@ The following are the arguments to the main function C<form_fill>.
 
 =item C<\$html>
 
-A referrence to an html string that includes one or more forms or form entities.
+A referrence to an html string that includes one or more forms or form
+entities.
 
 =item C<\%FORM>
 
-A form hash, or CGI query object, or an arrayref of multiple hash refs and/or
-CGI query objects that will supply values for the form.
+A form hash, or CGI query object, or an arrayref of multiple hash refs
+and/or CGI query objects that will supply values for the form.
 
 =item C<$form_name>
 
-The name of the form to fill in values for.  The default is undef which indicates
-that all forms are to be filled in.
+The name of the form to fill in values for.  The default is undef
+which indicates that all forms are to be filled in.
 
 =item C<$swap_pass>
 
-Default true.  Indicates that C<<lt>input type="password"<gt>> fields are to
-be swapped as well.  Set to false to disable this behavior.
+Default true.  Indicates that C<<lt>input type="password"<gt>> fields
+are to be swapped as well.  Set to false to disable this behavior.
 
 =item C<\%IGNORE_FIELDS> OR C<\@IGNORE_FIELDS>
 
-A hash ref of key names or an array ref of key names that will be ignored during
-the fill in of the form.
+A hash ref of key names or an array ref of key names that will be
+ignored during the fill in of the form.
 
 =back
 
