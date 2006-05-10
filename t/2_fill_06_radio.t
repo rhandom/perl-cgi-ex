@@ -1,14 +1,15 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+2_fill_06_radio.t - Test CGI::Ex::Fill's ability to fill radio fields
+
+=cut
+
 use strict;
+use Test::More tests => 2;
 
-$^W = 1;
-
-print "1..2\n";
-
-use CGI::Ex;
-
-print "ok 1\n";
+use_ok('CGI::Ex::Fill');
 
 my $hidden_form_in = qq{<INPUT TYPE="radio" NAME="foo1" value="bar1">
 <input type="radio" name="foo1" value="bar2">
@@ -17,13 +18,8 @@ my $hidden_form_in = qq{<INPUT TYPE="radio" NAME="foo1" value="bar1">
 
 my %fdat = (foo1 => 'bar2');
 
-my $fif = new CGI::Ex;
-my $output = $fif->fill(scalarref => \$hidden_form_in,
-			fdat => \%fdat);
+my $output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                      \%fdat);
 my $is_checked = join(" ",map { m/checked/ ? "yes" : "no" } split ("\n",$output));
-if ($is_checked eq 'no yes no no'){
-	print "ok 2\n";
-} else {
-	print "Got unexpected is_checked:\n$is_checked\n";
-	print "not ok 2\n";
-}
+ok($is_checked eq 'no yes no no',
+   "Should match ($is_checked)");

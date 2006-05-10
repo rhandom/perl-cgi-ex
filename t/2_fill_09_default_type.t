@@ -1,14 +1,16 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+2_fill_09_default_type.t - Test CGI::Ex::Fill's ability to set default falues
+
+=cut
+
 use strict;
+use Test::More tests => 2;
 
-$^W = 1;
+use_ok('CGI::Ex::Fill');
 
-print "1..2\n";
-
-use CGI::Ex;
-
-print "ok 1\n";
 
 my $hidden_form_in = qq{<INPUT NAME="foo1" value="nada">
 <input type="hidden" name="foo2">};
@@ -16,12 +18,7 @@ my $hidden_form_in = qq{<INPUT NAME="foo1" value="nada">
 my %fdat = (foo1 => 'bar1',
 	foo2 => 'bar2');
 
-my $fif = new CGI::Ex;
-my $output = $fif->fill(scalarref => \$hidden_form_in,
-			fdat => \%fdat);
-if ($output =~ m/^<input( (name="foo1"|value="bar1")){2}>\s*<input( (type="hidden"|name="foo2"|value="bar2")){3}>$/i){
-	print "ok 2\n";
-} else {
-	print "Got unexpected out for $hidden_form_in:\n$output\n";
-	print "not ok 2\n";
-}
+my $output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                      \%fdat);
+ok($output =~ m/^<input( (name="foo1"|value="bar1")){2}>\s*<input( (type="hidden"|name="foo2"|value="bar2")){3}>$/i,
+   "Should match ($output)");

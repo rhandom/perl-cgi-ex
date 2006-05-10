@@ -1,10 +1,16 @@
 # -*- Mode: Perl; -*-
 
-use strict;
+=head1 NAME
 
-print "1..1\n";
-use CGI::Ex;
- 
+2_fill_10_escape.t - Make sure CGI::Ex::Fill works with escaped values.
+
+=cut
+
+use strict;
+use Test::More tests => 2;
+
+use_ok('CGI::Ex::Fill');
+
 my $html =<<"__HTML__";
 <HTML>
 <BODY>
@@ -29,15 +35,12 @@ __HTML__
 
 my %fdat = ();
 
-my $fif = CGI::Ex->new;
-my $output = $fif->fill(scalarref => \$html,
-			fdat => \%fdat);
+my $output = CGI::Ex::Fill::form_fill($html,
+                                      \%fdat);
 
 # FIF changes order of HTML attributes, so split strings and sort
 my $strings_output = join("\n", sort split(/[\s><]+/, lc($output)));
 my $strings_html = join("\n", sort split(/[\s><]+/, lc($html)));
 
-unless ($strings_output eq $strings_html){
-	print "not ";
-}
-print "ok 1";
+ok($strings_output eq $strings_html,
+   "Strings matched");
