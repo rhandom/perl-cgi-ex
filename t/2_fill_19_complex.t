@@ -1,14 +1,15 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+2_fill_19_complex.t - Test CGI::Ex::Fill's regex against difficult tags (with embeded html)
+
+=cut
+
 use strict;
+use Test::More tests => 2;
 
-$^W = 1;
-
-print "1..2\n";
-
-use CGI::Ex;
-
-print "ok 1\n";
+use_ok('CGI::Ex::Fill');
 
 my $string = qq{
 <input attr="<br value='waw'>
@@ -18,13 +19,9 @@ my $string = qq{
 my %fdat = (foo1 => 'bar1');
 
 
-my $cgix = new CGI::Ex;
-$cgix->fill(text => \$string,
-            form => \%fdat,
-            );
+CGI::Ex::Fill::form_fill(\$string,
+                         \%fdat,
+                         );
 
-if ($string =~ m/ value="bar1"/) {
-  print "ok 2\n";
-} else {
-  print "not ok 2\n";
-}
+ok($string =~ m/ value="bar1"/,
+   "Should match ($string)");

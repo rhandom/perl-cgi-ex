@@ -1,39 +1,25 @@
 # -*- Mode: Perl; -*-
 
-#!/usr/bin/perl -w
+=head1 NAME
 
-use CGI qw(:no_debug);
-use CGI::Ex;
-use Test;
+2_fill_13_password.t - Test CGI::Ex::Fill's ability to not fill passwords
 
-BEGIN { plan tests => 2 }
+=cut
+
+use strict;
+use Test::More tests => 3;
+
+use_ok('CGI::Ex::Fill');
 
 local $/;
 my $html = qq{<input type="password" name="foo">};
-my $q = new CGI;
-$q->param( foo => 'bar' );
+my $q = {foo => 'bar'};
 
-{
-    my $fif = new CGI::Ex;
-    my $output = $fif->fill(
-	scalarref => \$html,
-	fobject   => $q,
-	fill_password => 0,
-    );
+my $output = CGI::Ex::Fill::form_fill($html, $q, undef, 0);
+ok($output !~ /value="bar"/);
 
-    ok($output !~ /value="bar"/);
-}
+$output = CGI::Ex::Fill::form_fill($html, $q, undef);
+ok($output =~ /value="bar"/);
 
-
-{
-    my $fif = new CGI::Ex;
-    my $output = $fif->fill(
-	scalarref => \$html,
-	fobject   => $q,
-#	fill_password => 1,
-    );
-
-    ok($output =~ /value="bar"/);
-}
 
 

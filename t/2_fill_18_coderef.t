@@ -1,14 +1,15 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+2_fill_18_coderef.t - Test CGI::Ex::Fill's ability to use coderef callbacks
+
+=cut
+
 use strict;
+use Test::More tests => 4;
 
-$^W = 1;
-
-print "1..4\n";
-
-use CGI::Ex;
-
-print "ok 1\n";
+use_ok('CGI::Ex::Fill');
 
 my $ok2 = 0;
 my $ok3 = 0;
@@ -24,16 +25,12 @@ my $cdat = sub {
   return ($key eq 'foo2') ? 'bar2' : '';
 };
 
-my $fif = new CGI::Ex;
-my $output = $fif->fill(scalarref => \$hidden_form_in,
-			fdat => [\%fdat, $cdat]);
+my $output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                      [\%fdat, $cdat]);
 
-print "" . ($ok2 ? "" : "not ") . "ok 2\n";
-print "" . ($ok3 ? "" : "not ") . "ok 3\n";
+ok($ok2);
+ok($ok3);
 
-if ($output =~ m/^<input( (type="hidden"|name="foo1"|value="bar1")){3}>\s*<input( (type="hidden"|name="foo2"|value="bar2")){3}>$/){
-  print "ok 4\n";
-} else {
-  print "Got unexpected out for hidden form:\n$output\n";
-  print "not ok 4\n";
-}
+ok($output =~ m/^<input( (type="hidden"|name="foo1"|value="bar1")){3}>\s*<input( (type="hidden"|name="foo2"|value="bar2")){3}>$/,
+   "Should match ($output)");
+

@@ -1,13 +1,15 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+2_fill_17_xhtml.t - Test CGI::Ex::Fill's ability to play nice with XHTML
+
+=cut
+
 use strict;
+use Test::More tests => 2;
 
-$^W = 1;
-
-print "1..1\n";
-
-use CGI::Ex;
-use CGI;
+use_ok('CGI::Ex::Fill');
 
 my $html = <<EOF;
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
@@ -25,25 +27,16 @@ my $html = <<EOF;
 </html>
 EOF
 
-my $q = CGI->new;
-$q->param('status', 1 );
+my $q = {
+    status => 1,
+};
 
-my $fif = CGI::Ex->new;
-
-my $output = $fif->fill(
-    scalarref => \$html,
-    fobject => $q
-);
+my $output = CGI::Ex::Fill::form_fill($html, $q);
 
 my $matches;
 while ($output =~ m!( />)!g) {
   $matches++;
 }
 
-if ($matches == 6) {
-  print "ok 1\n";
-} else {
-  print "not ok 1\n";
-}
-
-print $output;
+ok($matches == 6,
+   "Had correct matches ($output)");

@@ -43,4 +43,4 @@ my $strings_output = join("\n", sort split(/[\s><]+/, lc($output)));
 my $strings_html = join("\n", sort split(/[\s><]+/, lc($html)));
 
 ok($strings_output eq $strings_html,
-   "Strings matched");
+   "Strings matched ($strings_output)");
