@@ -1,30 +1,20 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+1_validate_12_change.t - Test CGI::Ex::Validate's ability to modify form fields
+
+=cut
+
+use strict;
+use Test::More tests => 5;
 use strict;
 
-$^W = 1;
+use_ok('CGI::Ex::Validate');
+my $e;
+my $v;
+sub validate { scalar CGI::Ex::Validate::validate(@_) }
 
-### determine number of tests
-seek(DATA,0,0);
-my $prog  = join "", <DATA>;
-my @tests = ($prog =~ /&print_ok\(/g);
-my $tests = @tests;
-print "1..$tests\n";
-
-require CGI::Ex::Validate;
-
-my ($N, $v, $e, $ok) = (0);
-
-sub validate {
-  return scalar &CGI::Ex::Validate::validate(@_);
-}
-sub print_ok {
-  my $ok = shift;
-  $N ++;
-  warn "Test failed at line ".(caller)[2]."\n" if ! $ok;
-  print "" . ($ok ? "" : "not ") . "ok $N\n";
-}
-&print_ok(1);
 
 ###----------------------------------------------------------------###
 
@@ -37,10 +27,10 @@ $v = [
 },
 ];
 
-$e = &validate({
+$e = validate({
   foo => '123-456-7890',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
 
 my $form = {
@@ -55,8 +45,8 @@ $v = {
   },
 };
 
-$e = &validate($form, $v);
-&print_ok(! $e && $form->{key1} eq 'Bunch of characters');
+$e = validate($form, $v);
+ok(! $e && $form->{key1} eq 'Bunch of characters');
 
 $v = {
   key2 => {
@@ -64,8 +54,8 @@ $v = {
   },
 };
 
-$e = &validate($form, $v);
-&print_ok(! $e && $form->{key2} eq '(123) 456-7890');
+$e = validate($form, $v);
+ok(! $e && $form->{key2} eq '(123) 456-7890');
 
 
 $v = {
@@ -75,7 +65,6 @@ $v = {
   },
 };
 
-$e = &validate($form, $v);
-&print_ok($e && $form->{key2} eq '');
+$e = validate($form, $v);
+ok($e && $form->{key2} eq '');
 
-__DATA__

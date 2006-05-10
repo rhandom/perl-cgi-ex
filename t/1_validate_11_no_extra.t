@@ -1,9 +1,13 @@
 # -*- Mode: Perl; -*-
 
-use Test::More tests => 21;
-use strict;
+=head1 NAME
 
-$^W = 1;
+1_validate_11_no_extra.t - Test CGI::Ex::Validate's ability to not allow extra form fields
+
+=cut
+
+use strict;
+use Test::More tests => 21;
 
 use_ok('CGI::Ex::Validate');
 
