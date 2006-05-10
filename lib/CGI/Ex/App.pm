@@ -1,14 +1,15 @@
 package CGI::Ex::App;
 
-### CGI Extended Application
+=head1 NAME
+
+CGI::Ex::App - Anti-framework application framework.
+
+=cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2004 - Paul Seamons                                     #
+#  Copyright 2006 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
-
-### See perldoc at bottom
-
 
 use strict;
 use vars qw($VERSION
@@ -16,7 +17,7 @@ use vars qw($VERSION
             $RECURSE_LIMIT
             %CLEANUP_EXCLUDE);
 
-$VERSION = '1.14';
+$VERSION = '2.00';
 
 BEGIN {
   ### Default file locations
@@ -1038,10 +1039,6 @@ sub forbidden_file_print {
 1;
 
 __END__
-
-=head1 NAME
-
-CGI::Ex::App - Full featured (within reason) application builder.
 
 =head1 DESCRIPTION
 

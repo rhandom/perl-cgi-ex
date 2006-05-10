@@ -1,20 +1,23 @@
 package CGI::Ex::Dump;
 
-### CGI Extended Data::Dumper Extension
+=head1 NAME
+
+CGI::Ex::Dump - A debug utility
+
+=cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2004 - Paul Seamons                                     #
+#  Copyright 2006 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
-### See perldoc at bottom
-
-use vars qw(@ISA @EXPORT @EXPORT_OK
+use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION
             $CALL_LEVEL
             $ON $SUB $QR1 $QR2 $full_filename);
 use strict;
 use Exporter;
 
+$VERSION   = '2.00';
 @ISA       = qw(Exporter);
 @EXPORT    = qw(dex dex_warn dex_text dex_html ctrace dex_trace);
 @EXPORT_OK = qw(dex dex_warn dex_text dex_html ctrace dex_trace debug);
@@ -162,10 +165,6 @@ sub dex_trace {
 1;
 
 __END__
-
-=head1 NAME
-
-CGI::Ex::Dump - A debug utility
 
 =head1 SYNOPSIS
 

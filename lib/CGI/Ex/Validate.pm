@@ -1,13 +1,15 @@
 package CGI::Ex::Validate;
 
-### CGI Extended Validator
+=head1 NAME
+
+CGI::Ex::Validate - another form validator - but it does javascript in parallel
+
+=cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2004 - Paul Seamons                                     #
+#  Copyright 2006 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
-
-### See perldoc at bottom
 
 use strict;
 use vars qw($VERSION
@@ -21,7 +23,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '1.14';
+$VERSION = '2.00';
 
 $ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 $DEFAULT_EXT   = 'val';
@@ -1063,12 +1065,6 @@ sub get_error_text {
 
 __END__
 
-=head1 NAME
-
-CGI::Ex::Validate - Yet another form validator - does good javascript too
-
-$Id: Validate.pm,v 1.88 2005-12-21 19:13:34 pauls Exp $
-
 =head1 SYNOPSIS
 
   use CGI::Ex::Validate;
@@ -2054,6 +2050,11 @@ If they choose OK they will be able to try and fix the errors.  If they
 choose cancel, the form will submit anyway and will rely on the server
 to do the validation.  This is for fail safety to make sure that if the
 javascript didn't validate correctly, the user can still submit the data.
+
+=head1 THANKS
+
+Thanks to Eamon Daly for providing bug fixes for bugs in validate.js
+caused by HTML::Prototype.
 
 =head1 AUTHOR
 

@@ -2,7 +2,7 @@ package CGI::Ex::Fill;
 
 =head1 NAME
 
-CGI::Ex::Fill - Regex based form filler
+CGI::Ex::Fill - Fast but compliant regex based form filler
 
 =cut
 
@@ -10,8 +10,6 @@ CGI::Ex::Fill - Regex based form filler
 #  Copyright 2006 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
-
-### See perldoc at bottom
 
 use strict;
 use vars qw($VERSION
@@ -26,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION   = '2.0';
+    $VERSION   = '2.00';
     @EXPORT    = qw(form_fill);
     @EXPORT_OK = qw(form_fill html_escape get_tagval_by_key swap_tagval_by_key);
 };
