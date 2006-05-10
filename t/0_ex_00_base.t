@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 20;
+use Test::More tests => 63;
 
 use_ok('CGI::Ex');
 
