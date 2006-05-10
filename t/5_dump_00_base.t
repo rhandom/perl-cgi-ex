@@ -4,7 +4,7 @@
 
 5_dump_00_base.t - Very basic testing of CGI::Ex::Dump.
 
-=cut;
+=cut
 
 use Test::More tests => 1;
 
