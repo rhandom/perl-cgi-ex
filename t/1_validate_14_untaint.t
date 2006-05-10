@@ -1,12 +1,21 @@
 #!perl -T
 # -*- Mode: Perl; -*-
 
-use strict;
+=head1 NAME
 
-$^W = 1;
+1_validate_14_untaint.t - Test CGI::Ex::Validate's ability to untaint tested fields
+
+=cut
+
+use strict;
+use Test::More tests => 14;
+use FindBin qw($Bin);
+use lib ($Bin =~ /(.+)/ ? "$1/../lib" : ''); # add bin - but untaint it
 
 ### Set up taint checking
-sub is_tainted { local $^W = 0; ! eval { eval("#" . substr(join("", @_), 0, 0)); 1 } }
+sub is_tainted { local $^W = 0; ! eval { eval("#" . substr(join("", @_), 0, 0)); 1; 0 } }
+
+SKIP: {
 
 my $taint = join(",", $0, %ENV, @ARGV);
 if (! is_tainted($taint) && open(my $fh, "/dev/urandom")) {
@@ -14,8 +23,7 @@ if (! is_tainted($taint) && open(my $fh, "/dev/urandom")) {
 }
 $taint = substr($taint, 0, 0);
 if (! is_tainted($taint)) {
-  print "1..1\nok 1 # skip Couldn't get any tainted data or we aren't in taint mode\n";
-  exit;
+    skip("is_tainted doesn't appear to work", 14);
 }
 
 ### make sure tainted hash values don't bleed into other values
@@ -25,81 +33,65 @@ $form->{'bar'} = "456$taint";
 $form->{'baz'} = "789";
 if (!  is_tainted($form->{'foo'})
     || is_tainted($form->{'baz'})) {
-  # untaint checking doesn't really work
-  print "1..1\nok 1 # skip Hashes with mixed taint don't work right (older perls ?)\n";
-  exit;
+    # untaint checking doesn't really work
+    skip("Hashes with mixed taint don't work right (older perls ?)", 14);
 }
 
 ###----------------------------------------------------------------###
 ### Looks good - here we go
 
-### determine number of tests
-seek(DATA,0,0);
-my $prog  = join "", <DATA>;
-my @tests = ($prog =~ /print_ok\(/g);
-my $tests = @tests;
-print "1..$tests\n";
+use_ok('CGI::Ex::Validate');
 
-require CGI::Ex::Validate;
+my $e;
 
-my ($N, $v, $e, $ok) = (0);
+ok(is_tainted($taint));
+ok(is_tainted($form->{'foo'}));
+ok(! is_tainted($form->{'baz'}));
+ok(! is_tainted($form->{'non_existent_key'}));
 
+sub validate { scalar CGI::Ex::Validate::validate(@_) }
 
-print_ok(is_tainted($taint));
-print_ok(is_tainted($form->{'foo'}));
-print_ok(! is_tainted($form->{'baz'}));
-print_ok(! is_tainted($form->{'non_existent_key'}));
-
-sub validate {
-  return scalar &CGI::Ex::Validate::validate(@_);
-}
-sub print_ok {
-  my $ok = shift;
-  $N ++;
-  warn "Test failed at line ".(caller)[2]."\n" if ! $ok;
-  print "" . ($ok ? "" : "not ") . "ok $N\n";
-}
-&print_ok(1);
 
 ###----------------------------------------------------------------###
 
-$e = &validate($form, {
+$e = validate($form, {
   foo => {
     match   => 'm/^\d+$/',
     untaint => 1,
   },
 });
 
-print_ok(! $e);
-print_ok(! is_tainted($form->{foo}));
+ok(! $e);
+ok(! is_tainted($form->{foo}));
 
 ###----------------------------------------------------------------###
 
-$e = &validate($form, {
+$e = validate($form, {
   bar => {
     match   => 'm/^\d+$/',
   },
 });
 
-print_ok(! $e);
-print_ok(is_tainted($form->{bar}));
+ok(! $e);
+ok(is_tainted($form->{bar}));
 
 ###----------------------------------------------------------------###
 
-$e = &validate($form, {
+$e = validate($form, {
   bar => {
     untaint => 1,
   },
 });
 
-print_ok($e);
+ok($e);
 #print $e if $e;
-print_ok(is_tainted($form->{bar}));
+ok(is_tainted($form->{bar}));
 
 ###----------------------------------------------------------------###
 
-print_ok(!is_tainted($form->{foo}));
-print_ok( is_tainted($form->{bar}));
-print_ok(!is_tainted($form->{baz}));
+ok(!is_tainted($form->{foo}));
+ok( is_tainted($form->{bar}));
+ok(!is_tainted($form->{baz}));
 
-__DATA__
+}
+
