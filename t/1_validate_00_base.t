@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 2;
+use Test::More tests => 3;
 
 use_ok('CGI::Ex::Validate');
 
@@ -26,3 +26,14 @@ my $val = {
 
 my $err_obj = CGI::Ex::Validate::validate($form, $val);
 ok(! $err_obj, "Basic function works");
+
+###----------------------------------------------------------------###
+
+$form = {
+  user => 'abc',
+#  pass => '123',
+};
+
+$err_obj = CGI::Ex::Validate::validate($form,$val);
+
+ok($err_obj, "Successfully failed");

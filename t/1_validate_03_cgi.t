@@ -1,34 +1,41 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+1_validate_03_cgi.t - Test CGI::Ex::Validate's ability to interact with CGI.pm.
+
+=cut
+
 use strict;
+use Test::More tests => 3;
 
-$^W = 1;
+use_ok('CGI::Ex::Validate');
 
-print "1..2\n";
+SKIP: {
+    skip("CGI.pm not installed", 2) if ! eval { require CGI };
 
-use CGI::Ex;
-use CGI;
+    my $form = CGI->new({
+        user => 'abc',
+        pass => '123',
+    });
+    my $val = {
+        user => {
+            required => 1,
+        },
+        pass => {
+            required => 1,
+        },
+    };
 
-print "ok 1\n";
+    my $err_obj = CGI::Ex::Validate::validate($form,$val);
+    ok(! $err_obj, "Correctly didn't get an error object");
 
-my $form = CGI->new({
-  user => 'abc',
-  pass => '123',
-});
-my $val = {
-  user => {
-    required => 1,
-  },
-  pass => {
-    required => 1,
-  },
-};
+    $form = CGI->new({
+        user => 'abc',
+        #pass => '123',
+    });
 
-my $err_obj = CGI::Ex->new->validate($form,$val);
+    $err_obj = CGI::Ex::Validate::validate($form, $val);
+    ok($err_obj, "Correctly did get an error object");
 
-if (! $err_obj) {
-  print "ok 2\n";
-} else {
-  warn "$err_obj\n";
-  print "not ok 2\n";
 }
