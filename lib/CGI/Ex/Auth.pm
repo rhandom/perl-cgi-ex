@@ -271,53 +271,28 @@ sub login_hash_swap {
 
     return {
         %$form,
-        error           => ($form->{'had_form_data'}) ? "Login Failed" : "",
-        login_data      => $data,
-        key_user        => $self->key_user,
-        key_pass        => $self->key_pass,
-        key_time        => $self->key_time,
-        key_save        => $self->key_save,
-        key_payload     => $self->key_payload,
-        key_redirect    => $self->key_redirect,
-        form_name       => $self->form_name,
-        script_name     => $self->script_name,
-        path_info       => $self->path_info,
-        md5_js_path     => $self->js_path ."/CGI/Ex/md5.js",
-        use_plaintext   => $self->use_plaintext,
-        expires_min     => $self->expires_min,
-        $self->key_user => $data->{'user'} || '',
-        $self->key_pass => '', # don't allow for this to get filled into the form
-        $self->key_time => $self->server_time,
+        error              => ($form->{'had_form_data'}) ? "Login Failed" : "",
+        login_data         => $data,
+        key_user           => $self->key_user,
+        key_pass           => $self->key_pass,
+        key_time           => $self->key_time,
+        key_save           => $self->key_save,
+        key_payload        => $self->key_payload,
+        key_redirect       => $self->key_redirect,
+        form_name          => $self->form_name,
+        script_name        => $self->script_name,
+        path_info          => $self->path_info,
+        md5_js_path        => $self->js_path ."/CGI/Ex/md5.js",
+        use_plaintext      => $self->use_plaintext,
+        expires_min        => $self->expires_min,
+        $self->key_user    => $data->{'user'} || '',
+        $self->key_pass    => '', # don't allow for this to get filled into the form
+        $self->key_time    => $self->server_time,
+        $self->key_payload => defined($data->{'payload'}) ? $data->{'payload'} : '',
     };
 }
 
 ###----------------------------------------------------------------###
-
-sub hook_success {
-  my $self = shift;
-  my $user = shift;
-  $self->{'user'} = $ENV{'REMOTE_USER'} = $user;
-
-  if (my $meth = $self->{'hook_success'}) {
-    $self->$meth($user);
-  }
-
-  return 1;
-}
-
-sub user {
-  my $self = shift;
-  return $self->{'user'};
-}
-
-###----------------------------------------------------------------###
-
-sub new_auth {
-    my $self = shift;
-    return CGI::Ex::Auth::Data->new(@_);
-}
-
-sub last_auth_data { shift->{'_last_auth_data'} }
 
 sub verify_token {
     my $self  = shift;
@@ -450,6 +425,13 @@ sub verify_token {
 
     return $data;
 }
+
+sub new_auth {
+    my $self = shift;
+    return CGI::Ex::Auth::Data->new(@_);
+}
+
+sub last_auth_data { shift->{'_last_auth_data'} }
 
 sub generate_token {
     my $self  = shift;
@@ -665,7 +647,7 @@ __END__
 
 =head1 DESCRIPTION
 
-CGI::Ex::Auth allows for auto-expiring, safe logins.  Auth uses
+CGI::Ex::Auth allows for auto-expiring, safe and easy web based logins.  Auth uses
 javascript modules that perform MD5 encoding to encode the password on
 the client side before passing them through the internet.
 
