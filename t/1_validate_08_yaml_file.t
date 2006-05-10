@@ -13,6 +13,8 @@ SKIP: {
 
 skip("Missing YAML.pm", 22) if ! eval { require 'YAML' };
 
+local $^W = 1;
+
 use_ok('CGI::Ex::Validate');
 
 my ($v, $e);
