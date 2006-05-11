@@ -41,20 +41,21 @@ sub get_valid_auth {
 
     my $form    = $self->form;
     my $cookies = $self->cookies;
+    my $key_l   = $self->key_logout;
+    my $key_c   = $self->key_cookie;
     my $has_cookies = scalar %$cookies;
 
     ### allow for logout
-    my $key_l   = $self->key_logout;
     if ($form->{$key_l}) {
-        $self->delete_cookie;
+        $self->delete_cookie({key => $key_c});;
         $self->location_bounce($self->logout_redirect);
         eval { die "Logging out" };
         return;
     }
 
     my $had_form_info;
-    foreach ([$form,    $self->key_user,   1],
-             [$cookies, $self->key_cookie, 0],
+    foreach ([$form,    $self->key_user, 1],
+             [$cookies, $key_c,          0],
              ) {
         my ($hash, $key, $is_form) = @$_;
         next if ! defined $hash->{$key};
@@ -80,10 +81,21 @@ sub get_valid_auth {
             delete $hash->{$key} if $is_form;
         }
 
-        ### generate a fresh cookie if they submitted info - or if it is a non plaintext type
-        if ($is_form
-            || (! $data->{'use_plaintext'} && $data->{'type'} ne 'crypt')) {
-            $self->set_cookie($self->generate_token($data), $data->{'expires_min'});
+        ### generate a fresh cookie if they submitted info on plaintext types
+        if ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
+            $self->set_cookie({
+                key        => $key_c,
+                val        => $self->generate_token($data),
+                no_expires => ($data->{ $self->key_save } ? 0 : 1), # make it a session cookie unless they ask for saving
+            }) if $is_form; # only set the cookie if we found info in the form - the cookie will be a session cookie after that
+
+        ### always generate a cookie on types that have expiration
+        } else {
+            $self->set_cookie({
+                key        => $key_c,
+                val        => $self->generate_token($data),
+                no_expires => 0,
+            });
         }
 
         ### successful login - if they have cookies we are done
@@ -105,7 +117,7 @@ sub get_valid_auth {
     }
 
     ### make sure the cookie is gone
-    $self->delete_cookie if $cookies->{ $self->key_cookie };
+    $self->delete_cookie({key => $key_c}) if $cookies->{$key_c};
 
     ### nothing found - see if they have cookies
     if (my $value = delete $form->{$self->key_verify}) {
@@ -131,9 +143,9 @@ sub get_valid_auth {
 
 ###----------------------------------------------------------------###
 
-sub script_name { $ENV{'SCRIPT_NAME'} || die "Missing SCRIPT_NAME" }
+sub script_name { shift->{'script_name'} || $ENV{'SCRIPT_NAME'} || die "Missing SCRIPT_NAME" }
 
-sub path_info { $ENV{'PATH_INFO'} || '' }
+sub path_info { shift->{'path_info'} || $ENV{'PATH_INFO'} || '' }
 
 sub server_time { time }
 
@@ -156,27 +168,30 @@ sub cookies {
 }
 
 sub delete_cookie {
-  my $self = shift;
-  my $key  = $self->key_cookie;
-  delete $self->cookies->{$key};
-  $self->cgix->set_cookie({
-    -name    => $key,
-    -value   => '',
-    -expires => '-10y',
-    -path    => '/',
-  });
+    my $self = shift;
+    my $args = shift;
+    my $key  = $args->{'key'};
+    $self->cgix->set_cookie({
+        -name    => $key,
+        -value   => '',
+        -expires => '-10y',
+        -path    => '/',
+    });
+    delete $self->cookies->{$key};
 }
 
 sub set_cookie {
-  my $self = shift;
-  my $key  = $self->key_cookie;
-  my $val  = shift || '';
-  $self->cgix->set_cookie({
-    -name    => $key,
-    -value   => $val,
-    -expires => '+20y', # let the expires time take care of things
-    -path    => '/',
-  });
+    my $self = shift;
+    my $args = shift;
+    my $key  = $args->{'key'};
+    my $val  = $args->{'val'};
+    $self->cgix->set_cookie({
+        -name    => $key,
+        -value   => $val,
+        ($args->{'no_expires'} ? () : (-expires => '+20y')), # let the expires time take care of things for types that self expire
+        -path    => '/',
+    });
+    $self->cookies->{$key} = $val;
 }
 
 sub location_bounce {
@@ -187,7 +202,7 @@ sub location_bounce {
 
 ###----------------------------------------------------------------###
 
-sub key_logout       { shift->{'key_logout'}       ||= 'logout'       }
+sub key_logout       { shift->{'key_logout'}       ||= 'cea_logout'   }
 sub key_cookie       { shift->{'key_cookie'}       ||= 'cea_user'     }
 sub key_user         { shift->{'key_user'}         ||= 'cea_user'     }
 sub key_pass         { shift->{'key_pass'}         ||= 'cea_pass'     }
@@ -201,6 +216,7 @@ sub key_payload      { shift->{'key_payload'}      ||= 'cea_payload'  }
 sub secure_hash_keys { shift->{'secure_hash_keys'} ||= []             }
 sub no_cookie_verify { shift->{'no_cookie_verify'} ||= 0              }
 sub use_crypt        { shift->{'use_crypt'}        ||= 0              }
+sub use_blowfish     { shift->{'use_blowfish'}     ||= ''             }
 sub use_plaintext    { my $s = shift; $s->use_crypt || ($s->{'use_plaintext'} ||= 0) }
 sub use_base64       { my $s = shift; $s->{'use_base64'}  = 1      if ! defined $s->{'use_base64'};  $s->{'use_base64'}  }
 sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined $s->{'expires_min'}; $s->{'expires_min'} }
@@ -226,7 +242,7 @@ sub no_cookies_print {
 
 sub login_print {
     my $self = shift;
-    my $hash = $self->login_hash_swap;
+    my $hash = $self->login_hash_common;
 
     ### allow for a hooked override
     if (my $meth = $self->{'login_print'}) {
@@ -263,7 +279,7 @@ sub template_args {
 
 sub template_include_path { shift->{'template_include_path'} || '' }
 
-sub login_hash_swap {
+sub login_hash_common {
     my $self = shift;
     my $form = $self->form;
     my $data = $self->last_auth_data;
@@ -277,6 +293,7 @@ sub login_hash_swap {
         key_pass           => $self->key_pass,
         key_time           => $self->key_time,
         key_save           => $self->key_save,
+        key_expires_min    => $self->key_expires_min,
         key_payload        => $self->key_payload,
         key_redirect       => $self->key_redirect,
         form_name          => $self->form_name,
@@ -284,11 +301,12 @@ sub login_hash_swap {
         path_info          => $self->path_info,
         md5_js_path        => $self->js_path ."/CGI/Ex/md5.js",
         use_plaintext      => $self->use_plaintext,
-        expires_min        => $self->expires_min,
         $self->key_user    => $data->{'user'} || '',
         $self->key_pass    => '', # don't allow for this to get filled into the form
         $self->key_time    => $self->server_time,
-        $self->key_payload => defined($data->{'payload'}) ? $data->{'payload'} : '',
+        $self->key_payload => $self->generate_payload({%$data, login_form => 1}),
+        $self->key_expires_min => $self->expires_min,
+
     };
 }
 
@@ -298,36 +316,40 @@ sub verify_token {
     my $self  = shift;
     my $args  = shift;
     my $token = delete $args->{'token'} || die "Missing token";
-    my $data  = $self->{'_last_auth_data'} = $self->new_auth({token => $token, %$args});
+    my $data  = $self->{'_last_auth_data'} = $self->new_auth_data({token => $token, %$args});
 
     ### token already parsed
     if (ref $token) {
-        $data->add_data({%$token});
+        $data->add_data({%$token, armor => 'none'});
 
     ### parse token for info
     } else {
         my $found;
-        for my $is_base64 (0, 1) { # try with and without base64 encoding
-            $token = decode_base64($token) if $is_base64;;
-            if ($token =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
+        my $key;
+        for my $armor ('none', 'base64', 'blowfish') { # try with and without base64 encoding
+            my $copy = ($armor eq 'none')           ? $token
+                     : ($armor eq 'base64')         ? decode_base64($token)
+                     : ($key = $self->use_blowfish) ? decrypt_blowfish($token, $key)
+                     : next;
+            if ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
                 $data->add_data({
-                    user        => $1,
-                    cram_time   => $2,
-                    expires_min => $3,
-                    payload     => $4,
-                    test_pass   => $5,
-                    secure_hash => $6 || '',
-                    was_base64  => $is_base64,
+                    user         => $1,
+                    cram_time    => $2,
+                    expires_min  => $3,
+                    payload      => $4,
+                    test_pass    => $5,
+                    secure_hash  => $6 || '',
+                    armor        => $armor,
                 });
-                $found ++;
+                $found = 1;
                 last;
-            } elsif ($token =~ m|^ ([^/]+) / (.*) $|x) {
+            } elsif ($copy =~ m|^ ([^/]+) / (.*) $|x) {
                 $data->add_data({
-                    user       => $1,
-                    test_pass  => $2,
-                    was_base64 => $is_base64,
+                    user         => $1,
+                    test_pass    => $2,
+                    armor        => $armor,
                 });
-                $found ++;
+                $found = 1;
                 last;
             }
         }
@@ -346,7 +368,7 @@ sub verify_token {
     } elsif (! defined $data->{'test_pass'}) {
         $data->error('Missing test_pass');
 
-    } elsif (! $self->verify_user($data->{'user'})) {
+    } elsif (! $self->verify_user($data->{'user'} = $self->cleanup_user($data->{'user'}))) {
         $data->error('Invalid user');
 
     } elsif (! defined($pass = eval { $self->get_pass_by_user($data->{'user'}) })) {
@@ -426,7 +448,7 @@ sub verify_token {
     return $data;
 }
 
-sub new_auth {
+sub new_auth_data {
     my $self = shift;
     return CGI::Ex::Auth::Data->new(@_);
 }
@@ -441,8 +463,8 @@ sub generate_token {
     my $token;
 
     ### do kinds that require staying plaintext
-    if (   (defined($data->{'use_plaintext'}) ?  $data->{'use_plaintext'} : $self->use_plaintext)
-        || (defined($data->{'use_crypt'})     ?  $data->{'use_crypt'}     : $self->use_crypt)
+    if (   (defined($data->{'use_plaintext'}) ?  $data->{'use_plaintext'} : $self->use_plaintext) # ->use_plaintext is true if ->use_crypt is
+        || (defined($data->{'use_crypt'})     && $data->{'use_crypt'})
         || (defined($data->{'type'})          && $data->{'type'} eq 'crypt')) {
         $token = $data->{'user'} .'/'. $data->{'real_pass'};
 
@@ -451,8 +473,10 @@ sub generate_token {
         my $user = $data->{'user'} || die "Missing user";
         my $real = defined($data->{'real_pass'})   ? ($data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'}))
                                                    : die "Missing real_pass";
-        my $load = defined($data->{'payload'})     ? $data->{'payload'}     : '';
         my $exp  = defined($data->{'expires_min'}) ? $data->{'expires_min'} : $self->expires_min;
+        my $load = $self->generate_payload($data);
+        die "Payload can not contain a \"/\.  Please escape it in generate_payload." if $load =~ m|/|;
+        die "User can not contain a \"/\."                                           if $user =~ m|/|;
 
         my $array;
         if (! $data->{'prefer_cram'}
@@ -470,11 +494,20 @@ sub generate_token {
         }
     }
 
-    if (defined($data->{'use_base64'}) ? $data->{'use_base64'} : $self->use_base64) {
+    if (my $key = $data->{'use_blowfish'} || $self->use_blowfish) {
+        $token = encrypt_blowfish($token, $key);
+
+    } elsif (defined($data->{'use_base64'}) ? $data->{'use_base64'} : $self->use_base64) {
         $token = encode_base64($token, '');
     }
 
     return $token;
+}
+
+sub generate_payload {
+    my $self = shift;
+    my $args = shift;
+    return defined($args->{'payload'}) ? $args->{'payload'} : '';
 }
 
 sub verify_user {
@@ -484,6 +517,15 @@ sub verify_user {
         return $self->$meth($user);
     }
     return 1;
+}
+
+sub cleanup_user {
+    my $self = shift;
+    my $user = shift;
+    if (my $meth = $self->{'cleanup_user'}) {
+        return $self->$meth($user);
+    }
+    return $user;
 }
 
 sub get_pass_by_user {
@@ -507,8 +549,38 @@ sub verify_payload {
 
 ###----------------------------------------------------------------###
 
+sub encrypt_blowfish {
+    my ($str, $key) = @_;
+
+    require Crypt::Blowfish;
+    my $cb = Crypt::Blowfish->new($key);
+
+    $str .= (chr 0) x (8 - length($str) % 8); # pad to multiples of 8
+
+    my $enc = '';
+    $enc .= unpack "H16", $cb->encrypt($1) while $str =~ /\G(.{8})/g; # 8 bytes at a time
+
+    return $enc;
+}
+
+sub decrypt_blowfish {
+    my ($enc, $key) = @_;
+
+    require Crypt::Blowfish;
+    my $cb = Crypt::Blowfish->new($key);
+
+    my $str = '';
+    $str .= $cb->decrypt(pack "H16", $1) while $enc =~ /\G([A-Fa-f0-9]{16})/g;
+    $str =~ y/\00//d;
+
+    return $str
+}
+
+###----------------------------------------------------------------###
+
 sub login_template {
     my $self = shift;
+    return $self->{'login_template'} if $self->{'login_template'};
 
     my $text = ""
         . $self->login_header
@@ -519,25 +591,26 @@ sub login_template {
 }
 
 sub login_header {
-    return shift->{'login_header'} || qq {
-    [%~ TRY ; PROCESS 'login_header' ; CATCH %]<!-- [% error %] -->[% END ~%]
+    return shift->{'login_header'} || q {
+    [%~ TRY ; PROCESS 'login_header.tt' ; CATCH %]<!-- [% error %] -->[% END ~%]
     };
 }
 
 sub login_footer {
-    return shift->{'login_footer'} || qq {
-    [%~ TRY ; PROCESS 'login_footer' ; CATCH %]<!-- [% error %] -->[% END ~%]
+    return shift->{'login_footer'} || q {
+    [%~ TRY ; PROCESS 'login_footer.tt' ; CATCH %]<!-- [% error %] -->[% END ~%]
     };
 }
 
 sub login_form {
-    return shift->{'login_form'} || qq {
+    return shift->{'login_form'} || q {
     <div class="login_chunk">
     <span class="login_error">[% error %]</span>
     <form class="login_form" name="[% form_name %]" method="post" action="[% script_name %]">
     <input type="hidden" name="[% key_redirect %]" value="">
     <input type="hidden" name="[% key_payload %]" value="">
     <input type="hidden" name="[% key_time %]" value="">
+    <input type="hidden" name="[% key_expires_min %]" value="">
     <table class="login_table">
     <tr class="login_username">
       <td>Username:</td>
@@ -564,7 +637,7 @@ sub login_form {
 }
 
 sub login_script {
-  return qq {
+  return q {
     [%~ IF ! use_plaintext %]
     <script src="[% md5_js_path %]"></script>
     <script>
@@ -573,7 +646,7 @@ sub login_script {
       var u = f.[% key_user %].value;
       var p = f.[% key_pass %].value;
       var t = f.[% key_time %].value;
-      var s = f.[% key_save %].checked ? -1 : [% expires_min %];
+      var s = f.[% key_save %] && f.[% key_save %].checked ? -1 : f.[% key_expires_min %].value;
       var l = f.[% key_payload %].value;
 
       var str = u+'/'+t+'/'+s+'/'+l;
@@ -648,13 +721,20 @@ __END__
 =head1 DESCRIPTION
 
 CGI::Ex::Auth allows for auto-expiring, safe and easy web based logins.  Auth uses
-javascript modules that perform MD5 encoding to encode the password on
+javascript modules that perform MD5 hashing to cram the password on
 the client side before passing them through the internet.
 
+For the stored cookie you can choose to use cram mechanisms,
+secure hash cram tokens, auto expiring logins (not cookie based),
+and Crypt::Blowfish protection.  You can also choose to keep
+passwords plaintext and to use perl's crypt for testing
+passwords.
+
 A downside to this module is that it does not use a session to
-preserve state so authentication has to happen on every request.  A
-plus is that you don't need to use a session.  It is up to the
-interested reader to add session caching to the get_pass_by_user
+preserve state so get_pass_by_user has to happen on every request (any
+authenticated area has to verify authentication each time).  A plus is
+that you don't need to use a session if you don't want to.  It is up
+to the interested reader to add caching to the get_pass_by_user
 method.
 
 =head1 METHODS
@@ -663,7 +743,56 @@ method.
 
 =item C<new>
 
-Constructor.  Takes a hash or hashref of properties as arguments.
+Constructor.  Takes a hashref of properties as arguments.
+
+Many of the methods which may be overridden in a subclass,
+or may be passed as properties to the new constuctor such as in the following:
+
+    CGI::Ex::Auth->new({
+        get_pass_by_user => \&my_pass_sub,
+        key_user         => 'my_user',
+        key_pass         => 'my_pass',
+        login_template   => \"<form><input name=my_user ... </form>",
+    });
+
+The following methods will look for properties of the same name.  Each of these will be
+defined separately.
+
+    cgix
+    cleanup_user
+    cookies
+    expires_min
+    form
+    form_name
+    get_pass_by_user
+    js_path
+    key_cookie
+    key_expires_min
+    key_logout
+    key_pass
+    key_payload
+    key_redirect
+    key_save
+    key_time
+    key_user
+    key_verify
+    login_footer
+    login_form
+    login_header
+    login_script
+    login_template
+    no_cookie_verify
+    path_info
+    script_name
+    secure_hash_keys
+    template_args
+    template_include_path
+    use_base64
+    use_blowfish
+    use_crypt
+    use_plaintext
+    verify_payload
+    verify_user
 
 =item C<get_valid_auth>
 
@@ -674,90 +803,119 @@ get_valid_auth WILL NOT automatically stop execution.
 
   $auth->get_valid_auth || exit;
 
+Optionally, the class and a list of arguments may be passed.  This will create a
+new object using the passed arguments, and then run get_valid_auth.
+
+  CGI::Ex::Auth->get_valid_auth({key_user => 'my_user'}) || exit;
+
 =item C<login_print>
 
-Called if login errored.  Defaults to printing a very basic page
-loaded from login_template.  The basic login template can be updated.
+Called if login errored.  Defaults to printing a very basic (but
+adequate) page loaded from login_template..
 
 You will want to override it with a template from your own system.
 The hook that is called will be passed the step to print (currently
 only "get_login_info" and "no_cookies"), and a hash containing the
 form variables as well as the following:
 
-  error        - The error that occurred (if any)
-  key_user     - $self->key_user;
-  key_pass     - $self->key_pass;
-  key_save     - $self->key_save;
-  key_redirect - $self->key_redirect;
-  form_name    - $self->form_name;
-  script_name  - $ENV{SCRIPT_NAME}
-  path_info    - $ENV{PATH_INFO} || ''
+=item C<login_hash_common>
 
-=item C<success>
+Passed to the template swapped during login_print.
 
-Method called on successful login.  Sets $self->user as well as $ENV{REMOTE_USER}.
-
-=item C<user>
-
-Returns the user that was successfully logged in (undef if no success).
+    %$form,            # any keys passed to the login script
+    error              # The text "Login Failed" if a login occurred
+    login_data         # A login data object if they failed authentication.
+    key_user           # $self->key_user,        # the username fieldname
+    key_pass           # $self->key_pass,        # the password fieldname
+    key_time           # $self->key_time,        # the server time field name
+    key_save           # $self->key_save,        # the save password checkbox field name
+    key_payload        # $self->key_payload,     # the payload fieldname
+    key_redirect       # $self->key_redirect,    # the redirect fieldname
+    form_name          # $self->form_name,       # the name of the form
+    script_name        # $self->script_name,     # where the server will post back to
+    path_info          # $self->path_info,       # $ENV{PATH_INFO} if any
+    md5_js_path        # $self->js_path ."/CGI/Ex/md5.js", # script for cramming
+    use_plaintext      # $self->use_plaintext,   # used to avoid cramming
+    $self->key_user    # $data->{'user'},        # the username (if any)
+    $self->key_pass    # '',                     # intentional blankout
+    $self->key_time    # $self->server_time,     # the server's time
+    $self->key_payload # $data->{'payload'}      # the payload (if any)
+    $self->key_expires_min # $self->expires_min  # how many minutes crams are valid
 
 =item C<key_logout>
 
-If a key is passed the form hash that matches this key, the current user will
-be logged out.  Default is "logout".
+If the form hash contains a true value in this field name, the current user will
+be logged out.  Default is "cea_logout".
 
 =item C<key_cookie>
 
-The name of the auth cookie.  Default is "ce_auth".
+The name of the auth cookie.  Default is "cea_user".
 
-=item C<key_cookie_check>
+=item C<key_verify>
 
-A field name used during a bounce to see if cookies exist.  Default is "ccheck".
+A field name used during a bounce to see if cookies exist.  Default is "cea_verify".
 
 =item C<key_user>
 
-The form field name used to pass the username.  Default is "ce_user".
+The form field name used to pass the username.  Default is "cea_user".
 
 =item C<key_pass>
 
-The form field name used to pass the password.  Default is "ce_pass".
+The form field name used to pass the password.  Default is "cea_pass".
 
 =item C<key_save>
 
-The form field name used to pass whether they would like to save the cookie for
-a longer period of time.  Default is "ce_save".  The value of this form field
-should be 1 or 0.  If it is zero, the cookie installed will be a session cookie
-and will expire in expires_min seconds (default of 6 hours).
+Works in conjunction with key_expires_min.  If key_save is true, then
+the cookie will be set to be saved for longer than the current session
+(If it is a plaintext variety it will be given a 20 year life rather
+than being a session cookie.  If it is a cram variety, the expires_min
+portion of the cram will be set to -1).  If it is set to false, the cookie
+will be available only for the session (If it is a plaintext variety, the cookie
+will be session based and will be removed on the next loggout.  If it is
+a cram variety then the cookie will only be good for expires_min minutes.
+
+Default is "cea_save".
+
+=item C<key_expires_min>
+
+The name of the form field that contains how long cram type cookies will be valid
+if key_save contains a false value.
+
+Default key name is "cea_expires_min".  Default field value is 6 * 60 (six hours).
+
+This value will have no effect when use_plaintext or use_crypt is set.
+
+A value of -1 means no expiration.
 
 =item C<form_name>
 
-The name of the html login form to attach the javascript to.  Default is "ce_form".
+The name of the html login form to attach the javascript to.  Default is "cea_form".
 
-=item C<verify_userpass>
+=item C<verify_token>
 
-Called to verify the passed form information or the stored cookie.  Calls hook_verify_userpass.
+This method verifies the token that was passed either via the form or via cookies.
+It will accept plaintext or crammed tokens (A listing of the available algorithms
+for creating tokes is listed below).  It also allows for armoring the token with
+base64 encoding, or using blowfish encryption.  A listing of creating these tokens
+can be found under generate_token.
 
-=item C<hook_verify_userpass>
+=item C<cleanup_user>
 
-Called by verify_userpass.  Arguments are the username, cookie or info to be tested,
-and the hostname.  Default method calls hook_get_pass_by_user to get the real password.
-Then based upon how the real password is stored (sha1, md5, plaintext, or crypted) and
-how the login info was passed from the html form (or javascript), will attempt to compare
-the two and return success or errorure.  It should be noted that if the javascript method
-used is SHA1 and the password is stored crypted or md5'ed - the comparison will not work
-and the login will fail.  MD5 logins require either plaintext password or md5 stored passwords.  Plaintext logins
-allow for SHA1 or MD5 or crypted or plaintext storage - but should be discouraged because
-they are plaintext and the users password can be discovered.
+Called by verify_token.  Default is to do no modification.  Allows for usernames to
+be lowercased, or canonized in some other way.  Should return the cleaned username.
 
-=item C<hook_get_pass_by_user>
+=item C<verify_user>
 
-Called by hook_verify_userpass.  Arguments are the username and hostname.  Should return
-a sha1 password, md5 password, plaintext password, or crypted password depending
-upon which system is being used to get the information from the user.
+Called by verify_token.  Single argument is the username.  May or may not be an
+initial check to see if the username is ok.  The username will already be cleaned at
+this point.  Default return is true.
 
-=item C<set_hook_get_pass_by_user>
+=item C<get_pass_by_user>
 
-Allows for setting the subref used by hook_get_pass_by_user.x
+Called by verify_token.  Given the cleaned, verified username, should return a
+valid password for the user.  It can always return plaintext.  If use_crypt is
+enabled, it should return the crypted password.  If use_plaintext and use_crypt
+are not enabled, it may return the md5 sum of the password.
 
 =item C<cgix>
 
@@ -771,22 +929,45 @@ A hash of passed form info.  Defaults to CGI::Ex::get_form.
 
 The current cookies.  Defaults to CGI::Ex::get_cookies.
 
-=item C<host>
-
-What host are we on.  Defaults to a cleaned $ENV{HTTP_HOST}.
-
-=item C<login_page>
-
-Calls the basic_login_template, swaps in the form variables (including
-form name, login_script, etc).  Then prints content_type, the content, and
-returns.
-
 =item C<login_template>
 
-Returns a bare essentials form that will handle the login.  Has place
-holders for all of the form name, and login variables, and errors and
-login javascript.  Variable place holders are of the form
-[% form_name %] which should work with Template::Toolkit or CGI::Ex::swap_template.
+Should return either a template filename to use for the login template, or it
+should return a reference to a string that contains the template.  The contents
+will be used in login_print and passed to the template engine.
+
+Default login_template is the values of login_header, login_form, login_script, and
+login_script concatenated together.
+
+Values from login_hash_common will be passed to the template engine, and will
+also be used to fill in the form.
+
+The basic values are capable of handling most needs so long as appropriate
+headers and css styles are used.
+
+=item C<login_header>
+
+Should return a header to use in the default login_template.  The default
+value will try to PROCESS a file called login_header.tt that should be
+located in directory specified by the template_include_path method.
+
+It should ideally supply css styles that format the login_form as desired.
+
+=item C<login_footer>
+
+Same as login_header - but for the footer.  Will look for login_footer.tt by
+default.
+
+=item C<login_form>
+
+An html chunk that contains the necessary form fields to login the user.  The
+basic chunk has a username text entry, password text entry, save password checkbox,
+and submit button, and any hidden fields necessary for logging in the user.
+
+=item C<login_script>
+
+Contains javascript that will attach to the form from login_form.  This script
+is capable of taking the login_fields and creating an md5 cram which prevents
+the password from being passed plaintext.
 
 =head1 AUTHORS
 
