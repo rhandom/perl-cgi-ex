@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 29;
+use Test::More tests => 33;
 
 use_ok('CGI::Ex::Auth');
 
@@ -53,45 +53,68 @@ sub cookie_good  { Auth->get_valid_auth({form => {},             cookies => {%$c
 sub cookie_good2 { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good2}}) }
 sub cookie_bad   { Auth->get_valid_auth({form => {},             cookies => {%$cookie_bad}  }) }
 
-$Auth::printed = $Auth::set_cookie = $Auth::delete_cookie = 0;
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(form_good(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
-ok(! $Auth::deleted_cookie, "Delete_cookie was not called");
+ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
-$Auth::printed = $Auth::set_cookie = $Auth::delete_cookie = 0;
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(form_good2(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
-ok(! $Auth::deleted_cookie, "Delete_cookie was not called");
+ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
-$Auth::printed = $Auth::set_cookie = $Auth::delete_cookie = 0;
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(form_good3(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
-ok(! $Auth::deleted_cookie, "Delete_cookie was not called");
+ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
-$Auth::printed = $Auth::set_cookie = $Auth::delete_cookie = 0;
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(! form_bad(), "Got bad auth");
 ok($Auth::printed, "Printed was set");
 ok(! $Auth::set_cookie, "set_cookie called");
-ok(! $Auth::deleted_cookie, "Delete_cookie was not called");
+ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
-$Auth::printed = $Auth::set_cookie = $Auth::delete_cookie = 0;
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(cookie_good(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
-ok(! $Auth::deleted_cookie, "Delete_cookie was not called");
+ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
-$Auth::printed = $Auth::set_cookie = $Auth::delete_cookie = 0;
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(cookie_good2(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
-ok(! $Auth::deleted_cookie, "Delete_cookie was not called");
+ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
-$Auth::printed = $Auth::set_cookie = $Auth::delete_cookie = 0;
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(! cookie_bad(), "Got bad auth");
 ok($Auth::printed, "Printed was set");
 ok(! $Auth::set_cookie, "Set_cookie was not called");
-ok($Auth::deleted_cookie, "delete_cookie was not called");
+ok($Auth::deleted_cookie, "deleted_cookie was not called");
 
+
+SKIP: {
+    skip("Crypt::Blowfish not found", 4) if ! eval { require Crypt::Blowfish };
+
+    {
+        package Aut3;
+        use base qw(Auth);
+        sub use_blowfish  { "This_is_my_key" }
+        sub use_base64    { 0 }
+        sub use_plaintext { 1 }
+    }
+
+    my $token2 = Aut3->new->generate_token({user => 'test', real_pass => '123qwe'});
+    my $form_good4   = { cea_user => $token2 };
+
+    sub form_good4   { Aut3->get_valid_auth({form => {%$form_good4}, cookies => {}              }) }
+
+    $Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
+    ok(form_good4(), "Got good auth");
+    ok(! $Auth::printed, "Printed was not set");
+    ok($Auth::set_cookie, "Set_cookie called");
+    ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
+};
