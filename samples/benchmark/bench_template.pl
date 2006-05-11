@@ -96,8 +96,8 @@ my $filename;
 #                                                                         ### (The percent that CET is faster than TT)
 #                                                                               Existing object by string ref #
 #                                                                      New object with CACHE_EXT set #        #
-#                                       This percent is compiled in memory (repeated calls) #        #        #
-#                                          New object each time (undef CACHE_SIZE) #        #        #        #
+#                                                   New object each time (undef CACHE_SIZE) #        #        #
+#                              This percent is compiled in memory (repeated calls) #        #        #        #
 my $tests = {                                                             #        #        #        #        #
     '01_empty'     => "",                                                 #  236%  #  645%  #  337%  #  457%  # 19787.6/s #
     '02_var_sma'   => "[% one %]",                                        #  168%  #  592%  #  421%  #  476%  # 14355.1/s #
@@ -148,7 +148,7 @@ my $tests = {                                                             #     
     '47_capture'   => "[% foo = BLOCK %]Hi[% END %][% foo %]",            #  105%  #  438%  #  312%  #  326%  # 9962.1/s #
     '48_complex'   => "$longer_template",                                 #   51%  #  305%  #  139%  #  264%  # 1098.6/s #
     # overall                                                             #   94%  #  439%  #  268%  #  359%  #
-    # overall (with stash::xs)                                            #   32%  #  505%  #  246%  #  380%  #
+    # overall (with stash::xs)                                            #   30%  #  409%  #  228%  #  323%  #
 };
 
 ### load the code representation
