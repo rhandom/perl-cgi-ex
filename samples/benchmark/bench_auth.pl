@@ -54,12 +54,22 @@ use CGI::Ex::Dump qw(debug);
     sub get_pass_by_user { $crypt }
 }
 
-my $token = Auth->new->generate_token({user => 'test', real_pass => '123qwe', use_base64 => 1});
+{
+    package Aut3;
+    use base qw(Auth);
+    sub use_blowfish  { "This_is_my_key" }
+    sub use_base64    { 0 }
+    sub use_plaintext { 1 }
+}
+
+my $token  = Auth->new->generate_token({user => 'test', real_pass => '123qwe', use_base64 => 1});
+my $token2 = Aut3->new->generate_token({user => 'test', real_pass => '123qwe'});
 
 my $form_bad     = { cea_user => 'test',   cea_pass => '123qw'  };
 my $form_good    = { cea_user => 'test',   cea_pass => '123qwe' };
 my $form_good2   = { cea_user => $token };
 my $form_good3   = { cea_user => 'test/123qwe' };
+my $form_good4   = { cea_user => $token2 };
 my $cookie_bad   = { cea_user => 'test/123qw'  };
 my $cookie_good  = { cea_user => 'test/123qwe' };
 my $cookie_good2 = { cea_user => $token };
@@ -67,6 +77,7 @@ my $cookie_good2 = { cea_user => $token };
 sub form_good    { Auth->get_valid_auth({form => {%$form_good},  cookies => {}              }) }
 sub form_good2   { Auth->get_valid_auth({form => {%$form_good2}, cookies => {}              }) }
 sub form_good3   { Aut2->get_valid_auth({form => {%$form_good3}, cookies => {}              }) }
+sub form_good4   { Aut3->get_valid_auth({form => {%$form_good4}, cookies => {}              }) }
 sub form_bad     { Auth->get_valid_auth({form => {%$form_bad},   cookies => {}              }) }
 sub cookie_good  { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good} }) }
 sub cookie_good2 { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good2}}) }
@@ -87,6 +98,13 @@ die "delete_cookie was called"     if $Auth::deleted_cookie;
 
 $Auth::printed = $Auth::set_cookie = $Auth::delete_cookie = 0;
 die "Didn't get good auth"         if ! form_good3();
+die "printed was set"              if $Auth::printed;
+die "set_cookie not called"        if ! $Auth::set_cookie;
+die "delete_cookie was called"     if $Auth::deleted_cookie;
+
+$Auth::printed = $Auth::set_cookie = $Auth::delete_cookie = 0;
+debug form_good4(), (my $e = $@);
+die "Didn't get good auth"         if ! form_good4();
 die "printed was set"              if $Auth::printed;
 die "set_cookie not called"        if ! $Auth::set_cookie;
 die "delete_cookie was called"     if $Auth::deleted_cookie;
