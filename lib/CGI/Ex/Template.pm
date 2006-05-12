@@ -19,7 +19,7 @@ use vars qw($VERSION
             $DIRECTIVES $QR_DIRECTIVE
             $OPERATORS $OP_UNARY $OP_TRINARY $OP_EXTRA $OP_FUNC $QR_OP $QR_OP_UNARY $QR_OP_EXTRA
             $QR_COMMENTS $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
-            $PACKAGE_EXCEPTION $PACKAGE_E_INFO $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
+            $PACKAGE_EXCEPTION $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
@@ -1116,7 +1116,7 @@ sub get_variable {
         if (defined $results[0]) {
             $ref = ($#results > 0) ? \@results : $results[0];
         } elsif (defined $results[1]) {
-            die $results[1]; # grr - TT behavior - why not just throw in the plugin ?
+            die $results[1]; # TT behavior - why not just throw in the plugin ?
         } else {
             $ref = undef;
         }
@@ -2480,18 +2480,17 @@ sub include_filename {
     } elsif ($file =~ m|^\./|) {
         $self->throw('file', "$file RELATIVE paths disabled") if ! $self->{'RELATIVE'};
         return $file if -e $file;
-    } else {
+    }
+
+    my $paths = $self->{'INCLUDE_PATHS'} ||= do {
+        # TT does this everytime a file is looked up - we are going to do it just in time - the first time
         my $paths = $self->{'INCLUDE_PATH'} || $self->throw('file', "INCLUDE_PATH not set");
-        $paths = $self->split_paths($paths) if ! ref $paths;
-        foreach my $item (@$paths) { # TT does this everytime - would be better in "new"
-            my @path = UNIVERSAL::isa($item, 'CODE')  ? $item->()
-                     : UNIVERSAL::can($item, 'paths') ? $item->paths
-                     :                                  ($item);
-            @path = map {ref($_) ? @$_ : $_} @path;
-            foreach my $path (@path) {
-                return "$path/$file" if -e "$path/$file";
-            }
-        }
+        $paths = $paths->()                 if UNIVERSAL::isa($paths, 'CODE');
+        $paths = $self->split_paths($paths) if ! UNIVERSAL::isa($paths, 'ARRAY');
+        $paths; # return of the do
+    };
+    foreach my $path (@$paths) {
+        return "$path/$file" if -e "$path/$file";
     }
 
     $self->throw('file', "$file: not found");
@@ -3319,7 +3318,7 @@ the structure.  The reference is more literally a name lookup while TT returns a
 reference to the appropriate data structure.
 
 include_filename - Takes a file path, and resolves it into the full filename using
-paths from INCLUDE_PATH.
+paths from INCLUDE_PATH or INCLUDE_PATHS.
 
 _insert - Resolves the file passed, and then returns its contents.
 
@@ -4235,11 +4234,23 @@ a true EVAL_PERL value also allows the perl and evalperl filters to be used.
 
 =item INCLUDE_PATH
 
-A string or an array containing directories too look for files included by
-processed templates.
+A string or an arrayref or coderef that returns an arrayref that
+contains directories to look for files included by processed
+templates.
+
+=item INCLUDE_PATHS
+
+Non-TT item.  Same as INCLUDE_PATH but only takes an arrayref.  If not specified
+then INCLUDE_PATH is turned into an arrayref and stored in INCLUDE_PATHS.
+Overrides INCLUDE_PATH.
 
 =item INTERPOLATE
 
+Boolean.  Specifies whether variables in text portions of the template will be
+interpolated.  For example, the $variable and ${var.value} would be substituted
+with the appropriate values from the variable cache (if INTERPOLATE is on).
+
+    [% IF 1 %]The variable $variable had a value ${var.value}[% END %]
 
 
 =item LOAD_PERL
