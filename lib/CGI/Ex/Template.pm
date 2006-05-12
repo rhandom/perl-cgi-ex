@@ -1155,16 +1155,14 @@ sub get_variable {
         if (! ref $ref) {
             if ($SCALAR_OPS->{$name}) {                        # normal scalar op
                 $ref = $SCALAR_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            }
-            if ($LIST_OPS->{$name}) {                     # auto-promote to list and use list op
+
+            } elsif ($LIST_OPS->{$name}) {                     # auto-promote to list and use list op
                 $ref = $LIST_OPS->{$name}->([$ref], $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            }
-            if (my $filter = $self->{'FILTERS'}->{$name}    # filter configured in Template args
-                || $FILTER_OPS->{$name}                     # predefined filters in CET
-                || (UNIVERSAL::isa($name, 'CODE') && $name) # looks like a filter sub passed in the stash
-                || $self->list_filters->{$name}) {          # filter defined in Template::Filters
+
+            } elsif (my $filter = $self->{'FILTERS'}->{$name}    # filter configured in Template args
+                     || $FILTER_OPS->{$name}                     # predefined filters in CET
+                     || (UNIVERSAL::isa($name, 'CODE') && $name) # looks like a filter sub passed in the stash
+                     || $self->list_filters->{$name}) {          # filter defined in Template::Filters
 
                 if (UNIVERSAL::isa($filter, 'CODE')) {
                     $ref = eval { $filter->($ref) }; # non-dynamic filter - no args
@@ -1172,14 +1170,10 @@ sub get_variable {
                         $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                         die $err;
                     }
-                    next;
-
-                }
-                if (! UNIVERSAL::isa($filter, 'ARRAY')) {
+                } elsif (! UNIVERSAL::isa($filter, 'ARRAY')) {
                     $self->throw('filter', "invalid FILTER entry for '$name' (not a CODE ref)");
 
-                }
-                if (@$filter == 2 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
+                } elsif (@$filter == 2 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
                     eval {
                         my $sub = $filter->[0];
                         if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
@@ -1199,72 +1193,58 @@ sub get_variable {
                         $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                         die $err;
                     }
-                    next;
                 } else { # this looks like our vmethods turned into "filters" (a filter stored under a name)
                     $self->throw('filter', 'Recursive filter alias \"$name\"') if $seen_filters{$name} ++;
                     $var = [$name, 0, '|', @$filter, @{$var}[$i..$#$var]]; # splice the filter into our current tree
                     $i = 2;
-                    next;
                 }
-            }
-            if (scalar keys %seen_filters
-                && $seen_filters{$var->[$i - 5] || ''}) {
-                $self->throw('filter', "invalid FILTER entry for '".$var->[$i - 5]."' (not a CODE ref)");
-            }
-            $ref = undef;
-            last;
-        }
-
-        ### method calls on objects
-        if (UNIVERSAL::can($ref, 'can')) {
-            my @args = $args ? @{ $self->vivify_args($args) } : ();
-            my @results = eval { $ref->$name(@args) };
-            if ($@) {
-                die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
-            } elsif (defined $results[0]) {
-                $ref = ($#results > 0) ? \@results : $results[0];
-                next;
-            } elsif (defined $results[1]) {
-                die $results[1]; # TT behavior - why not just throw ?
+                if (scalar keys %seen_filters
+                    && $seen_filters{$var->[$i - 5] || ''}) {
+                    $self->throw('filter', "invalid FILTER entry for '".$var->[$i - 5]."' (not a CODE ref)");
+                }
             } else {
                 $ref = undef;
-                last;
             }
-            # didn't find a method by that name - so fail down to hash and array access
-        }
 
-        ### hash member access
-        if (UNIVERSAL::isa($ref, 'HASH')) {
-            if ($was_dot_call && exists($ref->{$name}) ) {
-                $ref = $ref->{$name};
-                next;
-            } elsif ($HASH_OPS->{$name}) {
-                $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } elsif ($ARGS->{'is_namespace_during_compile'}) {
-                return $var; # abort - can't fold namespace variable
-            } else {
-                $ref = undef;
-                last;
-            }
-        }
+        } else {
 
-        ### array access
-        if (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ /^\d+$/) {
-                if ($name <= $#$ref) {
-                    $ref = $ref->[$name];
+            ### method calls on objects
+            if (UNIVERSAL::can($ref, 'can')) {
+                my @args = $args ? @{ $self->vivify_args($args) } : ();
+                my @results = eval { $ref->$name(@args) };
+                if ($@) {
+                    die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
+                } elsif (defined $results[0]) {
+                    $ref = ($#results > 0) ? \@results : $results[0];
                     next;
+                } elsif (defined $results[1]) {
+                    die $results[1]; # TT behavior - why not just throw ?
                 } else {
                     $ref = undef;
                     last;
                 }
-            } elsif ($LIST_OPS->{$name}) {
-                $ref = $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } else {
-                $ref = undef;
-                last;
+                # didn't find a method by that name - so fail down to hash and array access
+            }
+
+            ### hash member access
+            if (UNIVERSAL::isa($ref, 'HASH')) {
+                if ($was_dot_call && exists($ref->{$name}) ) {
+                    $ref = $ref->{$name};
+                } elsif ($HASH_OPS->{$name}) {
+                    $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                } elsif ($ARGS->{'is_namespace_during_compile'}) {
+                    return $var; # abort - can't fold namespace variable
+                } else {
+                    $ref = undef;
+                }
+
+            ### array access
+            } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+                if ($name =~ /^\d+$/) {
+                    $ref = ($name > $#$ref) ? undef : $ref->[$name];
+                } else {
+                    $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                }
             }
         }
 
