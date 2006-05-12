@@ -1136,7 +1136,7 @@ sub get_variable {
                 $name = $self->get_variable($name);
                 if (! defined($name) || $name =~ /^[_.]/) {
                     $ref = undef;
-                    next;
+                    last;
                 }
             } else {
                 die "Shouldn't get a ". ref($name) ." during a vivify on chain";
@@ -1147,58 +1147,8 @@ sub get_variable {
             last;
         }
 
-        ### method calls on objects
-        if (UNIVERSAL::can($ref, 'can')) {
-            my @args = $args ? @{ $self->vivify_args($args) } : ();
-            my @results = eval { $ref->$name(@args) };
-            if (! $@) {
-                if (defined $results[0]) {
-                    $ref = ($#results > 0) ? \@results : $results[0];
-                } elsif (defined $results[1]) {
-                    die $results[1]; # TT behavior - why not just throw ?
-                } else {
-                    $ref = undef;
-                }
-                next;
-            }
-            die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
-            # fall on down to "normal" accessors
-        }
-
-        ### hash member access
-        if (UNIVERSAL::isa($ref, 'HASH')) {
-            if ($was_dot_call && exists($ref->{$name}) ) {
-                $ref = $ref->{$name};
-            } elsif ($HASH_OPS->{$name}) {
-                $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } elsif ($ARGS->{'is_namespace_during_compile'}) {
-                return $var; # abort - can't fold namespace variable
-            } else {
-                $ref = undef;
-                next;
-            }
-
-        ### array access
-        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ /^\d+$/) {
-                if ($name <= $#$ref) {
-                    $ref = $ref->[$name];
-                } else {
-                    $ref = undef;
-                    next;
-                }
-            } elsif ($LIST_OPS->{$name}) {
-                $ref = $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } else {
-                $ref = undef;
-                next;
-            }
-
-        ### scalar access
-        } elsif (! ref($ref) && defined($ref)) {
-
+        ### allow for scalar and filter access (this happens for every non virtual method call)
+        if (! ref $ref) {
             if ($SCALAR_OPS->{$name}) {                        # normal scalar op
                 $ref = $SCALAR_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
 
@@ -1251,7 +1201,61 @@ sub get_variable {
                     $self->throw('filter', "invalid FILTER entry for '".$var->[$i - 5]."' (not a CODE ref)");
                 }
                 $ref = undef;
-                next;
+                last;
+            }
+
+        ### work with objects, arrays and hashes
+        } else {
+
+            ### method calls on objects
+            if (UNIVERSAL::can($ref, 'can')) {
+                my @args = $args ? @{ $self->vivify_args($args) } : ();
+                my @results = eval { $ref->$name(@args) };
+                if ($@) {
+                    die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
+                } elsif (defined $results[0]) {
+                    $ref = ($#results > 0) ? \@results : $results[0];
+                    next;
+                } elsif (defined $results[1]) {
+                    die $results[1]; # TT behavior - why not just throw ?
+                } else {
+                    $ref = undef;
+                    last;
+                }
+                # didn't find it - so fail on down fall on down to "normal" accessors
+            }
+
+            ### hash member access
+            if (UNIVERSAL::isa($ref, 'HASH')) {
+                if ($was_dot_call && exists($ref->{$name}) ) {
+                    $ref = $ref->{$name};
+                } elsif ($HASH_OPS->{$name}) {
+                    $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                    next;
+                } elsif ($ARGS->{'is_namespace_during_compile'}) {
+                    return $var; # abort - can't fold namespace variable
+                } else {
+                    $ref = undef;
+                    last;
+                }
+
+            ### array access
+            } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+                if ($name =~ /^\d+$/) {
+                    if ($name <= $#$ref) {
+                        $ref = $ref->[$name];
+                    } else {
+                        $ref = undef;
+                        last;
+                    }
+                } elsif ($LIST_OPS->{$name}) {
+                    $ref = $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                    next;
+                } else {
+                    $ref = undef;
+                    last;
+                }
+
             }
         }
 
@@ -1264,6 +1268,7 @@ sub get_variable {
                 die $results[1]; # TT behavior - why not just throw ?
             } else {
                 $ref = undef;
+                last;
             }
         }
 
