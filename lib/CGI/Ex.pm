@@ -156,7 +156,6 @@ sub make_form {
 #   my $hash = get_cookies(CGI->new);
 sub get_cookies {
     my $self = shift || __PACKAGE__->new;
-    die 'Usage: $cgix_obj->get_cookies' if ! ref $self;
     if (! $self->isa(__PACKAGE__)) { # get_cookies(CGI->new) syntax
         my $obj = $self;
         $self = __PACKAGE__->new;
@@ -592,7 +591,7 @@ sub fill {
 ###----------------------------------------------------------------###
 
 sub validate {
-    my $self = shift || die "Sub \"validate\" must be called as a method";
+    my $self = shift || die 'Usage: my $er = $cgix_obj->validate($form, $val_hash_or_file)';
     my ($form, $file) = (@_ == 2) ? (shift, shift) : ($self->object, shift);
 
     require CGI::Ex::Validate;
@@ -605,7 +604,7 @@ sub validate {
 ###----------------------------------------------------------------###
 
 sub conf_obj {
-    my $self = shift || die "Sub \"conf_obj\" must be called as a method";
+    my $self = shift || die 'Usage: my $ob = $cgix_obj->conf_obj($args)';
     return $self->{conf_obj} ||= do {
         require CGI::Ex::Conf;
         CGI::Ex::Conf->new(@_);
@@ -613,14 +612,14 @@ sub conf_obj {
 }
 
 sub conf_read {
-    my $self = shift || die "Sub \"conf_read\" must be called as a method";
+    my $self = shift || die 'Usage: my $conf = $cgix_obj->conf_read($file)';
     return $self->conf_obj->read(@_);
 }
 
 ###----------------------------------------------------------------###
 
 sub swap_template {
-    my $self = shift || die "Sub \"swap_template\" must be called as a method";
+    my $self = shift || die 'Usage: my $out = $cgix_obj->swap_template($file, \%vars, $template_args)';
     my $str  = shift;
     my $form = shift;
     my $args = shift || {};
