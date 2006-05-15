@@ -1403,54 +1403,6 @@ sub set_variable {
     return $ref;
 }
 
-sub get_variable_reference {
-    ### allow for the parse tree to store literals
-    return [\ $_[1], 0] if ! ref $_[1];
-
-    my $self = shift;
-    my $var  = shift;
-    my $ARGS = shift || {};
-    my $i    = 0;
-    my @ret;
-
-    ### determine the top level of this particular variable access
-    my $ref  = $var->[$i++];
-    my $args = $var->[$i++];
-    warn "get_variable: begin \"$ref\"\n" if trace;
-    if (ref $ref) {
-        if (ref($ref) eq 'SCALAR') { # a scalar literal
-            push @ret, $ref;
-        } elsif (ref($ref) eq 'REF') { # operator
-            my $val = $self->play_operator($$ref);
-            push @ret, \ $val;
-        } else { # a named variable access (ie via $name.foo)
-            my $name = $self->get_variable($ref);
-            push @ret, \ $name;
-        }
-    } else {
-        push @ret, $ref;
-    }
-    push @ret, $args ? $self->vivify_args($args) : 0;
-
-    ### go through the chained levels
-    while ($#$var > $i) {
-        push @ret, $var->[$i++] if ! $ARGS->{'no_dots'};
-        my $name = $var->[$i++];
-        my $args = $var->[$i++];
-
-        ### allow for named portions of a variable name (foo.$name.bar)
-        if (ref $name) {
-            die "Shouldn't get a ". ref($name) ." during a vivify on chain" if ref($name) ne 'ARRAY';
-            push @ret, scalar $self->get_variable($name);
-        } else {
-            push @ret, $name;
-        }
-        push @ret, $args ? $self->vivify_args($args) : 0;
-    }
-
-    return \ @ret;
-}
-
 sub vivify_args {
     my $self = shift;
     my $vars = shift;
@@ -1510,16 +1462,6 @@ sub play_operator {
         my $var = ! $self->get_variable($tree->[0]);
         return defined($var) ? $var : '';
 
-    } elsif ($op eq '\\') { # return a closure "reference" that can access the variable later
-        return $tree->[0] if ! ref $tree->[0];
-        my $self_copy = $self->weak_copy;
-        my $ref = $self->get_variable_reference($tree->[0]);
-        $ref->[-1] ||= [];
-        return sub {
-            local $ref->[-1] = [@{ $ref->[-1] || [] }, @_];
-            my $val = $self_copy->get_variable($ref);
-            return defined($val) ? $val : '';
-        };
     }
 
     ### equality operators
@@ -3292,12 +3234,6 @@ get_variable - Turns a variable identity array into the parsed variable.  This
 method is also repsonsible for playing opererators and running virtual methods
 and filters.  The method could more accurately be called play_expression.
 
-get_variable_reference - similar to get_variable but returns a variable identity
-that can be used repeatedly to lookup the stored variable name.  This is different
-from TT2 currently in that it resolves arguments but makes no attempt to auto-vivify
-the structure.  The reference is more literally a name lookup while TT returns an actual perl
-reference to the appropriate data structure.
-
 include_filename - Takes a file path, and resolves it into the full filename using
 paths from INCLUDE_PATH or INCLUDE_PATHS.
 
@@ -3511,12 +3447,10 @@ cache templates.
 
 There is no grammar.  CET has its own built in grammar system.
 
-There is no service.
+There is no VIEW directive.
 
-References are less interpolated. TT partially resolves some of the names filter keys and
-other elements rather than wait until the reference is actually used. CET only resolves
-interpolated values and arguments to subroutines.  All other resolution is delayed until
-the reference is actually used.
+There are no references.  (There was in initial BETA tests, but it was decided
+to remove the little used feature).
 
 The DEBUG directive only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 
@@ -3889,24 +3823,6 @@ A simple fix is to do any of the following:
 
 This shouldn't be too much hardship and offers the great return of disambiguating
 virtual method access.
-
-=item C<\>
-
-Unary.  The reference operator.  Not well publicized in TT.  Stores a reference
-to a variable for use later.  Can also be used to "alias" long names.  Note
-that a minimum of name resolution occurs at reference creation time (including
-resolving any arguments to functions or variable name interpolation).
-
-    [% f = 7 ; foo = \f ; f = 8 ; foo %] => 8
-
-    [% foo = \f.g.h.i.j.k; f.g.h.i.j.k = 7; foo %] => 7
-
-    [% f = "abcd"; foo = \f.replace("ab", "-AB-") ; foo %] => -AB-cd
-
-    [% f = "abcd"; foo = \f.replace("bc") ; foo("-BC-") %] => a-BC-d
-
-    [% f = "abcd"; foo = \f.replace ; foo("cd", "-CD-") %] => ab-CD-
-
 
 =item C<**  ^  pow>
 
