@@ -637,7 +637,7 @@ sub swap_template {
 
     ### swap it
     my $out = '';
-    $module->new->process($ref, $form, \$out);
+    $module->new($args)->process($ref, $form, \$out);
 
     if (! $return) {
         $$ref = $out;
