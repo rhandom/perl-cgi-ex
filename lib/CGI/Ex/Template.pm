@@ -164,8 +164,7 @@ BEGIN {
     };
     $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= $|[\s;\#]) }x;
 
-    $OPERATORS ||= {qw(\\  99
-                       **  96   ^   96   pow 96
+    $OPERATORS ||= {qw(**  96   ^   96   pow 96
                        !   93   unary_minus  93
                        *   90   /   90   div 90   DIV 90
                        %   90   mod 90   MOD 90
@@ -183,7 +182,7 @@ BEGIN {
                        or  40   OR  40
                        hashref 1 arrayref 1
                        )};
-    $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-', '\\' => '\\'};
+    $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-'};
     $OP_TRINARY ||= {'?' => ':'};
     $OP_EXTRA   ||= {'=' => 1};
     $OP_FUNC    ||= {};
