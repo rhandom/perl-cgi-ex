@@ -228,16 +228,16 @@ sub apache_request {
 ### Get the version of mod_perl running (0 if not mod_perl)
 #   my $version = $cgix->mod_perl_version;
 sub mod_perl_version {
-  my $self = shift;
-  die 'Usage: $cgix_obj->mod_perl_version' if ! ref $self;
-  if (! defined $self->{'mod_perl_version'}) {
-    return 0 if ! $ENV{'MOD_PERL'};
-    # mod_perl/1.27 or mod_perl/1.99_16 or mod_perl/2.0.1
-    # if MOD_PERL is set - don't die if regex fails - just assume 1.0
-    $self->{'mod_perl_version'} = ($ENV{'MOD_PERL'} =~ m{ ^ mod_perl / (\d+\.[\d_]+) (?: \.\d+)? $ }x)
-        ? $1 : '1.0_0';
-  }
-  return $self->{'mod_perl_version'};
+    my $self = shift;
+    die 'Usage: $cgix_obj->mod_perl_version' if ! ref $self;
+    if (! defined $self->{'mod_perl_version'}) {
+        return 0 if ! $ENV{'MOD_PERL'};
+        # mod_perl/1.27 or mod_perl/1.99_16 or mod_perl/2.0.1
+        # if MOD_PERL is set - don't die if regex fails - just assume 1.0
+        $self->{'mod_perl_version'} = ($ENV{'MOD_PERL'} =~ m{ ^ mod_perl / (\d+\.[\d_]+) (?: \.\d+)? $ }x)
+            ? $1 : '1.0_0';
+    }
+    return $self->{'mod_perl_version'};
 }
 
 sub is_mod_perl_1 { my $m = shift->mod_perl_version; return $m <  1.98 && $m > 0 }
@@ -250,9 +250,7 @@ sub set_apache_request { shift->apache_request(shift) }
 ###----------------------------------------------------------------###
 
 ### same signature as print_content_type
-sub content_type {
-  &print_content_type;
-}
+sub content_type { &print_content_type }
 
 ### will send the Content-type header
 #   $cgix->print_content_type;
@@ -260,41 +258,41 @@ sub content_type {
 #   print_content_type();
 #   print_content_type('text/plain);
 sub print_content_type {
-  my ($self, $type) = ($#_ >= 1) ? @_ : ref($_[0]) ? (shift, undef) : (undef, shift);
-  $self = __PACKAGE__->new if ! $self;
-  die 'Usage: $cgix_obj->print_content_type' if ! ref $self;
-  if ($type) {
-    die "Invalid type: $type" if $type !~ m|^[\w\-\.]+/[\w\-\.\+]+$|; # image/vid.x-foo
-  } else {
-    $type = 'text/html';
-  }
-
-  if (my $r = $self->apache_request) {
-    return if $r->bytes_sent;
-    $r->content_type($type);
-    $r->send_http_header if $self->is_mod_perl_1;
-  } else {
-    if (! $ENV{'CONTENT_TYPED'}) {
-      print "Content-Type: $type\r\n\r\n";
-      $ENV{'CONTENT_TYPED'} = '';
+    my ($self, $type) = ($#_ >= 1) ? @_ : ref($_[0]) ? (shift, undef) : (undef, shift);
+    $self = __PACKAGE__->new if ! $self;
+    die 'Usage: $cgix_obj->print_content_type' if ! ref $self;
+    if ($type) {
+        die "Invalid type: $type" if $type !~ m|^[\w\-\.]+/[\w\-\.\+]+$|; # image/vid.x-foo
+    } else {
+        $type = 'text/html';
     }
-    $ENV{'CONTENT_TYPED'} .= sprintf("%s, %d\n", (caller)[1,2]);
-  }
+
+    if (my $r = $self->apache_request) {
+        return if $r->bytes_sent;
+        $r->content_type($type);
+        $r->send_http_header if $self->is_mod_perl_1;
+    } else {
+        if (! $ENV{'CONTENT_TYPED'}) {
+            print "Content-Type: $type\r\n\r\n";
+            $ENV{'CONTENT_TYPED'} = '';
+        }
+        $ENV{'CONTENT_TYPED'} .= sprintf("%s, %d\n", (caller)[1,2]);
+    }
 }
 
 ### Boolean check if content has been typed
 #   $cgix->content_typed;
 #   content_typed();
 sub content_typed {
-  my $self = shift;
-  $self = __PACKAGE__->new if ! $self;
-  die 'Usage: $cgix_obj->content_typed' if ! ref $self;
+    my $self = shift;
+    $self = __PACKAGE__->new if ! $self;
+    die 'Usage: $cgix_obj->content_typed' if ! ref $self;
 
-  if (my $r = $self->apache_request) {
-    return $r->bytes_sent;
-  } else {
-    return ($ENV{'CONTENT_TYPED'}) ? 1 : undef;
-  }
+    if (my $r = $self->apache_request) {
+        return $r->bytes_sent;
+    } else {
+        return ($ENV{'CONTENT_TYPED'}) ? 1 : undef;
+    }
 }
 
 ###----------------------------------------------------------------###
@@ -304,36 +302,36 @@ sub content_typed {
 #   $cgix->location_bounce($url);
 #   location_bounce($url);
 sub location_bounce {
-  my ($self, $loc) = ($#_ == 1) ? (@_) : (undef, shift);
-  $self = __PACKAGE__->new if ! $self;
-  die 'Usage: $cgix_obj->location_bounce($url)' if ! ref $self;
+    my ($self, $loc) = ($#_ == 1) ? (@_) : (undef, shift);
+    $self = __PACKAGE__->new if ! $self;
+    die 'Usage: $cgix_obj->location_bounce($url)' if ! ref $self;
 
-  if ($self->content_typed) {
-    if ($DEBUG_LOCATION_BOUNCE) {
-      print "<a class=debug href=\"$loc\">Location: $loc</a><br />\n";
+    if ($self->content_typed) {
+        if ($DEBUG_LOCATION_BOUNCE) {
+            print "<a class=debug href=\"$loc\">Location: $loc</a><br />\n";
+        } else {
+            print "<meta http-equiv=\"refresh\" content=\"0;url=$loc\" />\n";
+        }
+
+    } elsif (my $r = $self->apache_request) {
+        $r->status(302);
+        if ($self->is_mod_perl_1) {
+            $r->header_out("Location", $loc);
+            $r->content_type('text/html');
+            $r->send_http_header;
+            $r->print("Bounced to $loc\n");
+        } else {
+            $r->headers_out->add("Location", $loc);
+            $r->content_type('text/html');
+            $r->rflush;
+        }
+
     } else {
-      print "<meta http-equiv=\"refresh\" content=\"0;url=$loc\" />\n";
+        print "Location: $loc\r\n",
+        "Status: 302 Bounce\r\n",
+        "Content-Type: text/html\r\n\r\n",
+        "Bounced to $loc\r\n";
     }
-  } else {
-    if (my $r = $self->apache_request) {
-      $r->status(302);
-      if ($self->is_mod_perl_1) {
-        $r->header_out("Location", $loc);
-        $r->content_type('text/html');
-        $r->send_http_header;
-        $r->print("Bounced to $loc\n");
-      } else {
-        my $t = $r->headers_out;
-        $t->add("Location", $loc);
-        $r->headers_out($t);
-      }
-    } else {
-      print "Location: $loc\r\n",
-            "Status: 302 Bounce\r\n",
-            "Content-Type: text/html\r\n\r\n",
-            "Bounced to $loc\r\n";
-    }
-  }
 }
 
 ### set a cookie nicely - even if we have already sent content
@@ -364,9 +362,7 @@ sub set_cookie {
       if ($self->is_mod_perl_1) {
         $r->header_out("Set-cookie", $cookie);
       } else {
-        my $t = $r->headers_out;
-        $t->add("Set-Cookie", $cookie);
-        $r->headers_out($t);
+        $r->headers_out->add("Set-Cookie", $cookie);
       }
     } else {
       print "Set-Cookie: $cookie\r\n"
@@ -400,9 +396,7 @@ sub last_modified {
       if ($self->is_mod_perl_1) {
         $r->header_out($key, $time);
       } else {
-        my $t = $r->headers_out;
-        $t->add($key, $time);
-        $r->headers_out($t);
+        $r->headers_out->add($key, $time);
       }
     } else {
       print "$key: $time\r\n"
@@ -485,9 +479,7 @@ sub send_header {
     if ($self->is_mod_perl_1) {
       $r->header_out($key, $value);
     } else {
-      my $t = $r->headers_out;
-      $t->add($key, $value);
-      $r->headers_out($t);
+      $r->headers_out->add($key, $value);
     }
   } else {
     print "$key: $value\r\n";
