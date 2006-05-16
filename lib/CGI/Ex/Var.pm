@@ -16,9 +16,9 @@ use vars qw(
             $FILTERS
 
             $OPERATORS
-            $OP_UNARY $OP_UNARY_REV
+            $OP_UNARY
+            $OP_BINARY
             $OP_TRINARY
-            $OP_PARENED
 
             $QR_OP
             $QR_OP_UNARY
@@ -117,43 +117,41 @@ BEGIN {
     $RT_OPERATOR_PRECEDENCE = 0;
 
     ### setup the operator parsing
-    $OPERATORS ||= {
-        # name => # order, precedence, symbols, sub to create, allow_parens
-        pow    => [2, 96, ['**', '^', 'pow'],  0, sub {bless \@_, 'CGI::Ex::_pow'}   ],
-        not_1  => [1, 93, ['!'],               0, sub {bless \@_, 'CGI::Ex::_not_1'} ],
-        negate => [1, 93, ['-'],               0, sub {bless \@_, 'CGI::Ex::_negate'}],
-        mult   => [2, 90, ['*'],               0, sub {bless \@_, 'CGI::Ex::_mult'}  ],
-        div    => [2, 90, ['/'],               0, sub {bless \@_, 'CGI::Ex::_div'}   ],
-        intdiv => [2, 90, ['div', 'DIV'],      0, sub {bless \@_, 'CGI::Ex::_intdiv'}],
-        mod    => [2, 90, ['%', 'mod', 'MOD'], 0, sub {bless \@_, 'CGI::Ex::_mod'}   ],
-        plus   => [2, 85, ['+'],               0, sub {bless \@_, 'CGI::Ex::_plus'}  ],
-        subtr  => [2, 85, ['-'],               0, sub {bless \@_, 'CGI::Ex::_substr'}],
-        concat => [2, 85, ['_', '~'],          0, sub {bless \@_, 'CGI::Ex::_concat'}],
-        num_lt => [2, 80, ['<'],               0, sub {bless \@_, 'CGI::Ex::_num_lt'}],
-        num_gt => [2, 80, ['>'],               0, sub {bless \@_, 'CGI::Ex::_num_gt'}],
-        num_le => [2, 80, ['<='],              0, sub {bless \@_, 'CGI::Ex::_num_le'}],
-        num_ge => [2, 80, ['>='],              0, sub {bless \@_, 'CGI::Ex::_num_ge'}],
-        str_lt => [2, 80, ['lt'],              0, sub {bless \@_, 'CGI::Ex::_str_lt'}],
-        str_gt => [2, 80, ['gt'],              0, sub {bless \@_, 'CGI::Ex::_str_gt'}],
-        str_le => [2, 80, ['le'],              0, sub {bless \@_, 'CGI::Ex::_str_le'}],
-        str_ge => [2, 80, ['ge'],              0, sub {bless \@_, 'CGI::Ex::_str_ge'}],
-        eq     => [2, 75, ['==', 'eq'],        0, sub {bless \@_, 'CGI::Ex::_eq'}    ],
-        ne     => [2, 75, ['!=', 'ne'],        0, sub {bless \@_, 'CGI::Ex::_ne'}    ],
-        and_1  => [2, 70, ['&&'],              0, sub {bless \@_, 'CGI::Ex::_and_1'} ],
-        or_1   => [2, 65, ['||'],              0, sub {bless \@_, 'CGI::Ex::_or_1'}  ],
-        range  => [2, 60, ['..'],              0, sub {bless \@_, 'CGI::Ex::_range'} ],
-        ifelse => [3, 55, ['?', ':'],          0, sub {bless \@_, 'CGI::Ex::_ifelse'}],
-        set    => [3, 52, ['='],               1, sub {bless \@_, 'CGI::Ex::_set'}   ],
-        not_2  => [1, 50, ['not', 'NOT'],      0, sub {bless \@_, 'CGI::Ex::_not_2'} ],
-        and_2  => [2, 45, ['and', 'AND'],      0, sub {bless \@_, 'CGI::Ex::_and_2'} ],
-        or_2   => [2, 40, ['or', 'OR'],        0, sub {bless \@_, 'CGI::Ex::_or_2'}  ],
-        hash   => [2, 1,  [],                  0, sub {bless \@_, 'CGI::Ex::_hash'}  ],
-        array  => [2, 1,  [],                  0, sub {bless \@_, 'CGI::Ex::_array'} ],
-    };
+    $OPERATORS ||= [
+        # name => # order, precedence, symbols, only_in_parens, sub to create
+        [2, 96, ['**', '^', 'pow'],  0, sub {bless(shift(), 'CGI::Ex::_pow')}    ],
+        [1, 93, ['!'],               0, sub {bless(shift(), 'CGI::Ex::_not')}    ],
+        [1, 93, ['-'],               0, sub {bless(shift(), 'CGI::Ex::_negate')} ],
+        [2, 90, ['*'],               0, sub {bless(shift(), 'CGI::Ex::_mult')}   ],
+        [2, 90, ['/'],               0, sub {bless(shift(), 'CGI::Ex::_div')}    ],
+        [2, 90, ['div', 'DIV'],      0, sub {bless(shift(), 'CGI::Ex::_intdiv')} ],
+        [2, 90, ['%', 'mod', 'MOD'], 0, sub {bless(shift(), 'CGI::Ex::_mod')}    ],
+        [2, 85, ['+'],               0, sub {bless(shift(), 'CGI::Ex::_plus')}   ],
+        [2, 85, ['-'],               0, sub {bless(shift(), 'CGI::Ex::_subtr')}  ],
+        [2, 85, ['_', '~'],          0, \&_concat                                ],
+        [2, 80, ['<'],               0, sub {bless(shift(), 'CGI::Ex::_num_lt')} ],
+        [2, 80, ['>'],               0, sub {bless(shift(), 'CGI::Ex::_num_gt')} ],
+        [2, 80, ['<='],              0, sub {bless(shift(), 'CGI::Ex::_num_le')} ],
+        [2, 80, ['>='],              0, sub {bless(shift(), 'CGI::Ex::_num_ge')} ],
+        [2, 80, ['lt'],              0, sub {bless(shift(), 'CGI::Ex::_str_lt')} ],
+        [2, 80, ['gt'],              0, sub {bless(shift(), 'CGI::Ex::_str_gt')} ],
+        [2, 80, ['le'],              0, sub {bless(shift(), 'CGI::Ex::_str_le')} ],
+        [2, 80, ['ge'],              0, sub {bless(shift(), 'CGI::Ex::_str_ge')} ],
+        [2, 75, ['==', 'eq'],        0, sub {bless(shift(), 'CGI::Ex::_eq')}     ],
+        [2, 75, ['!=', 'ne'],        0, sub {bless(shift(), 'CGI::Ex::_ne')}     ],
+        [2, 70, ['&&'],              0, sub {bless(shift(), 'CGI::Ex::_and')}    ],
+        [2, 65, ['||'],              0, sub {bless(shift(), 'CGI::Ex::_or')}     ],
+        [2, 60, ['..'],              0, sub {bless(shift(), 'CGI::Ex::_range')}  ],
+        [3, 55, ['?', ':'],          0, sub {bless(shift(), 'CGI::Ex::_ifelse')} ],
+        [3, 52, ['='],               1, sub {bless(shift(), 'CGI::Ex::_set')}    ],
+        [1, 50, ['not', 'NOT'],      0, sub {bless(shift(), 'CGI::Ex::_not')}    ],
+        [2, 45, ['and', 'AND'],      0, sub {bless(shift(), 'CGI::Ex::_and')}    ],
+        [2, 40, ['or', 'OR'],        0, sub {bless(shift(), 'CGI::Ex::_or')}     ],
+    ];
 
-    $OP_UNARY     ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-'}; # unary operators
-    $OP_UNARY_REV ||= {reverse %$OP_UNARY};
-    $OP_TRINARY   ||= {'?' => ':'}; # any trinary operator pairs
+    $OP_UNARY   ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 1} @$OPERATORS};
+    $OP_BINARY  ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 2} @$OPERATORS};
+    $OP_TRINARY ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 3} @$OPERATORS};
     sub _op_qr { # no mixed \w\W operators
         my %used;
         my $chrs = join '|', map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W{2,}$/} @_;
@@ -163,17 +161,25 @@ BEGIN {
         $word = "\\b(?:$word)\\b" if $word;
         return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
     }
-    sub _build_op_qr       { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] > 1 && ! $_->[3]} values %$OPERATORS) } # all binary, trinary, non-parened ops
-    sub _build_op_qr_unary { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] == 1            } values %$OPERATORS) } # unary operators
-    sub _build_op_qr_paren { _op_qr(sort map {@{ $_->[2] }} grep {                 $_->[3]} values %$OPERATORS) } # paren
+    sub _build_op_qr       { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] > 1 && ! $_->[3]} @$OPERATORS) } # all binary, trinary, non-parened ops
+    sub _build_op_qr_unary { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] == 1            } @$OPERATORS) } # unary operators
+    sub _build_op_qr_paren { _op_qr(sort map {@{ $_->[2] }} grep {                 $_->[3]} @$OPERATORS) } # paren
     $QR_OP         ||= _build_op_qr();
     $QR_OP_UNARY   ||= _build_op_qr_unary();
     $QR_OP_PARENED ||= _build_op_qr_paren();
+
     $QR_COMMENTS   = '(?-s: \# .* \s*)*';
     $QR_AQ_NOTDOT  = "(?! \\s* $QR_COMMENTS \\.)";
 };
 
 ###----------------------------------------------------------------###
+
+sub _var     { return bless(shift(), __PACKAGE__        ) }
+sub _literal { return bless(shift(), 'CGI::Ex::_literal') }
+sub _autobox { return bless(shift(), 'CGI::Ex::_autobox') }
+sub _hash    { return bless(shift(), 'CGI::Ex::_hash'   ) }
+sub _array   { return bless(shift(), 'CGI::Ex::_array'  ) }
+sub _concat  { return bless(shift(), 'CGI::Ex::_concat' ) }
 
 sub throw {
     require CGI::Ex::Template;
@@ -211,17 +217,18 @@ sub parse_exp {
     my $has_unary;
     if ($copy =~ s{ ^ ($QR_OP_UNARY) \s* $QR_COMMENTS }{}ox) {
         return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
-        $has_unary = $OP_UNARY->{$1} ? $1 : $OP_UNARY_REV->{$1} || throw("Couldn't find canonical name of unary \"$1\"");
+        $has_unary = $1;
     }
 
     my @var;
     my $is_literal;
+    my $is_construct;
     my $is_namespace;
 
     ### allow for numbers
     if ($copy =~ s{ ^ ( (?:\d*\.\d+ | \d+) ) \s* $QR_COMMENTS }{}ox) {
         my $number = $1;
-        push @var, \ $number;
+        push @var, _literal(\ $number);
         $is_literal = 1;
 
     ### looks like a normal variable start
@@ -234,7 +241,7 @@ sub parse_exp {
         if ($1 eq "'") { # no interpolation on single quoted strings
             my $str = $2;
             $str =~ s{ \\\' }{\'}xg;
-            push @var, \ $str;
+            push @var, _literal(\ $str);
             $is_literal = 1;
         } else {
             my $str = $2;
@@ -258,17 +265,17 @@ sub parse_exp {
                 push @var, \ $pieces[0];
                 $is_literal = 1;
             } elsif (! @pieces) {
-                push @var, \ '';
+                push @var, _literal(\ '');
                 $is_literal = 1;
             } else {
-                push @var, \ ['~', @pieces];
+                push @var, _concat(\@pieces);
+                $is_construct = 1;
             }
         }
         if ($ARGS->{'auto_quote'}){
             $$str_ref = $copy;
             return ${ $var[0] } if $is_literal;
-            push @var, 0;
-            return \@var;
+            return _var([@var, 0]);
         }
 
     ### allow for leading $foo or ${foo.bar} type constructs
@@ -280,19 +287,20 @@ sub parse_exp {
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* $QR_COMMENTS }{}ox) {
         local $RT_OPERATOR_PRECEDENCE = 0; # reset presedence
-        my $arrayref = ['arrayref'];
+        my $arrayref = [];
         while (defined(my $var = parse_exp(\$copy))) {
             push @$arrayref, $var;
             $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         }
         $copy =~ s{ ^ \] \s* $QR_COMMENTS }{}ox
             || throw('parse.missing.square', "Missing close \]", undef, length($$str_ref) - length($copy));
-        push @var, \ $arrayref;
+        push @var, _array($arrayref);
+        $is_construct = 1;
 
     ### looks like a hash constructor
     } elsif ($copy =~ s{ ^ \{ \s* $QR_COMMENTS }{}ox) {
         local $RT_OPERATOR_PRECEDENCE = 0; # reset precedence
-        my $hashref = ['hashref'];
+        my $hashref = [];
         while (defined(my $key = parse_exp(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
             $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox;
             my $val = parse_exp(\$copy);
@@ -301,7 +309,8 @@ sub parse_exp {
         }
         $copy =~ s{ ^ \} \s* $QR_COMMENTS }{}ox
             || throw('parse.missing.curly', "Missing close \} ($copy)", undef, length($$str_ref) - length($copy));
-        push @var, \ $hashref;
+        push @var, _hash($hashref);
+        $is_construct = 1;
 
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
@@ -309,8 +318,8 @@ sub parse_exp {
         my $var = parse_exp(\$copy, {allow_parened_ops => 1});
         $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
             || throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
-        @var = @$var;
-        pop(@var); # pull off the trailing args of the paren group
+        push @var, $var;
+        $is_construct = 1;
 
     ### nothing to find - return failure
     } else {
@@ -360,9 +369,21 @@ sub parse_exp {
     }
 
     ### flatten literals and constants as much as possible
-    my $var = ($is_literal && $#var == 1) ? ${ $var[0] }
-            : $is_namespace               ? CGI::Ex::Var->new(\@var)->call({}, {is_namespace_during_compile => 1})
-            :                               CGI::Ex::Var->new(\@var);
+    my $var;
+    if (@var == 2) {
+        if ($is_literal) {
+            $var = ${ $var[0] };
+        } elsif ($is_construct) {
+            $var = $var[0];
+        } else {
+            $var = _var(\@var);
+        }
+    } elsif ($is_namespace) {
+        $var = _var(\@var)->call({}, {is_namespace_during_compile => 1});
+    } else {
+        $var[0] = _autobox([$var[0]]) if $is_literal || $is_construct;
+        $var = _var(\@var);
+    }
 
     ### allow for all "operators"
     if (! $RT_OPERATOR_PRECEDENCE) {
@@ -375,10 +396,10 @@ sub parse_exp {
             my $op   = $1;
             my $var2 = parse_exp(\$copy);
             ### allow for unary operator precedence
-            if ($has_unary && ($OPERATORS->{$op} && $OPERATORS->{$op} < $OPERATORS->{$has_unary})) {
+            if ($has_unary && (($OP_BINARY->{$op} || $OP_TRINARY->{$op}) < $OP_UNARY->{$has_unary})) {
                 if ($tree) {
-                    if ($#$tree == 1) { # only one operator - keep simple things fast
-                        $var = [\ [$tree->[0], $var, $tree->[1]], 0];
+                    if (@$tree == 2) { # only one operator - keep simple things fast
+                        $var = $OP_BINARY->{$tree->[0]}->[4]->([$var, $tree->[1]]);
                     } else {
                         unshift @$tree, $var;
                         $var = apply_precedence($tree, $found);
@@ -386,20 +407,19 @@ sub parse_exp {
                     undef $tree;
                     undef $found;
                 }
-                my $op_unary = $OP_UNARY->{$has_unary} || $has_unary;
-                $var = [ \ [ $op_unary, $var ], 0 ];
+                $var = $OP_UNARY->{$has_unary}->[4]->([$var]);
                 undef $has_unary;
             }
 
             ### add the operator to the tree
             push (@{ $tree ||= [] }, $op, $var2);
-            $found->{$op} = $OPERATORS->{$op}->[1] if exists $OPERATORS->{$op};
+            $found->{$op} = $OP_BINARY->{$op}->[1] || $OP_TRINARY->{$op}->[1] || die "Couldn't find op precedence for $op";
         }
 
         ### if we found operators - tree the nodes by operator precedence
         if ($tree) {
-            if ($#$tree == 1) { # only one operator - keep simple things fast
-                $var = [\ [$tree->[0], $var, $tree->[1]], 0];
+            if (@$tree == 2) { # only one operator - keep simple things fast
+                $var = $OP_BINARY->{$tree->[0]}->[4]->([$var, $tree->[1]]);
             } else {
                 unshift @$tree, $var;
                 $var = apply_precedence($tree, $found);
@@ -409,8 +429,7 @@ sub parse_exp {
 
     ### allow for unary on non-chained variables
     if ($has_unary) {
-        my $op_unary = $OP_UNARY->{$has_unary} || $has_unary;
-        $var = [ \ [ $op_unary, $var ], 0 ];
+        $var = $OP_UNARY->{$has_unary}->[4]->([$var]);
     }
 
     $$str_ref = $copy; # commit the changes
@@ -833,6 +852,69 @@ sub filter_redirect {
         return '';
     };
 }
+
+###----------------------------------------------------------------###
+### "here be dragons"
+
+package CGI::Ex::_literal;
+sub call { ${ $_[0] } }
+
+package CGI::Ex::_not;
+sub call { ! (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) || '' }
+
+package CGI::Ex::_concat;
+sub call { (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  .   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_str_lt;
+package CGI::Ex::_str_gt;
+package CGI::Ex::_str_le;
+package CGI::Ex::_str_ge;
+package CGI::Ex::_eq;
+package CGI::Ex::_ne;
+package CGI::Ex::_and;
+package CGI::Ex::_or;
+package CGI::Ex::_ifelse;
+package CGI::Ex::_set;
+package CGI::Ex::_hash;
+package CGI::Ex::_array;
+
+package CGI::Ex::_negate;
+sub call { local $^W; - (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) }
+
+package CGI::Ex::_pow;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  **  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_mult;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  *   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_div;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  /   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_intdiv;
+sub call { local $^W; int( (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  /   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) ) }
+
+package CGI::Ex::_mod;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  %   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_plus;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  +   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_subtr;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  -   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_num_lt;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  <   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_num_gt;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  >   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_num_le;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  <=  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_num_ge;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  >=  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+
+package CGI::Ex::_range;
 
 ###----------------------------------------------------------------###
 
