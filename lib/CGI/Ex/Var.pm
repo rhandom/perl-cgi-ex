@@ -1038,7 +1038,9 @@ package CGI::Ex::_ifelse;
 package CGI::Ex::_set;
 sub call {
     my ($var, $val) = @{ $_[0] };
+    $val = CGI::Ex::Var::get_exp($val, $_[1]);
     CGI::Ex::Var::set_exp($var, $val, $_[1]);
+    return $val;
 }
 sub set {}
 
