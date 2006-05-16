@@ -25,6 +25,7 @@ use vars qw(
             $QR_OP_PARENED
             $QR_COMMENTS
             $QR_AQ_NOTDOT
+            $QR_PRIVATE
 
             $RT_NAMESPACE
             $RT_FILTERS
@@ -32,6 +33,7 @@ use vars qw(
             $RT_DEBUG_UNDEF
             $RT_UNDEFINED_SUB
             $RT_OPERATOR_PRECEDENCE
+            $RT_DURING_COMPILE
 
             $TT_FILTERS
             );
@@ -171,13 +173,13 @@ BEGIN {
 
     $QR_COMMENTS   = '(?-s: \# .* \s*)*';
     $QR_AQ_NOTDOT  = "(?! \\s* $QR_COMMENTS \\.)";
+    $QR_PRIVATE    = qr/^_/;
 };
 
 ###----------------------------------------------------------------###
 
 sub _var     { return bless(shift(), __PACKAGE__        ) }
 sub _literal { return bless(shift(), 'CGI::Ex::_literal') }
-sub _autobox { return bless(shift(), 'CGI::Ex::_autobox') }
 sub _hash    { return bless(shift(), 'CGI::Ex::_hash'   ) }
 sub _array   { return bless(shift(), 'CGI::Ex::_array'  ) }
 sub _concat  { return bless(shift(), 'CGI::Ex::_concat' ) }
@@ -376,10 +378,10 @@ sub parse_exp {
         } else {
             $var = _var(\@var);
         }
-    } elsif ($is_namespace) {
-        $var = _var(\@var)->call({}, {is_namespace_during_compile => 1});
+    } elsif ($is_namespace) { # attempt to "fold" constant variables into the parse tree
+        local $RT_DURING_COMPILE = 1;
+        $var = _var(\@var)->call({});
     } else {
-        $var[0] = _autobox([$var[0]]) if $is_literal || $is_construct;
         $var = _var(\@var);
     }
 
@@ -572,9 +574,7 @@ sub is_nested { @{ $_[0] } >= 3 }
 sub call {
     my $self = shift;
     my $hash = shift || {};
-    my $ARGS = shift || {};
     my $i    = 0;
-    my $generated_list;
 
     ### determine the top level of this particular variable access
     my $ref  = $self->[$i++];
@@ -582,18 +582,19 @@ sub call {
     warn "CGI::Ex::Var::call: begin \"$ref\"\n" if trace;
 
     if (ref $ref) {
-        if ($ref->isa('CGI::Ex::_autobox')) {
+        if ($ref->does_autobox) {
             $ref = $ref->call($hash);
         } else {
             $ref = $ref->call($hash);
-            return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+            return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
             $ref = $hash->{$ref};
         }
     } else {
-        if ($ARGS->{'is_namespace_during_compile'}) {
+        if ($RT_DURING_COMPILE) {
+            $RT_DURING_COMPILE = undef; # allow subsequent args (if any) to not be affected
             $ref = $RT_NAMESPACE->{$ref};
         } else {
-            return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+            return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
             $ref = $hash->{$ref};
         }
     }
@@ -616,7 +617,7 @@ sub call {
 
         ### descend one chained level
         last if $i >= $#$self;
-        my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $self->[$i++] eq '.';
+        my $was_dot_call = $self->[$i++];
         my $name         = $self->[$i++];
         my $args         = $self->[$i++];
         warn "CGI::Ex::Var::get_exp: nested \"$name\"\n" if trace;
@@ -630,7 +631,7 @@ sub call {
             }
         }
 
-        if ($name =~ /^_/) { # don't allow vars that begin with _
+        if ($name =~ $QR_PRIVATE) { # don't allow vars that begin with _
             $ref = undef;
             last;
         }
@@ -716,7 +717,7 @@ sub call {
                     $ref = $ref->{$name};
                 } elsif ($HASH_OPS->{$name}) {
                     $ref = $HASH_OPS->{$name}->($ref, $args ? (map {get_exp($_, $hash)} @$args) : ());
-                } elsif ($ARGS->{'is_namespace_during_compile'}) {
+                } elsif ($RT_DURING_COMPILE) {
                     return $self; # abort - can't fold namespace variable
                 } else {
                     $ref = undef;
@@ -745,32 +746,27 @@ sub call {
         }
     }
 
-    ### allow for special behavior for the '..' operator
-    if ($generated_list && $ARGS->{'list_context'} && ref($ref) eq 'ARRAY') {
-        return @$ref;
-    }
-
     return $ref;
 }
 
 sub undefined { $RT_UNDEFINED_SUB ? $RT_UNDEFINED_SUB->(@_) : '' }
 
 sub set {
-    my ($var, $val, $hash) = @_;
+    my ($self, $val, $hash) = @_;
     my $i = 0;
 
     ### determine the top level of this particular variable access
-    my $ref  = $var->[$i++];
-    my $args = $var->[$i++];
+    my $ref  = $self->[$i++];
+    my $args = $self->[$i++];
 
     if (ref $ref) {
         $ref = $ref->call($hash);
         return if ! defined $ref;
     }
 
-    return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+    return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
 
-    if ($#$var <= $i) {
+    if ($#$self <= $i) {
         $hash->{$ref} = $val;
         return;
     } else {
@@ -781,10 +777,10 @@ sub set {
     return if UNIVERSAL::isa($ref, 'CODE');
 
     ### vivify the chained levels
-    while (defined $ref && $#$var > $i) {
-        my $was_dot_call = $var->[$i++];
-        my $name         = $var->[$i++];
-        my $args         = $var->[$i++];
+    while (defined $ref && $#$self > $i) {
+        my $was_dot_call = $self->[$i++];
+        my $name         = $self->[$i++];
+        my $args         = $self->[$i++];
 
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
@@ -795,7 +791,7 @@ sub set {
             }
         }
 
-        if ($name =~ /^_/) { # don't allow vars that begin with _
+        if ($name =~ $QR_PRIVATE) { # don't allow vars that begin with _
             return;
         }
 
@@ -803,7 +799,7 @@ sub set {
         if (UNIVERSAL::can($ref, 'can')) {
             my $lvalueish;
             my @args = $args ? (map {get_exp($_, $hash)} @$args) : ();
-            if ($i >= $#$var) {
+            if ($i >= $#$self) {
                 $lvalueish = 1;
                 push @args, $val;
             }
@@ -823,7 +819,7 @@ sub set {
 
         ### hash member access
         if (UNIVERSAL::isa($ref, 'HASH')) {
-            if ($#$var <= $i) {
+            if ($#$self <= $i) {
                 $ref->{$name} = $val;
                 return;
             } else {
@@ -834,7 +830,7 @@ sub set {
         ### array access
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
             if ($name =~ /^\d+$/) {
-                if ($#$var <= $i) {
+                if ($#$self <= $i) {
                     $ref->[$name] = $val;
                     return;
                 } else {
@@ -1012,28 +1008,22 @@ sub filter_redirect {
 package CGI::Ex::_literal;
 sub call { ${ $_[0] } }
 sub set {}
-
-package CGI::Ex::_autobox;
-sub call { $_[0]->[0]->call($_[1]) }
-sub set {}
-
-package CGI::Ex::_not;
-sub call { ! (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) || '' }
-sub set {}
+sub does_autobox { 1 }
 
 package CGI::Ex::_concat;
 sub call { join "", grep {defined} map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] } }
 sub set {}
+sub does_autobox { 1 }
 
-package CGI::Ex::_and;
-sub call { (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  &&  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+package CGI::Ex::_hash;
+sub call { return {map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] }} }
 sub set {}
+sub does_autobox { 1 }
 
-package CGI::Ex::_or;
-sub call { ((ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  ||  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1])) || '' }
+package CGI::Ex::_array;
+sub call { return [map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] }] }
 sub set {}
-
-package CGI::Ex::_ifelse;
+sub does_autobox { 1 }
 
 package CGI::Ex::_set;
 sub call {
@@ -1043,90 +1033,120 @@ sub call {
     return $val;
 }
 sub set {}
+sub does_autobox { 1 }
 
-package CGI::Ex::_hash;
-sub call { return {map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] }} }
-sub set {}
 
-package CGI::Ex::_array;
-sub call { return [map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] }] }
+package CGI::Ex::_not;
+sub call { ! (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) || '' }
 sub set {}
+sub does_autobox { 0 }
+
+package CGI::Ex::_and;
+sub call { (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  &&  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
+sub does_autobox { 0 }
+
+package CGI::Ex::_or;
+sub call { ((ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  ||  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1])) || '' }
+sub set {}
+sub does_autobox { 0 }
+
+package CGI::Ex::_ifelse;
 
 package CGI::Ex::_str_lt;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  lt  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_str_gt;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  gt  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_str_le;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  le  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_str_ge;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  ge  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_eq;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  eq  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_ne;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  ne  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_negate;
 sub call { local $^W; 0 - (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_pow;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  **  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_mult;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  *   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_div;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  /   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_intdiv;
 sub call { local $^W; int( (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  /   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) ) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_mod;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  %   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_plus;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  +   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_subtr;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  -   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_num_lt;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  <   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_num_gt;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  >   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_num_le;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  <=  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_num_ge;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  >=  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_range;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) || 0 .. (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) || 0 }
 sub set {}
+sub does_autobox { 0 }
 
 ###----------------------------------------------------------------###
 
