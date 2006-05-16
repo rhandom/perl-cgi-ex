@@ -1,50 +1,159 @@
-package CGI::Ex::Exp;
+package CGI::Ex::Var;
 
 =head1 NAME
 
-CGI::Ex::Exp - Expression parsing and execution for CGI::Ex::Template (and other takers)
+CGI::Ex::Var - Variable and expression parsing and execution for CGI::Ex::Template (and other takers)
 
 =cut
 
 use strict;
 
-use vars qw($OPERATORS
+use vars qw(
+            $SCALAR_OPS
+            $FILTER_OPS
+            $LIST_OPS
+            $HASH_OPS
+            $FILTERS
+
+            $OPERATORS
             $OP_UNARY $OP_UNARY_REV
             $OP_TRINARY
             $OP_PARENED
-            $OP_FUNC
+
             $QR_OP
             $QR_OP_UNARY
             $QR_OP_PARENED
-            $NAMESPACE
+            $QR_COMMENTS
+            $QR_AQ_NOTDOT
+
+            $RT_NAMESPACE
+            $RT_FILTERS
+            $RT_CONTEXT
+            $RT_DEBUG_UNDEF
+            $RT_OPERATOR_PRECEDENCE
+
+            $TT_FILTERS
             );
+use constant trace => 0;
 
 BEGIN {
-    $NAMESPACE = {};
+    $SCALAR_OPS = {
+        chunk    => \&vmethod_chunk,
+        collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
+        defined  => sub { 1 },
+        indent   => \&vmethod_indent,
+        'format' => \&vmethod_format,
+        hash     => sub { {value => $_[0]} },
+        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
+        lcfirst  => sub { lcfirst $_[0] },
+        length   => sub { defined($_[0]) ? length($_[0]) : 0 },
+        lower    => sub { lc $_[0] },
+        match    => \&vmethod_match,
+        null     => sub { '' },
+        remove   => sub { vmethod_replace(shift, shift, '', 1) },
+        repeat   => \&vmethod_repeat,
+        replace  => \&vmethod_replace,
+        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
+        size     => sub { 1 },
+        split    => \&vmethod_split,
+        stderr   => sub { print STDERR $_[0]; '' },
+        substr   => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
+        trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
+        ucfirst  => sub { ucfirst $_[0] },
+        upper    => sub { uc $_[0] },
+        uri      => sub { local $_ = $_[0]; s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
+    };
 
-    $OPERATORS ||= {qw(**  96   ^   96   pow 96
-                       !   93   unary_minus  93
-                       *   90   /   90   div 90   DIV 90
-                       %   90   mod 90   MOD 90
-                       +   85   -   85   _   85   ~   85
-                       <   80   >   80   <=  80   >=  80
-                       lt  80   gt  80   le  80   ge  80
-                       ==  75   !=  75   eq  75   ne  75
-                       &&  70
-                       ||  65
-                       ..  60
-                       ?   55
-                       =   52
-                       not 50   NOT 50
-                       and 45   AND 45
-                       or  40   OR  40
-                       hashref 1 arrayref 1
-                       )};
+    $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
+        eval     => [\&filter_eval, 1],
+        evaltt   => [\&filter_eval, 1],
+        file     => [\&filter_redirect, 1],
+        redirect => [\&filter_redirect, 1],
+    };
+
+    $LIST_OPS = {
+        first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
+        grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
+        hash    => sub { my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
+        join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
+        last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
+        list    => sub { $_[0] },
+        max     => sub { $#{ $_[0] } },
+        merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
+        nsort   => \&vmethod_nsort,
+        pop     => sub { pop @{ $_[0] } },
+        push    => sub { my $ref = shift; push @$ref, @_; return '' },
+        reverse => sub { [ reverse @{ $_[0] } ] },
+        shift   => sub { shift  @{ $_[0] } },
+        size    => sub { scalar @{ $_[0] } },
+        slice   => sub { my ($ref, $a, $b) = @_; $a ||= 0; $b = $#$ref if ! defined $b; return [@{$ref}[$a .. $b]] },
+        sort    => \&vmethod_sort,
+        splice  => \&vmethod_splice,
+        unique  => sub { my %u; return [ grep { ! $u{$_} ++ } @{ $_[0] } ] },
+        unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
+    };
+
+    $HASH_OPS = {
+        defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
+        delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
+        each    => sub { [%{ $_[0] }] },
+        exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
+        hash    => sub { $_[0] },
+        import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
+        keys    => sub { [keys %{ $_[0] }] },
+        list    => sub { [$_[0]] },
+        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
+        nsort   => sub { my $ref = shift; [sort {$ref->{$a}    <=> $ref->{$b}   } keys %$ref] },
+        size    => sub { scalar keys %{ $_[0] } },
+        sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
+        values  => sub { [values %{ $_[0] }] },
+    };
+
+    ### Runtime set variables that control lookups of various pieces of info
+    $RT_NAMESPACE   = {};
+    $RT_FILTERS     = {};
+    $RT_CONTEXT     = {};
+    $RT_DEBUG_UNDEF = 0;
+    $RT_OPERATOR_PRECEDENCE = 0;
+
+    ### setup the operator parsing
+    $OPERATORS ||= {
+        # name => # order, precedence, symbols, sub to create, allow_parens
+        pow    => [2, 96, ['**', '^', 'pow'],  0, sub {bless \@_, 'CGI::Ex::_pow'}   ],
+        not_1  => [1, 93, ['!'],               0, sub {bless \@_, 'CGI::Ex::_not_1'} ],
+        negate => [1, 93, ['-'],               0, sub {bless \@_, 'CGI::Ex::_negate'}],
+        mult   => [2, 90, ['*'],               0, sub {bless \@_, 'CGI::Ex::_mult'}  ],
+        div    => [2, 90, ['/'],               0, sub {bless \@_, 'CGI::Ex::_div'}   ],
+        intdiv => [2, 90, ['div', 'DIV'],      0, sub {bless \@_, 'CGI::Ex::_intdiv'}],
+        mod    => [2, 90, ['%', 'mod', 'MOD'], 0, sub {bless \@_, 'CGI::Ex::_mod'}   ],
+        plus   => [2, 85, ['+'],               0, sub {bless \@_, 'CGI::Ex::_plus'}  ],
+        subtr  => [2, 85, ['-'],               0, sub {bless \@_, 'CGI::Ex::_substr'}],
+        concat => [2, 85, ['_', '~'],          0, sub {bless \@_, 'CGI::Ex::_concat'}],
+        num_lt => [2, 80, ['<'],               0, sub {bless \@_, 'CGI::Ex::_num_lt'}],
+        num_gt => [2, 80, ['>'],               0, sub {bless \@_, 'CGI::Ex::_num_gt'}],
+        num_le => [2, 80, ['<='],              0, sub {bless \@_, 'CGI::Ex::_num_le'}],
+        num_ge => [2, 80, ['>='],              0, sub {bless \@_, 'CGI::Ex::_num_ge'}],
+        str_lt => [2, 80, ['lt'],              0, sub {bless \@_, 'CGI::Ex::_str_lt'}],
+        str_gt => [2, 80, ['gt'],              0, sub {bless \@_, 'CGI::Ex::_str_gt'}],
+        str_le => [2, 80, ['le'],              0, sub {bless \@_, 'CGI::Ex::_str_le'}],
+        str_ge => [2, 80, ['ge'],              0, sub {bless \@_, 'CGI::Ex::_str_ge'}],
+        eq     => [2, 75, ['==', 'eq'],        0, sub {bless \@_, 'CGI::Ex::_eq'}    ],
+        ne     => [2, 75, ['!=', 'ne'],        0, sub {bless \@_, 'CGI::Ex::_ne'}    ],
+        and_1  => [2, 70, ['&&'],              0, sub {bless \@_, 'CGI::Ex::_and_1'} ],
+        or_1   => [2, 65, ['||'],              0, sub {bless \@_, 'CGI::Ex::_or_1'}  ],
+        range  => [2, 60, ['..'],              0, sub {bless \@_, 'CGI::Ex::_range'} ],
+        ifelse => [3, 55, ['?', ':'],          0, sub {bless \@_, 'CGI::Ex::_ifelse'}],
+        set    => [3, 52, ['='],               1, sub {bless \@_, 'CGI::Ex::_set'}   ],
+        not_2  => [1, 50, ['not', 'NOT'],      0, sub {bless \@_, 'CGI::Ex::_not_2'} ],
+        and_2  => [2, 45, ['and', 'AND'],      0, sub {bless \@_, 'CGI::Ex::_and_2'} ],
+        or_2   => [2, 40, ['or', 'OR'],        0, sub {bless \@_, 'CGI::Ex::_or_2'}  ],
+        hash   => [2, 1,  [],                  0, sub {bless \@_, 'CGI::Ex::_hash'}  ],
+        array  => [2, 1,  [],                  0, sub {bless \@_, 'CGI::Ex::_array'} ],
+    };
+
     $OP_UNARY     ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-'}; # unary operators
     $OP_UNARY_REV ||= {reverse %$OP_UNARY};
     $OP_TRINARY   ||= {'?' => ':'}; # any trinary operator pairs
-    $OP_PARENED   ||= {'=' => 1};   # any functions only allowed in direct parentheses
-    $OP_FUNC      ||= {};           # allow for any user defined functions
     sub _op_qr { # no mixed \w\W operators
         my %used;
         my $chrs = join '|', map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W{2,}$/} @_;
@@ -54,13 +163,14 @@ BEGIN {
         $word = "\\b(?:$word)\\b" if $word;
         return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
     }
-    sub _build_op_qr       { _op_qr(sort(grep {! $OP_UNARY->{$_} && ! $OP_PARENED->{$_}}
-                                         keys(%$OPERATORS), values(%$OP_TRINARY))) }
-    sub _build_op_qr_unary { _op_qr(sort %$OP_UNARY) } # grab keys and values
-    sub _build_op_qr_extra { _op_qr(sort keys %$OP_PARENED) }
+    sub _build_op_qr       { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] > 1 && ! $_->[3]} values %$OPERATORS) } # all binary, trinary, non-parened ops
+    sub _build_op_qr_unary { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] == 1            } values %$OPERATORS) } # unary operators
+    sub _build_op_qr_paren { _op_qr(sort map {@{ $_->[2] }} grep {                 $_->[3]} values %$OPERATORS) } # paren
     $QR_OP         ||= _build_op_qr();
     $QR_OP_UNARY   ||= _build_op_qr_unary();
-    $QR_OP_PARENED ||= _build_op_qr_extra();
+    $QR_OP_PARENED ||= _build_op_qr_paren();
+    $QR_COMMENTS   = '(?-s: \# .* \s*)*';
+    $QR_AQ_NOTDOT  = "(?! \\s* $QR_COMMENTS \\.)";
 };
 
 ###----------------------------------------------------------------###
@@ -70,9 +180,14 @@ sub throw {
     CGI::Ex::Template->throw(@_);
 }
 
+sub dump_exp {
+    my $str = shift;
+    require Data::Dumper;
+    return Data::Dumper::Dumper(parse_exp(\$str));
+}
+
 sub parse_exp {
     my $str_ref = shift;
-    my $cet     = shift;
     my $ARGS    = shift || {};
 
     ### allow for custom auto_quoting (such as hash constructors)
@@ -112,7 +227,7 @@ sub parse_exp {
     ### looks like a normal variable start
     } elsif ($copy =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox) {
         push @var, $1;
-        $is_namespace = 1 if $NAMESPACE->{$1};
+        $is_namespace = 1 if $RT_NAMESPACE->{$1};
 
     ### allow for literal strings
     } elsif ($copy =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* $QR_COMMENTS }{}sox) {
@@ -164,7 +279,7 @@ sub parse_exp {
 
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* $QR_COMMENTS }{}ox) {
-        local $self->{'_operator_precedence'} = 0; # reset presedence
+        local $RT_OPERATOR_PRECEDENCE = 0; # reset presedence
         my $arrayref = ['arrayref'];
         while (defined(my $var = parse_exp(\$copy))) {
             push @$arrayref, $var;
@@ -176,7 +291,7 @@ sub parse_exp {
 
     ### looks like a hash constructor
     } elsif ($copy =~ s{ ^ \{ \s* $QR_COMMENTS }{}ox) {
-        local $self->{'_operator_precedence'} = 0; # reset precedence
+        local $RT_OPERATOR_PRECEDENCE = 0; # reset precedence
         my $hashref = ['hashref'];
         while (defined(my $key = parse_exp(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
             $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox;
@@ -190,7 +305,7 @@ sub parse_exp {
 
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
-        local $self->{'_operator_precedence'} = 0; # reset precedence
+        local $RT_OPERATOR_PRECEDENCE = 0; # reset precedence
         my $var = parse_exp(\$copy, {allow_parened_ops => 1});
         $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
             || throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
@@ -206,7 +321,7 @@ sub parse_exp {
 
     ### looks for args for the initial
     if ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
-        local $self->{'_operator_precedence'} = 0; # reset precedence
+        local $RT_OPERATOR_PRECEDENCE = 0; # reset precedence
         my $args = parse_args(\$copy);
         $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
             || throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
@@ -233,7 +348,7 @@ sub parse_exp {
 
         ### looks for args for the nested item
         if ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
-            local $self->{'_operator_precedence'} = 0; # reset precedence
+            local $RT_OPERATOR_PRECEDENCE = 0; # reset precedence
             my $args = parse_args(\$copy);
             $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
                 || throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
@@ -246,17 +361,17 @@ sub parse_exp {
 
     ### flatten literals and constants as much as possible
     my $var = ($is_literal && $#var == 1) ? ${ $var[0] }
-            : $is_namespace               ? ->call(\@var, undef, {is_namespace_during_compile => 1})
-            :                               \@var;
+            : $is_namespace               ? CGI::Ex::Var->new(\@var)->call({}, {is_namespace_during_compile => 1})
+            :                               CGI::Ex::Var->new(\@var);
 
     ### allow for all "operators"
-    if (! $self->{'_operator_precedence'}) {
+    if (! $RT_OPERATOR_PRECEDENCE) {
         my $tree;
         my $found;
         while ($copy =~ s{ ^ ($QR_OP) \s* $QR_COMMENTS }{}ox ## look for operators - then move along
                || ($ARGS->{'allow_parened_ops'}
                    && $copy =~ s{ ^ ($QR_OP_PARENED) \s* $QR_COMMENTS }{}ox) ) {
-            local $self->{'_operator_precedence'} = 1;
+            local $RT_OPERATOR_PRECEDENCE = 1;
             my $op   = $1;
             my $var2 = parse_exp(\$copy);
             ### allow for unary operator precedence
@@ -278,7 +393,7 @@ sub parse_exp {
 
             ### add the operator to the tree
             push (@{ $tree ||= [] }, $op, $var2);
-            $found->{$op} = $OPERATORS->{$op} if exists $OPERATORS->{$op};
+            $found->{$op} = $OPERATORS->{$op}->[1] if exists $OPERATORS->{$op};
         }
 
         ### if we found operators - tree the nodes by operator precedence
@@ -388,104 +503,38 @@ sub parse_args {
     return \@args;
 }
 
-###----------------------------------------------------------------###
+sub get_exp { ref($_[0]) ? $_[0]->call($_[1]) : $_[0] }
 
-package CET::Var;
-
-use vars qw($SCALAR_OPS $FILTER_OPS $LIST_OPS $HASH_OPS $FILTERS);
-
-BEGIN {
-    $SCALAR_OPS = {
-        chunk    => \&vmethod_chunk,
-        collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
-        defined  => sub { 1 },
-        indent   => \&vmethod_indent,
-        format   => \&vmethod_format,
-        hash     => sub { {value => $_[0]} },
-        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
-        lcfirst  => sub { lcfirst $_[0] },
-        length   => sub { defined($_[0]) ? length($_[0]) : 0 },
-        lower    => sub { lc $_[0] },
-        match    => \&vmethod_match,
-        null     => sub { '' },
-        remove   => sub { vmethod_replace(shift, shift, '', 1) },
-        repeat   => \&vmethod_repeat,
-        replace  => \&vmethod_replace,
-        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
-        size     => sub { 1 },
-        split    => \&vmethod_split,
-        stderr   => sub { print STDERR $_[0]; '' },
-        substr   => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
-        trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
-        ucfirst  => sub { ucfirst $_[0] },
-        upper    => sub { uc $_[0] },
-        uri      => sub { local $_ = $_[0]; s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
-    };
-
-    $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
-        eval     => [\&filter_eval, 1],
-        evaltt   => [\&filter_eval, 1],
-        file     => [\&filter_redirect, 1],
-        redirect => [\&filter_redirect, 1],
-    };
-
-    $LIST_OPS = {
-        first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
-        grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
-        hash    => sub { my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
-        join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
-        last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
-        list    => sub { $_[0] },
-        max     => sub { $#{ $_[0] } },
-        merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
-        nsort   => \&vmethod_nsort,
-        pop     => sub { pop @{ $_[0] } },
-        push    => sub { my $ref = shift; push @$ref, @_; return '' },
-        reverse => sub { [ reverse @{ $_[0] } ] },
-        shift   => sub { shift  @{ $_[0] } },
-        size    => sub { scalar @{ $_[0] } },
-        slice   => sub { my ($ref, $a, $b) = @_; $a ||= 0; $b = $#$ref if ! defined $b; return [@{$ref}[$a .. $b]] },
-        sort    => \&vmethod_sort,
-        splice  => \&vmethod_splice,
-        unique  => sub { my %u; return [ grep { ! $u{$_} ++ } @{ $_[0] } ] },
-        unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
-    };
-
-    $HASH_OPS = {
-        defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
-        delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
-        each    => sub { [%{ $_[0] }] },
-        exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
-        hash    => sub { $_[0] },
-        import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
-        keys    => sub { [keys %{ $_[0] }] },
-        list    => sub { [$_[0]] },
-        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
-        nsort   => sub { my $ref = shift; [sort {$ref->{$a}    <=> $ref->{$b}   } keys %$ref] },
-        size    => sub { scalar keys %{ $_[0] } },
-        sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
-        values  => sub { [values %{ $_[0] }] },
-    };
-
-};
+sub vivify_args {
+    my $vars = shift;
+    my $hash = shift;
+    return [map {get_exp($_, $hash)} @$vars];
+}
 
 ###----------------------------------------------------------------###
+
+sub new {
+    my $class = shift;
+    return bless $_[0], $class;
+}
+
+sub is_nested { @{ $_[0] } >= 3 }
 
 sub call {
-    my $var  = shift;
+    my $self  = shift;
     my $hash = shift || {};
     my $ARGS = shift || {};
     my $i    = 0;
     my $generated_list;
 
     ### determine the top level of this particular variable access
-    my $ref  = $var->[$i++];
-    my $args = $var->[$i++];
-    warn "get_variable: begin \"$ref\"\n" if trace;
+    my $ref  = $self->[$i++];
+    my $args = $self->[$i++];
+    warn "CGI::Ex::Var::call: begin \"$ref\"\n" if trace;
 
     if (defined $ref) {
         if ($ARGS->{'is_namespace_during_compile'}) {
-            $ref = $CGI::EX::Exp::NAMESPACE->{$ref};
+            $ref = $RT_NAMESPACE->{$ref};
         } else {
             return if $ref =~ /^[_.]/; # don't allow vars that begin with _
             $ref = $hash->{$ref};
@@ -497,7 +546,7 @@ sub call {
 
         ### check at each point if the returned thing was a code
         if (UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? @{ vivify_args($hash, $args) } : ());
+            my @results = $ref->($args ? (map {get_exp($_, $hash)} @$args) : ());
             if (defined $results[0]) {
                 $ref = ($#results > 0) ? \@results : $results[0];
             } elsif (defined $results[1]) {
@@ -509,11 +558,11 @@ sub call {
         }
 
         ### descend one chained level
-        last if $i >= $#$var;
-        my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
-        my $name         = $var->[$i++];
-        my $args         = $var->[$i++];
-        warn "get_variable: nested \"$name\"\n" if trace;
+        last if $i >= $#$self;
+        my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $self->[$i++] eq '.';
+        my $name         = $self->[$i++];
+        my $args         = $self->[$i++];
+        warn "CGI::Ex::Var::get_exp: nested \"$name\"\n" if trace;
 
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
@@ -532,15 +581,15 @@ sub call {
         ### allow for scalar and filter access (this happens for every non virtual method call)
         if (! ref $ref) {
             if ($SCALAR_OPS->{$name}) {                        # normal scalar op
-                $ref = $SCALAR_OPS->{$name}->($ref, $args ? @{ vivify_args($hash, $args) } : ());
+                $ref = $SCALAR_OPS->{$name}->($ref, $args ? (map {get_exp($_, $hash)} @$args) : ());
 
             } elsif ($LIST_OPS->{$name}) {                     # auto-promote to list and use list op
-                $ref = $LIST_OPS->{$name}->([$ref], $args ? @{ vivify_args($hash, $args) } : ());
+                $ref = $LIST_OPS->{$name}->([$ref], $args ? (map {get_exp($_, $hash)} @$args) : ());
 
-            } elsif (my $filter = $self->{'FILTERS'}->{$name}    # filter configured in Template args
+            } elsif (my $filter = $RT_FILTERS->{$name}           # filter configured in Template args
                      || $FILTER_OPS->{$name}                     # predefined filters in CET
                      || (UNIVERSAL::isa($name, 'CODE') && $name) # looks like a filter sub passed in the stash
-                     || list_filters()->{$name}) {          # filter defined in Template::Filters
+                     || list_filters()->{$name}) {               # filter defined in Template::Filters
 
                 if (UNIVERSAL::isa($filter, 'CODE')) {
                     $ref = eval { $filter->($ref) }; # non-dynamic filter - no args
@@ -555,12 +604,12 @@ sub call {
                     eval {
                         my $sub = $filter->[0];
                         if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
-                            ($sub, my $err) = $sub->($self->context, $args ? @{ $self->vivify_args($args) } : ());
+                            ($sub, my $err) = $sub->($RT_CONTEXT, $args ? (map {get_exp($_, $hash)} @$args) : ());
                             if (! $sub && $err) {
-                                $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
+                                throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                                 die $err;
                             } elsif (! UNIVERSAL::isa($sub, 'CODE')) {
-                                $self->throw('filter', "invalid FILTER for '$name' (not a CODE ref)")
+                                throw('filter', "invalid FILTER for '$name' (not a CODE ref)")
                                     if ref($sub) !~ /Template::Exception$/;
                                 die $sub;
                             }
@@ -568,17 +617,17 @@ sub call {
                         $ref = $sub->($ref);
                     };
                     if (my $err = $@) {
-                        $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
+                        throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                         die $err;
                     }
                 } else { # this looks like our vmethods turned into "filters" (a filter stored under a name)
-                    $self->throw('filter', 'Recursive filter alias \"$name\"') if $seen_filters{$name} ++;
-                    $var = [$name, 0, '|', @$filter, @{$var}[$i..$#$var]]; # splice the filter into our current tree
+                    throw('filter', 'Recursive filter alias \"$name\"') if $seen_filters{$name} ++;
+                    $self = [$name, 0, '|', @$filter, @{$self}[$i..$#$self]]; # splice the filter into our current tree
                     $i = 2;
                 }
                 if (scalar keys %seen_filters
-                    && $seen_filters{$var->[$i - 5] || ''}) {
-                    $self->throw('filter', "invalid FILTER entry for '".$var->[$i - 5]."' (not a CODE ref)");
+                    && $seen_filters{$self->[$i - 5] || ''}) {
+                    throw('filter', "invalid FILTER entry for '".$self->[$i - 5]."' (not a CODE ref)");
                 }
             } else {
                 $ref = undef;
@@ -588,7 +637,7 @@ sub call {
 
             ### method calls on objects
             if (UNIVERSAL::can($ref, 'can')) {
-                my @args = $args ? @{ $self->vivify_args($args) } : ();
+                my @args = $args ? (map {get_exp($_, $hash)} @$args) : ();
                 my @results = eval { $ref->$name(@args) };
                 if ($@) {
                     die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
@@ -609,9 +658,9 @@ sub call {
                 if ($was_dot_call && exists($ref->{$name}) ) {
                     $ref = $ref->{$name};
                 } elsif ($HASH_OPS->{$name}) {
-                    $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                    $ref = $HASH_OPS->{$name}->($ref, $args ? (map {get_exp($_, $hash)} @$args) : ());
                 } elsif ($ARGS->{'is_namespace_during_compile'}) {
-                    return $var; # abort - can't fold namespace variable
+                    return $self; # abort - can't fold namespace variable
                 } else {
                     $ref = undef;
                 }
@@ -621,7 +670,7 @@ sub call {
                 if ($name =~ /^\d+$/) {
                     $ref = ($name > $#$ref) ? undef : $ref->[$name];
                 } else {
-                    $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                    $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? (map {get_exp($_, $hash)} @$args) : ());
                 }
             }
         }
@@ -630,12 +679,12 @@ sub call {
 
     ### allow for undefinedness
     if (! defined $ref) {
-        if ($self->{'_debug_undef'}) {
-            my $chunk = $var->[$i - 2];
-            $chunk = $chunk->call($self) if ref $chunk;
+        if ($RT_DEBUG_UNDEF) {
+            my $chunk = $self->[$i - 2];
+            $chunk = $chunk->call($hash) if ref $chunk;
             die "$chunk is undefined\n";
         } else {
-            $ref = $self->undefined_any($var);
+            $ref = $self->undefined($self);
         }
     }
 
@@ -647,17 +696,11 @@ sub call {
     return $ref;
 }
 
-
-sub vivify_args {
-    my $self = shift;
-    my $vars = shift;
-    my $args = shift || {};
-    return [map {$self->get_variable($_, $args)} @$vars];
-}
-
-
-
 ###----------------------------------------------------------------###
+
+sub list_filters {
+    return $TT_FILTERS ||= eval { require Template::Filters; $Template::Filters::FILTERS } || {};
+}
 
 sub vmethod_chunk {
     my $str  = shift;
@@ -790,12 +833,6 @@ sub filter_redirect {
         return '';
     };
 }
-
-
-
-
-
-
 
 ###----------------------------------------------------------------###
 
