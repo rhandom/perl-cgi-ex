@@ -29,7 +29,7 @@ use vars qw(
 
             $RT_NAMESPACE
             $RT_FILTERS
-            $RT_GET_CONTEXT
+            $RT_CONTEXT_SUB
             $RT_DEBUG_UNDEF
             $RT_UNDEFINED_SUB
             $RT_OPERATOR_PRECEDENCE
@@ -115,7 +115,7 @@ BEGIN {
     ### Runtime set variables that control lookups of various pieces of info
     $RT_NAMESPACE   = {};
     $RT_FILTERS     = {};
-    $RT_GET_CONTEXT = sub { {} };
+    $RT_CONTEXT_SUB = sub { {} };
     $RT_DEBUG_UNDEF = 0;
     $RT_OPERATOR_PRECEDENCE = 0;
 
@@ -670,7 +670,7 @@ sub call {
                     eval {
                         my $sub = $filter->[0];
                         if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
-                            ($sub, my $err) = $sub->($RT_GET_CONTEXT->(), $args ? (map {get_exp($_, $hash)} @$args) : ());
+                            ($sub, my $err) = $sub->($RT_CONTEXT_SUB->(), $args ? (map {get_exp($_, $hash)} @$args) : ());
                             if (! $sub && $err) {
                                 throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                                 die $err;
