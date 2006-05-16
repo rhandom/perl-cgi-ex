@@ -30,6 +30,7 @@ use vars qw(
             $RT_FILTERS
             $RT_GET_CONTEXT
             $RT_DEBUG_UNDEF
+            $RT_UNDEFINED_SUB
             $RT_OPERATOR_PRECEDENCE
 
             $TT_FILTERS
@@ -143,7 +144,7 @@ BEGIN {
         [2, 65, ['||'],              0, sub {bless(shift(), 'CGI::Ex::_or')}     ],
         [2, 60, ['..'],              0, sub {bless(shift(), 'CGI::Ex::_range')}  ],
         [3, 55, ['?', ':'],          0, sub {bless(shift(), 'CGI::Ex::_ifelse')} ],
-        [3, 52, ['='],               1, sub {bless(shift(), 'CGI::Ex::_set')}    ],
+        [2, 52, ['='],               1, sub {bless(shift(), 'CGI::Ex::_set')}    ],
         [1, 50, ['not', 'NOT'],      0, sub {bless(shift(), 'CGI::Ex::_not')}    ],
         [2, 45, ['and', 'AND'],      0, sub {bless(shift(), 'CGI::Ex::_and')}    ],
         [2, 40, ['or', 'OR'],        0, sub {bless(shift(), 'CGI::Ex::_or')}     ],
@@ -186,18 +187,7 @@ sub throw {
     CGI::Ex::Template->throw(@_);
 }
 
-sub dump_parse {
-    my $str = shift;
-    require Data::Dumper;
-    return Data::Dumper::Dumper(parse_exp(\$str));
-}
-
-sub dump_get {
-    my $str  = shift;
-    my $hash = shift || {};
-    require Data::Dumper;
-    return Data::Dumper::Dumper(get_exp(parse_exp(\$str), $hash));
-}
+###----------------------------------------------------------------###
 
 sub parse_exp {
     my $str_ref = shift;
@@ -537,7 +527,32 @@ sub parse_args {
 
 sub get_exp { ref($_[0]) ? $_[0]->call($_[1]) : $_[0] }
 
-sub set_exp { ref($_[0]) ? $_[0]->set($_[1], $_[2]) : '' }
+sub set_exp {
+    my $var = shift;
+    $var = _var([$var, 0]) if ! ref $var; # allow for the parse tree to store literals - the literal is used as a name (like [% 'a' = 'A' %])
+    return $var->set($_[0], $_[1]);
+}
+
+
+sub dump_parse {
+    my $str = shift;
+    require Data::Dumper;
+    return Data::Dumper::Dumper(parse_exp(\$str));
+}
+
+sub dump_get {
+    my ($str, $hash) = @_;
+    require Data::Dumper;
+    return Data::Dumper::Dumper(get_exp(parse_exp(\$str), $hash));
+}
+
+sub dump_set {
+    my ($str, $val, $hash) = @_;
+    $hash ||= {};
+    require Data::Dumper;
+    set_exp(parse_exp(\$str), $val, $hash);
+    return Data::Dumper::Dumper($hash);
+}
 
 sub vivify_args {
     my $vars = shift;
@@ -555,7 +570,7 @@ sub new {
 sub is_nested { @{ $_[0] } >= 3 }
 
 sub call {
-    my $self  = shift;
+    my $self = shift;
     my $hash = shift || {};
     my $ARGS = shift || {};
     my $i    = 0;
@@ -609,7 +624,7 @@ sub call {
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
             $name = $name->call($hash);
-            if (! defined($name) || $name =~ /^[_.]/) {
+            if (! defined $name) {
                 $ref = undef;
                 last;
             }
@@ -738,9 +753,122 @@ sub call {
     return $ref;
 }
 
-sub undefined { '' }
+sub undefined { $RT_UNDEFINED_SUB ? $RT_UNDEFINED_SUB->(@_) : '' }
+
+sub set {
+    my ($var, $val, $hash) = @_;
+    my $i = 0;
+
+    ### determine the top level of this particular variable access
+    my $ref  = $var->[$i++];
+    my $args = $var->[$i++];
+
+    if (ref $ref) {
+        $ref = $ref->call($hash);
+        return if ! defined $ref;
+    }
+
+    return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+
+    if ($#$var <= $i) {
+        $hash->{$ref} = $val;
+        return;
+    } else {
+        $ref = $hash->{$ref} ||= {};
+    }
+
+    ### let the top level thing be a code block
+    return if UNIVERSAL::isa($ref, 'CODE');
+
+    ### vivify the chained levels
+    while (defined $ref && $#$var > $i) {
+        my $was_dot_call = $var->[$i++];
+        my $name         = $var->[$i++];
+        my $args         = $var->[$i++];
+
+        ### allow for named portions of a variable name (foo.$name.bar)
+        if (ref $name) {
+            $name = $name->call($hash);
+            if (! defined $name) {
+                $ref = undef;
+                last;
+            }
+        }
+
+        if ($name =~ /^_/) { # don't allow vars that begin with _
+            return;
+        }
+
+        ### method calls on objects
+        if (UNIVERSAL::can($ref, 'can')) {
+            my $lvalueish;
+            my @args = $args ? (map {get_exp($_, $hash)} @$args) : ();
+            if ($i >= $#$var) {
+                $lvalueish = 1;
+                push @args, $val;
+            }
+            my @results = eval { $ref->$name(@args) };
+            if ($@) {
+                die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
+            } elsif (defined $results[0]) {
+                $ref = ($#results > 0) ? \@results : $results[0];
+            } elsif (defined $results[1]) {
+                die $results[1]; # TT behavior - why not just throw ?
+            } else {
+                $ref = undef;
+            }
+            return if $lvalueish;
+            next;
+        }
+
+        ### hash member access
+        if (UNIVERSAL::isa($ref, 'HASH')) {
+            if ($#$var <= $i) {
+                $ref->{$name} = $val;
+                return;
+            } else {
+                $ref = $ref->{$name} ||= {};
+                next;
+            }
+
+        ### array access
+        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+            if ($name =~ /^\d+$/) {
+                if ($#$var <= $i) {
+                    $ref->[$name] = $val;
+                    return;
+                } else {
+                    $ref = $ref->[$name] ||= {};
+                    next;
+                }
+            } else {
+                return;
+            }
+
+        ### scalar access
+        } elsif (! ref($ref) && defined($ref)) {
+            return;
+        }
+
+        ### check at each point if the returned thing was a code
+        if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
+            my @results = $ref->($args ? (map {get_exp($_, $hash)} @$args) : ());
+            if (defined $results[0]) {
+                $ref = ($#results > 0) ? \@results : $results[0];
+            } elsif (defined $results[1]) {
+                die $results[1]; # TT behavior - why not just throw ?
+            } else {
+                return;
+            }
+        }
+
+    }
+
+    return $ref;
+}
 
 ###----------------------------------------------------------------###
+### filters and vmethod definition
 
 sub list_filters {
     return $TT_FILTERS ||= eval { require Template::Filters; $Template::Filters::FILTERS } || {};
@@ -906,7 +1034,13 @@ sub call { ((ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  ||  (ref($
 sub set {}
 
 package CGI::Ex::_ifelse;
+
 package CGI::Ex::_set;
+sub call {
+    my ($var, $val) = @{ $_[0] };
+    CGI::Ex::Var::set_exp($var, $val, $_[1]);
+}
+sub set {}
 
 package CGI::Ex::_hash;
 sub call { return {map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] }} }
