@@ -483,10 +483,9 @@ sub apply_precedence {
         }
 
         ### return binary
-        if ($OP_BINARY->{$op} || @trinary == 2) {
-            my $ref = $OP_BINARY->{$op} || $OP_TRINARY->{$op};
+        if ($OP_BINARY->{$op}) {
             my $val = $trees[0];
-            $val = $ref->[4]->([$val, $trees[$_]]) for 1 .. $#trees;
+            $val = $OP_BINARY->{$op}->[4]->([$val, $trees[$_]]) for 1 .. $#trees;
             return $val;
         }
 
