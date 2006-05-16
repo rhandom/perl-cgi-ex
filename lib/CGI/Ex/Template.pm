@@ -15,24 +15,23 @@ use strict;
 use constant trace => $ENV{'CET_TRACE'} || 0; # enable for low level tracing
 use vars qw($VERSION
             $TAGS
-            $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS
             $DIRECTIVES $QR_DIRECTIVE
-            $OPERATORS $OP_UNARY $OP_TRINARY $OP_EXTRA $OP_FUNC $QR_OP $QR_OP_UNARY $QR_OP_EXTRA
             $QR_COMMENTS $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
-            $PACKAGE_EXCEPTION $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
             );
+use CGI::Ex::Var;
+
+use constant PACKAGE_EXCEPTION   => 'CGI::Ex::Template::Exception';
+use constant PACKAGE_ITERATOR    => 'CGI::Ex::Template::Iterator';
+use constant PACKAGE_CONTEXT     => 'CGI::Ex::Template::_Context';
+use constant PACKAGE_STASH       => 'CGI::Ex::Template::_Stash';
+use constant PACKAGE_PERL_HANDLE => 'CGI::Ex::Template::EvalPerlHandle';
 
 BEGIN {
     $VERSION = '2.00';
 
-    $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
-    $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
-    $PACKAGE_CONTEXT     = 'CGI::Ex::Template::_Context';
-    $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
-    $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
 
     $TAGS ||= {
         default  => ['[%',   '%]'],  # default
@@ -43,78 +42,6 @@ BEGIN {
         asp      => ['<%',   '%>'],  # ASP
         mason    => ['<%',   '>' ],  # HTML::Mason
         html     => ['<!--', '-->'], # HTML comments
-    };
-
-    $SCALAR_OPS = {
-        chunk    => \&vmethod_chunk,
-        collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
-        defined  => sub { 1 },
-        indent   => \&vmethod_indent,
-        format   => \&vmethod_format,
-        hash     => sub { {value => $_[0]} },
-        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
-        lcfirst  => sub { lcfirst $_[0] },
-        length   => sub { defined($_[0]) ? length($_[0]) : 0 },
-        lower    => sub { lc $_[0] },
-        match    => \&vmethod_match,
-        null     => sub { '' },
-        remove   => sub { vmethod_replace(shift, shift, '', 1) },
-        repeat   => \&vmethod_repeat,
-        replace  => \&vmethod_replace,
-        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
-        size     => sub { 1 },
-        split    => \&vmethod_split,
-        stderr   => sub { print STDERR $_[0]; '' },
-        substr   => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
-        trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
-        ucfirst  => sub { ucfirst $_[0] },
-        upper    => sub { uc $_[0] },
-        uri      => sub { local $_ = $_[0]; s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
-    };
-
-    $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
-        eval     => [\&filter_eval, 1],
-        evaltt   => [\&filter_eval, 1],
-        file     => [\&filter_redirect, 1],
-        redirect => [\&filter_redirect, 1],
-    };
-
-    $LIST_OPS = {
-        first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
-        grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
-        hash    => sub { my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
-        join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
-        last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
-        list    => sub { $_[0] },
-        max     => sub { $#{ $_[0] } },
-        merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
-        nsort   => \&vmethod_nsort,
-        pop     => sub { pop @{ $_[0] } },
-        push    => sub { my $ref = shift; push @$ref, @_; return '' },
-        reverse => sub { [ reverse @{ $_[0] } ] },
-        shift   => sub { shift  @{ $_[0] } },
-        size    => sub { scalar @{ $_[0] } },
-        slice   => sub { my ($ref, $a, $b) = @_; $a ||= 0; $b = $#$ref if ! defined $b; return [@{$ref}[$a .. $b]] },
-        sort    => \&vmethod_sort,
-        splice  => \&vmethod_splice,
-        unique  => sub { my %u; return [ grep { ! $u{$_} ++ } @{ $_[0] } ] },
-        unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
-    };
-
-    $HASH_OPS = {
-        defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
-        delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
-        each    => sub { [%{ $_[0] }] },
-        exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
-        hash    => sub { $_[0] },
-        import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
-        keys    => sub { [keys %{ $_[0] }] },
-        list    => sub { [$_[0]] },
-        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
-        nsort   => sub { my $ref = shift; [sort {$ref->{$a}    <=> $ref->{$b}   } keys %$ref] },
-        size    => sub { scalar keys %{ $_[0] } },
-        sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
-        values  => sub { [values %{ $_[0] }] },
     };
 
     $DIRECTIVES = {
@@ -163,45 +90,6 @@ BEGIN {
         #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
     };
     $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= $|[\s;\#]) }x;
-
-    $OPERATORS ||= {qw(**  96   ^   96   pow 96
-                       !   93   unary_minus  93
-                       *   90   /   90   div 90   DIV 90
-                       %   90   mod 90   MOD 90
-                       +   85   -   85   _   85   ~   85
-                       <   80   >   80   <=  80   >=  80
-                       lt  80   gt  80   le  80   ge  80
-                       ==  75   !=  75   eq  75   ne  75
-                       &&  70
-                       ||  65
-                       ..  60
-                       ?   55
-                       =   52
-                       not 50   NOT 50
-                       and 45   AND 45
-                       or  40   OR  40
-                       hashref 1 arrayref 1
-                       )};
-    $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-'};
-    $OP_TRINARY ||= {'?' => ':'};
-    $OP_EXTRA   ||= {'=' => 1};
-    $OP_FUNC    ||= {};
-    sub _op_qr { # no mixed \w\W operators
-        my %used;
-        my $chrs = join '|', map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W{2,}$/} @_;
-        my $chr  = join '',  map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
-        my $word = join '|',                    grep {++$used{$_} < 2} grep {/^\w+$/}    @_;
-        $chr = "[$chr]" if $chr;
-        $word = "\\b(?:$word)\\b" if $word;
-        return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
-    }
-    sub _build_op_qr       { _op_qr(sort(grep {! $OP_UNARY->{$_} && ! $OP_EXTRA->{$_}}
-                                         keys(%$OPERATORS), values(%$OP_TRINARY))) }
-    sub _build_op_qr_unary { _op_qr(sort %$OP_UNARY) } # grab keys and values
-    sub _build_op_qr_extra { _op_qr(sort keys %$OP_EXTRA) }
-    $QR_OP       ||= _build_op_qr();
-    $QR_OP_UNARY ||= _build_op_qr_unary();
-    $QR_OP_EXTRA ||= _build_op_qr_extra();
 
     $QR_COMMENTS  = '(?-s: \# .* \s*)*';
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
@@ -381,11 +269,6 @@ sub load_parsed_tree {
 
     ### haven't found a parsed tree yet - parse the content into a tree
     if (! $doc->{'_tree'}) {
-        if ($self->{'CONSTANTS'}) {
-            my $key = $self->{'CONSTANT_NAMESPACE'} || 'constants';
-            $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
-        }
-
         local $self->{'_vars'}->{'component'} = $doc;
         $doc->{'_tree'} = $self->parse_tree($doc->{'_content'}); # errors die
     }
@@ -712,331 +595,6 @@ sub execute_tree {
     }
 }
 
-###----------------------------------------------------------------###
-
-sub parse_variable {
-    my $self    = shift;
-    my $str_ref = shift;
-    my $ARGS    = shift || {};
-
-    ### allow for custom auto_quoting (such as hash constructors)
-    if ($ARGS->{'auto_quote'}) {
-        if ($$str_ref =~ $ARGS->{'auto_quote'}) {
-            my $str = $1;
-            substr($$str_ref, 0, length($str), '');
-            $$str_ref =~ s{ ^ \s* $QR_COMMENTS }{}ox;
-            return $str;
-        ### allow for auto-quoted $foo or ${foo.bar} type constructs
-        } elsif ($$str_ref =~ s{ ^ \$ (\w+ (?:\.\w+)*) \b \s* $QR_COMMENTS }{}ox
-                 || $$str_ref =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* $QR_COMMENTS }{}ox) {
-            my $name = $1;
-            return $self->parse_variable(\$name);
-        }
-    }
-
-    my $copy = $$str_ref; # copy while parsing to allow for errors
-
-    ### test for leading unary operators
-    my $has_unary;
-    if ($copy =~ s{ ^ ($QR_OP_UNARY) \s* $QR_COMMENTS }{}ox) {
-        return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
-        $has_unary = $1;
-        if (! $OP_UNARY->{$has_unary}) {
-            my $ref = $self->{'_op_unary_backref'} ||= {reverse %$OP_UNARY};
-            $has_unary = $ref->{$has_unary} || $self->throw("Couldn't find canonical name of unary \"$1\"");
-        }
-    }
-
-    my @var;
-    my $is_literal;
-    my $is_namespace;
-
-    ### allow for numbers
-    if ($copy =~ s{ ^ ( (?:\d*\.\d+ | \d+) ) \s* $QR_COMMENTS }{}ox) {
-        my $number = $1;
-        push @var, \ $number;
-        $is_literal = 1;
-
-    ### looks like a normal variable start
-    } elsif ($copy =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox) {
-        push @var, $1;
-        $is_namespace = 1 if $self->{'NAMESPACE'} && $self->{'NAMESPACE'}->{$1};
-
-    ### allow for literal strings
-    } elsif ($copy =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* $QR_COMMENTS }{}sox) {
-        if ($1 eq "'") { # no interpolation on single quoted strings
-            my $str = $2;
-            $str =~ s{ \\\' }{\'}xg;
-            push @var, \ $str;
-            $is_literal = 1;
-        } else {
-            my $str = $2;
-            $str =~ s/\\n/\n/g;
-            $str =~ s/\\t/\t/g;
-            $str =~ s/\\r/\r/g;
-            $str =~ s/\\([\"\$])/$1/g;
-            my @pieces = $ARGS->{'auto_quote'}
-                ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
-                : split(m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $str);
-            my $n = 0;
-            foreach my $piece (@pieces) {
-                next if ! ($n++ % 2);
-                next if $piece !~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
-                    && $piece !~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x;
-                my $name = $1;
-                $piece = $self->parse_variable(\$name);
-            }
-            @pieces = grep {defined && length} @pieces;
-            if (@pieces == 1 && ! ref $pieces[0]) {
-                push @var, \ $pieces[0];
-                $is_literal = 1;
-            } elsif (! @pieces) {
-                push @var, \ '';
-                $is_literal = 1;
-            } else {
-                push @var, \ ['~', @pieces];
-            }
-        }
-        if ($ARGS->{'auto_quote'}){
-            $$str_ref = $copy;
-            return ${ $var[0] } if $is_literal;
-            push @var, 0;
-            return \@var;
-        }
-
-    ### allow for leading $foo or ${foo.bar} type constructs
-    } elsif ($copy =~ s{ ^ \$ (\w+) \b \s* $QR_COMMENTS }{}ox
-        || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* $QR_COMMENTS }{}ox) {
-        my $name = $1;
-        push @var, $self->parse_variable(\$name);
-
-    ### looks like an array constructor
-    } elsif ($copy =~ s{ ^ \[ \s* $QR_COMMENTS }{}ox) {
-        local $self->{'_operator_precedence'} = 0; # reset presedence
-        my $arrayref = ['arrayref'];
-        while (defined(my $var = $self->parse_variable(\$copy))) {
-            push @$arrayref, $var;
-            $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
-        }
-        $copy =~ s{ ^ \] \s* $QR_COMMENTS }{}ox
-            || $self->throw('parse.missing.square', "Missing close \]", undef, length($$str_ref) - length($copy));
-        push @var, \ $arrayref;
-
-    ### looks like a hash constructor
-    } elsif ($copy =~ s{ ^ \{ \s* $QR_COMMENTS }{}ox) {
-        local $self->{'_operator_precedence'} = 0; # reset precedence
-        my $hashref = ['hashref'];
-        while (defined(my $key = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
-            $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox;
-            my $val = $self->parse_variable(\$copy);
-            push @$hashref, $key, $val;
-            $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
-        }
-        $copy =~ s{ ^ \} \s* $QR_COMMENTS }{}ox
-            || $self->throw('parse.missing.curly', "Missing close \} ($copy)", undef, length($$str_ref) - length($copy));
-        push @var, \ $hashref;
-
-    ### looks like a paren grouper
-    } elsif ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
-        local $self->{'_operator_precedence'} = 0; # reset precedence
-        my $var = $self->parse_variable(\$copy, {allow_parened_ops => 1});
-        $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
-            || $self->throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
-        @var = @$var;
-        pop(@var); # pull off the trailing args of the paren group
-
-    ### nothing to find - return failure
-    } else {
-        return;
-    }
-
-    return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
-
-    ### looks for args for the initial
-    if ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
-        local $self->{'_operator_precedence'} = 0; # reset precedence
-        my $args = $self->parse_args(\$copy);
-        $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
-            || $self->throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
-        push @var, $args;
-    } else {
-        push @var, 0;
-    }
-
-    ### allow for nested items
-    while ($copy =~ s{ ^ ( \.(?!\.) | \|(?!\|) ) \s* $QR_COMMENTS }{}ox) {
-        push(@var, $1) if ! $ARGS->{'no_dots'};
-
-        ### allow for interpolated variables in the middle - one.$foo.two or one.${foo.bar}.two
-        if ($copy =~ s{ ^ \$(\w+) \s* $QR_COMMENTS }{}ox
-            || $copy =~ s{ ^ \$\{ \s* ([^\}]+)\} \s* $QR_COMMENTS }{}ox) {
-            my $name = $1;
-            my $var = $self->parse_variable(\$name);
-            push @var, $var;
-        } elsif ($copy =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox) {
-            push @var, $1;
-        } else {
-            $self->throw('parse', "Not sure how to continue parsing on \"$copy\" ($$str_ref)");
-        }
-
-        ### looks for args for the nested item
-        if ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
-            local $self->{'_operator_precedence'} = 0; # reset precedence
-            my $args = $self->parse_args(\$copy);
-            $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
-                || $self->throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
-            push @var, $args;
-        } else {
-            push @var, 0;
-        }
-
-    }
-
-    ### flatten literals and constants as much as possible
-    my $var = ($is_literal && $#var == 1) ? ${ $var[0] }
-            : $is_namespace               ? $self->get_variable(\@var, {is_namespace_during_compile => 1})
-            :                               \@var;
-
-    ### allow for all "operators"
-    if (! $self->{'_operator_precedence'}) {
-        my $tree;
-        my $found;
-        while ($copy =~ s{ ^ ($QR_OP) \s* $QR_COMMENTS }{}ox ## look for operators - then move along
-               || ($ARGS->{'allow_parened_ops'}
-                   && $copy =~ s{ ^ ($QR_OP_EXTRA) \s* $QR_COMMENTS }{}ox) ) {
-            local $self->{'_operator_precedence'} = 1;
-            my $op   = $1;
-            my $var2 = $self->parse_variable(\$copy);
-            ### allow for unary operator precedence
-            if ($has_unary && ($OPERATORS->{$op} && $OPERATORS->{$op} < $OPERATORS->{$has_unary})) {
-                if ($tree) {
-                    if ($#$tree == 1) { # only one operator - keep simple things fast
-                        $var = [\ [$tree->[0], $var, $tree->[1]], 0];
-                    } else {
-                        unshift @$tree, $var;
-                        $var = $self->apply_precedence($tree, $found);
-                    }
-                    undef $tree;
-                    undef $found;
-                }
-                my $op_unary = $OP_UNARY->{$has_unary} || $has_unary;
-                $var = [ \ [ $op_unary, $var ], 0 ];
-                undef $has_unary;
-            }
-
-            ### add the operator to the tree
-            push (@{ $tree ||= [] }, $op, $var2);
-            $found->{$op} = $OPERATORS->{$op} if exists $OPERATORS->{$op};
-        }
-
-        ### if we found operators - tree the nodes by operator precedence
-        if ($tree) {
-            if ($#$tree == 1) { # only one operator - keep simple things fast
-                $var = [\ [$tree->[0], $var, $tree->[1]], 0];
-            } else {
-                unshift @$tree, $var;
-                $var = $self->apply_precedence($tree, $found);
-            }
-        }
-    }
-
-    ### allow for unary on non-chained variables
-    if ($has_unary) {
-        my $op_unary = $OP_UNARY->{$has_unary} || $has_unary;
-        $var = [ \ [ $op_unary, $var ], 0 ];
-    }
-
-    $$str_ref = $copy; # commit the changes
-    return $var;
-}
-
-### this is used to put the parsed variables into the correct operations tree
-sub apply_precedence {
-    my ($self, $tree, $found) = @_;
-
-    my @var;
-    my $trees;
-    ### look at the operators we found in the order we found them
-    for my $op (sort {$found->{$a} <=> $found->{$b}} keys %$found) {
-        local $found->{$op};
-        delete $found->{$op};
-        my @trees;
-        my @trinary;
-
-        ### split the array on the current operator
-        for (my $i = 0; $i <= $#$tree; $i ++) {
-            next if $tree->[$i] ne $op && (! exists $OP_TRINARY->{$op} || $OP_TRINARY->{$op} ne $tree->[$i]);
-            push @trees, [splice @$tree, 0, $i, ()]; # everything up to the operator
-            push @trinary, $tree->[0] if exists $OP_TRINARY->{$op};
-            shift @$tree; # pull off the operator
-            $i = -1;
-        }
-        next if ! @trees; # this iteration didn't have the current operator
-        push @trees, $tree if scalar @$tree; # elements after last operator
-
-        ### now - for this level split on remaining operators, or add the variable to the tree
-        for (@trees) {
-            if ($#$_ == 0) {
-                $_ = $_->[0]; # single item - its not a tree
-            } elsif ($#$_ == 2) {
-                $_ = [ \ [ $_->[1], $_->[0], $_->[2] ], 0 ]; # single operator - put it straight on
-            } else {
-                $_ = $self->apply_precedence($_, $found); # more complicated - recurse
-            }
-        }
-
-        ### all done if we are looking at binary operations
-        return [ \ [ $op, @trees ], 0 ] if $#trinary <= 1;
-
-        ### reorder complex trinary - rare case
-        while ($#trinary >= 1) {
-            ### if we look starting from the back - the first lead trinary op will always be next to its matching op
-            for (my $i = $#trinary; $i >= 0; $i --) {
-                next if ! exists $OP_TRINARY->{$trinary[$i]};
-                my ($op, $op2) = splice @trinary, $i, 2, (); # remove the pair of operators
-                my $node = [ \ [$op, @trees[$i .. $i + 2] ], 0 ];
-                splice @trees, $i, 3, $node;
-            }
-        }
-        return $trees[0]; # at this point the trinary has been reduced to a single operator
-
-    }
-
-    $self->throw('parse', "Couldn't apply precedence");
-}
-
-### look for arguments - both positional and named
-sub parse_args {
-    my $self    = shift;
-    my $str_ref = shift;
-    my $ARGS    = shift || {};
-    my $copy    = $$str_ref;
-
-    my @args;
-    my @named;
-    while (length $$str_ref) {
-        my $copy = $$str_ref;
-        if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
-            && $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox) {
-            $self->throw('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
-            my $val = $self->parse_variable(\$copy);
-            $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
-            push @named, $name, $val;
-            $$str_ref = $copy;
-        } elsif (defined(my $arg = $self->parse_variable($str_ref))) {
-            push @args, $arg;
-            $$str_ref =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
-        } else {
-            last;
-        }
-    }
-
-    ### allow for named arguments to be added also
-    push @args, [\ ['hashref', @named], 0] if scalar @named;
-
-    return \@args;
-}
-
 ### allow for looking for $foo or ${foo.bar} in TEXT "nodes" of the parse tree.
 sub interpolate_node {
     my ($self, $tree, $offset) = @_;
@@ -1072,434 +630,29 @@ sub interpolate_node {
 
 ###----------------------------------------------------------------###
 
-sub get_variable {
-    ### allow for the parse tree to store literals
-    return $_[1] if ! ref $_[1];
-
+sub parse_variable {
     my $self = shift;
-    my $var  = shift;
-    my $ARGS = shift || {};
-    my $i    = 0;
-    my $generated_list;
+    CGI::Ex::Var::parse_exp(@_);
+}
 
-    ### determine the top level of this particular variable access
-    my $ref  = $var->[$i++];
-    my $args = $var->[$i++];
-    warn "get_variable: begin \"$ref\"\n" if trace;
-    if (ref $ref) {
-        if (ref($ref) eq 'SCALAR') { # a scalar literal
-            $ref = $$ref;
-        } elsif (ref($ref) eq 'REF') { # operator
-            return $self->play_operator($$ref) if ${ $ref }->[0] eq '\\'; # return the closure
-            $generated_list = 1 if ${ $ref }->[0] eq '..';
-            $ref = $self->play_operator($$ref);
-        } else { # a named variable access (ie via $name.foo)
-            $ref = $self->get_variable($ref);
-            if (defined $ref) {
-                return if $ref =~ /^[_.]/; # don't allow vars that begin with _
-                $ref = $self->{'_vars'}->{$ref};
-            }
-        }
-    } elsif (defined $ref) {
-        if ($ARGS->{'is_namespace_during_compile'}) {
-            $ref = $self->{'NAMESPACE'}->{$ref};
-        } else {
-            return if $ref =~ /^[_.]/; # don't allow vars that begin with _
-            $ref = $self->{'_vars'}->{$ref};
-        }
-    }
+sub parse_args {
+    my $self = shift;
+    CGI::Ex::Var::parse_args(@_);
+}
 
-
-    my %seen_filters;
-    while (defined $ref) {
-
-        ### check at each point if the rurned thing was a code
-        if (UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
-            if (defined $results[0]) {
-                $ref = ($#results > 0) ? \@results : $results[0];
-            } elsif (defined $results[1]) {
-                die $results[1]; # TT behavior - why not just throw ?
-            } else {
-                $ref = undef;
-                last;
-            }
-        }
-
-        ### descend one chained level
-        last if $i >= $#$var;
-        my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
-        my $name         = $var->[$i++];
-        my $args         = $var->[$i++];
-        warn "get_variable: nested \"$name\"\n" if trace;
-
-        ### allow for named portions of a variable name (foo.$name.bar)
-        if (ref $name) {
-            if (ref($name) eq 'ARRAY') {
-                $name = $self->get_variable($name);
-                if (! defined($name) || $name =~ /^[_.]/) {
-                    $ref = undef;
-                    last;
-                }
-            } else {
-                die "Shouldn't get a ". ref($name) ." during a vivify on chain";
-            }
-        }
-        if ($name =~ /^_/) { # don't allow vars that begin with _
-            $ref = undef;
-            last;
-        }
-
-        ### allow for scalar and filter access (this happens for every non virtual method call)
-        if (! ref $ref) {
-            if ($SCALAR_OPS->{$name}) {                        # normal scalar op
-                $ref = $SCALAR_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-
-            } elsif ($LIST_OPS->{$name}) {                     # auto-promote to list and use list op
-                $ref = $LIST_OPS->{$name}->([$ref], $args ? @{ $self->vivify_args($args) } : ());
-
-            } elsif (my $filter = $self->{'FILTERS'}->{$name}    # filter configured in Template args
-                     || $FILTER_OPS->{$name}                     # predefined filters in CET
-                     || (UNIVERSAL::isa($name, 'CODE') && $name) # looks like a filter sub passed in the stash
-                     || $self->list_filters->{$name}) {          # filter defined in Template::Filters
-
-                if (UNIVERSAL::isa($filter, 'CODE')) {
-                    $ref = eval { $filter->($ref) }; # non-dynamic filter - no args
-                    if (my $err = $@) {
-                        $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
-                        die $err;
-                    }
-                } elsif (! UNIVERSAL::isa($filter, 'ARRAY')) {
-                    $self->throw('filter', "invalid FILTER entry for '$name' (not a CODE ref)");
-
-                } elsif (@$filter == 2 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
-                    eval {
-                        my $sub = $filter->[0];
-                        if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
-                            ($sub, my $err) = $sub->($self->context, $args ? @{ $self->vivify_args($args) } : ());
-                            if (! $sub && $err) {
-                                $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
-                                die $err;
-                            } elsif (! UNIVERSAL::isa($sub, 'CODE')) {
-                                $self->throw('filter', "invalid FILTER for '$name' (not a CODE ref)")
-                                    if ref($sub) !~ /Template::Exception$/;
-                                die $sub;
-                            }
-                        }
-                        $ref = $sub->($ref);
-                    };
-                    if (my $err = $@) {
-                        $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
-                        die $err;
-                    }
-                } else { # this looks like our vmethods turned into "filters" (a filter stored under a name)
-                    $self->throw('filter', 'Recursive filter alias \"$name\"') if $seen_filters{$name} ++;
-                    $var = [$name, 0, '|', @$filter, @{$var}[$i..$#$var]]; # splice the filter into our current tree
-                    $i = 2;
-                }
-                if (scalar keys %seen_filters
-                    && $seen_filters{$var->[$i - 5] || ''}) {
-                    $self->throw('filter', "invalid FILTER entry for '".$var->[$i - 5]."' (not a CODE ref)");
-                }
-            } else {
-                $ref = undef;
-            }
-
-        } else {
-
-            ### method calls on objects
-            if (UNIVERSAL::can($ref, 'can')) {
-                my @args = $args ? @{ $self->vivify_args($args) } : ();
-                my @results = eval { $ref->$name(@args) };
-                if ($@) {
-                    die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
-                } elsif (defined $results[0]) {
-                    $ref = ($#results > 0) ? \@results : $results[0];
-                    next;
-                } elsif (defined $results[1]) {
-                    die $results[1]; # TT behavior - why not just throw ?
-                } else {
-                    $ref = undef;
-                    last;
-                }
-                # didn't find a method by that name - so fail down to hash and array access
-            }
-
-            ### hash member access
-            if (UNIVERSAL::isa($ref, 'HASH')) {
-                if ($was_dot_call && exists($ref->{$name}) ) {
-                    $ref = $ref->{$name};
-                } elsif ($HASH_OPS->{$name}) {
-                    $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                } elsif ($ARGS->{'is_namespace_during_compile'}) {
-                    return $var; # abort - can't fold namespace variable
-                } else {
-                    $ref = undef;
-                }
-
-            ### array access
-            } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-                if ($name =~ /^\d+$/) {
-                    $ref = ($name > $#$ref) ? undef : $ref->[$name];
-                } else {
-                    $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                }
-            }
-        }
-
-    } # end of while
-
-    ### allow for undefinedness
-    if (! defined $ref) {
-        if ($self->{'_debug_undef'}) {
-            my $chunk = $var->[$i - 2];
-            $chunk = $self->get_variable($chunk) if ref($chunk) eq 'ARRAY';
-            die "$chunk is undefined\n";
-        } else {
-            $ref = $self->undefined_any($var);
-        }
-    }
-
-    ### allow for special behavior for the '..' operator
-    if ($generated_list && $ARGS->{'list_context'} && ref($ref) eq 'ARRAY') {
-        return @$ref;
-    }
-
-    return $ref;
+sub get_variable {
+    my ($self, $var) = @_;
+    return CGI::Ex::Var::get_exp($var, $self->{'_vars'});
 }
 
 sub set_variable {
-    my ($self, $var, $val, $ARGS) = @_;
-    $ARGS ||= {};
-    my $i = 0;
-
-    ### allow for the parse tree to store literals - the literal is used as a name (like [% 'a' = 'A' %])
-    $var = [$var, 0] if ! ref $var;
-
-    ### determine the top level of this particular variable access
-    my $ref  = $var->[$i++];
-    my $args = $var->[$i++];
-    if (ref $ref) {
-        if (ref($ref) eq 'ARRAY') { # named access (ie via $name.foo)
-            $ref = $self->get_variable($ref);
-            if (defined $ref && $ref !~ /^[_.]/) { # don't allow vars that begin with _
-                if ($#$var <= $i) {
-                    $self->{'_vars'}->{$ref} = $val;
-                    return;
-                } else {
-                    $ref = $self->{'_vars'}->{$ref} ||= {};
-                }
-            } else {
-                return;
-            }
-        } else { # all other types can't be set
-            return;
-        }
-    } elsif (defined $ref) {
-        return if $ref =~ /^[_.]/; # don't allow vars that begin with _
-        if ($#$var <= $i) {
-            $self->{'_vars'}->{$ref} = $val;
-            return;
-        } else {
-            $ref = $self->{'_vars'}->{$ref} ||= {};
-        }
-    }
-
-    ### let the top level thing be a code block
-    if (UNIVERSAL::isa($ref, 'CODE')) {
-        return;
-    }
-
-    ### vivify the chained levels
-    while (defined $ref && $#$var > $i) {
-        my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
-        my $name         = $var->[$i++];
-        my $args         = $var->[$i++];
-
-        ### allow for named portions of a variable name (foo.$name.bar)
-        if (ref $name) {
-            if (ref($name) eq 'ARRAY') {
-                $name = $self->get_variable($name);
-                if (! defined($name) || $name =~ /^[_.]/) {
-                    $ref = undef;
-                    next;
-                }
-            } else {
-                die "Shouldn't get a ".ref($name)." during a vivify on chain";
-            }
-        }
-        if ($name =~ /^_/) { # don't allow vars that begin with _
-            return;
-        }
-
-        ### method calls on objects
-        if (UNIVERSAL::can($ref, 'can')) {
-            my $lvalueish;
-            my @args = $args ? @{ $self->vivify_args($args) } : ();
-            if ($i >= $#$var) {
-                $lvalueish = 1;
-                push @args, $val;
-            }
-            my @results = eval { $ref->$name(@args) };
-            if (! $@) {
-                if (defined $results[0]) {
-                    $ref = ($#results > 0) ? \@results : $results[0];
-                } elsif (defined $results[1]) {
-                    die $results[1]; # TT behavior - why not just throw ?
-                } else {
-                    $ref = undef;
-                }
-                return if $lvalueish;
-                next;
-            }
-            die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
-            # fall on down to "normal" accessors
-        }
-
-        ### hash member access
-        if (UNIVERSAL::isa($ref, 'HASH')) {
-            if ($#$var <= $i) {
-                $ref->{$name} = $val;
-                return;
-            } else {
-                $ref = $ref->{$name} ||= {};
-                next;
-            }
-
-        ### array access
-        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ /^\d+$/) {
-                if ($#$var <= $i) {
-                    $ref->[$name] = $val;
-                    return;
-                } else {
-                    $ref = $ref->[$name] ||= {};
-                    next;
-                }
-            } else {
-                return;
-            }
-
-        ### scalar access
-        } elsif (! ref($ref) && defined($ref)) {
-            return;
-        }
-
-        ### check at each point if the returned thing was a code
-        if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
-            if (defined $results[0]) {
-                $ref = ($#results > 0) ? \@results : $results[0];
-            } elsif (defined $results[1]) {
-                die $results[1]; # TT behavior - why not just throw ?
-            } else {
-                return;
-            }
-        }
-
-    }
-
-    return $ref;
+    my ($self, $var, $val) = @_;
+    return CGI::Ex::Var::set_exp($var, $val, $self->{'_vars'});
 }
 
 sub vivify_args {
-    my $self = shift;
-    my $vars = shift;
-    my $args = shift || {};
-    return [map {$self->get_variable($_, $args)} @$vars];
-}
-
-###----------------------------------------------------------------###
-
-sub play_operator {
-    my $self = shift;
-    my $tree = shift;
-    my $ARGS = shift || {};
-    my $op = $tree->[0];
-    $tree = [@$tree[1..$#$tree]];
-
-    ### allow for operator function override
-    if (exists $OP_FUNC->{$op}) {
-        return $OP_FUNC->{$op}->($self, $op, $tree, $ARGS);
-    }
-
-    ### do constructors and short-circuitable operators
-    if ($op eq '~' || $op eq '_') {
-        return join "", grep {defined} @{ $self->vivify_args($tree) };
-    } elsif ($op eq '=') { # this can't be parsed in normal operations (due to tt limitation)
-        my ($var, $val) = @$tree;
-        $val = $self->get_variable($val);
-        $self->set_variable($var, $val);
-        return $val;
-    } elsif ($op eq 'arrayref') {
-        return $self->vivify_args($tree, {list_context => 1});
-    } elsif ($op eq 'hashref') {
-        my $args = $self->vivify_args($tree);
-        push @$args, undef if ! ($#$args % 2);
-        return {@$args};
-    } elsif ($op eq '?') {
-        if ($self->get_variable($tree->[0])) {
-            return defined($tree->[1]) ? $self->get_variable($tree->[1]) : undef;
-        } else {
-            return defined($tree->[2]) ? $self->get_variable($tree->[2]) : undef;
-        }
-    } elsif ($op eq '||' || $op eq 'or' || $op eq 'OR') {
-        for my $node (@$tree) {
-            my $var = $self->get_variable($node);
-            return $var if $var;
-        }
-        return '';
-    } elsif ($op eq '&&' || $op eq 'and' || $op eq 'AND') {
-        my $var;
-        for my $node (@$tree) {
-            $var = $self->get_variable($node);
-            return 0 if ! $var;
-        }
-        return $var;
-
-    } elsif ($op eq '!') {
-        my $var = ! $self->get_variable($tree->[0]);
-        return defined($var) ? $var : '';
-
-    }
-
-    ### equality operators
-    local $^W = 0;
-    my $n = $self->get_variable($tree->[0]);
-    $tree = [@$tree[1..$#$tree]];
-    if ($op eq '==')    { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n eq $_) }; return 1 }
-    elsif ($op eq '!=') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n ne $_) }; return 1 }
-    elsif ($op eq 'eq') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n eq $_) }; return 1 }
-    elsif ($op eq 'ne') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n ne $_) }; return 1 }
-    elsif ($op eq '<')  { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n <  $_); $n = $_ }; return 1 }
-    elsif ($op eq '>')  { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n >  $_); $n = $_ }; return 1 }
-    elsif ($op eq '<=') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n <= $_); $n = $_ }; return 1 }
-    elsif ($op eq '>=') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n >= $_); $n = $_ }; return 1 }
-    elsif ($op eq 'lt') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n lt $_); $n = $_ }; return 1 }
-    elsif ($op eq 'gt') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n gt $_); $n = $_ }; return 1 }
-    elsif ($op eq 'le') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n le $_); $n = $_ }; return 1 }
-    elsif ($op eq 'ge') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n ge $_); $n = $_ }; return 1 }
-
-    ### numeric operators
-    my $args = $self->vivify_args($tree);
-    if (! @$args) {
-        if ($op eq '-') { return - $n }
-        $self->throw('operator', "Not enough args for operator \"$op\"");
-    }
-    if ($op eq '..')        { return [($n || 0) .. ($args->[-1] || 0)] }
-    elsif ($op eq '+')      { $n +=  $_ for @$args; return $n }
-    elsif ($op eq '-')      { $n -=  $_ for @$args; return $n }
-    elsif ($op eq '*')      { $n *=  $_ for @$args; return $n }
-    elsif ($op eq '/')      { $n /=  $_ for @$args; return $n }
-    elsif ($op eq 'div'
-           || $op eq 'DIV') { $n = int($n / $_) for @$args; return $n }
-    elsif ($op eq '%'
-           || $op eq 'mod'
-           || $op eq 'MOD') { $n %=  $_ for @$args; return $n }
-    elsif ($op eq '**'
-           || $op eq 'pow') { $n **= $_ for @$args; return $n }
-
-    $self->throw('operator', "Un-implemented operation $op");
+    my ($self, $args) = @_;
+    return CGI::Ex::Var::vivify_args($args, $self->{'_vars'});
 }
 
 ###----------------------------------------------------------------###
@@ -1658,7 +811,8 @@ sub play_FILTER {
     eval { $self->execute_tree($sub_tree, \$out) };
     die $@ if $@ && ref($@) !~ /Template::Exception$/;
 
-    my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
+    my $var = CGI::Ex::Var::_literal(\$out);
+    $var = CGI::Ex::Var::_var([$var, 0, '|', @$filter]); # make a temporary var out of it
 
 
     return $DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
@@ -1669,7 +823,7 @@ sub parse_FOREACH {
     my $items = $self->parse_variable($tag_ref);
     my $var;
     if ($$tag_ref =~ s{ ^ (= | [Ii][Nn]\b) \s* }{}x) {
-        $var = [@$items];
+        $var = $items;
         $items = $self->parse_variable($tag_ref);
     }
     return [$var, $items];
@@ -1685,7 +839,7 @@ sub play_FOREACH {
     return '' if ! defined $items;
 
     if (ref($items) !~ /Iterator$/) {
-        $items = $PACKAGE_ITERATOR->new($items);
+        $items = PACKAGE_ITERATOR->new($items);
     }
 
     my $sub_tree = $node->[4];
@@ -1702,7 +856,7 @@ sub play_FOREACH {
             ### execute the sub tree
             eval { $self->execute_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
-                if (UNIVERSAL::isa($err, $PACKAGE_EXCEPTION)) {
+                if (UNIVERSAL::isa($err, PACKAGE_EXCEPTION)) {
                     if ($err->type eq 'next') {
                         ($item, $error) = $items->get_next;
                         next;
@@ -1734,7 +888,7 @@ sub play_FOREACH {
             ### execute the sub tree
             eval { $self->execute_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
-                if (UNIVERSAL::isa($err, $PACKAGE_EXCEPTION)) {
+                if (UNIVERSAL::isa($err, PACKAGE_EXCEPTION)) {
                     if ($err->type eq 'next') {
                         ($item, $error) = $items->get_next;
                         next;
@@ -1836,7 +990,7 @@ sub parse_MACRO {
     my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo});
     $self->throw('parse', "Missing macro name") if ! defined $name;
     if (! ref $name) {
-        $name = [ $name, 0 ];
+        $name = CGI::Ex::Var::_var([ $name, 0 ]);
     }
 
     my $args;
@@ -1927,7 +1081,7 @@ sub play_PERL {
 
         ### setup a fake handle
         local *PERLOUT;
-        tie *PERLOUT, $CGI::Ex::Template::PACKAGE_PERL_HANDLE, $out_ref;
+        tie *PERLOUT, CGI::Ex::Template::PACKAGE_PERL_HANDLE(), $out_ref;
         my $old_fh = select PERLOUT;
 
         eval $out;
@@ -2074,7 +1228,6 @@ sub play_RAWPERL {
 sub parse_SET {
     my ($self, $tag_ref, $node, $initial_var) = @_;
     my @SET;
-    my $copy = $$tag_ref;
     my $func;
     while (length $$tag_ref) {
         my $set;
@@ -2250,7 +1403,7 @@ sub play_TRY {
 
 sub parse_UNLESS {
     my $ref = $DIRECTIVES->{'IF'}->[0]->(@_);
-    return [ \ [ '!', $ref ], 0 ];
+    return CGI::Ex::Var::_not([ $ref ]);
 }
 
 sub play_UNLESS { return $DIRECTIVES->{'IF'}->[1]->(@_) }
@@ -2308,7 +1461,7 @@ sub play_USE {
         my @args    = $args ? @{ $self->vivify_args($args) } : ();
         $obj = $shape->new($context, @args);
     } elsif (lc($module) eq 'iterator') { # use our iterator if none found (TT's works just fine)
-        $obj = $PACKAGE_ITERATOR->new($args ? $self->get_variable($args->[0]) : []);
+        $obj = PACKAGE_ITERATOR->new($args ? $self->get_variable($args->[0]) : []);
     } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
         foreach my $package (@packages) {
             my $require = "$package.pm";
@@ -2333,7 +1486,7 @@ sub play_USE {
     }
 
     ### all good
-    $self->set_variable(\@var, $obj);
+    $self->set_variable(CGI::Ex::Var::_var(\@var), $obj);
 
     return;
 }
@@ -2353,7 +1506,7 @@ sub play_WHILE {
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $out_ref) };
         if (my $err = $@) {
-            if (UNIVERSAL::isa($err, $PACKAGE_EXCEPTION)) {
+            if (UNIVERSAL::isa($err, PACKAGE_EXCEPTION)) {
                 next if $err->type =~ /next/;
                 last if $err->type =~ /last|break/;
             }
@@ -2509,6 +1662,17 @@ sub process {
         delete $self->{'_debug_off'};
         delete $self->{'_debug_format'};
 
+        local $CGI::Ex::Var::RT_CONTEXT_SUB   = sub { $self->context };
+        local $CGI::Ex::Var::RT_UNDEFINED_SUB = sub { my $var = shift; $self->undefined_any(@_) };
+        local $CGI::Ex::Var::RT_DEBUG_UNDEF   = $self->{'_debug_undef'};
+        local $CGI::Ex::Var::RT_FILTERS       = $self->{'FILTERS'} ||= {};
+        local $CGI::Ex::Var::RT_NAMESPACE     = $self->{'NAMESPACE'} ||= {};
+
+        if ($self->{'CONSTANTS'}) {
+            my $key = $self->{'CONSTANT_NAMESPACE'} || 'constants';
+            $self->{'NAMESPACE'}->{$key} = $self->{'CONSTANTS'};
+        }
+
         ### handle pre process items that go before every document
         if ($self->{'PRE_PROCESS'}) {
             foreach my $name (@{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
@@ -2643,14 +1807,14 @@ sub exception {
             $type = 'undef';
         }
     }
-    return $PACKAGE_EXCEPTION->new($type, $info, $node);
+    return PACKAGE_EXCEPTION->new($type, $info, $node);
 }
 
 sub throw { die shift->exception(@_) }
 
 sub context {
     my $self = shift;
-    return bless {_template => $self}, $PACKAGE_CONTEXT; # a fake context
+    return bless {_template => $self}, PACKAGE_CONTEXT; # a fake context
 }
 
 sub undefined_get {
@@ -2764,10 +1928,10 @@ sub get_line_number_by_index {
 
 sub define_vmethod {
     my ($self, $type, $name, $sub) = @_;
-    if (   $type =~ /scalar|item/i) { $SCALAR_OPS->{$name} = $sub }
-    elsif ($type =~ /array|list/i ) { $LIST_OPS->{  $name} = $sub }
-    elsif ($type =~ /hash/i       ) { $HASH_OPS->{  $name} = $sub }
-    elsif ($type =~ /filter/i     ) { $FILTER_OPS->{$name} = $sub }
+    if (   $type =~ /scalar|item/i) { $CGI::Ex::Var::SCALAR_OPS->{$name} = $sub }
+    elsif ($type =~ /array|list/i ) { $CGI::Ex::Var::LIST_OPS->{  $name} = $sub }
+    elsif ($type =~ /hash/i       ) { $CGI::Ex::Var::HASH_OPS->{  $name} = $sub }
+    elsif ($type =~ /filter/i     ) { $CGI::Ex::Var::FILTER_OPS->{$name} = $sub }
     else {
         die "Invalid type vmethod type $type";
     }
@@ -3014,7 +2178,7 @@ sub config { shift->_template }
 
 sub stash {
     my $self = shift;
-    return $self->{'stash'} ||= bless {_template => $self->_template}, $CGI::Ex::Template::PACKAGE_STASH;
+    return $self->{'stash'} ||= bless {_template => $self->_template}, CGI::Ex::Template::PACKAGE_STASH();
 }
 
 sub insert { shift->_template->_insert(@_) }
@@ -3058,7 +2222,7 @@ sub filter {
 
     my $filter;
     if (! ref $name) {
-        $filter = $t->{'FILTERS'}->{$name} || $CGI::Ex::Template::FILTER_OPS->{$name} || $CGI::Ex::Template::SCALAR_OPS->{$name};
+        $filter = $t->{'FILTERS'}->{$name} || $CGI::Ex::Var::FILTER_OPS->{$name} || $CGI::Ex::Var::SCALAR_OPS->{$name};
         $t->throw('filter', $name) if ! $filter;
     } elsif (UNIVERSAL::isa($name, 'CODE') || UNIVERSAL::isa($name, 'ARRAY')) {
         $filter = $name;
@@ -3085,7 +2249,7 @@ sub define_vmethod { shift->_template->define_vmethod(@_) }
 sub throw {
     my ($self, $type, $info) = @_;
 
-    if (UNIVERSAL::isa($type, $CGI::Ex::Template::PACKAGE_EXCEPTION)) {
+    if (UNIVERSAL::isa($type, CGI::Ex::Template::PACKAGE_EXCEPTION())) {
 	die $type;
     } elsif (defined $info) {
 	$self->_template->throw($type, $info);
@@ -3109,17 +2273,17 @@ sub _template { shift->{'_template'} || die "Missing _template" }
 sub get {
     my ($self, $var) = @_;
     if (! ref $var) {
-        if ($var =~ /^\w+$/) {  $var = [$var, 0] }
-        else {                  $var = $self->_template->parse_variable(\$var, {no_dots => 1}) }
+        if ($var =~ /^\w+$/) {  $var = CGI::Ex::Var::_var([$var, 0]) }
+        else {                  $var = $self->_template->parse_variable(\$var) }
     }
-    return $self->_template->get_variable($var, {no_dots => 1});
+    return $self->_template->get_variable($var);
 }
 
 sub set {
     my ($self, $var, $val) = @_;
     if (! ref $var) {
-        if ($var =~ /^\w+$/) {  $var = [$var, 0] }
-        else {                  $var = $self->_template->parse_variable(\$var, {no_dots => 1}) }
+        if ($var =~ /^\w+$/) {  $var = CGI::Ex::Var::_var([$var, 0]) }
+        else {                  $var = $self->_template->parse_variable(\$var) }
     }
     $self->_template->set_variable($var, $val, {no_dots => 1});
     return $val;
@@ -3224,8 +2388,7 @@ The following list of methods are other interesting methods of CET that
 may be re-implemented by subclasses of CET.
 
 
-exception - Creates an exception object blessed into the package listed in
-$CGI::Ex::Template::PACKAGE_EXCEPTION.
+exception - Creates an exception object blessed into CGI::Ex::Template::Exception.
 
 execute_tree - Executes a parsed tree (returned from parse_tree)
 
