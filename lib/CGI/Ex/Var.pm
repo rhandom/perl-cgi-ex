@@ -395,8 +395,9 @@ sub parse_exp {
             local $RT_OPERATOR_PRECEDENCE = 1;
             my $op   = $1;
             my $var2 = parse_exp(\$copy);
+
             ### allow for unary operator precedence
-            if ($has_unary && (($OP_BINARY->{$op} || $OP_TRINARY->{$op}) < $OP_UNARY->{$has_unary})) {
+            if ($has_unary && (($OP_BINARY->{$op} || $OP_TRINARY->{$op})->[1] < $OP_UNARY->{$has_unary}->[1])) {
                 if ($tree) {
                     if (@$tree == 2) { # only one operator - keep simple things fast
                         $var = $OP_BINARY->{$tree->[0]}->[4]->([$var, $tree->[1]]);
@@ -530,7 +531,7 @@ sub parse_args {
     }
 
     ### allow for named arguments to be added also
-    push @args, [\ ['hashref', @named], 0] if scalar @named;
+    push @args, _hash(\@named) if scalar @named;
 
     return \@args;
 }
