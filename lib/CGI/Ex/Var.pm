@@ -186,10 +186,17 @@ sub throw {
     CGI::Ex::Template->throw(@_);
 }
 
-sub dump_exp {
+sub dump_parse {
     my $str = shift;
     require Data::Dumper;
     return Data::Dumper::Dumper(parse_exp(\$str));
+}
+
+sub dump_get {
+    my $str  = shift;
+    my $hash = shift || {};
+    require Data::Dumper;
+    return Data::Dumper::Dumper(get_exp(parse_exp(\$str), $hash));
 }
 
 sub parse_exp {
@@ -262,10 +269,11 @@ sub parse_exp {
             }
             @pieces = grep {defined && length} @pieces;
             if (@pieces == 1 && ! ref $pieces[0]) {
-                push @var, \ $pieces[0];
+                push @var, _literal(\ $pieces[0]);
                 $is_literal = 1;
             } elsif (! @pieces) {
-                push @var, _literal(\ '');
+                my $str = '';
+                push @var, _literal(\ $str);
                 $is_literal = 1;
             } else {
                 push @var, _concat(\@pieces);
@@ -462,17 +470,22 @@ sub apply_precedence {
 
         ### now - for this level split on remaining operators, or add the variable to the tree
         for (@trees) {
-            if ($#$_ == 0) {
+            if (@$_ == 1) {
                 $_ = $_->[0]; # single item - its not a tree
-            } elsif ($#$_ == 2) {
-                $_ = [ \ [ $_->[1], $_->[0], $_->[2] ], 0 ]; # single operator - put it straight on
+            } elsif (@$_ == 3) {
+                $_ = $OP_BINARY->{$_->[1]}->[4]->([$_->[0], $_->[2]]); # single operator - put it straight on
             } else {
                 $_ = apply_precedence($_, $found); # more complicated - recurse
             }
         }
 
         ### all done if we are looking at binary operations
-        return [ \ [ $op, @trees ], 0 ] if $#trinary <= 1;
+        my $ref = $OP_BINARY->{$op} || $OP_TRINARY->{$op};
+        if ($#trinary <= 1) {
+            my $val = $trees[0];
+            $val = $ref->[4]->([$val, $trees[$_]]) for 1 .. $#trees;
+            return $val;
+        }
 
         ### reorder complex trinary - rare case
         while ($#trinary >= 1) {
@@ -551,7 +564,15 @@ sub call {
     my $args = $self->[$i++];
     warn "CGI::Ex::Var::call: begin \"$ref\"\n" if trace;
 
-    if (defined $ref) {
+    if (ref $ref) {
+        if ($ref->isa('CGI::Ex::_autobox')) {
+            $ref = $ref->call($hash);
+        } else {
+            $ref = $ref->call($hash);
+            return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+            $ref = $hash->{$ref};
+        }
+    } else {
         if ($ARGS->{'is_namespace_during_compile'}) {
             $ref = $RT_NAMESPACE->{$ref};
         } else {
@@ -715,6 +736,8 @@ sub call {
     return $ref;
 }
 
+sub undefined { '' }
+
 ###----------------------------------------------------------------###
 
 sub list_filters {
@@ -858,12 +881,19 @@ sub filter_redirect {
 
 package CGI::Ex::_literal;
 sub call { ${ $_[0] } }
+sub set {}
+
+package CGI::Ex::_autobox;
+sub call { $_[0]->[0]->call($_[1]) }
+sub set {}
 
 package CGI::Ex::_not;
 sub call { ! (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) || '' }
+sub set {}
 
 package CGI::Ex::_concat;
-sub call { (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  .   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub call { join "", grep {defined} map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] } }
+sub set {}
 
 package CGI::Ex::_str_lt;
 package CGI::Ex::_str_gt;
@@ -872,49 +902,74 @@ package CGI::Ex::_str_ge;
 package CGI::Ex::_eq;
 package CGI::Ex::_ne;
 package CGI::Ex::_and;
+sub call { (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  &&  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
+
 package CGI::Ex::_or;
+sub call { ((ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  ||  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1])) || '' }
+sub set {}
+
 package CGI::Ex::_ifelse;
 package CGI::Ex::_set;
+
 package CGI::Ex::_hash;
+sub call { return {map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] }} }
+sub set {}
+
 package CGI::Ex::_array;
+sub call { return [map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] }] }
+sub set {}
 
 package CGI::Ex::_negate;
 sub call { local $^W; - (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) }
+sub set {}
 
 package CGI::Ex::_pow;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  **  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_mult;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  *   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_div;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  /   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_intdiv;
 sub call { local $^W; int( (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  /   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) ) }
+sub set {}
 
 package CGI::Ex::_mod;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  %   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_plus;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  +   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_subtr;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  -   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_num_lt;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  <   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_num_gt;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  >   (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_num_le;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  <=  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_num_ge;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  >=  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
 
 package CGI::Ex::_range;
+sub set {}
 
 ###----------------------------------------------------------------###
 
