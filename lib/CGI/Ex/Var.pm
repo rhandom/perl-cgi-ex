@@ -28,7 +28,7 @@ use vars qw(
 
             $RT_NAMESPACE
             $RT_FILTERS
-            $RT_CONTEXT
+            $RT_GET_CONTEXT
             $RT_DEBUG_UNDEF
             $RT_OPERATOR_PRECEDENCE
 
@@ -112,7 +112,7 @@ BEGIN {
     ### Runtime set variables that control lookups of various pieces of info
     $RT_NAMESPACE   = {};
     $RT_FILTERS     = {};
-    $RT_CONTEXT     = {};
+    $RT_GET_CONTEXT = sub { {} };
     $RT_DEBUG_UNDEF = 0;
     $RT_OPERATOR_PRECEDENCE = 0;
 
@@ -537,6 +537,8 @@ sub parse_args {
 
 sub get_exp { ref($_[0]) ? $_[0]->call($_[1]) : $_[0] }
 
+sub set_exp { ref($_[0]) ? $_[0]->set($_[1], $_[2]) : '' }
+
 sub vivify_args {
     my $vars = shift;
     my $hash = shift;
@@ -644,7 +646,7 @@ sub call {
                     eval {
                         my $sub = $filter->[0];
                         if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
-                            ($sub, my $err) = $sub->($RT_CONTEXT, $args ? (map {get_exp($_, $hash)} @$args) : ());
+                            ($sub, my $err) = $sub->($RT_GET_CONTEXT->(), $args ? (map {get_exp($_, $hash)} @$args) : ());
                             if (! $sub && $err) {
                                 throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                                 die $err;
@@ -895,12 +897,6 @@ package CGI::Ex::_concat;
 sub call { join "", grep {defined} map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] } }
 sub set {}
 
-package CGI::Ex::_str_lt;
-package CGI::Ex::_str_gt;
-package CGI::Ex::_str_le;
-package CGI::Ex::_str_ge;
-package CGI::Ex::_eq;
-package CGI::Ex::_ne;
 package CGI::Ex::_and;
 sub call { (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  &&  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
 sub set {}
@@ -920,8 +916,32 @@ package CGI::Ex::_array;
 sub call { return [map {ref($_) ? $_->call($_[1]) : $_} @{ $_[0] }] }
 sub set {}
 
+package CGI::Ex::_str_lt;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  lt  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
+
+package CGI::Ex::_str_gt;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  gt  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
+
+package CGI::Ex::_str_le;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  le  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
+
+package CGI::Ex::_str_ge;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  ge  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
+
+package CGI::Ex::_eq;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  eq  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
+
+package CGI::Ex::_ne;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  ne  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
+sub set {}
+
 package CGI::Ex::_negate;
-sub call { local $^W; - (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) }
+sub call { local $^W; 0 - (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) }
 sub set {}
 
 package CGI::Ex::_pow;
@@ -969,6 +989,7 @@ sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  
 sub set {}
 
 package CGI::Ex::_range;
+sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0]) || 0 .. (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) || 0 }
 sub set {}
 
 ###----------------------------------------------------------------###
