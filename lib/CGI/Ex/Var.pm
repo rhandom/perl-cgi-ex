@@ -413,12 +413,13 @@ sub parse_exp {
 
             ### add the operator to the tree
             push (@{ $tree ||= [] }, $op, $var2);
-            $found->{$op} = $OP_BINARY->{$op}->[1] || $OP_TRINARY->{$op}->[1] || die "Couldn't find op precedence for $op";
+            my $ref = $OP_BINARY->{$op} || $OP_TRINARY->{$op};
+            $found->{$op} = $ref->[1];
         }
 
         ### if we found operators - tree the nodes by operator precedence
         if ($tree) {
-            if (@$tree == 2) { # only one operator - keep simple things fast
+            if (@$tree == 2 && $OP_BINARY->{$tree->[0]}) { # only one operator - keep simple things fast
                 $var = $OP_BINARY->{$tree->[0]}->[4]->([$var, $tree->[1]]);
             } else {
                 unshift @$tree, $var;
@@ -451,9 +452,10 @@ sub apply_precedence {
 
         ### split the array on the current operator
         for (my $i = 0; $i <= $#$tree; $i ++) {
-            next if $tree->[$i] ne $op && (! exists $OP_TRINARY->{$op} || $OP_TRINARY->{$op} ne $tree->[$i]);
+            my $is_trinary = $OP_TRINARY->{$op} && grep {$_ eq $tree->[$i]} @{ $OP_TRINARY->{$op}->[2] };
+            next if $tree->[$i] ne $op && ! $is_trinary;
             push @trees, [splice @$tree, 0, $i, ()]; # everything up to the operator
-            push @trinary, $tree->[0] if exists $OP_TRINARY->{$op};
+            push @trinary, $tree->[0] if $is_trinary;
             shift @$tree; # pull off the operator
             $i = -1;
         }
@@ -461,32 +463,38 @@ sub apply_precedence {
         push @trees, $tree if scalar @$tree; # elements after last operator
 
         ### now - for this level split on remaining operators, or add the variable to the tree
-        for (@trees) {
-            if (@$_ == 1) {
-                $_ = $_->[0]; # single item - its not a tree
-            } elsif (@$_ == 3) {
-                $_ = $OP_BINARY->{$_->[1]}->[4]->([$_->[0], $_->[2]]); # single operator - put it straight on
+        for my $node (@trees) {
+            if (@$node == 1) {
+                $node = $node->[0]; # single item - its not a tree
+            } elsif (@$node == 3) {
+                my $ref = $OP_BINARY->{$node->[1]} || $OP_TRINARY->{$node->[1]};
+                $node = $ref->[4]->([$node->[0], $node->[2]]); # single operator - put it straight on
             } else {
-                $_ = apply_precedence($_, $found); # more complicated - recurse
+                $node = apply_precedence($node, $found); # more complicated - recurse
             }
         }
 
-        ### all done if we are looking at binary operations
-        my $ref = $OP_BINARY->{$op} || $OP_TRINARY->{$op};
-        if ($#trinary <= 1) {
+        ### return binary
+        if ($OP_BINARY->{$op} || @trinary == 2) {
+            my $ref = $OP_BINARY->{$op} || $OP_TRINARY->{$op};
             my $val = $trees[0];
             $val = $ref->[4]->([$val, $trees[$_]]) for 1 .. $#trees;
             return $val;
+        }
+
+        ### return simple trinary
+        if (@trinary == 2) {
+            return $OP_TRINARY->{$op}->[4]->(\@trees);
         }
 
         ### reorder complex trinary - rare case
         while ($#trinary >= 1) {
             ### if we look starting from the back - the first lead trinary op will always be next to its matching op
             for (my $i = $#trinary; $i >= 0; $i --) {
-                next if ! exists $OP_TRINARY->{$trinary[$i]};
-                my ($op, $op2) = splice @trinary, $i, 2, (); # remove the pair of operators
-                my $node = [ \ [$op, @trees[$i .. $i + 2] ], 0 ];
-                splice @trees, $i, 3, $node;
+                next if $OP_TRINARY->{$trinary[$i]}->[2]->[1] eq $trinary[$i];
+                my ($op, $op2) = splice @trinary, $i, 2, (); # remove the found pair of operators
+                my $node = $OP_TRINARY->{$op}->[4]->([@trees[$i .. $i + 2]]);
+                splice @trees, $i, 3, $node; # replace the previous 3 pieces with the one new node
             }
         }
         return $trees[0]; # at this point the trinary has been reduced to a single operator
@@ -569,7 +577,7 @@ sub new {
     return bless $_[0], $class;
 }
 
-sub is_nested { @{ $_[0] } >= 3 }
+sub does_autobox { 0 }
 
 sub call {
     my $self = shift;
@@ -1052,6 +1060,13 @@ sub set {}
 sub does_autobox { 0 }
 
 package CGI::Ex::_ifelse;
+sub call {
+    (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])
+        ? (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1])
+        : (ref($_[0]->[2]) ? $_[0]->[2]->call($_[1]) : $_[0]->[2]);
+}
+sub set {}
+sub does_autobox { 0 }
 
 package CGI::Ex::_str_lt;
 sub call { local $^W; (ref($_[0]->[0]) ? $_[0]->[0]->call($_[1]) : $_[0]->[0])  lt  (ref($_[0]->[1]) ? $_[0]->[1]->call($_[1]) : $_[0]->[1]) }
