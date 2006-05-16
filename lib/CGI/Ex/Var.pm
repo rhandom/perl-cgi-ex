@@ -183,6 +183,7 @@ sub _literal { return bless(shift(), 'CGI::Ex::_literal') }
 sub _hash    { return bless(shift(), 'CGI::Ex::_hash'   ) }
 sub _array   { return bless(shift(), 'CGI::Ex::_array'  ) }
 sub _concat  { return bless(shift(), 'CGI::Ex::_concat' ) }
+sub _autobox { return bless(shift(), 'CGI::Ex::_autobox') }
 
 sub throw {
     require CGI::Ex::Template;
@@ -378,11 +379,17 @@ sub parse_exp {
         } else {
             $var = _var(\@var);
         }
-    } elsif ($is_namespace) { # attempt to "fold" constant variables into the parse tree
-        local $RT_DURING_COMPILE = 1;
-        $var = _var(\@var)->call({});
     } else {
-        $var = _var(\@var);
+        if ($is_construct && ! $var[0]->does_autobox) {
+            $var[0] = _autobox([$var[0]]);
+        }
+
+        if ($is_namespace) { # attempt to "fold" constant variables into the parse tree
+            local $RT_DURING_COMPILE = 1;
+            $var = _var(\@var)->call({});
+        } else {
+            $var = _var(\@var);
+        }
     }
 
     ### allow for all "operators"
@@ -626,7 +633,7 @@ sub call {
 
         ### descend one chained level
         last if $i >= $#$self;
-        my $was_dot_call = $self->[$i++];
+        my $was_dot_call = $self->[$i++] eq '.';
         my $name         = $self->[$i++];
         my $args         = $self->[$i++];
         warn "CGI::Ex::Var::get_exp: nested \"$name\"\n" if trace;
@@ -787,7 +794,7 @@ sub set {
 
     ### vivify the chained levels
     while (defined $ref && $#$self > $i) {
-        my $was_dot_call = $self->[$i++];
+        my $was_dot_call = $self->[$i++] eq '.';
         my $name         = $self->[$i++];
         my $args         = $self->[$i++];
 
@@ -1013,6 +1020,16 @@ sub filter_redirect {
 
 ###----------------------------------------------------------------###
 ### "here be dragons"
+
+package CGI::Ex::_literal;
+sub call { ${ $_[0] } }
+sub set {}
+sub does_autobox { 1 }
+
+package CGI::Ex::_autobox;
+sub call { $_[0]->[0]->call($_[1]) }
+sub set {}
+sub does_autobox { 1 }
 
 package CGI::Ex::_literal;
 sub call { ${ $_[0] } }
