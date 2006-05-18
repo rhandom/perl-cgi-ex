@@ -451,7 +451,7 @@ sub dump_history {
             || ! exists $row->{'elapsed'}) {
             push @$dump, $row;
         } else {
-            my $note = ('    'x($row->{'level'} || 0))
+            my $note = ('    ' x ($row->{'level'} || 0))
                 . join(' - ', $row->{'step'}, $row->{'meth'}, $row->{'found'}, sprintf('%.4f', $row->{'elapsed'}));
             my $resp = $row->{'response'};
             if (ref($resp) eq 'HASH' && ! scalar keys %$resp) {
@@ -459,6 +459,12 @@ sub dump_history {
             } elsif (ref($resp) eq 'ARRAY' && ! @$resp) {
                 $note .= ' - []';
             } elsif (! ref $resp || ! $all) {
+                my $max = $self->{'history_max'} || 30;
+                if (length($resp) > $max) {
+                    $resp = substr($resp, 0, $max);
+                    $resp =~ s/\n.+//s;
+                    $resp = "$resp ...";
+                }
                 $note .= " - $resp";
             } else {
                 $note = [$note, $resp];
@@ -1022,14 +1028,17 @@ next section.
 
     __PACKAGE__->navigate;
     # OR
-    my $obj = __PACKAGE__->new;
-    $obj->navigate;
+    # my $obj = __PACKAGE__->new;
+    # $obj->navigate;
 
     exit;
 
     ###------------------------------------------###
 
-    sub post_print { debug shift->dump_history } # show what happened
+    sub post_print {
+        # show what happened - useful for debugging the app
+        debug shift->dump_history;
+    }
 
     sub main_file_print {
         # reference to string means ref to content
@@ -1076,14 +1085,14 @@ next section.
     }
 
     ### not necessary - this is the default hash_base
-    sub hash_base { # used to include js_validation
-        my ($self, $step) = @_;
-        return $self->{hash_base} ||= {
-            script_name   => $ENV{SCRIPT_NAME} || '',
-            js_validation => sub { $self->run_hook('js_validation', $step) },
-            form_name     => sub { $self->run_hook('form_name', $step) },
-        };
-    }
+    # sub hash_base { # used to include js_validation
+    #     my ($self, $step) = @_;
+    #     return $self->{'hash_base'} ||= {
+    #         script_name   => $ENV{'SCRIPT_NAME'} || '',
+    #         js_validation => sub { $self->run_hook('js_validation', $step) },
+    #         form_name     => sub { $self->run_hook('form_name', $step) },
+    #     };
+    # }
 
     __END__
 
