@@ -12,275 +12,258 @@ CGI::Ex::App - Anti-framework application framework.
 ###----------------------------------------------------------------###
 
 use strict;
-use vars qw($VERSION
-            $EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS $BASE_NAME_MODULE
-            $RECURSE_LIMIT);
-
-$VERSION = '2.00';
+use vars qw($VERSION);
 
 BEGIN {
-  ### Default file locations
-  ### these are used for the provided stub functions - if you are not
-  ### using the stub functions - then you won't need to worry about these
-  $EXT_PRINT ||= 'html';
-  $EXT_VAL   ||= 'val';
-  $BASE_DIR_REL ||= ''; # relative path - stub methods will look in $BASE_DIR_REL/dir/of/content.html
-  $BASE_DIR_ABS ||= ''; # content should be found at "$BASE_DIR_ABS/$BASE_DIR_REL/dir/of/content.html"
-  $BASE_NAME_MODULE ||= ''; # the cgi name
+    $VERSION = '2.00';
 
-  Time::HiRes->import('time') if eval {require Time::HiRes};
+    Time::HiRes->import('time') if eval {require Time::HiRes};
 }
 
 
 ###----------------------------------------------------------------###
 
 sub new {
-  my $class = shift || die "Usage: Package->new";
-  my $self  = ref($_[0]) ? shift : {@_};
-  bless $self, $class;
-  return $self;
+    my $class = shift || die "Usage: Package->new";
+    my $self  = ref($_[0]) ? shift : {@_};
+    bless $self, $class;
+    return $self;
 }
 
 ###----------------------------------------------------------------###
 
 sub navigate {
-  my $self = shift;
-  my $args = ref($_[0]) ? shift : {@_};
-  $self = $self->new($args) if ! ref $self;
+    my $self = shift;
+    my $args = ref($_[0]) ? shift : {@_};
+    $self = $self->new($args) if ! ref $self;
 
-  eval {
-
-    $self->{'_time'} = time;
-
-    ### a chance to do things at the very beginning
-    return $self if $self->pre_navigate;
-
-    ### run the step loop
     eval {
-      local $self->{'__morph_lineage_start_index'} = $#{$self->{'__morph_lineage'} || []};
-      $self->nav_loop;
+
+        $self->{'_time'} = time;
+
+        ### a chance to do things at the very beginning
+        return $self if $self->pre_navigate;
+
+        ### run the step loop
+        eval {
+            local $self->{'__morph_lineage_start_index'} = $#{$self->{'__morph_lineage'} || []};
+            $self->nav_loop;
+        };
+        if ($@) {
+            ### rethrow the error unless we long jumped out of recursive nav_loop calls
+            die $@ if $@ ne "Long Jump\n";
+        }
+
+        $self->{'_elapsed'} = time - $self->{'_time'};
+
+        ### one chance to do things at the very end
+        $self->post_navigate;
+
     };
-    if ($@) {
-      ### rethrow the error unless we long jumped out of recursive nav_loop calls
-      die $@ if $@ ne "Long Jump\n";
-    }
+    $self->handle_error($@) if $@; # catch any errors
 
-    $self->{'_elapsed'} = time - $self->{'_time'};
-
-    ### one chance to do things at the very end
-    $self->post_navigate;
-
-  };
-
-  ### catch errors - if any
-  if ($@) {
-    $self->handle_error($@);
-  }
-
-  return $self;
+    return $self;
 }
 
 sub nav_loop {
-  my $self = shift;
+    my $self = shift;
 
-  ### keep from an infinate nesting
-  local $self->{recurse} = $self->{recurse} || 0;
-  if ($self->{recurse} ++ >= $self->recurse_limit) {
-    my $err = "recurse_limit reached (".$self->recurse_limit.")";
-    $err .= " number of jumps (".$self->{jumps}.")" if ($self->{jumps} || 0) > 1;
-    die $err;
-  }
-
-  ### get the path (simple arrayref based thing)
-  my $path = $self->path;
-
-  ### allow for an early return
-  return if $self->pre_loop($path); # a true value means to abort the navigate
-
-  ### get a hash of valid paths (if any)
-  my $valid_steps = $self->valid_steps;
-
-  ### iterate on each step of the path
-  foreach ($self->{path_i} ||= 0;
-           $self->{path_i} <= $#$path;
-           $self->{path_i} ++) {
-    my $step = $path->[$self->{path_i}];
-    next if $step !~ /^([a-zA-Z_]\w*)$/; # don't process the step if it contains odd characters
-    $step = $1; # untaint
-
-    ### check if this is an allowed step
-    if ($valid_steps) {
-      if (! $valid_steps->{$step}
-          && $step ne 'forbidden'
-          && $step ne $self->default_step
-          && $step ne $self->js_step) {
-        $self->stash->{'forbidden_step'} = $step;
-        $self->replace_path('forbidden');
-        next;
-      }
+    ### keep from an infinate nesting
+    local $self->{'recurse'} = $self->{'recurse'} || 0;
+    if ($self->{'recurse'} ++ >= $self->recurse_limit) {
+        my $err = "recurse_limit reached (".$self->recurse_limit.")";
+        $err .= " number of jumps (".$self->{'jumps'}.")" if ($self->{'jumps'} || 0) > 1;
+        die $err;
     }
 
-    ### allow for becoming another package (allows for some steps in external files)
-    $self->morph($step);
+    ### get the path (simple arrayref based thing)
+    my $path = $self->path;
 
-    ### run the guts of the step
-    my $status = $self->run_hook('run_step', $step);
+    ### allow for an early return
+    return if $self->pre_loop($path); # a true value means to abort the navigate
 
-    $self->unmorph($step);
+    ### get a hash of valid paths (if any)
+    my $valid_steps = $self->valid_steps;
 
-    ### Allow for the run_step to intercept.
-    ### A true status means the run_step took over navigation.
-    return if $status;
-  }
+    ### iterate on each step of the path
+    foreach ($self->{'path_i'} ||= 0;
+             $self->{'path_i'} <= $#$path;
+             $self->{'path_i'} ++) {
+        my $step = $path->[$self->{'path_i'}];
+        next if $step !~ /^([a-zA-Z_]\w*)$/; # don't process the step if it contains odd characters
+        $step = $1; # untaint
 
-  ### allow for one exit point after the loop
-  return if $self->post_loop($path); # a true value means to abort the navigate
+        ### check if this is an allowed step
+        if ($valid_steps) {
+            if (! $valid_steps->{$step}
+                && $step ne 'forbidden'
+                && $step ne $self->default_step
+                && $step ne $self->js_step) {
+                $self->stash->{'forbidden_step'} = $step;
+                $self->replace_path('forbidden');
+                next;
+            }
+        }
 
-  ### run the default step as a last resort
-  $self->insert_path($self->default_step);
-  $self->nav_loop; # go recursive
+        ### allow for becoming another package (allows for some steps in external files)
+        $self->morph($step);
 
-  return;
+        ### run the guts of the step
+        my $status = $self->run_hook('run_step', $step);
+
+        $self->unmorph($step);
+
+        ### Allow for the run_step to intercept.
+        ### A true status means the run_step took over navigation.
+        return if $status;
+    }
+
+    ### allow for one exit point after the loop
+    return if $self->post_loop($path); # a true value means to abort the navigate
+
+    ### run the default step as a last resort
+    $self->insert_path($self->default_step);
+    $self->nav_loop; # go recursive
+
+    return;
 }
 
 sub pre_navigate {}
 
 sub post_navigate {}
 
-sub recurse_limit { shift->{'recurse_limit'} || $RECURSE_LIMIT || 15 }
+sub recurse_limit { shift->{'recurse_limit'} || 15 }
 
 sub run_step {
-  my $self = shift;
-  my $step = shift;
+    my $self = shift;
+    my $step = shift;
 
-  ### if the pre_step exists and returns true, exit the nav_loop
-  return 1 if $self->run_hook('pre_step', $step);
+    ### if the pre_step exists and returns true, exit the nav_loop
+    return 1 if $self->run_hook('pre_step', $step);
 
-  ### allow for skipping this step (but stay in the nav_loop)
-  return 0 if $self->run_hook('skip', $step);
+    ### allow for skipping this step (but stay in the nav_loop)
+    return 0 if $self->run_hook('skip', $step);
 
-  ### see if we have complete valid information for this step
-  ### if so, do the next step
-  ### if not, get necessary info and print it out
-  if (   ! $self->run_hook('prepare', $step)
-      || ! $self->run_hook('info_complete', $step)
-      || ! $self->run_hook('finalize', $step)) {
+    ### see if we have complete valid information for this step
+    ### if so, do the next step
+    ### if not, get necessary info and print it out
+    if (   ! $self->run_hook('prepare', $step)
+        || ! $self->run_hook('info_complete', $step)
+        || ! $self->run_hook('finalize', $step)) {
 
-    ### show the page requesting the information
-    $self->run_hook('prepared_print', $step);
+        ### show the page requesting the information
+        $self->run_hook('prepared_print', $step);
 
-    ### a hook after the printing process
-    $self->run_hook('post_print', $step);
+        ### a hook after the printing process
+        $self->run_hook('post_print', $step);
 
-    return 1;
-  }
+        return 1;
+    }
 
-  ### a hook before end of loop
-  ### if the post_step exists and returns true, exit the nav_loop
-  return 1 if $self->run_hook('post_step', $step);
+    ### a hook before end of loop
+    ### if the post_step exists and returns true, exit the nav_loop
+    return 1 if $self->run_hook('post_step', $step);
 
-  ### let the nav_loop continue searching the path
-  return 0;
+    ### let the nav_loop continue searching the path
+    return 0;
 }
 
 ### standard functions for printing - gather information
 sub prepared_print {
-  my $self = shift;
-  my $step = shift;
+    my $self = shift;
+    my $step = shift;
 
-  my $hash_base = $self->run_hook('hash_base',   $step);
-  my $hash_comm = $self->run_hook('hash_common', $step);
-  my $hash_form = $self->run_hook('hash_form',   $step);
-  my $hash_fill = $self->run_hook('hash_fill',   $step);
-  my $hash_swap = $self->run_hook('hash_swap',   $step);
-  my $hash_errs = $self->run_hook('hash_errors', $step);
-  $_ ||= {} foreach $hash_base, $hash_comm, $hash_form, $hash_fill, $hash_swap, $hash_errs;
+    my $hash_base = $self->run_hook('hash_base',   $step) || {};
+    my $hash_comm = $self->run_hook('hash_common', $step) || {};
+    my $hash_form = $self->run_hook('hash_form',   $step) || {};
+    my $hash_fill = $self->run_hook('hash_fill',   $step) || {};
+    my $hash_swap = $self->run_hook('hash_swap',   $step) || {};
+    my $hash_errs = $self->run_hook('hash_errors', $step) || {};
 
-  ### fix up errors
-  $hash_errs->{$_} = $self->format_error($hash_errs->{$_})
-    foreach keys %$hash_errs;
-  $hash_errs->{has_errors} = 1 if scalar keys %$hash_errs;
+    ### fix up errors
+    $hash_errs->{$_} = $self->format_error($hash_errs->{$_})
+        foreach keys %$hash_errs;
+    $hash_errs->{'has_errors'} = 1 if scalar keys %$hash_errs;
 
-  ### layer hashes together
-  my $fill = {%$hash_form, %$hash_base, %$hash_comm, %$hash_fill};
-  my $swap = {%$hash_form, %$hash_base, %$hash_comm, %$hash_swap, %$hash_errs};
-  $fill = {} if $self->no_fill($step);
+    ### layer hashes together
+    my $fill = {%$hash_form, %$hash_base, %$hash_comm, %$hash_fill};
+    my $swap = {%$hash_form, %$hash_base, %$hash_comm, %$hash_swap, %$hash_errs};
+    $fill = {} if $self->no_fill($step);
 
-  ### run the print hook - passing it the form and fill info
-  $self->run_hook('print', $step, undef,
-                  $swap, $fill);
+    ### run the print hook - passing it the form and fill info
+    $self->run_hook('print', $step, $swap, $fill);
 }
 
 sub no_fill { shift->{'no_fill'} }
 
 sub exit_nav_loop {
-  my $self = shift;
+    my $self = shift;
 
-  ### undo morphs
-  if (my $ref = $self->{'__morph_lineage'}) {
-    ### use the saved index - this allows for early "morphers" to only get rolled back so far
-    my $index = $self->{'__morph_lineage_start_index'};
-    $index = -1 if ! defined $index;
-    $self->unmorph while $#$ref != $index;
-  }
+    ### undo morphs
+    if (my $ref = $self->{'__morph_lineage'}) {
+        ### use the saved index - this allows for early "morphers" to only get rolled back so far
+        my $index = $self->{'__morph_lineage_start_index'};
+        $index = -1 if ! defined $index;
+        $self->unmorph while $#$ref != $index;
+    }
 
-  ### long jump back
-  die "Long Jump\n";
+    ### long jump back
+    die "Long Jump\n";
 }
 
 sub jump {
-  my $self   = shift;
-  my $i      = ($#_ == -1) ? 1 : shift;
-  my $path   = $self->path;
-  my $path_i = $self->{path_i};
-  die "Can't jump if nav_loop not started" if ! defined $path_i;
+    my $self   = shift;
+    my $i      = @_ == 1 ? shift : 1;
+    my $path   = $self->path;
+    my $path_i = $self->{'path_i'};
+    die "Can't jump if nav_loop not started" if ! defined $path_i;
 
-  ### validate where we are jumping to
-  if ($i =~ /^\w+$/) {
-    if ($i eq 'FIRST') {
-      $i = - $path_i - 1;
-    } elsif ($i eq 'LAST') {
-      $i = $#$path - $path_i;
-    } elsif ($i eq 'NEXT') {
-      $i = 1;
-    } elsif ($i eq 'CURRENT') {
-      $i = 0;
-    } elsif ($i eq 'PREVIOUS') {
-      $i = -1;
-    } else { # look for a step by that name
-      for (my $j = $#$path; $j >= 0; $j --) {
-        if ($path->[$j] eq $i) {
-          $i = $j - $path_i;
-          last;
+    ### validate where we are jumping to
+    if ($i =~ /^\w+$/) {
+        if ($i eq 'FIRST') {
+            $i = - $path_i - 1;
+        } elsif ($i eq 'LAST') {
+            $i = $#$path - $path_i;
+        } elsif ($i eq 'NEXT') {
+            $i = 1;
+        } elsif ($i eq 'CURRENT') {
+            $i = 0;
+        } elsif ($i eq 'PREVIOUS') {
+            $i = -1;
+        } else { # look for a step by that name
+            for (my $j = $#$path; $j >= 0; $j --) {
+                if ($path->[$j] eq $i) {
+                    $i = $j - $path_i;
+                    last;
+                }
+            }
         }
-      }
     }
-  }
-  if ($i !~ /^-?\d+$/) {
-    require Carp;
-    Carp::croak("Invalid jump index ($i)");
-  }
+    if ($i !~ /^-?\d+$/) {
+        require Carp;
+        Carp::croak("Invalid jump index ($i)");
+    }
 
-  ### manipulate the path to contain the new jump location
-  my @replace;
-  my $cut_i  = $path_i + $i;
-  if ($cut_i > $#$path) {
-    push @replace, $self->default_step;
-  } elsif ($cut_i < 0) {
-    push @replace, @$path;
-  } else {
-    push @replace, @$path[$cut_i .. $#$path];
-  }
-  $self->replace_path(@replace);
+    ### manipulate the path to contain the new jump location
+    my @replace;
+    my $cut_i  = $path_i + $i;
+    if ($cut_i > $#$path) {
+        push @replace, $self->default_step;
+    } elsif ($cut_i < 0) {
+        push @replace, @$path;
+    } else {
+        push @replace, @$path[$cut_i .. $#$path];
+    }
+    $self->replace_path(@replace);
 
-  ### record the number of jumps
-  $self->{jumps} ||= 0;
-  $self->{jumps} ++;
+    ### record the number of jumps
+    $self->{'jumps'} ||= 0;
+    $self->{'jumps'} ++;
 
-  ### run the newly fixed up path (recursively)
-  $self->{path_i} ++; # move along now that the path is updated
-  $self->nav_loop;
-  $self->exit_nav_loop;
+    ### run the newly fixed up path (recursively)
+    $self->{'path_i'} ++; # move along now that the path is updated
+    $self->nav_loop;
+    $self->exit_nav_loop;
 }
 
 sub default_step { shift->{'default_step'} || 'main' }
@@ -289,70 +272,67 @@ sub js_step { shift->{'js_step'} || 'js' }
 
 ###----------------------------------------------------------------###
 
-sub step_key {
-  my $self = shift;
-  return $self->{'step_key'} || 'step';
-}
+sub step_key { shift->{'step_key'} || 'step' }
 
 ### determine the path to follow
 sub path {
-  my $self = shift;
-  return $self->{path} ||= do {
-    my @path     = (); # default to empty path
-    my $step_key = $self->step_key;
+    my $self = shift;
+    return $self->{path} ||= do {
+        my @path     = (); # default to empty path
+        my $step_key = $self->step_key;
 
-    if (my $step = $self->form->{$step_key}) {
-      push @path, $step;
-    } elsif ($ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ m|^/(\w+)|) {
-      push @path, lc($1);
-    }
+        if (my $step = $self->form->{$step_key}) {
+            push @path, $step;
+        } elsif ($ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ m|^/(\w+)|) {
+            push @path, lc $1;
+        }
 
-    \@path; # return of the do
-  };
+        \@path; # return of the do
+    };
 }
 
 ### really should only be used during initialization
 sub set_path {
-  my $self = shift;
-  my $path = $self->{path} ||= [];
-  die "Cannot call set_path after the navigation loop has begun" if $self->{path_i};
-  splice @$path, 0, $#$path + 1, @_; # change entries in the ref
+    my $self = shift;
+    my $path = $self->{'path'} ||= [];
+    die "Cannot call set_path after the navigation loop has begun" if $self->{'path_i'};
+    splice @$path, 0, $#$path + 1, @_; # change entries in the ref
 }
 
 ### legacy - same as append_path
 sub add_to_path {
-  my $self = shift;
-  push @{ $self->path }, @_;
+    my $self = shift;
+    push @{ $self->path }, @_;
 }
 
 ### append entries onto the end
 sub append_path {
-  my $self = shift;
-  push @{ $self->path }, @_;
+    my $self = shift;
+    push @{ $self->path }, @_;
 }
 
 ### replace all entries that are left
 sub replace_path {
-  my $self = shift;
-  my $ref  = $self->path;
-  my $i    = $self->{path_i} || 0;
-  if ($i + 1 > $#$ref) {
-    push @$ref, @_;
-  } else {
-    splice(@$ref, $i + 1, $#$ref - $i, @_); # replace remaining entries
-  }
+    my $self = shift;
+    my $ref  = $self->path;
+    my $i    = $self->{'path_i'} || 0;
+    if ($i + 1 > $#$ref) {
+        push @$ref, @_;
+    } else {
+        splice(@$ref, $i + 1, $#$ref - $i, @_); # replace remaining entries
+    }
 }
 
 ### insert more steps into the current path
 sub insert_path {
-  my $self = shift;
-  my $ref  = $self->path;
-  my $i    = $self->{path_i} || 0;
-  if ($i + 1 > $#$ref) {
-    push @$ref, @_;
-  } else {
-    splice(@$ref, $i + 1, 0, @_); # insert a path at the current location
-  }
+    my $self = shift;
+    my $ref  = $self->path;
+    my $i    = $self->{'path_i'} || 0;
+    if ($i + 1 > $#$ref) {
+        push @$ref, @_;
+    } else {
+        splice(@$ref, $i + 1, 0, @_); # insert a path at the current location
+    }
 }
 
 ### a hash of paths that are allowed, default undef is all
@@ -362,42 +342,42 @@ sub valid_steps {}
 ### allow for checking where we are in the path
 
 sub step_by_path_index {
-  my $self = shift;
-  my $i    = shift || 0;
-  my $ref  = $self->path;
-  return '' if $i < 0;
-  return $self->default_step if $i > $#$ref;
-  return $ref->[$i];
+    my $self = shift;
+    my $i    = shift || 0;
+    my $ref  = $self->path;
+    return '' if $i < 0;
+    return $self->default_step if $i > $#$ref;
+    return $ref->[$i];
 }
 
 sub previous_step {
-  my $self = shift;
-  die "previous_step is readonly" if $#_ != -1;
-  return $self->step_by_path_index( ($self->{path_i} || 0) - 1 );
+    my $self = shift;
+    die "previous_step is readonly" if $#_ != -1;
+    return $self->step_by_path_index( ($self->{'path_i'} || 0) - 1 );
 }
 
 sub current_step {
-  my $self = shift;
-  die "current_step is readonly" if $#_ != -1;
-  return $self->step_by_path_index( ($self->{path_i} || 0) );
+    my $self = shift;
+    die "current_step is readonly" if $#_ != -1;
+    return $self->step_by_path_index( ($self->{'path_i'} || 0) );
 }
 
 sub next_step {
-  my $self = shift;
-  die "next_step is readonly" if $#_ != -1;
-  return $self->step_by_path_index( ($self->{path_i} || 0) + 1 );
+    my $self = shift;
+    die "next_step is readonly" if $#_ != -1;
+    return $self->step_by_path_index( ($self->{'path_i'} || 0) + 1 );
 }
 
 sub last_step {
-  my $self = shift;
-  die "last_step is readonly" if $#_ != -1;
-  return $self->step_by_path_index( $#{ $self->path } );
+    my $self = shift;
+    die "last_step is readonly" if $#_ != -1;
+    return $self->step_by_path_index( $#{ $self->path } );
 }
 
 sub first_step {
-  my $self = shift;
-  die "first_step is readonly" if $#_ != -1;
-  return $self->step_by_path_index( 0 );
+    my $self = shift;
+    die "first_step is readonly" if $#_ != -1;
+    return $self->step_by_path_index( 0 );
 }
 
 ###----------------------------------------------------------------###
@@ -410,7 +390,6 @@ sub find_hook {
     my $self    = shift;
     my $hook    = shift || do { require Carp; Carp::confess("Missing hook name") };
     my $step    = shift || '';
-    my $default = shift;
     my $code;
     if ($step && ($code = $self->can("${step}_${hook}"))) {
         return [$code, "${step}_${hook}"],
@@ -418,48 +397,41 @@ sub find_hook {
     } elsif ($code = $self->can($hook)) {
         return [$code, $hook];
 
-    } elsif (UNIVERSAL::isa($default, 'CODE')) {
-        return ['DEFAULT CODE'];
-
-    } elsif ($default) {
-        return [sub { return $default }, 'DEFAULT'];
-
     } else {
-        return [sub {}, 'NO DEFAULT'];
+        return [sub {}, 'NONE FOUND'];
 
     }
 }
 
 ### get and call the appropriate hook
 sub run_hook {
-  my $self    = shift;
-  my $hook    = shift;
-  my $step    = shift;
-  my $default = shift;
+    my $self    = shift;
+    my $hook    = shift;
+    my $step    = shift;
 
-  my ($code, $found) = @{ $self->find_hook($hook, $step, $default) };
+    my ($code, $found) = @{ $self->find_hook($hook, $step) };
 
-  ### record history
-  my $hist = {
-      step  => $step,
-      meth  => $hook,
-      found => $found,
-      time  => time,
-  };
+    ### record history
+    my $hist = {
+        step  => $step,
+        meth  => $hook,
+        found => $found,
+        time  => time,
+    };
 
-  push @{ $self->history }, $hist;
+    push @{ $self->history }, $hist;
 
-  $hist->{'level'} = $self->{'_level'};
-  local $self->{'_level'} = 1 + $self->{'_level'} || 0;
+    $hist->{'level'} = $self->{'_level'};
+    local $self->{'_level'} = 1 + $self->{'_level'} || 0;
 
-  $hist->{'elapsed'}  = time - $hist->{'time'};
+    $hist->{'elapsed'}  = time - $hist->{'time'};
 
-  my $resp = $self->$code($step, @_);
+    my $resp = $self->$code($step, @_);
 
-  $hist->{'elapsed'}  = time - $hist->{'time'};
-  $hist->{'response'} = $resp;
+    $hist->{'elapsed'}  = time - $hist->{'time'};
+    $hist->{'response'} = $resp;
 
-  return $resp;
+    return $resp;
 }
 
 sub history {
@@ -521,93 +493,94 @@ sub allow_nested_morph {
 }
 
 sub morph {
-  my $self = shift;
-  my $step = shift || return;
-  return if ! (my $allow = $self->allow_morph); # not true
+    my $self = shift;
+    my $step = shift || return;
+    return if ! (my $allow = $self->allow_morph);;
 
-  ### place to store the lineage
-  my $lin = $self->{'__morph_lineage'} ||= [];
-  my $cur = ref $self; # what are we currently
-  push @$lin, $cur;    # store so subsequent unmorph calls can do the right thing
+    ### place to store the lineage
+    my $lin = $self->{'__morph_lineage'} ||= [];
+    my $cur = ref $self; # what are we currently
+    push @$lin, $cur;    # store so subsequent unmorph calls can do the right thing
 
-  my $hist = {
-      step  => $step,
-      meth  => 'morph',
-      found => 'morph',
-      time  => time,
-      elpased => 0,
-  };
-  $self->record_history($hist);
+    my $hist = {
+        step  => $step,
+        meth  => 'morph',
+        found => 'morph',
+        time  => time,
+        elpased => 0,
+    };
+    $self->record_history($hist);
 
-  if (ref($allow) && ! $allow->{$step}) { # hash - but no step - record for unbless
-      $hist->{'found'} .= " (not allowed to morph to that step)";
-      return;
-  }
-
-  ### make sure we haven't already been reblessed
-  if ($#$lin != 0                                # is this the second morph call
-      && (! ($allow = $self->allow_nested_morph) # not true
-          || (ref($allow) && ! $allow->{$step})  # hash - but no step
-          )) {
-    $hist->{'found'} .= $allow ? " (not allowed to nested_morph to that step)" : " (nested_morph disabled)";
-    return; # just return - don't die so that we can morph early
-  }
-
-  ### if we are not already that package - bless us there
-  my $new  = $self->run_hook('morph_package', $step);
-  if ($cur ne $new) {
-    my $file = $new .'.pm';
-    $file =~ s|::|/|g;
-    if (UNIVERSAL::can($new, 'can')  # check if the package space exists
-        || eval { require $file }) { # check for a file that holds this package
-      ### become that package
-      bless $self, $new;
-      $hist->{'found'} .= " (changed $cur to $new)";
-      if (my $method = $self->can('fixup_after_morph')) {
-        $self->$method($step);
-      }
-    } else {
-      if ($@) {
-        if ($@ =~ /^\s*(Can\'t locate \S+ in \@INC)/) { # let us know what happened
-          $hist->{'found'} .= " (failed from $cur to $new: $1)";
-        } else {
-          $hist->{'found'} .= " (failed from $cur to $new: $@)";
-          my $err = "Trouble while morphing to $file: $@";
-          warn $err;
-        }
-      }
+    if (ref($allow) && ! $allow->{$step}) { # hash - but no step - record for unbless
+        $hist->{'found'} .= " (not allowed to morph to that step)";
+        return;
     }
-  }
+
+    ### make sure we haven't already been reblessed
+    if ($#$lin != 0                                # is this the second morph call
+        && (! ($allow = $self->allow_nested_morph) # not true
+            || (ref($allow) && ! $allow->{$step})  # hash - but no step
+            )) {
+        $hist->{'found'} .= $allow ? " (not allowed to nested_morph to that step)" : " (nested_morph disabled)";
+        return; # just return - don't die so that we can morph early
+    }
+
+    ### if we are not already that package - bless us there
+    my $new = $self->run_hook('morph_package', $step);
+    if ($cur ne $new) {
+        my $file = $new .'.pm';
+        $file =~ s|::|/|g;
+        if (UNIVERSAL::can($new, 'can')  # check if the package space exists
+            || eval { require $file }) { # check for a file that holds this package
+            ### become that package
+            bless $self, $new;
+            $hist->{'found'} .= " (changed $cur to $new)";
+            if (my $method = $self->can('fixup_after_morph')) {
+                $self->$method($step);
+            }
+        } else {
+            if ($@) {
+                if ($@ =~ /^\s*(Can\'t locate \S+ in \@INC)/) { # let us know what happened
+                    $hist->{'found'} .= " (failed from $cur to $new: $1)";
+                } else {
+                    $hist->{'found'} .= " (failed from $cur to $new: $@)";
+                    my $err = "Trouble while morphing to $file: $@";
+                    warn $err;
+                }
+            }
+        }
+    }
 
 }
 
 sub unmorph {
-  my $self = shift;
-  my $step = shift || '__no_step';
-  my $lin  = $self->{'__morph_lineage'} || return;
-  my $cur  = ref $self;
-  my $prev = pop(@$lin) || die "unmorph called more times than morph - current ($cur)";
+    my $self = shift;
+    my $step = shift || '__no_step';
+    my $lin  = $self->{'__morph_lineage'} || return;
+    my $cur  = ref $self;
+    my $prev = pop(@$lin) || die "unmorph called more times than morph - current ($cur)";
 
-  ### if we are not already that package - bless us there
-  my $hist = {
-      step  => $step,
-      meth  => 'unmorph',
-      found => 'unmorph',
-      time  => time,
-      elapsed => 0,
-  };
-  $self->record_history($hist);
-  if ($cur ne $prev) {
-    if (my $method = $self->can('fixup_before_unmorph')) {
-      $self->$method($step);
+    ### if we are not already that package - bless us there
+    my $hist = {
+        step  => $step,
+        meth  => 'unmorph',
+        found => 'unmorph',
+        time  => time,
+        elapsed => 0,
+    };
+    $self->record_history($hist);
+
+    if ($cur ne $prev) {
+        if (my $method = $self->can('fixup_before_unmorph')) {
+            $self->$method($step);
+        }
+        bless $self, $prev;
+        $hist->{'found'} .= " (changed from $cur to $prev)";
+    } else {
+        $hist->{'found'} .= " (already isa $cur)";
     }
-    bless $self, $prev;
-    $hist->{'found'} .= " (changed from $cur to $prev)";
-  } else {
-    $hist->{'found'} .= " (already isa $cur)";
-  }
 
-  return $self;
+    return $self;
 }
 
 ###----------------------------------------------------------------###
@@ -629,63 +602,49 @@ sub cgix {
     my $self = shift;
     $self->{'cgix'} = shift if @_ == 1;
     return $self->{'cgix'} ||= do {
-        my $args = shift || {};
         require CGI::Ex;
-        CGI::Ex->new($args); # return of the do
+        CGI::Ex->new; # return of the do
     };
 }
 
 sub vob {
-  my $self = shift;
-  return $self->{vob} ||= do {
-    my $args = shift || {};
-    $args->{cgix} ||= $self->cgix;
-    require CGI::Ex::Validate;
-    CGI::Ex::Validate->new($args); # return of the do
-  };
+    my $self = shift;
+    $self->{'vob'} = shift if @_ == 1;
+    return $self->{'vob'} ||= do {
+        require CGI::Ex::Validate;
+        CGI::Ex::Validate->new($self->vob_args); # return of the do
+    };
 }
 
-sub set_vob {
-  my $self = shift;
-  $self->{vob} = shift;
+sub vob_args {
+    my $self = shift;
+    return {
+        cgix    => $self->cgix,
+    };
 }
 
 sub auth {
-  my $self = shift;
-  return $self->{auth} ||= do {
-    my $args = shift || {};
-    $args->{cgix}    ||= $self->cgix,
-    $args->{form}    ||= $self->form,
-    $args->{cookies} ||= $self->cookies,
-    require CGI::Ex::Auth;
-    CGI::Ex::Auth->new($args); # return of the do
-  };
+    my $self = shift;
+    $self->{'auth'} = shift if @_ == 1;
+    return $self->{'auth'} ||= do {
+        require CGI::Ex::Auth;
+        CGI::Ex::Auth->new($self->auth_args); # return of the do
+    };
 }
 
-sub set_auth {
-  my $self = shift;
-  $self->{auth} = shift;
+sub auth_args {
+    my $self = shift;
+    return {
+        cgix    => $self->cgix,
+        form    => $self->form,
+        cookies => $self->cookies,
+    };
 }
 
 ### provide a place for placing variables
 sub stash {
-  my $self = shift;
-  return $self->{'stash'} ||= {};
-}
-
-### allow for adding arbitrary values to self
-sub add_property {
-  my $self = shift;
-  my $prop = shift;
-  my $key  = '__prop_'. $prop;
-  my $name = __PACKAGE__ ."::". $prop;
-  no strict 'refs';
-  *$name = sub : lvalue {
     my $self = shift;
-    $self->{$key} = shift() if $#_ != -1;
-    $self->{$key};
-  } if ! defined &$name;
-  $self->$prop(shift()) if $#_ != -1;
+    return $self->{'stash'} ||= {};
 }
 
 ###----------------------------------------------------------------###
@@ -693,28 +652,28 @@ sub add_property {
 
 ### creates javascript suitable for validating the form
 sub js_validation {
-  my $self = shift;
-  my $step = shift;
-  return '' if $self->ext_val eq 'htm'; # let htm validation do it itself
+    my $self = shift;
+    my $step = shift;
+    return '' if $self->ext_val eq 'htm'; # let htm validation do it itself
 
-  my $form_name = shift || $self->run_hook('form_name', $step);
-  my $hash_val  = shift || $self->run_hook('hash_validation', $step, {});
-  my $js_uri    = $self->js_uri_path;
-  return '' if UNIVERSAL::isa($hash_val, 'HASH')  && ! scalar keys %$hash_val
-            || UNIVERSAL::isa($hash_val, 'ARRAY') && $#$hash_val == -1;
+    my $form_name = shift || $self->run_hook('form_name', $step);
+    my $hash_val  = shift || $self->run_hook('hash_validation', $step);
+    my $js_uri    = $self->js_uri_path;
+    return '' if UNIVERSAL::isa($hash_val, 'HASH')  && ! scalar keys %$hash_val
+        || UNIVERSAL::isa($hash_val, 'ARRAY') && $#$hash_val == -1;
 
-  return $self->vob->generate_js($hash_val, $form_name, $js_uri);
+    return $self->vob->generate_js($hash_val, $form_name, $js_uri);
 }
 
 ### where to find the javascript files
 ### default to using this script as a handler
 sub js_uri_path {
-  my $self   = shift;
-  my $script = $ENV{'SCRIPT_NAME'} || die "Missing SCRIPT_NAME";
-  my $js_step = $self->js_step;
-  return ($self->can('path') == \&CGI::Ex::App::path)
-    ? $script .'/'. $js_step # try to use a cache friendly URI (if path is our own)
-    : $script . '?'.$self->step_key.'='.$js_step.'&js='; # use one that works with more paths
+    my $self   = shift;
+    my $script = $ENV{'SCRIPT_NAME'} || die "Missing SCRIPT_NAME";
+    my $js_step = $self->js_step;
+    return ($self->can('path') == \&CGI::Ex::App::path)
+        ? $script .'/'. $js_step # try to use a cache friendly URI (if path is our own)
+        : $script . '?'.$self->step_key.'='.$js_step.'&js='; # use one that works with more paths
 }
 
 ### name to attach js validation to
@@ -723,108 +682,101 @@ sub form_name { 'theform' }
 ### provide some rudimentary javascript support
 ### if valid_steps is defined - it should include "js"
 sub js_run_step {
-  my $self = shift;
+    my $self = shift;
 
-  ### make sure path info looks like /js/CGI/Ex/foo.js
-  my $file = $self->form->{'js'} || $ENV{'PATH_INFO'} || '';
-  $file = ($file =~  m!^(?:/js/|/)?(\w+(?:/\w+)*\.js)$!) ? $1 : '';
+    ### make sure path info looks like /js/CGI/Ex/foo.js
+    my $file = $self->form->{'js'} || $ENV{'PATH_INFO'} || '';
+    $file = ($file =~  m!^(?:/js/|/)?(\w+(?:/\w+)*\.js)$!) ? $1 : '';
 
-  $self->cgix->print_js($file);
-  $self->exit_nav_loop;
+    $self->cgix->print_js($file);
+    $self->exit_nav_loop;
 }
 
 ###----------------------------------------------------------------###
 ### implementation specific subs
 
 sub print {
-  my ($self, $step, $swap, $fill) = @_;
+    my ($self, $step, $swap, $fill) = @_;
 
-  ### get a filename relative to base_dir_abs
-  my $file = eval { $self->run_hook('file_print', $step) };
-  if ($@ && $@ =~ /BASE_DIR_ABS not set/i) {
-    die "Error while looking for template file on step \"$step\": $@";
-  }
+    ### get a filename relative to base_dir_abs
+    my $file = eval { $self->run_hook('file_print', $step) };
+    if ($@ && $@ =~ /BASE_DIR_ABS not set/i) {
+        die "Error while looking for template file on step \"$step\": $@";
+    }
 
-  my $out = $self->run_hook('swap_template', $step, undef, $file, $swap);
+    my $out = $self->run_hook('swap_template', $step, $file, $swap);
 
-  $self->run_hook('fill_template', $step, undef, \$out, $fill);
+    $self->run_hook('fill_template', $step, \$out, $fill);
 
-  $self->run_hook('print_out', $step, undef, $out);
+    $self->run_hook('print_out', $step, $out);
 }
 
 sub print_out {
-  my ($self, $step, $out) = @_;
+    my ($self, $step, $out) = @_;
 
-  ### now print
-  $self->cgix->print_content_type();
-  print $out;
+    ### now print
+    $self->cgix->print_content_type();
+    print $out;
 }
 
 sub swap_template {
-  my ($self, $step, $file, $swap) = @_;
+    my ($self, $step, $file, $swap) = @_;
 
-  require CGI::Ex::Template;
-  my $t = CGI::Ex::Template->new($self->template_args($step));
+    require CGI::Ex::Template;
+    my $t = CGI::Ex::Template->new($self->template_args($step));
 
-  ### process the document
-  my $out = '';
-  my $status = $t->process($file, $swap, \$out) || die $Template::ERROR;
+    my $out = '';
+    $t->process($file, $swap, \$out) || die $t->error;
 
-  return $out;
+    return $out;
 }
 
 sub fill_template {
-  my ($self, $step, $outref, $fill) = @_;
+    my ($self, $step, $outref, $fill) = @_;
 
-  return if ! $fill || $self->no_fill($step);
+    return if ! $fill || $self->no_fill($step);
 
-  ### fill in any forms
-  $self->cgix->fill($outref, $fill);
+    ### fill in any forms
+    $self->cgix->fill($outref, $fill);
 }
 
 sub template_args {
-  my $self = shift;
-  my $step = shift;
-  return {
-    INCLUDE_PATH => $self->base_dir_abs,
-  };
+    my $self = shift;
+    my $step = shift;
+    return {
+        INCLUDE_PATH => sub { $self->base_dir_abs },
+    };
 }
 
 sub base_dir_rel {
-  my $self = shift;
-  $self->{base_dir_rel} = shift if $#_ != -1;
-  return $self->{base_dir_rel} ||= $BASE_DIR_REL;
+    my $self = shift;
+    $self->{'base_dir_rel'} = shift if $#_ != -1;
+    return $self->{'base_dir_rel'} || '';
 }
 
 sub base_dir_abs {
-  my $self = shift;
-  $self->{base_dir_abs} = shift if $#_ != -1;
-  return $self->{base_dir_abs} || $BASE_DIR_ABS
-    || die "\$BASE_DIR_ABS not set for use in stub functions";
+    my $self = shift;
+    $self->{'base_dir_abs'} = shift if $#_ != -1;
+    return $self->{'base_dir_abs'} || die "\$BASE_DIR_ABS not set for use in stub functions";
 }
 
 sub ext_val {
-  my $self = shift;
-  $self->{ext_val} = shift if $#_ != -1;
-  return $self->{ext_val} || $EXT_VAL || die "\$EXT_VAL not set for use in stub functions";
+    my $self = shift;
+    $self->{'ext_val'} = shift if $#_ != -1;
+    return $self->{'ext_val'} || 'val';
 }
 
 sub ext_print {
-  my $self = shift;
-  $self->{ext_print} = shift if $#_ != -1;
-  return $self->{ext_print} || $EXT_PRINT || die "\$EXT_PRINT not set for use in stub functions";
+    my $self = shift;
+    $self->{'ext_print'} = shift if $#_ != -1;
+    return $self->{'ext_print'} || 'html';
 }
 
-sub has_errors {
-  my $self = shift;
-  return 1 if scalar keys %{ $self->hash_errors };
-}
+sub has_errors { scalar keys %{ shift->hash_errors } }
 
 sub format_error {
-  my $self  = shift;
-  my $error = shift;
-#  return $error if $error =~ /<span/i;
-#  return "<span class=\"error\">$error</span>";
+    my ($self, $error) = @_;
+    return $error;
 }
 
 ###----------------------------------------------------------------###
@@ -835,166 +787,159 @@ sub skip       { 0 } # success indicates to skip the step (and continue loop)
 sub prepare    { 1 } # failure means show step
 sub finalize   { 1 } # failure means show step
 sub post_print { 0 } # success indicates we handled step (don't continue loop)
+
 sub name_step {
-  my $self = shift;
-  my $step = shift;
-  return $step;
+    my ($self, $step) = @_;
+    return $step;
 }
 
 ### used for looking up a module to morph into
 sub morph_package {
-  my $self = shift;
-  my $step = shift || '';
-  my $cur = ref $self; # default to using self as the base for morphed modules
-  my $new = $cur .'::'. $step;
-  $new =~ s/(\b|_+)(\w)/\u$2/g; # turn Foo::my_step_name into Foo::MyStepName
-  return $new;
-}
-
-sub base_name_module {
-  my $self = shift;
-  $self->{base_name_module} = shift if $#_ != -1;
-  return $self->{base_name_module} ||= $BASE_NAME_MODULE;
+    my $self = shift;
+    my $step = shift || '';
+    my $cur = ref $self; # default to using self as the base for morphed modules
+    my $new = $cur .'::'. $step;
+    $new =~ s/(\b|_+)(\w)/\u$2/g; # turn Foo::my_step_name into Foo::MyStepName
+    return $new;
 }
 
 ### used for looking up template content
 sub name_module {
-  my $self = shift;
-  my $step = shift || '';
-  my $name;
-  if ($name = $self->base_name_module) {
-    return $name;
-  } else {
-    return ($0 =~ m/(\w+)(\.\w+)?$/) ? $1 # allow for cgi-bin/foo or cgi-bin/foo.pl
-      : die "Couldn't determine module name from \"name_module\" lookup ($step)";
-  }
+    my $self = shift;
+    my $step = shift || '';
+
+    return $self->{'name_module'} if $self->{'name_module'};
+
+    return ($0 =~ m/(\w+)(\.\w+)?$/)
+        ? $1  # allow for cgi-bin/foo or cgi-bin/foo.pl to resolve to "foo"
+        : die "Couldn't determine module name from \"name_module\" lookup ($step)";
 }
 
-### which file is used for templating
+### which file is used for templating this step
 sub file_print {
-  my $self = shift;
-  my $step = shift;
+    my $self = shift;
+    my $step = shift;
 
-  my $base_dir = $self->base_dir_rel;
-  my $module   = $self->run_hook('name_module', $step);
-  my $_step    = $self->run_hook('name_step', $step) || die "Missing name_step";
-  $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
+    my $base_dir = $self->base_dir_rel;
+    my $module   = $self->run_hook('name_module', $step);
+    my $_step    = $self->run_hook('name_step', $step) || die "Missing name_step";
+    $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
 
-  foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
+    foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
 
-  return $base_dir . $module . $_step;
+    return $base_dir . $module . $_step;
 }
 
 ### which file is used for validation
 sub file_val {
-  my $self = shift;
-  my $step = shift;
+    my $self = shift;
+    my $step = shift;
 
-  my $base_dir = $self->base_dir_rel;
-  my $module   = $self->run_hook('name_module', $step);
-  my $_step    = $self->run_hook('name_step', $step, $step) || die "Missing name_step";
-  $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
-  my $abs      = $self->base_dir_abs;
+    my $base_dir = $self->base_dir_rel;
+    my $module   = $self->run_hook('name_module', $step);
+    my $_step    = $self->run_hook('name_step', $step) || die "Missing name_step";
+    $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
+    my $abs      = $self->base_dir_abs;
 
-  foreach ($base_dir, $module, $abs) { $_ .= '/' if length($_) && ! m|/$| }
+    foreach ($base_dir, $module, $abs) { $_ .= '/' if length($_) && ! m|/$| }
 
-  return $abs . $base_dir . $module . $_step;
+    return $abs . $base_dir . $module . $_step;
 }
 
 
 sub info_complete {
-  my $self = shift;
-  my $step = shift;
+    my $self = shift;
+    my $step = shift;
 
-  return 0 if ! $self->run_hook('ready_validate', $step);
+    return 0 if ! $self->run_hook('ready_validate', $step);
 
-  return $self->run_hook('validate', $step);
+    return $self->run_hook('validate', $step);
 }
 
 sub ready_validate {
-  my $self = shift;
-  my $step = shift;
+    my $self = shift;
+    my $step = shift;
 
-  ### could do a slightly more complex test
-  return 0 if ! $ENV{REQUEST_METHOD} || $ENV{REQUEST_METHOD} ne 'POST';
-  return 1;
+    ### could do a slightly more complex test
+    return 0 if ! $ENV{'REQUEST_METHOD'} || $ENV{'REQUEST_METHOD'} ne 'POST';
+    return 1;
 }
 
 sub set_ready_validate {
-  my $self = shift;
-  my $ready = shift;
-  $ENV{REQUEST_METHOD} = ($ready) ? 'POST' : 'GET';
+    my ($self, $ready) = @_;
+    $ENV{'REQUEST_METHOD'} = ($ready) ? 'POST' : 'GET';
 }
 
 sub validate {
-  my $self = shift;
-  my $step = shift;
-  my $form = shift || $self->form;
-  my $hash = $self->run_hook('hash_validation', $step, {});
-  my $what_was_validated = [];
+    my $self = shift;
+    my $step = shift;
+    my $form = shift || $self->form;
+    my $hash = $self->run_hook('hash_validation', $step);
+    my $what_was_validated = [];
 
-  my $eob = eval { $self->vob->validate($form, $hash, $what_was_validated) };
-  if (! $eob && $@) {
-    die "Step $step: $@";
-  }
-
-  ### had an error - store the errors and return false
-  if ($eob) {
-    $self->add_errors($eob->as_hash({
-      as_hash_join   => "<br>\n",
-      as_hash_suffix => '_error',
-    }));
-    return 0;
-  }
-
-  ### allow for the validation to give us some redirection
-  my $val;
-  OUTER: foreach my $ref (@$what_was_validated) {
-    foreach my $method (qw(append_path replace_path insert_path)) {
-      next if ! ($val = $ref->{$method});
-      $self->$method(ref $val ? @$val : $val);
-      last OUTER;
+    my $eob = eval { $self->vob->validate($form, $hash, $what_was_validated) };
+    if (! $eob && $@) {
+        die "Step $step: $@";
     }
-  }
 
-  return 1;
+    ### had an error - store the errors and return false
+    if ($eob) {
+        $self->add_errors($eob->as_hash({
+            as_hash_join   => "<br>\n",
+            as_hash_suffix => '_error',
+        }));
+        return 0;
+    }
+
+    ### allow for the validation to give us some redirection
+    my $val;
+    OUTER: foreach my $ref (@$what_was_validated) {
+        foreach my $method (qw(append_path replace_path insert_path)) {
+            next if ! ($val = $ref->{$method});
+            $self->$method(ref $val ? @$val : $val);
+            last OUTER;
+        }
+    }
+
+    return 1;
 }
 
 sub hash_validation {
-  my $self = shift;
-  my $step = shift;
-  return $self->{hash_validation}->{$step} ||= do {
-    my $hash;
-    my $file = eval { $self->run_hook('file_val', $step) };
-    if ($@ && $@ =~ /BASE_DIR_ABS not set/i) {
-      die "Error while looking for validation on step \"$step\": $@";
-    }
+  my ($self, $step) = @_;
 
-    ### allow for returning the validation hash in the filename
-    ### a scalar ref means it is a yaml document to be read by get_validation
-    if (ref($file) && ! UNIVERSAL::isa($file, 'SCALAR')) {
-      $hash = $file;
+  return $self->{'hash_validation'}->{$step} ||= do {
+      my $hash;
+      my $file = eval { $self->run_hook('file_val', $step) };
+      if ($@ && $@ =~ /BASE_DIR_ABS not set/i) {
+          die "Error while looking for validation on step \"$step\": $@";
+      }
 
-    ### read the file - it it fails - errors should shown in the error logs
-    } elsif ($file) {
-      $hash = eval { $self->vob->get_validation($file) } || {};
+      ### allow for returning the validation hash in the filename
+      ### a scalar ref means it is a yaml document to be read by get_validation
+      if (ref($file) && ! UNIVERSAL::isa($file, 'SCALAR')) {
+          $hash = $file;
 
-    } else {
-      $hash = {};
-    }
+          ### read the file - it it fails - errors should shown in the error logs
+      } elsif ($file) {
+          $hash = eval { $self->vob->get_validation($file) } || {};
 
-    $hash; # return of the do
+      } else {
+          $hash = {};
+      }
+
+      $hash; # return of the do
   };
 }
 
 sub hash_base {
-  my ($self, $step) = @_;
-  return $self->{hash_base} ||= {
-    script_name   => $ENV{'SCRIPT_NAME'} || $0,
-    path_info     => $ENV{'PATH_INFO'}   || '',
-    js_validation => sub { $self->run_hook('js_validation', $step, shift) },
-    form_name     => sub { $self->run_hook('form_name', $step) },
-  };
+    my ($self, $step) = @_;
+
+    return $self->{'hash_base'} ||= {
+        script_name   => $ENV{'SCRIPT_NAME'} || $0,
+        path_info     => $ENV{'PATH_INFO'}   || '',
+        js_validation => sub { $self->run_hook('js_validation', $step) },
+        form_name     => sub { $self->run_hook('form_name', $step) },
+    };
 }
 
 sub hash_common { shift->{'hash_common'} ||= {} }
@@ -1006,18 +951,18 @@ sub hash_errors { shift->{'hash_errors'} ||= {} }
 ###----------------------------------------------------------------###
 
 sub add_errors {
-  my $self = shift;
-  my $hash = $self->hash_errors;
-  my $args = ref($_[0]) ? shift : {@_};
-  foreach my $key (keys %$args) {
-    my $_key = ($key =~ /error$/) ? $key : "${key}_error";
-    if ($hash->{$_key}) {
-      $hash->{$_key} .= '<br>' . $args->{$key};
-    } else {
-      $hash->{$_key} = $args->{$key};
+    my $self = shift;
+    my $hash = $self->hash_errors;
+    my $args = ref($_[0]) ? shift : {@_};
+    foreach my $key (keys %$args) {
+        my $_key = ($key =~ /error$/) ? $key : "${key}_error";
+        if ($hash->{$_key}) {
+            $hash->{$_key} .= '<br>' . $args->{$key};
+        } else {
+            $hash->{$_key} = $args->{$key};
+        }
     }
-  }
-  $hash->{'has_errors'} = 1;
+    $hash->{'has_errors'} = 1;
 }
 
 sub add_to_errors { shift->add_errors(@_) }
@@ -1028,11 +973,11 @@ sub add_to_common { my $self = shift; $self->add_to_hash($self->hash_common, @_)
 sub add_to_base   { my $self = shift; $self->add_to_hash($self->hash_base,   @_) }
 
 sub add_to_hash {
-  my $self = shift;
-  my $old  = shift;
-  my $new  = shift;
-  $new = {$new, @_} if ! ref $new; # non-hashref
-  $old->{$_} = $new->{$_} foreach keys %$new;
+    my $self = shift;
+    my $old  = shift;
+    my $new  = shift;
+    $new = {$new, @_} if ! ref $new; # non-hashref
+    $old->{$_} = $new->{$_} foreach keys %$new;
 }
 
 ###----------------------------------------------------------------###
@@ -1040,10 +985,10 @@ sub add_to_hash {
 sub forbidden_info_complete { 0 }
 
 sub forbidden_file_print {
-  my $self = shift;
-  my $step = $self->stash->{'forbidden_step'};
-  my $str = "You do not have access to \"$step\"";
-  return \$str;
+    my $self = shift;
+    my $step = $self->stash->{'forbidden_step'};
+    my $str = "You do not have access to \"$step\"";
+    return \ $str;
 }
 
 ###----------------------------------------------------------------###
@@ -1069,86 +1014,78 @@ your system.  About the best way to get started is to pasted the following
 code into a cgi script and try it out.  A detailed walk through follows in the
 next section.
 
-  #!/usr/bin/perl -w
+    #!/usr/bin/perl -w
 
-  use strict;
-  use base qw(CGI::Ex::App);
-  use CGI::Ex::Dump qw(debug);
+    use strict;
+    use base qw(CGI::Ex::App);
+    use CGI::Ex::Dump qw(debug);
 
-  __PACKAGE__->navigate;
-   # OR you could do
-   # my $obj = __PACKAGE__->new;
-   # $obj->navigate;
-  exit;
+    __PACKAGE__->navigate;
+    # OR
+    my $obj = __PACKAGE__->new;
+    $obj->navigate;
 
-  ###------------------------------------------###
+    exit;
 
-  sub valid_steps { return {success => 1} }
-    # the default_step "main" and the built in step "js" are valid paths
+    ###------------------------------------------###
 
-  # base_dir_abs is only needed if default print is used
-  # template toolkit needs an INCLUDE_PATH
-  sub base_dir_abs { '/tmp' }
+    sub post_print { debug shift->dump_history } # show what happened
 
-  sub post_print {
-    debug shift->dump_history;
-  } # show what happened
+    sub main_file_print {
+        # reference to string means ref to content
+        # non-reference means filename
+        return \ "<h1>Main Step</h1>
+          <form method=post name=[% form_name %]>
+          <input type=text name=foo>
+          <span style='color:red' id=foo_error>[% foo_error %]</span><br>
+          <input type=submit>
+          </form>
+          [% js_validation %]
+          <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
+        ";
+    }
 
-  sub main_file_print {
-    # reference to string means ref to content
-    # non-reference means filename
-    return \ "<h1>Main Step</h1>
-      <form method=post name=[% form_name %]>
-      <input type=text name=foo>
-      <span style='color:red' id=foo_error>[% foo_error %]</span><br>
-      <input type=submit>
-      </form>
-      [% js_validation %]
-      <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
-    ";
-  }
+    sub main_file_val {
+        # reference to string means ref to yaml document
+        # non-reference means filename
+        return \ "foo:
+          required: 1
+          min_len: 2
+          max_len: 20
+          match: 'm/^([a-z]\\d)+[a-z]?\$/'
+          match_error: Characters must alternate letter digit letter.
+          \n";
+    }
 
-  sub main_file_val {
-    # reference to string means ref to yaml document
-    # non-reference means filename
-    return \ "foo:
-      required: 1
-      min_len: 2
-      max_len: 20
-      match: 'm/^([a-z]\\d)+[a-z]?\$/'
-      match_error: Characters must alternate letter digit letter.
-      \n";
-  }
+    sub main_finalize {
+        my $self = shift;
 
-  sub main_finalize {
-    my $self = shift;
+        debug $self->form, "Do something useful with form here";
 
-    debug $self->form, "Do something useful with form here";
+        ### add success step
+        $self->add_to_swap({success_msg => "We did something"});
+        $self->append_path('success');
+        $self->set_ready_validate(0);
+        return 1;
+    }
 
-    ### add success step
-    $self->add_to_swap({success_msg => "We did something"});
-    $self->append_path('success');
-    $self->set_ready_validate(0);
-    return 1;
-  }
+    sub success_file_print {
+        \ "<h1>Success Step</h1> All done.<br>
+           ([% success_msg %])<br>
+           (foo = [% foo %])";
+    }
 
-  sub success_file_print {
-    \ "<h1>Success Step</h1> All done.<br>
-       ([% success_msg %])<br>
-       (foo = [% foo %])";
-  }
+    ### not necessary - this is the default hash_base
+    sub hash_base { # used to include js_validation
+        my ($self, $step) = @_;
+        return $self->{hash_base} ||= {
+            script_name   => $ENV{SCRIPT_NAME} || '',
+            js_validation => sub { $self->run_hook('js_validation', $step) },
+            form_name     => sub { $self->run_hook('form_name', $step) },
+        };
+    }
 
-  ### not necessary - this is the default hash_base
-  sub hash_base { # used to include js_validation
-    my ($self, $step) = @_;
-    return $self->{hash_base} ||= {
-      script_name   => $ENV{SCRIPT_NAME} || '',
-      js_validation => sub { $self->run_hook('js_validation', $step) },
-      form_name     => sub { $self->run_hook('form_name', $step) },
-    };
-  }
-
-  __END__
+    __END__
 
 Note: This example would be considerably shorter if the html file
 (file_print) and the validation file (file_val) had been placed in
@@ -1163,22 +1100,22 @@ This section goes step by step over the previous example.
 
 Well - we start out with with the customary CGI introduction.
 
-  #!/usr/bin/perl -w
+    #!/usr/bin/perl -w
 
-  use strict;
-  use base qw(CGI::Ex::App);
-  use CGI::Ex::Dump qw(debug);
+    use strict;
+    use base qw(CGI::Ex::App);
+    use CGI::Ex::Dump qw(debug);
 
 Note:  the "use base" is not normally used in the "main" portion of a script.
 It does allow us to just do __PACKAGE__->navigate.
 
 Now we need to invoke the process:
 
-  __PACKAGE__->navigate;
-   # OR you could do
-   # my $obj = __PACKAGE__->new;
-   # $obj->navigate;
-  exit;
+    __PACKAGE__->navigate;
+    # OR
+    # my $obj = __PACKAGE__->new;
+    # $obj->navigate;
+    exit;
 
 Note: the "exit" isn't necessary - but it is kind of nice to infer that
 program flow doesn't go beyond the ->navigate call.
@@ -1203,7 +1140,7 @@ allow for dynamic changing of the path, so that each step can determine which st
 Because the default ->path call allows for testing arbitrary step names, it would be
 nice to restrict what they can use.  And you can with valid_steps.
 
-  sub valid_steps { return {success => 1} }
+    sub valid_steps { return {success => 1} }
     # the default_step (default "main") and the js_step (default "js") are valid paths
 
 CGI::Ex::App is prewired to use Template::Toolkit, but should be easy to use any
@@ -1211,76 +1148,76 @@ other toolkit as well.  The following piece gives a default directory to get
 the Template::Toolkit templates.  We aren't using a separate template in this
 example so we default it to a non-existent dir
 
-  # base_dir_abs is only needed if default print is used
-  # template toolkit needs an INCLUDE_PATH
-  sub base_dir_abs { '/non_existent_dir' }
+    # base_dir_abs is only needed if default print is used
+    # template toolkit needs an INCLUDE_PATH
+    sub base_dir_abs { '/non_existent_dir' }
 
 During development it would be nice to see what happened during the course of
 our navigation.  This is stored in the arrayref contained in ->history.  There
 is a hook that runs after a step is printed its content called "post_print."  This
 chunk will display history after we have printed the content.
 
-  sub post_print {
-    debug shift->dump_history;
-  } # show what happened
+    sub post_print {
+        debug shift->dump_history;
+    } # show what happened
 
 Ok.  Finally we are looking at the methods used by each step of the path.  The
 hook mechanism of CGI::Ex::App will look first for a method ${step}_${hook_name}
 called before falling back to the method named $hook_name.
 
-  sub main_file_print {
-    # reference to string means ref to content
-    # non-reference means filename
-    return \ "<h1>Main Step</h1>
-      <form method=post name=[% form_name %]>
-      <input type=text name=foo>
-      <span style='color:red' id=foo_error>[% foo_error %]</span><br>
-      <input type=submit>
-      </form>
-      [% js_validation %]
-      <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
-    ";
-  }
+    sub main_file_print {
+        # reference to string means ref to content
+        # non-reference means filename
+        return \ "<h1>Main Step</h1>
+          <form method=post name=[% form_name %]>
+          <input type=text name=foo>
+          <span style='color:red' id=foo_error>[% foo_error %]</span><br>
+          <input type=submit>
+          </form>
+          [% js_validation %]
+          <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
+        ";
+    }
 
-  sub main_file_val {
-    # reference to string means ref to yaml document
-    # non-reference means filename
-    return \ "foo:
-      required: 1
-      min_len: 2
-      max_len: 20
-      match: 'm/^([a-z]\\d)+[a-z]?\$/'
-      match_error: Characters must alternate letter digit letter.
-      \n";
-  }
+    sub main_file_val {
+        # reference to string means ref to yaml document
+        # non-reference means filename
+        return \ "foo:
+          required: 1
+          min_len: 2
+          max_len: 20
+          match: 'm/^([a-z]\\d)+[a-z]?\$/'
+          match_error: Characters must alternate letter digit letter.
+          \n";
+    }
 
-  sub main_finalize {
-    my $self = shift;
+    sub main_finalize {
+        my $self = shift;
 
-    debug $self->form, "Do something useful with form here";
+        debug $self->form, "Do something useful with form here";
 
-    ### add success step
-    $self->add_to_swap({success_msg => "We did something"});
-    $self->append_path('success');
-    $self->set_ready_validate(0);
-    return 1;
-  }
+        ### add success step
+        $self->add_to_swap({success_msg => "We did something"});
+        $self->append_path('success');
+        $self->set_ready_validate(0);
+        return 1;
+    }
 
-  sub success_file_print {
-    \ "<h1>Success Step</h1> All done.<br>
-       ([% success_msg %])<br>
-       (foo = [% foo %])";
-  }
+    sub success_file_print {
+        \ "<h1>Success Step</h1> All done.<br>
+           ([% success_msg %])<br>
+           (foo = [% foo %])";
+    }
 
-  ### not necessary - this is the default hash_base
-  sub hash_base { # used to include js_validation
-    my ($self, $step) = @_;
-    return $self->{hash_base} ||= {
-      script_name   => $ENV{SCRIPT_NAME} || '',
-      js_validation => sub { $self->run_hook('js_validation', $step) },
-      form_name     => sub { $self->run_hook('form_name', $step) },
-    };
-  }
+    ### not necessary - this is the default hash_base
+    sub hash_base { # used to include js_validation
+        my ($self, $step) = @_;
+        return $self->{hash_base} ||= {
+            script_name   => $ENV{SCRIPT_NAME} || '',
+            js_validation => sub { $self->run_hook('js_validation', $step) },
+            form_name     => sub { $self->run_hook('form_name', $step) },
+        };
+    }
 
   __END__
 
@@ -1334,106 +1271,106 @@ step over and over and over).
 The basic outline of navigation is as follows (the default actions for hooks
 are shown):
 
-  navigate {
-    eval {
-      ->pre_navigate
-      ->nav_loop
-      ->post_navigate
-    }
-    # dying errors will run the ->handle_error method
-  }
-
-
-  nav_loop {
-    ->path (get the path steps)
-       # DEFAULT ACTION
-       # look in $ENV{'PATH_INFO'}
-       # look in ->form for ->step_key
-
-    ->pre_loop
-       # navigation stops if true
-
-    ->valid_steps (get list of valid paths)
-
-    foreach step of path {
-
-      # check that path is valid
-
-      ->morph
-        # DEFAULT ACTION
-        # check ->allow_morph
-        # check ->allow_nested_morph
-        # ->morph_package (hook - get the package to bless into)
-        # ->fixup_after_morph if morph_package exists
-
-      ->run_step (hook)
-
-      ->unmorph
-        # DEFAULT ACTION
-        # ->fixup_before_unmorph if blessed to previous package
-
-      # exit loop if ->run_step returned true (intercepted)
-
-    } end of step foreach
-
-    ->post_loop
-      # navigation stops if true
-
-    ->default_step (inserted into path at current location)
-    ->nav_loop (called again recursively)
-
-  } end of nav_loop
-
-
-  run_step {
-    ->pre_step (hook)
-      # exits nav_loop if true
-
-    ->skip (hook)
-      # skips this step if true (stays in nav_loop)
-
-    ->prepare (hook - defaults to true)
-
-    ->info_complete (hook - ran if prepare was true)
-      # DEFAULT ACTION
-      # ->ready_validate (hook)
-      # return false if ! ready_validate
-      # ->validate (hook)
-      #   ->hash_validation (hook)
-      #     ->file_val (hook - uses base_dir_rel, name_module, name_step, ext_val)
-      #   uses CGI::Ex::Validate to validate the hash
-      # returns true if validate is true
-
-    ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
-
-    if ! ->prepare || ! ->info_complete || ! ->finalize {
-      ->prepared_print
-        # DEFAULT ACTION
-        # ->hash_base (hook)
-        # ->hash_common (hook)
-        # ->hash_form (hook)
-        # ->hash_fill (hook)
-        # ->hash_swap (hook)
-        # ->hash_errors (hook)
-        # merge form, base, common, and fill into merged fill
-        # merge form, base, common, swap, and errors into merged swap
-        # ->print (hook - passed current step, merged swap hash, and merged fill)
-          # DEFAULT ACTION
-          # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
-          # ->template_args
-          # Processes the file with Template Toolkit
-          # Fills the any forms with CGI::Ex::Fill
-          # Prints headers and the content
-
-      ->post_print (hook - used for anything after the print process)
-
-      # return true to exit from nav_loop
+    navigate {
+        eval {
+            ->pre_navigate
+            ->nav_loop
+            ->post_navigate
+        }
+        # dying errors will run the ->handle_error method
     }
 
-    ->post_step (hook)
-      # exits nav_loop if true
 
-  } end of run_step
+    nav_loop {
+        ->path (get the path steps)
+            # DEFAULT ACTION
+            # look in $ENV{'PATH_INFO'}
+            # look in ->form for ->step_key
+
+        ->pre_loop
+            # navigation stops if true
+
+        ->valid_steps (get list of valid paths)
+
+        foreach step of path {
+
+            # check that path is valid
+
+            ->morph
+                # DEFAULT ACTION
+                # check ->allow_morph
+                # check ->allow_nested_morph
+                # ->morph_package (hook - get the package to bless into)
+                # ->fixup_after_morph if morph_package exists
+
+            ->run_step (hook)
+
+            ->unmorph
+                # DEFAULT ACTION
+                # ->fixup_before_unmorph if blessed to previous package
+
+            # exit loop if ->run_step returned true (intercepted)
+
+        } end of step foreach
+
+        ->post_loop
+            # navigation stops if true
+
+        ->default_step (inserted into path at current location)
+        ->nav_loop (called again recursively)
+
+    } end of nav_loop
+
+
+    run_step {
+        ->pre_step (hook)
+            # exits nav_loop if true
+
+        ->skip (hook)
+            # skips this step if true (stays in nav_loop)
+
+        ->prepare (hook - defaults to true)
+
+        ->info_complete (hook - ran if prepare was true)
+            # DEFAULT ACTION
+            # ->ready_validate (hook)
+            # return false if ! ready_validate
+            # ->validate (hook)
+            #   ->hash_validation (hook)
+            #     ->file_val (hook - uses base_dir_rel, name_module, name_step, ext_val)
+            #   uses CGI::Ex::Validate to validate the hash
+            # returns true if validate is true
+
+        ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
+
+        if ! ->prepare || ! ->info_complete || ! ->finalize {
+            ->prepared_print
+                # DEFAULT ACTION
+                # ->hash_base (hook)
+                # ->hash_common (hook)
+                # ->hash_form (hook)
+                # ->hash_fill (hook)
+                # ->hash_swap (hook)
+                # ->hash_errors (hook)
+                # merge form, base, common, and fill into merged fill
+                # merge form, base, common, swap, and errors into merged swap
+                # ->print (hook - passed current step, merged swap hash, and merged fill)
+                     # DEFAULT ACTION
+                     # ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
+                     # ->template_args
+                     # Processes the file with CGI::Ex::Template
+                     # Fills the any forms with CGI::Ex::Fill
+                     # Prints headers and the content
+
+            ->post_print (hook - used for anything after the print process)
+
+            # return true to exit from nav_loop
+        }
+
+        ->post_step (hook)
+            # exits nav_loop if true
+
+    } end of run_step
 
 
 =item Method C<-E<gt>pre_navigate>
@@ -1529,29 +1466,29 @@ special value of "LAST" will jump to the last step.  The special value
 of "FIRST" will jump back to the first step.  In each of these cases,
 the path array retured by ->path is modified to allow for the jumping.
 
-  ### goto previous step
-  $self->jump($self->previous_step);
-  $self->jump('PREVIOUS');
-  $self->jump(-1);
+    ### goto previous step
+    $self->jump($self->previous_step);
+    $self->jump('PREVIOUS');
+    $self->jump(-1);
 
-  ### goto next step
-  $self->jump($self->next_step);
-  $self->jump('NEXT');
-  $self->jump(1);
-  $self->jump;
+    ### goto next step
+    $self->jump($self->next_step);
+    $self->jump('NEXT');
+    $self->jump(1);
+    $self->jump;
 
-  ### goto current step (repeat)
-  $self->jump($self->current_step);
-  $self->jump('CURRENT');
-  $self->jump(0);
+    ### goto current step (repeat)
+    $self->jump($self->current_step);
+    $self->jump('CURRENT');
+    $self->jump(0);
 
-  ### goto last step
-  $self->jump($self->last_step);
-  $self->jump('LAST');
+    ### goto last step
+    $self->jump($self->last_step);
+    $self->jump('LAST');
 
-  ### goto first step
-  $self->jump($self->first_step);
-  $self->jump('FIRST');
+    ### goto first step
+    $self->jump($self->first_step);
+    $self->jump('FIRST');
 
 =item Method C<-E<gt>exit_nav_loop>
 
@@ -1593,18 +1530,19 @@ routine is aborted.
 =item Method C<-E<gt>run_hook>
 
 Calls "hook" to get a code ref which it then calls and returns the
-result.  Arguments are the same as that for "hook".
+result passing any extra arguments as arguments to the code ref.
+Arguments are the same as that for "hook".
+
+Each call to run_hook is will be logged in the arrayref returned by
+the history method.
 
 =item Method C<-E<gt>hook>
 
-Arguments are a hook name, a pathstep name, and an optional code sub
-or default value (default value will be turned to a sub) (code sub
-will be called as method of $self).
+Arguments are a hook name, a pathstep name.
 
-  my $code = $self->hook('info_complete', 'main', sub {return 0});
-  ### will look first for $self->main_info_complete;
-  ### will then look  for $self->info_complete;
-  ### will then run       $self->$default_passed_sub; # sub {return 0}
+    my $code = $self->hook('finalize', 'main', sub {return 0});
+    ### will look first for $self->main_finalize;
+    ### will then look  for $self->finalize;
 
 This system is used to allow for multiple steps to be in the same
 file and still allow for moving some steps out to external sub classed
@@ -1612,9 +1550,6 @@ packages.  If the application has successfully morphed then it is not
 necessary to add the step name to the beginning of the method name as
 the morphed packages method will override the base package (it is still
 OK to use the full method name "${step}_hookname").
-
-If a hook is found (or a default value is found) then an entry is added
-to the arrayref contained in ->history.
 
 =item Method C<-E<gt>morph>
 
@@ -1640,28 +1575,28 @@ package.
 It is possible to call morph earlier on in the program.  An example of
 a useful early use of morph would be as in the following code:
 
-  sub allow_morph { 1 }
+    sub allow_morph { 1 }
 
-  sub pre_navigate {
-    my $self = shift;
-    if ($ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ s|^/(\w+)||) {
-      my $step = $1;
-      $self->morph($step);
-      $ENV{'PATH_INFO'} = "/$step";
-      $self->stash->{'base_morphed'} = 1;
+    sub pre_navigate {
+        my $self = shift;
+        if ($ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ s|^/(\w+)||) {
+            my $step = $1;
+            $self->morph($step);
+            $ENV{'PATH_INFO'} = "/$step";
+            $self->stash->{'base_morphed'} = 1;
+        }
+        return 0;
     }
-    return 0;
-  }
 
-  sub post_navigate {
-    my $self = shift;
-    $self->unmorph if $self->stash->{'base_morphed'};
-  }
+    sub post_navigate {
+        my $self = shift;
+        $self->unmorph if $self->stash->{'base_morphed'};
+    }
 
 If this code was in a module Base.pm and the cgi running was cgi/base
 and called:
 
-  Base->navigate;
+    Base->navigate;
 
 and you created a sub module that inherited Base.pm called
 Base/Ball.pm -- you could then access it using cgi/base/ball.  You
@@ -1671,7 +1606,7 @@ own path.  It should be noted that if you do an early morph, it is
 suggested to provide a call to unmorph. And if you want to let your
 early morphed object morph again - you will need to provide
 
-  sub allow_nested_morph { 1 }
+    sub allow_nested_morph { 1 }
 
 With allow_nested_morph enabled you could create the file
 Base/Ball/StepName.pm which inherits Base/Ball.pm.  The Base.pm, with
@@ -1753,7 +1688,7 @@ Default is to look if $ENV{'REQUEST_METHOD'} is 'POST'.  A common
 usage is to pass a common flag in the form such as 'processing' => 1
 and check for its presence - such as the following:
 
-  sub ready_validate { shift->form->{'processing'} }
+    sub ready_validate { shift->form->{'processing'} }
 
 =item Method C<-E<gt>set_ready_validate>
 
@@ -1761,14 +1696,14 @@ Sets that the validation is ready to validate.  Should set the value
 checked by the hook ready_validate.  The following would complement the
 processing flag above:
 
-  sub set_ready_validate {
-    my $self = shift;
-    if (shift) {
-      $self->form->{'processing'} = 1;
-    } else {
-      delete $self->form->{'processing'};
+    sub set_ready_validate {
+        my $self = shift;
+        if (shift) {
+            $self->form->{'processing'} = 1;
+        } else {
+            delete $self->form->{'processing'};
+        }
     }
-  }
 
 Note thate for this example the form key "processing" was deleted.  This
 is so that the call to fill in any html forms won't swap in a value of
@@ -1790,7 +1725,7 @@ or replace_path, that method will be called with the value as arguments.
 This allows for the validation to apply redirection to the path.  A
 validation item of:
 
-  {field => 'foo', required => 1, append_path => ['bar', 'baz']}
+    {field => 'foo', required => 1, append_path => ['bar', 'baz']}
 
 would append 'bar' and 'baz' to the path should all validation succeed.
 
@@ -1901,20 +1836,20 @@ By default the following sub is what is used for hash_common (or something
 similiar).  Note the use of values that are code refs - so that the
 js_validation and form_name hooks are only called if requested:
 
-  sub hash_base {
-    my ($self, $step) = @_;
-    return $self->{hash_base} ||= {
-      script_name   => $ENV{SCRIPT_NAME},
-      js_validation => sub { $self->run_hook('js_validation', $step) },
-      form_name     => sub { $self->run_hook('form_name', $step) },
-    };
-  }
+    sub hash_base {
+        my ($self, $step) = @_;
+        return $self->{hash_base} ||= {
+            script_name   => $ENV{SCRIPT_NAME},
+            js_validation => sub { $self->run_hook('js_validation', $step) },
+            form_name     => sub { $self->run_hook('form_name', $step) },
+        };
+    }
 
 =item Hook C<-E<gt>name_module>
 
 Return the name (relative path) that should be prepended to name_step
 during the default file_print and file_val lookups.  Defaults to
-base_name_module.
+the value in $self->{name_module}.
 
 =item Hook C<-E<gt>name_step>
 
@@ -1970,15 +1905,6 @@ fall back to the default step.
 Returns a hashref that can store arbitrary user space data without
 clobering the internals of the application.
 
-=item Method C<-E<gt>add_property>
-
-Takes the property name as an argument.  Creates an accessor that can
-be used to access a new property.  If there were additional arguments
-they will call the new accessor. Calling the new accessor with an
-argument will set the property.  Using the accessor in an assignment
-will also set the property (it is an lvalue).  Calling the accessor in
-any other way will return the value.
-
 =back
 
 =head1 OTHER APPLICATION MODULES
@@ -1987,12 +1913,12 @@ The concepts used in CGI::Ex::App are not novel or unique.  However, they
 are all commonly used and very useful.  All application builders were
 built because somebody observed that there are common design patterns
 in CGI building.  CGI::Ex::App differs in that it has found more common design
-patterns of CGI's.
+patterns of CGI's than some and tries to get in the way less than others.
 
 CGI::Ex::App is intended to be sub classed, and sub sub classed, and each step
 can choose to be sub classed or not.  CGI::Ex::App tries to remain simple
 while still providing "more than one way to do it."  It also tries to avoid
-making any sub classes have to call ->SUPER::.
+making any sub classes have to call ->SUPER:: (although that is fine too).
 
 There are certainly other modules for building CGI applications.  The
 following is a short list of other modules and how CGI::Ex::App is
@@ -2046,38 +1972,7 @@ CGI::Ex::App is differrent in that it:
   * Support for easily jumping around in navigation steps.
   * Support for storing some steps in another package.
 
-=item C<CGI::Path>
-
-CGI::Path and CGI::Ex::App are fairly similar in may ways as they
-were created under similar lines of thought.  The primary difference
-in these two is that CGI::Ex::App:
-
-  * Does not provide "automated path following" based on
-      validated key information.  CGI::Path works well for
-      wizard based applications.  CGI::Ex::App assumes that
-      the application will chose it's own path (it works very
-      well in non-linear paths - it also works fine in
-      linear paths but it doesn't provide some of magic that
-      CGI::Path provides).
-  * Does not provide integrated session support.  CGI::Path
-      requires it for path navigation.  CGI::Ex::App assumes that
-      if session support or authentication is needed by an
-      application, a custom Application layer that inherits
-      from CGI::Ex::App will be written to provide this support.
-  * Offers more granularity in the navigation phase.  CGI::Path
-      has successfully been used as a sub class of CGI::Ex::App
-      with limited modifications.
-
 =back
-
-=head1 BUGS
-
-Uses CGI::Ex for header support by default - which means that support
-for mod_perl 2 is limited at this point.
-
-There are a lot of hooks.  Actually this is not a bug.  Some may
-prefer not calling as many hooks - they just need to override
-methods high in the chain and subsequent hooks will not be called.
 
 =head1 THANKS
 
