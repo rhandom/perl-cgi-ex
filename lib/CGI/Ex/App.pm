@@ -34,6 +34,8 @@ BEGIN {
   ### template toolkits rules area which contains
   ### a nested structure of rules and sub references.
   $CLEANUP_EXCLUDE{'Template::Parser'} = 1;
+
+  Time::HiRes->import('time') if eval {require Time::HiRes};
 }
 
 
@@ -410,28 +412,28 @@ sub pre_loop {}
 sub post_loop {}
 
 ### return the appropriate hook to call
-sub hook {
-  my $self    = shift;
-  my $hook    = shift || do { require Carp; Carp::confess("Missing hook name") };
-  my $step    = shift || '';
-  my $default = shift;
-  my $hist    = $self->history;
-  my $code;
-  if ($step && ($code = $self->can("${step}_${hook}"))) {
-    push @$hist, "$step - $hook - ${step}_${hook}";
-    return $code;
-  } elsif ($code = $self->can($hook)) {
-    push @$hist, "$step - $hook - $hook";
-    return $code;
-  } elsif (UNIVERSAL::isa($default, 'CODE')) {
-    push @$hist, "$step - $hook - DEFAULT CODE";
-    return $default;
-  } elsif ($default) {
-    push @$hist, "$step - $hook - DEFAULT";
-    return sub { return $default };
-  } else {
-    return sub {};
-  }
+sub find_hook {
+    my $self    = shift;
+    my $hook    = shift || do { require Carp; Carp::confess("Missing hook name") };
+    my $step    = shift || '';
+    my $default = shift;
+    my $code;
+    if ($step && ($code = $self->can("${step}_${hook}"))) {
+        return [$code, "${step}_${hook}"],
+
+    } elsif ($code = $self->can($hook)) {
+        return [$code, $hook];
+
+    } elsif (UNIVERSAL::isa($default, 'CODE')) {
+        return ['DEFAULT CODE'];
+
+    } elsif ($default) {
+        return [sub { return $default }, 'DEFAULT'];
+
+    } else {
+        return [sub {}, 'NO DEFAULT'];
+
+    }
 }
 
 ### get and call the appropriate hook
@@ -440,12 +442,58 @@ sub run_hook {
   my $hook    = shift;
   my $step    = shift;
   my $default = shift;
-  my $code = $self->hook($hook, $step, $default);
-  return $self->$code($step, @_);
+
+  my ($code, $found) = @{ $self->find_hook($hook, $step, $default) };
+
+  ### record history
+  my $hist = {
+      step  => $step,
+      meth  => $hook,
+      found => $found,
+      time  => time,
+  };
+
+  push @{ $self->history }, $hist;
+
+  my $resp = $self->$code($step, @_);
+
+  $hist->{'elapsed'}  = time - $hist->{'time'};
+  $hist->{'response'} = $resp;
+
+  return $resp;
 }
 
 sub history {
   return shift->{'history'} ||= [];
+}
+
+sub dump_history {
+    my $self = shift;
+    my $all  = shift || 0;
+    my $hist = $self->history;
+    my $dump = [];
+
+    foreach my $row (@$hist) {
+        if (! ref($row)
+            || ref($row) ne 'HASH'
+            || ! exists $row->{'elapsed'}) {
+            push @$dump, $row;
+        } else {
+            my $note = join(' - ',
+                            $row->{'step'},
+                            $row->{'meth'},
+                            $row->{'found'},
+                            sprintf('%.3f', $row->{'elapsed'}));
+            if (ref $row->{'response'} && $all) {
+                $note = [$note, $row->{'response'}];
+            } else {
+                $note .= ' - ' . $row->{'response'};
+            }
+            push @$dump, $note;
+        }
+    }
+
+    return $dump;
 }
 
 ### default die handler - show what happened and die (so its in the error logs)
@@ -478,13 +526,19 @@ sub morph {
   my $lin = $self->{'__morph_lineage'} ||= [];
   my $cur = ref $self; # what are we currently
   push @$lin, $cur;    # store so subsequent unmorph calls can do the right thing
-  my $hist = $self->history;
-  push @$hist, "$step - morph - morph";
-  my $sref = \$hist->[-1]; # get ref so we can add more info in a moment
+
+  my $hist = {
+      step  => $step,
+      meth  => 'morph',
+      found => 'morph',
+      time  => time,
+      elpased => 0,
+  };
+  $self->record_history($hist);
 
   if (ref($allow) && ! $allow->{$step}) { # hash - but no step - record for unbless
-    $$sref .= " - not allowed to morph to that step";
-    return;
+      $hist->{'found'} .= " (not allowed to morph to that step)";
+      return;
   }
 
   ### make sure we haven't already been reblessed
@@ -492,7 +546,7 @@ sub morph {
       && (! ($allow = $self->allow_nested_morph) # not true
           || (ref($allow) && ! $allow->{$step})  # hash - but no step
           )) {
-    $$sref .= $allow ? " - not allowed to nested_morph to that step" : " - nested_morph disabled";
+    $hist->{'found'} .= $allow ? " (not allowed to nested_morph to that step)" : " (nested_morph disabled)";
     return; # just return - don't die so that we can morph early
   }
 
@@ -505,16 +559,16 @@ sub morph {
         || eval { require $file }) { # check for a file that holds this package
       ### become that package
       bless $self, $new;
-      $$sref .= " - changed $cur to $new";
+      $hist->{'found'} .= " (changed $cur to $new)";
       if (my $method = $self->can('fixup_after_morph')) {
         $self->$method($step);
       }
     } else {
       if ($@) {
         if ($@ =~ /^\s*(Can\'t locate \S+ in \@INC)/) { # let us know what happened
-          $$sref .= " - failed from $cur to $new: $1";
+          $hist->{'found'} .= " (failed from $cur to $new: $1)";
         } else {
-          $$sref .= " - failed from $cur to $new: $@";
+          $hist->{'found'} .= " (failed from $cur to $new: $@)";
           my $err = "Trouble while morphing to $file: $@";
           warn $err;
         }
@@ -532,15 +586,22 @@ sub unmorph {
   my $prev = pop(@$lin) || die "unmorph called more times than morph - current ($cur)";
 
   ### if we are not already that package - bless us there
-  my $hist = $self->history;
+  my $hist = {
+      step  => $step,
+      meth  => 'unmorph',
+      found => 'unmorph',
+      time  => time,
+      elapsed => 0,
+  };
+  $self->record_history($hist);
   if ($cur ne $prev) {
     if (my $method = $self->can('fixup_before_unmorph')) {
       $self->$method($step);
     }
     bless $self, $prev;
-    push @$hist, "$step - unmorph - unmorph - changed from $cur to $prev";
+    $hist->{'found'} .= " (changed from $cur to $prev)";
   } else {
-    push @$hist, "$step - unmorph - unmorph - already isa $cur";
+    $hist->{'found'} .= " (already isa $cur)";
   }
 
   return $self;
@@ -824,7 +885,7 @@ sub pre_step   { 0 } # success indicates we handled step
 sub skip       { 0 } # success indicates to skip the step
 sub prepare    { 1 } # failure means show step
 sub finalize   { 1 } # failure means show step
-sub post_print {}
+sub post_print { 0 }
 sub name_step {
   my $self = shift;
   my $step = shift;
@@ -993,6 +1054,8 @@ sub hash_fill   { shift->{'hash_fill'}   ||= {} }
 sub hash_swap   { shift->{'hash_swap'}   ||= {} }
 sub hash_errors { shift->{'hash_errors'} ||= {} }
 
+###----------------------------------------------------------------###
+
 sub add_errors {
   my $self = shift;
   my $hash = $self->hash_errors;
@@ -1081,7 +1144,7 @@ next section.
   sub base_dir_abs { '/tmp' }
 
   sub post_print {
-    debug shift->history;
+    debug shift->dump_history;
   } # show what happened
 
   sub main_file_print {
@@ -1213,7 +1276,7 @@ is a hook that runs after a step is printed its content called "post_print."  Th
 chunk will display history after we have printed the content.
 
   sub post_print {
-    debug shift->history;
+    debug shift->dump_history;
   } # show what happened
 
 Ok.  Finally we are looking at the methods used by each step of the path.  The
