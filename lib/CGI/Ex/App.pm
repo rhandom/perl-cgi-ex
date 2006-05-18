@@ -45,11 +45,8 @@ sub new {
   my $class = shift || die "Usage: Package->new";
   my $self  = ref($_[0]) ? shift : {@_};
   bless $self, $class;
-  $self->init;
   return $self;
 }
-
-sub init {}
 
 ###----------------------------------------------------------------###
 
@@ -59,6 +56,8 @@ sub navigate {
   $self = $self->new($args) if ! ref $self;
 
   eval {
+
+    $self->{'_time'} = time;
 
     ### a chance to do things at the very beginning
     return $self if $self->pre_navigate;
@@ -72,6 +71,8 @@ sub navigate {
       ### rethrow the error unless we long jumped out of recursive nav_loop calls
       die $@ if $@ ne "Long Jump\n";
     }
+
+    $self->{'_elapsed'} = time - $self->{'_time'};
 
     ### one chance to do things at the very end
     $self->post_navigate;
@@ -178,7 +179,7 @@ sub run_step {
     ### a hook after the printing process
     $self->run_hook('post_print', $step);
 
-    return 2;
+    return 1;
   }
 
   ### a hook before end of loop
@@ -472,23 +473,25 @@ sub dump_history {
     my $all  = shift || 0;
     my $hist = $self->history;
     my $dump = [];
-
+    push @$dump, sprintf("Elapsed: %.4f", $self->{'_elapsed'} || ($self->{'_time'} - time));
     foreach my $row (@$hist) {
         if (! ref($row)
             || ref($row) ne 'HASH'
             || ! exists $row->{'elapsed'}) {
             push @$dump, $row;
         } else {
-            my $note = join(' - ',
-                            $row->{'step'},
-                            $row->{'meth'},
-                            $row->{'found'},
-                            sprintf('%.3f', $row->{'elapsed'}));
-            if (ref $row->{'response'} && $all) {
-                $note = [$note, $row->{'response'}];
+            my $note = join(' - ', $row->{'step'}, $row->{'meth'}, $row->{'found'}, sprintf('%.4f', $row->{'elapsed'}));
+            my $resp = $row->{'response'};
+            if (ref($resp) eq 'HASH' && ! scalar keys %$resp) {
+                $note .= ' - {}';
+            } elsif (ref($resp) eq 'ARRAY' && ! @$resp) {
+                $note .= ' - []';
+            } elsif (! ref $resp || ! $all) {
+                $note .= " - $resp";
             } else {
-                $note .= ' - ' . $row->{'response'};
+                $note = [$note, $resp];
             }
+
             push @$dump, $note;
         }
     }
@@ -881,11 +884,11 @@ sub format_error {
 ###----------------------------------------------------------------###
 ### default stub subs
 
-sub pre_step   { 0 } # success indicates we handled step
-sub skip       { 0 } # success indicates to skip the step
+sub pre_step   { 0 } # success indicates we handled step (don't continue step or loop)
+sub skip       { 0 } # success indicates to skip the step (and continue loop)
 sub prepare    { 1 } # failure means show step
 sub finalize   { 1 } # failure means show step
-sub post_print { 0 }
+sub post_print { 0 } # success indicates we handled step (don't continue loop)
 sub name_step {
   my $self = shift;
   my $step = shift;
