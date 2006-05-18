@@ -1054,16 +1054,16 @@ next section.
         ";
     }
 
-    sub main_file_val {
-        # reference to string means ref to yaml document
-        # non-reference means filename
-        return \ "foo:
-          required: 1
-          min_len: 2
-          max_len: 20
-          match: 'm/^([a-z]\\d)+[a-z]?\$/'
-          match_error: Characters must alternate letter digit letter.
-          \n";
+    sub main_hash_validation {
+        return {
+            foo => {
+                required => 1,
+                min_len  =>  2,
+                max_len  => 20,
+                match    => 'm/^([a-z]\\d)+[a-z]?\$/',
+                match_error => 'Characters must alternate letter digit letter.',
+            }
+        };
     }
 
     sub main_finalize {
