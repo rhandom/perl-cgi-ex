@@ -456,6 +456,11 @@ sub run_hook {
 
   push @{ $self->history }, $hist;
 
+  $hist->{'level'} = $self->{'_level'};
+  local $self->{'_level'} = 1 + $self->{'_level'} || 0;
+
+  $hist->{'elapsed'}  = time - $hist->{'time'};
+
   my $resp = $self->$code($step, @_);
 
   $hist->{'elapsed'}  = time - $hist->{'time'};
@@ -474,13 +479,15 @@ sub dump_history {
     my $hist = $self->history;
     my $dump = [];
     push @$dump, sprintf("Elapsed: %.4f", $self->{'_elapsed'} || ($self->{'_time'} - time));
+
     foreach my $row (@$hist) {
         if (! ref($row)
             || ref($row) ne 'HASH'
             || ! exists $row->{'elapsed'}) {
             push @$dump, $row;
         } else {
-            my $note = join(' - ', $row->{'step'}, $row->{'meth'}, $row->{'found'}, sprintf('%.4f', $row->{'elapsed'}));
+            my $note = ('    'x($row->{'level'} || 0))
+                . join(' - ', $row->{'step'}, $row->{'meth'}, $row->{'found'}, sprintf('%.4f', $row->{'elapsed'}));
             my $resp = $row->{'response'};
             if (ref($resp) eq 'HASH' && ! scalar keys %$resp) {
                 $note .= ' - {}';
@@ -508,7 +515,7 @@ sub handle_error {
 }
 
 ###----------------------------------------------------------------###
-### utility modules for jeckyl/hyde on self
+### utility modules to allow for storing separate steps in other modules
 
 sub allow_morph {
   my $self = shift;
