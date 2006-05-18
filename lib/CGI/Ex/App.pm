@@ -14,8 +14,7 @@ CGI::Ex::App - Anti-framework application framework.
 use strict;
 use vars qw($VERSION
             $EXT_PRINT $EXT_VAL $BASE_DIR_REL $BASE_DIR_ABS $BASE_NAME_MODULE
-            $RECURSE_LIMIT
-            %CLEANUP_EXCLUDE);
+            $RECURSE_LIMIT);
 
 $VERSION = '2.00';
 
@@ -28,12 +27,6 @@ BEGIN {
   $BASE_DIR_REL ||= ''; # relative path - stub methods will look in $BASE_DIR_REL/dir/of/content.html
   $BASE_DIR_ABS ||= ''; # content should be found at "$BASE_DIR_ABS/$BASE_DIR_REL/dir/of/content.html"
   $BASE_NAME_MODULE ||= ''; # the cgi name
-
-  ### list of modules to exclude during cleanup
-  ### this takes care of situations such as
-  ### template toolkits rules area which contains
-  ### a nested structure of rules and sub references.
-  $CLEANUP_EXCLUDE{'Template::Parser'} = 1;
 
   Time::HiRes->import('time') if eval {require Time::HiRes};
 }
@@ -618,82 +611,28 @@ sub unmorph {
 }
 
 ###----------------------------------------------------------------###
-### allow for cleanup including deep nested objects
-
-sub cleanup {
-  my $self = shift;
-  ref($self)->cleanup_cross_references($self);
-}
-
-sub cleanup_cross_references {
-  my $class = shift;
-  my $self  = shift;
-  my $seen  = shift || {};
-  return if $seen->{$self}; # prevent recursive checking
-  $seen->{$self} = 1;
-  return if $CLEANUP_EXCLUDE{ ref($self) };
-  if (UNIVERSAL::isa($self, 'HASH')) {
-    require Scalar::Util; # first self will always be hash
-    foreach my $key (keys %$self) {
-      next if ! $self->{$key};
-      $class->cleanup_cross_references($self->{$key}, $seen);
-      # weaken and remove blessed objects
-      # this will clober objects in global caches that are referenced in the structure
-      # so beware (that means weaken your cached references)
-      if (Scalar::Util::blessed($self->{$key})
-          && ! Scalar::Util::isweak($self->{$key})) {
-        Scalar::Util::weaken($self->{$key});
-        $self->{$key} = undef;
-      } elsif (UNIVERSAL::isa($self->{$key}, 'CODE')) {
-        $self->{$key} = undef;
-      }
-    }
-  } elsif (UNIVERSAL::isa($self, 'ARRAY')) {
-    for my $key (0 .. $#$self) {
-      next if ! $self->[$key];
-      $class->cleanup_cross_references($self->[$key], $seen);
-      if (Scalar::Util::blessed($self->[$key])
-          && ! Scalar::Util::isweak($self->[$key])) {
-        Scalar::Util::weaken($self->[$key]);
-        $self->[$key] = undef;
-      } elsif (UNIVERSAL::isa($self->[$key], 'CODE')) {
-        $self->[$key] = undef;
-      }
-    }
-  }
-}
-
-###----------------------------------------------------------------###
 ### a few standard base accessors
 
 sub form {
-  my $self = shift;
-  if ($#_ != -1) {
-    $self->{form} = shift || die "Invalid form";
-  }
-  return $self->{form} ||= $self->cgix->get_form;
+    my $self = shift;
+    $self->{'form'} = shift if @_ == 1;
+    return $self->{'form'} ||= $self->cgix->get_form;
 }
 
 sub cookies {
-  my $self = shift;
-  if ($#_ != -1) {
-    $self->{cookies} = shift || die "Invalid cookies";
-  }
-  return $self->{cookies} ||= $self->cgix->get_cookies;
+    my $self = shift;
+    $self->{'cookies'} = shift if @_ == 1;
+    return $self->{'cookies'} ||= $self->cgix->get_cookies;
 }
 
 sub cgix {
-  my $self = shift;
-  return $self->{cgix} ||= do {
-    my $args = shift || {};
-    require CGI::Ex;
-    CGI::Ex->new($args); # return of the do
-  };
-}
-
-sub set_cgix {
-  my $self = shift;
-  $self->{cgix} = shift;
+    my $self = shift;
+    $self->{'cgix'} = shift if @_ == 1;
+    return $self->{'cgix'} ||= do {
+        my $args = shift || {};
+        require CGI::Ex;
+        CGI::Ex->new($args); # return of the do
+    };
 }
 
 sub vob {
@@ -1138,10 +1077,8 @@ next section.
 
   __PACKAGE__->navigate;
    # OR you could do
-   # my $obj = __PACKAGE__->new; $obj->navigate;
-   # OR you could do the following which cleans
-   # circular references - useful for a mod_perl situation
-   # __PACKAGE__->navigate->cleanup;
+   # my $obj = __PACKAGE__->new;
+   # $obj->navigate;
   exit;
 
   ###------------------------------------------###
@@ -1239,10 +1176,8 @@ Now we need to invoke the process:
 
   __PACKAGE__->navigate;
    # OR you could do
-   # my $obj = __PACKAGE__->new; $obj->navigate;
-   # OR you could do the following which cleans
-   # circular references - useful for a mod_perl situation
-   # __PACKAGE__->navigate->cleanup;
+   # my $obj = __PACKAGE__->new;
+   # $obj->navigate;
   exit;
 
 Note: the "exit" isn't necessary - but it is kind of nice to infer that
@@ -1727,10 +1662,6 @@ If this code was in a module Base.pm and the cgi running was cgi/base
 and called:
 
   Base->navigate;
-  # OR - for mod_perl resident programs
-  Base->navigate->cleanup;
-  # OR
-  sub post_navigate { shift->cleanup }
 
 and you created a sub module that inherited Base.pm called
 Base/Ball.pm -- you could then access it using cgi/base/ball.  You
@@ -2047,26 +1978,6 @@ they will call the new accessor. Calling the new accessor with an
 argument will set the property.  Using the accessor in an assignment
 will also set the property (it is an lvalue).  Calling the accessor in
 any other way will return the value.
-
-=item Method C<-E<gt>cleanup>
-
-Can be used at the end of execution to tear down the structure.
-Default method starts a cleanup_cross_references call.
-
-=item Method C<-E<gt>cleanup_cross_references>
-
-Used to destroy links in nested structures.  Will spider through the
-data structure of the passed object and remove any blessed objects
-that are no weakly referenced.  This means if you have a reference to
-an object in a global cache, that object should have its reference
-weakened in the global cache.  Requires Scalar::Util to function.  Use
-of this function is highly recommended in mod_perl environments to
-make sure that there are no dangling objects in memory.  There are
-some global caches that can't be fixed (such as Template::Parser's
-reference to Template::Grammar in the Template::Toolkit).  For these
-situations there is a %CLEANUP_EXCLUDE hash that contains the names of
-Object types to exclude from the cleanup process.  Add any such global
-hashes (or objects with references to the global hashes) there.
 
 =back
 
