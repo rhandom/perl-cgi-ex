@@ -705,10 +705,7 @@ sub print {
     my ($self, $step, $swap, $fill) = @_;
 
     ### get a filename relative to base_dir_abs
-    my $file = eval { $self->run_hook('file_print', $step) };
-    if ($@ && $@ =~ /BASE_DIR_ABS not set/i) {
-        die "Error while looking for template file on step \"$step\": $@";
-    }
+    my $file = $self->run_hook('file_print', $step);
 
     my $out = $self->run_hook('swap_template', $step, $file, $swap);
 
@@ -750,7 +747,7 @@ sub template_args {
     my $self = shift;
     my $step = shift;
     return {
-        INCLUDE_PATH => sub { $self->base_dir_abs },
+        INCLUDE_PATH => sub { $self->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"" },
     };
 }
 
@@ -763,7 +760,7 @@ sub base_dir_rel {
 sub base_dir_abs {
     my $self = shift;
     $self->{'base_dir_abs'} = shift if $#_ != -1;
-    return $self->{'base_dir_abs'} || die "\$BASE_DIR_ABS not set for use in stub functions";
+    return $self->{'base_dir_abs'} || '';
 }
 
 sub ext_val {
@@ -841,11 +838,11 @@ sub file_val {
     my $self = shift;
     my $step = shift;
 
+    my $abs      = $self->base_dir_abs || die "base_dir_abs not set while looking for file_val on step \"$step\"";
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
     my $_step    = $self->run_hook('name_step', $step) || die "Missing name_step";
     $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
-    my $abs      = $self->base_dir_abs;
 
     foreach ($base_dir, $module, $abs) { $_ .= '/' if length($_) && ! m|/$| }
 
@@ -915,10 +912,7 @@ sub hash_validation {
 
   return $self->{'hash_validation'}->{$step} ||= do {
       my $hash;
-      my $file = eval { $self->run_hook('file_val', $step) };
-      if ($@ && $@ =~ /BASE_DIR_ABS not set/i) {
-          die "Error while looking for validation on step \"$step\": $@";
-      }
+      my $file = $self->run_hook('file_val', $step);
 
       ### allow for returning the validation hash in the filename
       ### a scalar ref means it is a yaml document to be read by get_validation
@@ -1084,6 +1078,9 @@ next section.
            (foo = [% foo %])";
     }
 
+    sub valid_steps { {success => 1} }
+      # the default_step "main" and the js_step "js" are valid paths
+
     ### not necessary - this is the default hash_base
     # sub hash_base { # used to include js_validation
     #     my ($self, $step) = @_;
@@ -1151,15 +1148,6 @@ nice to restrict what they can use.  And you can with valid_steps.
 
     sub valid_steps { return {success => 1} }
     # the default_step (default "main") and the js_step (default "js") are valid paths
-
-CGI::Ex::App is prewired to use Template::Toolkit, but should be easy to use any
-other toolkit as well.  The following piece gives a default directory to get
-the Template::Toolkit templates.  We aren't using a separate template in this
-example so we default it to a non-existent dir
-
-    # base_dir_abs is only needed if default print is used
-    # template toolkit needs an INCLUDE_PATH
-    sub base_dir_abs { '/non_existent_dir' }
 
 During development it would be nice to see what happened during the course of
 our navigation.  This is stored in the arrayref contained in ->history.  There
