@@ -776,49 +776,59 @@ sub get_validation_keys {
 
 ### spit out a chunk that will do the validation
 sub generate_js {
-  ### allow for some browsers to not receive the validation
-  if ($ENV{'HTTP_USER_AGENT'}) {
-    foreach (@UNSUPPORTED_BROWSERS) {
-      next if $ENV{HTTP_USER_AGENT} !~ $_;
-      return "<!-- JS Validation not supported in this browser $_ -->"
-    }
-  }
+    ### allow for some browsers to not receive the validation js
+    return "<!-- JS validation not supported in this browser $_ -->"
+        if $ENV{'HTTP_USER_AGENT'} && grep {$ENV{'HTTP_USER_AGENT'} =~ $_} @UNSUPPORTED_BROWSERS;
 
-  my $self        = shift;
-  my $val_hash    = shift || die "Missing validation";
-  my $form_name   = shift || die "Missing form name";
-  my $js_uri_path = shift || $JS_URI_PATH;
-  $val_hash = $self->get_validation($val_hash);
-  require YAML;
+    my $self        = shift;
+    my $val_hash    = shift || die "Missing validation";
+    my $form_name   = shift || die "Missing form name";
+    my $js_uri_path = shift || $JS_URI_PATH;
+    $val_hash = $self->get_validation($val_hash);
 
-  ### store any extra items from self
-  my %EXTRA = ();
-  $EXTRA{"general $_"} = $self->{$_} for grep {/$QR_EXTRA/o} keys %$self; # add 'general' to be used in javascript
+    ### store any extra items from self
+    my %EXTRA = ();
+    $EXTRA{"general $_"} = $self->{$_} for grep {/$QR_EXTRA/o} keys %$self; # add 'general' to be used in javascript
 
-  my $str = &YAML::Dump((scalar keys %EXTRA) ? (\%EXTRA) : () , $val_hash);
-  $str =~ s/(?<!\\)\\(?=[sSdDwWbB0-9?.*+|\-\^\${}()\[\]])/\\\\/g;
-  $str =~ s/\n/\\n\\\n/g; # allow for one big string
-  $str =~ s/\"/\\\"/g; # quotify it
+    my $js_uri_path_validate = $JS_URI_PATH_VALIDATE || do {
+        die "Missing \$js_uri_path" if ! $js_uri_path;
+        "$js_uri_path/CGI/Ex/validate.js";
+    };
 
-  ### get the paths
-  my $js_uri_path_yaml = $JS_URI_PATH_YAML || do {
-    die "Missing \$js_uri_path" if ! $js_uri_path;
-    "$js_uri_path/CGI/Ex/yaml_load.js";
-  };
-  my $js_uri_path_validate = $JS_URI_PATH_VALIDATE || do {
-    die "Missing \$js_uri_path" if ! $js_uri_path;
-    "$js_uri_path/CGI/Ex/validate.js";
-  };
+    if (eval { require JSON }) {
+        my $json = JSON->new(pretty => 1)->objToJson($val_hash);
 
-  ### return the string
-  return qq{<script src="$js_uri_path_yaml"></script>
-<script src="$js_uri_path_validate"></script>
-<script><!--
-document.validation = "$str";
+        return qq{<script src="$js_uri_path_validate"></script>
+<script>
+document.validation = $json;
 if (document.check_form) document.check_form("$form_name");
-//--></script>
+</script>
 };
 
+    } elsif (eval { require YAML }) {
+
+        my $str = YAML::Dump((scalar keys %EXTRA) ? (\%EXTRA) : () , $val_hash);
+        $str =~ s/(?<!\\)\\(?=[sSdDwWbB0-9?.*+|\-\^\${}()\[\]])/\\\\/g; # fix some issues with YAML
+        $str =~ s/\n/\\n\\\n/g; # allow for one big string that flows on multiple lines
+        $str =~ s/\"/\\\"/g; # quotify it
+
+        ### get the paths
+        my $js_uri_path_yaml = $JS_URI_PATH_YAML || do {
+            die "Missing \$js_uri_path" if ! $js_uri_path;
+            "$js_uri_path/CGI/Ex/yaml_load.js";
+        };
+
+        ### return the string
+        return qq{<script src="$js_uri_path_yaml"></script>
+<script src="$js_uri_path_validate"></script>
+<script>
+document.validation = "$str";
+if (document.check_form) document.check_form("$form_name");
+</script>
+};
+    } else {
+        return '<!-- no JSON or YAML support found for JS validation -->';
+    }
 }
 
 ###----------------------------------------------------------------###
