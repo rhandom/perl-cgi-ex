@@ -13,7 +13,6 @@ CGI::Ex::Validate - another form validator - but it does javascript in parallel
 
 use strict;
 use vars qw($VERSION
-            $ERROR_PACKAGE
             $DEFAULT_EXT
             %DEFAULT_OPTIONS
             $JS_URI_PATH
@@ -23,9 +22,8 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.0';
+$VERSION = '2.00';
 
-$ERROR_PACKAGE = 'CGI::Ex::Validate::Error';
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
 @UNSUPPORTED_BROWSERS = (qr/MSIE\s+5.0\d/i);
@@ -195,14 +193,18 @@ sub validate {
 
   ### return what they want
   if ($#ERRORS != -1) {
-    my $err_obj = $ERROR_PACKAGE->new(\@ERRORS, \%EXTRA);
-    die    $err_obj if $EXTRA{raise_error};
+    my $err_obj = $self->new_error(\@ERRORS, \%EXTRA);
+    die    $err_obj if $EXTRA{'raise_error'};
     return $err_obj;
   } else {
     return wantarray ? () : undef;
   }
 }
 
+sub new_error {
+    my $self = shift;
+    return CGI::Ex::Validate::Error->new(@_);
+}
 
 ### allow for optional validation on groups and on individual items
 sub check_conditional {
@@ -775,7 +777,7 @@ sub get_validation_keys {
 ### spit out a chunk that will do the validation
 sub generate_js {
   ### allow for some browsers to not receive the validation
-  if ($ENV{HTTP_USER_AGENT}) {
+  if ($ENV{'HTTP_USER_AGENT'}) {
     foreach (@UNSUPPORTED_BROWSERS) {
       next if $ENV{HTTP_USER_AGENT} !~ $_;
       return "<!-- JS Validation not supported in this browser $_ -->"
@@ -1067,95 +1069,101 @@ __END__
 
 =head1 SYNOPSIS
 
-  use CGI::Ex::Validate;
+    use CGI::Ex::Validate;
 
-  ### THE SHORT
+    ### THE SHORT
 
-  my $errobj = CGI::Ex::Validate->new->validate($form, $val_hash);
+    my $errobj = CGI::Ex::Validate->new->validate($form, $val_hash);
 
-  ### THE LONG
+    ### THE LONG
 
-  my $form = CGI->new;
-   # OR #
-  my $form = CGI::Ex->new; # OR CGI::Ex->get_form;
-   # OR #
-  my $form = {key1 => 'val1', key2 => 'val2'};
+    my $form = CGI->new;
+     # OR #
+    my $form = CGI::Ex->new; # OR CGI::Ex->get_form;
+     # OR #
+    my $form = {key1 => 'val1', key2 => 'val2'};
 
 
-  ### simplest
-  my $val_hash = {
-    username => {required => 1,
-                 max_len  => 30
-                 field    => 'username',
-                 # field is optional in this case - will use key name
-                },
-    email    => {required => 1,
-                 max_len  => 100
-                },
-    email2   => {validate_if => 'email'
-                 equals      => 'email'
-                },
-  };
+    ### simplest
+    my $val_hash = {
+        username => {
+            required => 1,
+            max_len  => 30,
+            field    => 'username',
+            # field is optional in this case - will use key name
+        },
+        email    => {
+            required => 1,
+            max_len  => 100,
+        },
+        email2   => {
+            validate_if => 'email',
+            equals      => 'email',
+        },
+    };
 
-  ### ordered
-  my $val_hash = {
-    'group order' => [qw(username email email2)],
-    username => {required => 1, max_len => 30},
-    email    => ...,
-    email2   => ...,
-  };
+    ### ordered
+    my $val_hash = {
+        'group order' => [qw(username email email2)],
+        username => {required => 1, max_len => 30},
+        email    => ...,
+        email2   => ...,
+    };
 
-  ### ordered again
-  my $val_hash = {
-    'group fields' => [
-      {field    => 'username', # field is not optional in this case
-       required => 1,
-       max_len  => 30,
-      },
-      {field    => 'email',
-       required => 1,
-       max_len  => 100,
-      }
-      {field       => 'email2',
-       validate_if => 'email',
-       equals      => 'email',
-      }
-    ],
-  };
+    ### ordered again
+    my $val_hash = {
+        'group fields' => [{
+            field    => 'username', # field is not optional in this case
+            required => 1,
+            max_len  => 30,
+        }, {
+            field    => 'email',
+            required => 1,
+            max_len  => 100,
+        }, {
+            field       => 'email2',
+            validate_if => 'email',
+            equals      => 'email',
+        }],
+    };
 
-  
-  my $vob    = CGI::Ex::Validate->new;
-  my $errobj = $vob->validate($form, $val_hash);
+
+    my $vob    = CGI::Ex::Validate->new;
+    my $errobj = $vob->validate($form, $val_hash);
     # OR #
-  my $errobj = $vob->validate($form, "/somefile/somewhere.val"); # import config using yaml file
+    my $errobj = $vob->validate($form, "/somefile/somewhere.val"); # import config using yaml file
     # OR #
-  my $errobj = $vob->validate($form, "/somefile/somewhere.pl");  # import config using perl file
+    my $errobj = $vob->validate($form, "/somefile/somewhere.pl");  # import config using perl file
     # OR #
-  my $errobj = $vob->validate($form, "--- # a yaml document\n"); # import config using yaml str
+    my $errobj = $vob->validate($form, "--- # a yaml document\n"); # import config using yaml str
 
 
-  if ($errobj) {
-    my $error_heading = $errobj->as_string; # OR "$errobj";
-    my $error_list    = $errobj->as_array;  # ordered list of what when wrong
-    my $error_hash    = $errobj->as_hash;   # hash of arrayrefs of errors
-  } else {
-    # form passed validation
-  }
+    if ($errobj) {
+        my $error_heading = $errobj->as_string; # OR "$errobj";
+        my $error_list    = $errobj->as_array;  # ordered list of what when wrong
+        my $error_hash    = $errobj->as_hash;   # hash of arrayrefs of errors
+    } else {
+        # form passed validation
+    }
 
-  ### will add an error for any form key not found in $val_hash
-  my $vob = CGI::Ex::Validate->new({no_extra_keys => 1});
-  my $errobj = $vob->validate($form, $val_hash);  
+    ### will add an error for any form key not found in $val_hash
+    my $vob = CGI::Ex::Validate->new({no_extra_keys => 1});
+    my $errobj = $vob->validate($form, $val_hash);
 
 =head1 DESCRIPTION
 
-CGI::Ex::Validate is yet another module used for validating input.  It
-aims to have all of the power of former modules, while advancing them
-with more flexibility, external validation files, and identical
-javascript validation.  CGI::Ex::Validate can work in a simple way
-like all of the other validators do.  However, it also allows for
-grouping of validation items and conditional validaion of groups or
-individual items.  This is more in line with the normal validation
-procedures for a website.
+CGI::Ex::Validate is one of many validation modules.  It aims to have
+all of the basic data validation functions, avoid adding all of the
+millions of possible types, while still giving the capability for the
+developer to add their own types.
+
+CGI::Ex::Validate can work in a simple way like all of the other
+validators do.  However, it also allows for grouping of validation
+items and conditional validaion of groups or individual items.  This
+is more in line with the normal validation procedures for a website.
+
+It also has full support for providing the same validation in javascript.
+It provides methods for attaching the javascript to existing forms.
 
 =head1 METHODS
 
@@ -1171,7 +1179,7 @@ or nothing at all.  Keys of the hash become the keys of the object.
 Given a filename or YAML string will return perl hash.  If more than one
 group is contained in the file, it will return an arrayref of hashrefs.
 
-  my $ref = $self->get_validation($file);
+    my $ref = $self->get_validation($file);
 
 =item C<get_validation_keys>
 
@@ -1181,37 +1189,37 @@ check to see if extra items have been passed to validate.  If a second
 argument contains a form hash is passed, get_validation_keys will only
 return the keys of groups that were validated.
 
-  my $key_hashref = $self->get_validation_keys($val_hash);
+    my $key_hashref = $self->get_validation_keys($val_hash);
 
 The values of the hash are the names of the fields.
 
 =item C<validate>
 
-Arguments are a form hashref or cgi object, a validation hashref or filename, and
-an optional what_was_validated arrayref.
-If a CGI object is passed, CGI::Ex::get_form will be called on that object
-to turn it into a hashref.  If a filename is given for the validation, get_validation
-will be called on that filename.  If the what_was_validated_arrayref is passed - it
-will be populated (pushed) with the field hashes that were actually validated (anything
-that was skipped because of validate_if will not be in the array).
+Arguments are a form hashref or cgi object, a validation hashref or
+filename, and an optional what_was_validated arrayref.  If a CGI
+object is passed, CGI::Ex::get_form will be called on that object to
+turn it into a hashref.  If a filename is given for the validation,
+get_validation will be called on that filename.  If the
+what_was_validated_arrayref is passed - it will be populated (pushed)
+with the field hashes that were actually validated (anything that was
+skipped because of validate_if will not be in the array).
 
-If the form passes validation, validate will return undef.  If it fails validation, it
-will return a CGI::Ex::Validate::Error object.  If the 'raise_error' general option
-has been set, validate will die with a CGI::Ex::validate::Error object as the value.
+If the form passes validation, validate will return undef.  If it
+fails validation, it will return a CGI::Ex::Validate::Error object.
+If the 'raise_error' general option has been set, validate will die
+with a CGI::Ex::validate::Error object as the value.
 
-  my $err_obj = $self->validate($form, $val_hash);
+    my $err_obj = $self->validate($form, $val_hash);
 
     # OR #
 
-  $self->{raise_error} = 1; # raise error can also be listed in the val_hash
-  eval { $self->validate($form, $val_hash) };
-  if ($@) {
-    my $err_obj = $@;
-  }
+    $self->{raise_error} = 1; # raise error can also be listed in the
+    val_hash eval { $self->validate($form, $val_hash) }; if ($@) { my
+    $err_obj = $@; }
 
 =item C<generate_js>
 
-Requires YAML to work properly (see L<YAML>).
+Requires JSON or YAML to work properly (see L<JSON> or L<YAML>).
 
 Takes a validation hash, a form name, and an optional javascript uri
 path and returns Javascript that can be embedded on a page and will
@@ -1223,7 +1231,7 @@ used to embed the locations two external javascript source files.
 
 
 The javascript uri path is highly dependent upon the server
-implementation and therefore must be configured manually.  It may be
+configuration and therefore must be configured manually.  It may be
 passed to generate_js, or it may be specified in $JS_URI_PATH.  There
 are two files included with this module that are needed -
 CGI/Ex/yaml_load.js and CGI/Ex/validate.js.  When generating the js
@@ -1232,19 +1240,23 @@ $JS_URI_PATH_VALIDATE.  If either of these are not set, generate_js
 will default to "$JS_URI_PATH/CGI/Ex/yaml_load.js" and
 "$JS_URI_PATH/CGI/Ex/validate.js".
 
-  $self->generate_js($val_hash, 'my_form', "/cgi-bin/js")
-  # would generate something like the following...
-  # <script src="/cgi-bin/js/CGI/Ex/yaml_load.js"></script>
-  # <script src="/cgi-bin/js/CGI/Ex/validate.js"></script>
-  # ... more js follows ...
+    $self->generate_js($val_hash, 'my_form', "/cgi-bin/js")
 
-  $CGI::Ex::Validate::JS_URI_PATH      = "/stock/js";
-  $CGI::Ex::Validate::JS_URI_PATH_YAML = "/js/yaml_load.js";
-  $self->generate_js($val_hash, 'my_form')  
-  # would generate something like the following...
-  # <script src="/js/yaml_load.js"></script>
-  # <script src="/stock/js/CGI/Ex/validate.js"></script>
-  # ... more js follows ...
+    # would generate something like the following...
+
+    <script src="/cgi-bin/js/CGI/Ex/yaml_load.js"></script>
+    <script src="/cgi-bin/js/CGI/Ex/validate.js"></script>
+    ... more js follows ...
+
+    $CGI::Ex::Validate::JS_URI_PATH      = "/stock/js";
+    $CGI::Ex::Validate::JS_URI_PATH_YAML = "/js/yaml_load.js";
+    $self->generate_js($val_hash, 'my_form')
+
+    # would generate something like the following...
+
+    <script src="/js/yaml_load.js"></script>
+    <script src="/stock/js/CGI/Ex/validate.js"></script>
+    ... more js follows ...
 
 Referencing yaml_load.js and validate.js can be done in any of
 several ways.  They can be copied to or symlinked to a fixed location
@@ -1253,18 +1265,18 @@ The method C<-E<gt>print_js> has been provided in CGI::Ex for printing
 js files found in the perl heirchy.  See L<CGI::Ex> for more details.
 The $JS_URI_PATH of "/cgi-bin/js" could contain the following:
 
-  #!/usr/bin/perl -w
+    #!/usr/bin/perl -w
 
-  use strict;
-  use CGI::Ex;
+    use strict;
+    use CGI::Ex;
 
-  ### path_info should contain something like /CGI/Ex/yaml_load.js
-  my $info = $ENV{PATH_INFO} || '';
-  die "Invalid path" if $info !~ m|^(/\w+)+.js$|;
-  $info =~ s|^/+||;
+    ### path_info should contain something like /CGI/Ex/yaml_load.js
+    my $info = $ENV{PATH_INFO} || '';
+    die "Invalid path" if $info !~ m|^(/\w+)+.js$|;
+    $info =~ s|^/+||;
 
-  CGI::Ex->new->print_js($info);
-  exit;
+    CGI::Ex->new->print_js($info);
+    exit;
 
 The print_js method in CGI::Ex is designed to cache the javascript in
 the browser (caching is suggested as they are medium sized files).
@@ -1277,14 +1289,16 @@ Returns a CGI::Ex object.  Used internally.
 
 =head1 VALIDATION HASH
 
-The validation hash may be passed as a perl a hashref or 
-as a filename, or as a YAML document string.  If it is a filename,
-it will be translated into a hash using the %EXT_HANDLER for the
-extension on the file.  If there is no extension, it will use $DEFAULT_EXT
-as a default.
+The validation hash may be passed as a perl a hashref or as a
+filename, or as a YAML document string.  If it is a filename, it will
+be translated into a hash using the %EXT_HANDLER for the extension on
+the file.  If there is no extension, it will use $DEFAULT_EXT as a
+default.
 
-The validation hash may also be an arrayref of hashrefs.  In this
+The validation "hash" may also be an arrayref of hashrefs.  In this
 case, each arrayref is treated as a group and is validated separately.
+A group can have a validate_if function that allows for that
+particular group to apply only if certain conditions are met.
 
 =head1 GROUPS
 
@@ -1305,51 +1319,52 @@ validation order is determined in one of three ways:
 
 =item Specify 'group fields' arrayref.
 
-  # order will be (username, password, 'm/\w+_foo/', somethingelse)
-  {
-    'group title' => "User Information",
-    'group fields' => [
-      {field => 'username',   required => 1},
-      {field => 'password',   required => 1},
-      {field => 'm/\w+_foo/', required => 1},
-    ],
-    somethingelse => {required => 1},
-  }
+    # order will be (username, password, 'm/\w+_foo/', somethingelse)
+    {
+      'group title' => "User Information",
+      'group fields' => [
+        {field => 'username',   required => 1},
+        {field => 'password',   required => 1},
+        {field => 'm/\w+_foo/', required => 1},
+      ],
+      somethingelse => {required => 1},
+    }
 
 =item Specify 'group order' arrayref.
 
-  # order will be (username, password, 'm/\w+_foo/', somethingelse)
-  {
-    'group title' => "User Information",
-    'group order' => [qw(username password), 'm/\w+_foo/'],
-    username      => {required => 1},
-    password      => {required => 1},
-    'm/\w+_foo/'  => {required => 1},
-    somethingelse => {required => 1},
-  }
+    # order will be (username, password, 'm/\w+_foo/', somethingelse)
+    {
+      'group title' => "User Information",
+      'group order' => [qw(username password), 'm/\w+_foo/'],
+      username      => {required => 1},
+      password      => {required => 1},
+      'm/\w+_foo/'  => {required => 1},
+      somethingelse => {required => 1},
+    }
 
 =item Do nothing - use sorted order.
 
-  # order will be ('m/\w+_foo/', password, somethingelse, username)
-  {
-    'group title' => "User Information",
-    username      => {required => 1},
-    password      => {required => 1},
-    'm/\w+_foo/'  => {required => 1},
-    somethingelse => {required => 1},
-  }
+    # order will be ('m/\w+_foo/', password, somethingelse, username)
+    {
+      'group title' => "User Information",
+      username      => {required => 1},
+      password      => {required => 1},
+      'm/\w+_foo/'  => {required => 1},
+      somethingelse => {required => 1},
+    }
 
 =back
 
-Each of the individual field validation hashrefs should contain
-the types listed in VALIDATION TYPES.
+Each of the individual field validation hashrefs should contain the
+types listed in VALIDATION TYPES.
 
-Optionally the 'group fields' or the 'group order' may contain the word
-'OR' as a special keyword.  If the item preceding 'OR' fails validation
-the item after 'OR' will be tested instead.  If the item preceding 'OR'
-passes validation the item after 'OR' will not be tested.
+Optionally the 'group fields' or the 'group order' may contain the
+word 'OR' as a special keyword.  If the item preceding 'OR' fails
+validation the item after 'OR' will be tested instead.  If the item
+preceding 'OR' passes validation the item after 'OR' will not be
+tested.
 
-  'group order' => [qw(zip OR postalcode state OR region)],
+    'group order' => [qw(zip OR postalcode state OR region)],
 
 Each individual validation hashref will operate on the field contained
 in the 'field' key.  This key may also be a regular expression in the
@@ -1358,22 +1373,23 @@ matching that pattern will be validated.
 
 =head1 VALIDATION TYPES
 
-The following are the available validation types.  Multiple instances of
-the same type may be used for some validation types by adding a number to
-the type (ie match, match2, match232, match_94).  Multiple instances are
-validated in sorted order.  Types that allow multiple values are:
+This section lists the available validation types.  Multiple instances
+of the same type may be used for some validation types by adding a
+number to the type (ie match, match2, match232, match_94).  Multiple
+instances are validated in sorted order.  Types that allow multiple
+values are:
 
-  compare
-  custom
-  equals
-  match
-  max_in_set
-  min_in_set
-  replace
-  required_if
-  sql
-  type
-  validate_if
+    compare
+    custom
+    equals
+    match
+    max_in_set
+    min_in_set
+    replace
+    required_if
+    sql
+    type
+    validate_if
 
 =over 4
 
@@ -1382,45 +1398,45 @@ validated in sorted order.  Types that allow multiple values are:
 If validate_if is specified, the field will only be validated
 if the conditions are met.  Works in JS.
 
-  validate_if => {field => 'name', required => 1, max_len => 30}
-  # Will only validate if the field "name" is present and is less than 30 chars.
+    validate_if => {field => 'name', required => 1, max_len => 30}
+    # Will only validate if the field "name" is present and is less than 30 chars.
 
-  validate_if => 'name',
-  # SAME as
-  validate_if => {field => 'name', required => 1},
+    validate_if => 'name',
+    # SAME as
+    validate_if => {field => 'name', required => 1},
 
-  validate_if => '! name',
-  # SAME as
-  validate_if => {field => 'name', max_in_set => '0 of name'},
+    validate_if => '! name',
+    # SAME as
+    validate_if => {field => 'name', max_in_set => '0 of name'},
 
-  validate_if => {field => 'country', compare => "eq US"},
-  # only if country's value is equal to US
+    validate_if => {field => 'country', compare => "eq US"},
+    # only if country's value is equal to US
 
-  validate_if => {field => 'country', compare => "ne US"},
-  # if country doesn't equal US
+    validate_if => {field => 'country', compare => "ne US"},
+    # if country doesn't equal US
 
-  validate_if => {field => 'password', match => 'm/^md5\([a-z0-9]{20}\)$/'},
-  # if password looks like md5(12345678901234567890)
+    validate_if => {field => 'password', match => 'm/^md5\([a-z0-9]{20}\)$/'},
+    # if password looks like md5(12345678901234567890)
 
-  {
-    field       => 'm/^(\w+)_pass/',
-    validate_if => '$1_user',
-    required    => 1,
-  }
-  # will validate foo_pass only if foo_user was present.
+    {
+      field       => 'm/^(\w+)_pass/',
+      validate_if => '$1_user',
+      required    => 1,
+    }
+    # will validate foo_pass only if foo_user was present.
 
 The validate_if may also contain an arrayref of validation items.  So that
 multiple checks can be run.  They will be run in order.  validate_if will
 return true only if all options returned true.
 
-  validate_if => ['email', 'phone', 'fax']
+    validate_if => ['email', 'phone', 'fax']
 
 Optionally, if validate_if is an arrayref, it may contain the word
 'OR' as a special keyword.  If the item preceding 'OR' fails validation
 the item after 'OR' will be tested instead.  If the item preceding 'OR'
 passes validation the item after 'OR' will not be tested.
 
-  validate_if => [qw(zip OR postalcode)],
+    validate_if => [qw(zip OR postalcode)],
 
 =item C<required_if>
 
@@ -1428,16 +1444,22 @@ Requires the form field if the condition is satisfied.  The conditions
 available are the same as for validate_if.  This is somewhat the same
 as saying:
 
-  validate_if => 'some_condition',
-  required    => 1
+    validate_if => 'some_condition',
+    required    => 1
 
-  required_if => 'some_condition',
+    required_if => 'some_condition',
 
-  {
-    field       => 'm/^(\w+)_pass/',
-    required_if => '$1_user',
-  }
-  
+If a regex is used for the field name, the required_if
+field will have any match patterns swapped in.
+
+    {
+      field       => 'm/^(\w+)_pass/',
+      required_if => '$1_user',
+    }
+
+This example would require the "foobar_pass" field to be set
+if the "foobar_user" field was passed.
+
 =item C<required>
 
 Requires the form field to have some value.  If the field is not present,
@@ -1456,15 +1478,15 @@ fields that participate in the count.  Also - entries that are not
 defined or do not have length are not counted.  An optional "of" can
 be placed after the number for human readibility.
 
-  min_in_set => "2 of foo bar baz",
-    # two of the fields foo, bar or baz must be set
-    # same as
-  min_in_set => "2 foo bar baz",
-    # same as 
-  min_in_set => "2 OF foo bar baz",
+    min_in_set => "2 of foo bar baz",
+      # two of the fields foo, bar or baz must be set
+      # same as
+    min_in_set => "2 foo bar baz",
+      # same as
+    min_in_set => "2 OF foo bar baz",
 
-  validate_if => {field => 'whatever', max_in_set => '0 of whatever'},
-    # only run validation if there were zero occurances of whatever
+    validate_if => {field => 'whatever', max_in_set => '0 of whatever'},
+      # only run validation if there were zero occurances of whatever
 
 =item C<enum>
 
@@ -1472,44 +1494,44 @@ Allows for checking whether an item matches a set of options.  In perl
 the value may be passed as an arrayref.  In the conf or in perl the
 value may be passed of the options joined with ||.
 
-  {
-    field => 'password_type',
-    enum  => 'plaintext||crypt||md5', # OR enum => [qw(plaintext crypt md5)],
-  }
+    {
+      field => 'password_type',
+      enum  => 'plaintext||crypt||md5', # OR enum => [qw(plaintext crypt md5)],
+    }
 
 =item C<equals>
 
 Allows for comparison of two form elements.  Can have an optional !.
 
-  {
-    field  => 'password',
-    equals => 'password_verify',
-  },
-  {
-    field  => 'domain1',
-    equals => '!domain2', # make sure the fields are not the same
-  }
+    {
+      field  => 'password',
+      equals => 'password_verify',
+    },
+    {
+      field  => 'domain1',
+      equals => '!domain2', # make sure the fields are not the same
+    }
 
 =item C<min_len and max_len>
 
 Allows for check on the length of fields
 
-  {
-    field   => 'site',
-    min_len => 4,
-    max_len => 100,
-  }
+    {
+      field   => 'site',
+      min_len => 4,
+      max_len => 100,
+    }
 
 =item C<match>
 
 Allows for regular expression comparison.  Multiple matches may
 be concatenated with ||.  Available in JS.
 
-  {
-    field   => 'my_ip',
-    match   => 'm/^\d{1,3}(\.\d{1,3})3$/',
-    match_2 => '!/^0\./ || !/^192\./',
-  }
+    {
+      field   => 'my_ip',
+      match   => 'm/^\d{1,3}(\.\d{1,3})3$/',
+      match_2 => '!/^0\./ || !/^192\./',
+    }
 
 =item C<compare>
 
@@ -1517,13 +1539,13 @@ Allows for custom comparisons.  Available types are
 >, <, >=, <=, !=, ==, gt, lt, ge, le, ne, and eq.  Comparisons
 also work in the JS.
 
-  {
-    field    => 'my_number',
-    match    => 'm/^\d+$/',
-    compare1 => '> 100',
-    compare2 => '< 255',
-    compare3 => '!= 150',
-  }
+    {
+      field    => 'my_number',
+      match    => 'm/^\d+$/',
+      compare1 => '> 100',
+      compare2 => '< 255',
+      compare3 => '!= 150',
+    }
 
 =item C<sql>
 
@@ -1532,12 +1554,12 @@ for in the value $self->{dbhs}->{foo} if sql_db_type is set to 'foo',
 otherwise it will default to $self->{dbh}.  If $self->{dbhs}->{foo} or
 $self->{dbh} is a coderef - they will be called and should return a dbh.
 
-  {
-    field => 'username',
-    sql   => 'SELECT COUNT(*) FROM users WHERE username = ?',
-    sql_error_if => 1, # default is 1 - set to 0 to negate result
-    # sql_db_type  => 'foo', # will look for a dbh under $self->{dbhs}->{foo}
-  }
+    {
+      field => 'username',
+      sql   => 'SELECT COUNT(*) FROM users WHERE username = ?',
+      sql_error_if => 1, # default is 1 - set to 0 to negate result
+      # sql_db_type  => 'foo', # will look for a dbh under $self->{dbhs}->{foo}
+    }
 
 =item C<custom>
 
@@ -1548,14 +1570,14 @@ be passed the field name, the form value for that name, and a reference to the
 field validation hash.  If the custom type returns false the element fails
 validation and an error is added.
 
-  {
-    field => 'username',
-    custom => sub {
-      my ($key, $val, $type, $field_val_hash) = @_;
-      # do something here
-      return 0;
-    },
-  }
+    {
+      field => 'username',
+      custom => sub {
+        my ($key, $val, $type, $field_val_hash) = @_;
+        # do something here
+        return 0;
+      },
+    }
 
 =item C<custom_js>
 
@@ -1566,33 +1588,33 @@ the eval'ed javascript will determine if validation passed.  A false value indic
 the value did not pass validation.  A true value indicates that it did.  See
 the t/samples/js_validate_3.html page for a sample of usage.
 
-  {
-    field => 'date',
-    required => 1,
-    match    => 'm|^\d\d\d\d/\d\d/\d\d$|',
-    match_error => 'Please enter date in YYYY/MM/DD format',
-    custom_js => "
-      var t=new Date();
-      var y=t.getYear()+1900;
-      var m=t.getMonth() + 1;
-      var d=t.getDate();
-      if (m<10) m = '0'+m;
-      if (d<10) d = '0'+d;
-      (value > ''+y+'/'+m+'/'+d) ? 1 : 0;
-    ",
-    custom_js_error => 'The date was not greater than today.',
-  }
+    {
+      field => 'date',
+      required => 1,
+      match    => 'm|^\d\d\d\d/\d\d/\d\d$|',
+      match_error => 'Please enter date in YYYY/MM/DD format',
+      custom_js => "
+        var t=new Date();
+        var y=t.getYear()+1900;
+        var m=t.getMonth() + 1;
+        var d=t.getDate();
+        if (m<10) m = '0'+m;
+        if (d<10) d = '0'+d;
+        (value > ''+y+'/'+m+'/'+d) ? 1 : 0;
+      ",
+      custom_js_error => 'The date was not greater than today.',
+    }
 
 =item C<type>
- 
-Allows for more strict type checking.  Many types will be added and
-will be available from javascript as well.  Currently support types
-are CC.
 
-  {
-    field => 'credit_card',
-    type  => 'CC',
-  }
+Allows for more strict type checking.  Currently supported types
+include CC (credit card).  Other types will be added upon request provided
+we can add a perl and a javascript version.
+
+    {
+      field => 'credit_card',
+      type  => 'CC',
+    }
 
 =back
 
@@ -1625,46 +1647,49 @@ a different field.  If the field name was a regex, any patterns will
 be swapped into the delegate_error value. This option is generally only
 useful with the as_hash method of the error object (for inline errors).
 
-  {
-    field => 'zip',
-    match => 'm/^\d{5}/',
-  },
-  {
-    field => 'zip_plus4',
-    match => 'm/^\d{4}/',
-    delegate_error => 'zip',
-  },
-
-  {
-    field => 'm/^(id_[\d+])_user$/',
-    delegate_error => '$1',
-  },
+    {
+      field => 'zip',
+      match => 'm/^\d{5}/',
+    },
+    {
+      field => 'zip_plus4',
+      match => 'm/^\d{4}/',
+      delegate_error => 'zip',
+    },
+    {
+      field => 'm/^(id_[\d+])_user$/',
+      delegate_error => '$1',
+    },
 
 =item C<exclude_js>
 
 This allows the cgi to do checking while keeping the checks from
 being run in JavaScript
 
-  {
-    field      => 'cgi_var',
-    required   => 1,
-    exclude_js => 1,
-  }
+    {
+      field      => 'cgi_var',
+      required   => 1,
+      exclude_js => 1,
+    }
 
 =item C<exclude_cgi>
 
 This allows the js to do checking while keeping the checks from
 being run in the cgi
 
-  {
-    field       => 'js_var',
-    required    => 1,
-    exclude_cgi => 1,
-  }
+    {
+      field       => 'js_var',
+      required    => 1,
+      exclude_cgi => 1,
+    }
 
 =back
 
 =head1 MODIFYING VALIDATION TYPES
+
+The following types will modify the form value before it is processed.
+They work in both the perl and in javascript as well.  The javascript
+version changes the actual value in the form on appropriate form types.
 
 =over 4
 
@@ -1674,22 +1699,22 @@ By default, validate will trim leading and trailing whitespace
 from submitted values.  Set do_not_trim to 1 to allow it to
 not trim.
 
-  {field => 'foo', do_not_trim => 1}
+    {field => 'foo', do_not_trim => 1}
 
 =item C<replace>
 
 Pass a swap pattern to change the actual value of the form.
-Any perl regex can be passed.
+Any perl regex can be passed but it is suggested that javascript
+compatible regex's are used to make generate_js possible.
 
-  {field => 'foo', replace => 's/(\d{3})(\d{3})(\d{3})/($1) $2-$3/'}
+    {field => 'foo', replace => 's/(\d{3})(\d{3})(\d{3})/($1) $2-$3/'}
 
 =item C<default>
 
 Set item to default value if there is no existing value (undefined
-or zero length string).  Maybe someday well add default_if (but that
-would require some odd syntax for both the conditional and the default).
+or zero length string).
 
-  {field => 'country', default => 'EN'}
+    {field => 'country', default => 'EN'}
 
 =item C<to_upper_case> and C<to_lower_case>
 
@@ -1701,14 +1726,14 @@ Requires that the validated field has been also checked with
 an enum, equals, match, compare, custom, or type check.  If the
 field has been checked and there are no errors - the field is "untainted."
 
-This is for use in conjunction with the -T switch.
+This is for use in conjunction with perl's -T switch.
 
 =back
 
 =head1 ERROR OBJECT
 
-Failed validation results in an error object blessed into the class found in
-$ERROR_PACKAGE - which defaults to CGI::Ex::Validate::Error.
+Failed validation results in an error an error object created via the
+new_error method.  The default error class is CGI::Ex::Validate::Error.
 
 The error object has several methods for determining what the errors were.
 
