@@ -193,7 +193,6 @@ sub prepared_print {
     ### layer hashes together
     my $fill = {%$hash_form, %$hash_base, %$hash_comm, %$hash_fill};
     my $swap = {%$hash_form, %$hash_base, %$hash_comm, %$hash_swap, %$hash_errs};
-    $fill = {} if $self->no_fill($step);
 
     ### run the print hook - passing it the form and fill info
     $self->run_hook('print', $step, $swap, $fill);
@@ -507,7 +506,7 @@ sub allow_nested_morph {
 sub morph {
     my $self = shift;
     my $step = shift || return;
-    return if ! (my $allow = $self->allow_morph);;
+    return if ! (my $allow = $self->allow_morph($step));
 
     ### place to store the lineage
     my $lin = $self->{'__morph_lineage'} ||= [];
@@ -519,9 +518,9 @@ sub morph {
         meth  => 'morph',
         found => 'morph',
         time  => time,
-        elpased => 0,
+        elapsed => 0,
     };
-    $self->record_history($hist);
+    push @{ $self->history }, $hist;
 
     if (ref($allow) && ! $allow->{$step}) { # hash - but no step - record for unbless
         $hist->{'found'} .= " (not allowed to morph to that step)";
@@ -529,9 +528,9 @@ sub morph {
     }
 
     ### make sure we haven't already been reblessed
-    if ($#$lin != 0                                # is this the second morph call
-        && (! ($allow = $self->allow_nested_morph) # not true
-            || (ref($allow) && ! $allow->{$step})  # hash - but no step
+    if ($#$lin != 0                                       # is this the second morph call
+        && (! ($allow = $self->allow_nested_morph($step)) # not true
+            || (ref($allow) && ! $allow->{$step})         # hash - but no step
             )) {
         $hist->{'found'} .= $allow ? " (not allowed to nested_morph to that step)" : " (nested_morph disabled)";
         return; # just return - don't die so that we can morph early
@@ -580,7 +579,7 @@ sub unmorph {
         time  => time,
         elapsed => 0,
     };
-    $self->record_history($hist);
+    push @{ $self->history }, $hist;
 
     if ($cur ne $prev) {
         if (my $method = $self->can('fixup_before_unmorph')) {
@@ -1671,17 +1670,6 @@ This only happens if the object was previously morphed into another
 object type.  Before the object is reblessed the method
 "fixup_before_unmorph" is called if it exists.
 
-=item Hook C<-E<gt>file_print>
-
-Returns a filename of the content to be used in the default print
-hook.  Adds method base_dir_rel to hook name_module, and name_step and
-adds on the default file extension found in $self->ext_print which
-defaults to the property $self->{ext_print} which will default to
-".html".  Should return a filename relative to base_dir_abs that can be
-swapped using CGI::Ex::Template, or should be a scalar reference to
-the template content that can be swapped.  This will be used by the
-hook print.
-
 =item Hook C<-E<gt>morph_package>
 
 Used by morph.  Return the package name to morph into during a morph
@@ -1715,76 +1703,41 @@ next step (the current step is skipped).
 
 Defaults to true.  A hook before checking if the info_complete is true.
 
-=item Hook C<-E<gt>info_complete>
+=item info_complete (hook)
 
-Checks to see if all the necessary form elements have been passed in.
-Calls hooks ready_validate, and validate.  Will not be run unless
+Calls the ready_validate hook to see if data is ready to validate.  If
+so it calls the validate hook to validate the data.  Should make
+sure the data is ready and valid.  Will not be run unless
 prepare returns true (default).
 
-=item Hook C<-E<gt>finalize>
+=item fill_template (hook)
 
-Defaults to true. Used to do whatever needs to be done with the data once
-prepare has returned true and info_complete has returned true.  On failure
-the print operations are ran.  On success navigation moves on to the next
-step.
+Arguments are a template and a hashref.  Takes the template that was
+prepared using swap_template, and swaps html form fields using the
+passed hashref.  Overriding this method can control the fill behavior.
 
-=item Hook C<-E<gt>ready_validate>
+=item file_print (hook)
 
-Should return true if enough information is present to run validate.
-Default is to look if $ENV{'REQUEST_METHOD'} is 'POST'.  A common
-usage is to pass a common flag in the form such as 'processing' => 1
-and check for its presence - such as the following:
+Returns a filename of the content to be used in the default print
+hook.  Adds method base_dir_rel to hook name_module, and name_step and
+adds on the default file extension found in $self->ext_print which
+defaults to the property $self->{ext_print} which will default to
+".html".  Should return a filename relative to base_dir_abs that can be
+swapped using CGI::Ex::Template, or should be a scalar reference to
+the template content that can be swapped.  This will be used by the
+hook print.
 
-    sub ready_validate { shift->form->{'processing'} }
+    sub base_dir_abs { '/var/www/templates' }
+    sub base_dir_rel { 'content' }
+    sub name_module { 'recipe' }
+    sub ext_print { 'html' } # default
 
-=item Method C<-E<gt>set_ready_validate>
+    # ->file_print('this_step')
+    # would return 'content/recipe/this_step.html'
+    # the template engine would look in '/var/www/templates'
+    # for a file by that name
 
-Sets that the validation is ready to validate.  Should set the value
-checked by the hook ready_validate.  The following would complement the
-processing flag above:
-
-    sub set_ready_validate {
-        my $self = shift;
-        if (shift) {
-            $self->form->{'processing'} = 1;
-        } else {
-            delete $self->form->{'processing'};
-        }
-    }
-
-Note thate for this example the form key "processing" was deleted.  This
-is so that the call to fill in any html forms won't swap in a value of
-zero for form elements named "processing."
-
-=item Hook C<-E<gt>validate>
-
-Runs validation on the information posted in $self->form.  Uses
-CGI::Ex::Validate for the validation.  Calls the hook hash_validation
-to load validation information.  Should return true if enough
-information is present to run validate.  Errors are stored as a hash
-in $self->{hash_errors} via method add_errors and can be checked for
-at a later time with method has_errors (if the default validate was
-used).
-
-Upon success, it will look through all of the items which
-were validated, if any of them contain the keys append_path, insert_path,
-or replace_path, that method will be called with the value as arguments.
-This allows for the validation to apply redirection to the path.  A
-validation item of:
-
-    {field => 'foo', required => 1, append_path => ['bar', 'baz']}
-
-would append 'bar' and 'baz' to the path should all validation succeed.
-
-=item Hook C<-E<gt>hash_validation>
-
-Returns a hash of the validation information to check form against.
-By default, will look for a filename using the hook file_val and will
-pass it to CGI::Ex::Validate::get_validation.  If no file_val is
-returned or if the get_validation fails, an empty hash will be returned.
-Validation is implemented by ->vob which loads a CGI::Ex::Validate object.
-
-=item Hook C<-E<gt>file_val>
+=item file_val (hook)
 
 Returns a filename containing the validation.  Adds method
 base_dir_rel to hook name_module, and name_step and adds on the
@@ -1792,7 +1745,134 @@ default file extension found in $self->ext_val which defaults to the
 global $EXT_VAL (the property $self->{ext_val} may also be set).  File
 should be readible by CGI::Ex::Validate::get_validation.
 
-=item Hook C<-E<gt>js_validation>
+=item finalize (hook)
+
+Defaults to true. Used to do whatever needs to be done with the data once
+prepare has returned true and info_complete has returned true.  On failure
+the print operations are ran.  On success navigation moves on to the next
+step.
+
+This is normally were there core logic of a script will occur (such as
+adding to a database, or updating a record).  At this point, the data
+should be validated.  It is possible to do additional validation
+and return errors using code such as the following.
+
+    if (! $user_is_unique) {
+        $self->add_errors(username => 'The username was already used');
+        return 0;
+    }
+
+=item form_name (hook)
+
+Return the name of the form to attach the js validation to.  Used by
+js_validation.
+
+=item hash_base (hook)
+
+A hash of base items to be merged with hash_form - such as pulldown
+menus, javascript validation, etc.  It will now also be merged with
+hash_fill, so it can contain default fillins as well.  It can be
+populated by passing a hash to ->add_to_base.  By default a sub
+similar to the following is what is used for hash_common.  Note the
+use of values that are code refs - so that the js_validation and
+form_name hooks are only called if requested:
+
+    sub hash_base {
+        my ($self, $step) = @_;
+        return $self->{hash_base} ||= {
+            script_name   => $ENV{SCRIPT_NAME},
+            js_validation => sub { $self->run_hook('js_validation', $step) },
+            form_name     => sub { $self->run_hook('form_name', $step) },
+        };
+    }
+
+=item hash_common (hook)
+
+Almost identical in function and purpose to hash_base.  It is
+intended that hash_base be used for common items used in various
+scripts inheriting from a common CGI::Ex::App type parent.  Hash_common
+is more intended for step level populating of both swap and fill.
+
+=item hash_errors (hook)
+
+Called in preparation for print after failed prepare, info_complete,
+or finalize.  Should contain a hash of any errors that occured.  Will
+be merged into hash_form before the pass to print.  Eash error that
+occured will be passed to method format_error before being added to
+the hash.  If an error has occurred, the default validate will
+automatically add {has_errors =>1}.  To the error hash at the time of
+validation.  has_errors will also be added during the merge incase the
+default validate was not used.  Can be populated by passing a hash to
+->add_to_errors or ->add_errors.
+
+=item hash_fill (hook)
+
+Called in preparation for print after failed prepare, info_complete,
+or finalize.  Should contain a hash of any items needed to be filled
+into the html form during print.  Items from hash_form, hash_base, and
+hash_common will be layered together.  Can be populated by passing a
+hash to ->add_to_fill.
+
+By default - forms are sticky and data from previous requests will try
+and populate the form.  You can use the fill_template hook to disable
+templating on a single page or on all pages.
+
+This method can be used to prepopulate the form as well (such as on an
+edit step).  If a form fails validation, hash_fill will also be called
+and will only want the submitted form fields to be sticky.  You can
+use the ready_validate hook to prevent prepopulation in these cases as
+follows:
+
+    sub edit_hash_fill {
+        my $self = shift;
+        my $step = shift;
+        return {} if $self->run_hook('ready_validate', $step);
+
+        my %hash;
+
+        ### get previous values from the database
+
+        return \%hash;
+    }
+
+=item hash_form (hook)
+
+Called in preparation for print after failed prepare, info_complete,
+or finalize.  Defaults to ->form.  Can be populated by passing a hash
+to ->add_to_form.
+
+=item hash_swap (hook)
+
+Called in preparation for print after failed prepare, info_complete,
+or finalize.  Should contain a hash of any items needed to be swapped
+into the html during print.  Will be merged with hash_base,
+hash_common, hash_form, and hash_errors.  Can be populated by passing
+a hash to ->add_to_swap.
+
+The hash will be passed as the second argument to swap_template.
+
+=item hash_validation (hook)
+
+Returns a hash of the validation information to check form against.
+By default, will look for a filename using the hook file_val and will
+pass it to CGI::Ex::Validate::get_validation.  If no file_val is
+returned or if the get_validation fails, an empty hash will be returned.
+Validation is implemented by ->vob which loads a CGI::Ex::Validate object.
+
+=item js_uri_path (method)
+
+Return the URI path where the CGI/Ex/yaml_load.js and
+CGI/Ex/validate.js files can be found.  This will default to
+"$ENV{SCRIPT_NAME}/js" if the path method has not been overridden,
+otherwise it will default to "$ENV{SCRIPT_NAME}?step=js&js=" (the
+latter is more friendly with overridden paths).  A default handler for
+the "js" step has been provided in "js_run_step" (this handler will
+nicely print out the javascript found in the js files which are
+included with this distribution - if valid_steps is defined, it must
+include the step "js" - js_run_step will work properly with the
+default "path" handler.
+
+=item js_validation (hook)
 
 Requires YAML.pm.
 Will return Javascript that is capable of validating the form.  This
@@ -1807,104 +1887,29 @@ file will take care of the validation itself.  In order to make use
 of js_validation, it must be added to either the hash_base, hash_common, hash_swap or
 hash_form hook (see examples of hash_base used in this doc).
 
-=item Hook C<-E<gt>form_name>
-
-Return the name of the form to attach the js validation to.  Used by
-js_validation.
-
-=item Method C<-E<gt>js_uri_path>
-
-Return the URI path where the CGI/Ex/yaml_load.js and
-CGI/Ex/validate.js files can be found.  This will default to
-"$ENV{SCRIPT_NAME}/js" if the path method has not been overridden,
-otherwise it will default to "$ENV{SCRIPT_NAME}?step=js&js=" (the
-latter is more friendly with overridden paths).  A default handler for
-the "js" step has been provided in "js_run_step" (this handler will
-nicely print out the javascript found in the js files which are
-included with this distribution - if valid_steps is defined, it must
-include the step "js" - js_run_step will work properly with the
-default "path" handler.
-
-=item Hook C<-E<gt>hash_swap>
-
-Called in preparation for print after failed prepare, info_complete,
-or finalize.  Should contain a hash of any items needed to be swapped
-into the html during print.  Will be merged with hash_base, hash_common, hash_form,
-and hash_errors.  Can be populated by passing a hash to ->add_to_swap.
-
-=item Hook C<-E<gt>hash_form>
-
-Called in preparation for print after failed prepare, info_complete,
-or finalize.  Defaults to ->form.  Can be populated by passing a hash
-to ->add_to_form.
-
-=item Hook C<-E<gt>hash_fill>
-
-Called in preparation for print after failed prepare, info_complete,
-or finalize.  Should contain a hash of any items needed to be filled
-into the html form during print.  Items from hash_form, hash_base, and hash_common
-will be layered on top during a print cycle.  Can be populated by passing
-a hash to ->add_to_fill.
-
-By default - forms are sticky and data from previous requests will
-try and populate the form.  You can use the fill_template hook to disable
-templating on a single page or on all pages.
-
-=item Method C<-E<gt>no_fill>
-
-Passed the current step.  Should return boolean value of whether or not
-to fill in the form on the printed page. (prevents sticky forms)
-
-=item Hook C<-E<gt>hash_errors>
-
-Called in preparation for print after failed prepare, info_complete,
-or finalize.  Should contain a hash of any errors that occured.  Will
-be merged into hash_form before the pass to print.  Eash error that
-occured will be passed to method format_error before being added to
-the hash.  If an error has occurred, the default validate will
-automatically add {has_errors =>1}.  To the error hash at the time of
-validation.  has_errors will also be added during the merge incase the
-default validate was not used.  Can be populated by passing a hash to
-->add_to_errors or ->add_errors.
-
-=item Hook C<-E<gt>hash_common>
-
-Almost identical in function and purpose to hash_base.  It is
-intended that hash_base be used for common items used in various
-scripts inheriting from a common CGI::Ex::App type parent.  Hash_common
-is more intended for step level populating of both swap and fill.
-
-=item Hook C<-E<gt>hash_base>
-
-A hash of base items to be merged with hash_form - such as pulldown
-menues.  It will now also be merged with hash_fill, so it can contain
-default fillins.  Can be populated by passing a hash to ->add_to_base.
-By default the following sub is what is used for hash_common (or something
-similiar).  Note the use of values that are code refs - so that the
-js_validation and form_name hooks are only called if requested:
-
-    sub hash_base {
-        my ($self, $step) = @_;
-        return $self->{hash_base} ||= {
-            script_name   => $ENV{SCRIPT_NAME},
-            js_validation => sub { $self->run_hook('js_validation', $step) },
-            form_name     => sub { $self->run_hook('form_name', $step) },
-        };
-    }
-
-=item Hook C<-E<gt>name_module>
+=item name_module (hook)
 
 Return the name (relative path) that should be prepended to name_step
 during the default file_print and file_val lookups.  Defaults to
-the value in $self->{name_module}.
+the value in $self->{name_module} which in turn defaults to the name
+of the current script.
 
-=item Hook C<-E<gt>name_step>
+    cgi-bin/my_app.pl  =>  my_app
+    cgi/my_app         =>  my_app
+
+=item name_step (hook)
 
 Return the step (appended to name_module) that should used when
 looking up the file in file_print and file_val lookups.  Defaults to
 the current step.
 
-=item Method C<-E<gt>post_loop>
+=item no_fill (method)
+
+Called from fill_template.  Passed the current step.  Should return
+boolean value of whether or not to fill in the form on the printed
+page. (prevents sticky forms on that step)
+
+=item post_loop (method)
 
 Ran after all of the steps in the loop have been processed (if
 prepare, info_complete, and finalize were true for each of the steps).
@@ -1913,40 +1918,104 @@ does not return true, navigation continues by then inserting the step
 $self->default_step and running $self->nav_loop again (recurses) to
 fall back to the default step.
 
-=item Hook C<-E<gt>post_print>
+=item post_print (hook)
 
 A hook which occurs after the printing has taken place.  Is only run
-if the information was not complete.  Useful for printing rows of a
-database query.
+if the information was not complete.  Useful for cases such as
+printing rows of a database query after displaying a query form.
 
-=item Hook C<-E<gt>post_step>
+=item post_step (hook)
 
 Ran at the end of the step's loop if prepare, info_complete, and
 finalize all returned true.  Allows for cleanup.  If a true value is
 returned, execution of navigate is returned and no more steps are
 processed.
 
-=item Hook C<-E<gt>prepared_print>
+=item prepared_print (hook)
 
 Called when any of prepare, info_complete, or finalize fail.  Prepares
 a form hash and a fill hash to pass to print.  The form hash is primarily
 intended for use by the templating system.  The fill hash is intended
 to be used to fill in any html forms.
 
-=item Hook C<-E<gt>print>
+=item print (hook)
 
 Take the information generated by prepared_print, format it, and print it out.
-Default incarnation uses CGI::Ex::Template which is compatible with Template::Toolkit.
-Arguments are: step name (used to call the file_print hook), swap hashref (passed to
-call swap_template), and fill hashref (passed to fill_template).
+Default incarnation uses CGI::Ex::Template which is compatible with
+Template::Toolkit.  Arguments are: step name (used to call the
+file_print hook), swap hashref (passed to call swap_template), and
+fill hashref (passed to fill_template).
 
-During the print call, the file_print hook is called which should return a filename or
-a scalar reference to the template content is
+During the print call, the file_print hook is called which should
+return a filename or a scalar reference to the template content is
 
-=item Method C<-E<gt>stash>
+=item ready_validate (hook)
+
+Should return true if enough information is present to run validate.
+Default is to look if $ENV{'REQUEST_METHOD'} is 'POST'.  A common
+usage is to pass a common flag in the form such as 'processing' => 1
+and check for its presence - such as the following:
+
+    sub ready_validate { shift->form->{'processing'} }
+
+Changing the behavior of ready_validate can help in making wizard type
+applications.
+
+=item set_ready_validate (method)
+
+Sets that the validation is ready to validate.  Should set the value
+checked by the hook ready_validate.  The following would complement the
+processing flag above:
+
+    sub set_ready_validate {
+        my $self = shift;
+        if (shift) {
+            $self->form->{'processing'} = 1;
+        } else {
+            delete $self->form->{'processing'};
+        }
+    }
+
+Note that for this example the form key "processing" was deleted.  This
+is so that the call to fill in any html forms won't swap in a value of
+zero for form elements named "processing."
+
+=item stash (method)
 
 Returns a hashref that can store arbitrary user space data without
 clobering the internals of the application.
+
+=item swap_template (hook)
+
+Takes the template and hash of variables prepared in print, and processes them
+through the current template engine (default engine is CGI::Ex::Template).
+
+Arguments are the template and the swap hashref.  The template can be either a
+scalar reference to the actual content, or the filename of the content.  If the
+filename is specified - it should be relative to base_dir_abs.
+
+=item validate (hook)
+
+Runs validation on the information posted in $self->form.  Uses
+CGI::Ex::Validate for the default validation.  Calls the hook
+hash_validation to load validation information.  Should return true if
+the form passed validation and false otherwise.  Errors are stored as
+a hash in $self->{hash_errors} via method add_errors and can be
+checked for at a later time with method has_errors (if the default
+validate was used).
+
+There are many ways and types to validate the data.  Please see the L<CGI::Ex::Validate>
+module.
+
+Upon success, it will look through all of the items which were
+validated, if any of them contain the keys append_path, insert_path,
+or replace_path, that method will be called with the value as
+arguments.  This allows for the validation to apply redirection to the
+path.  A validation item of:
+
+    {field => 'foo', required => 1, append_path => ['bar', 'baz']}
+
+would append 'bar' and 'baz' to the path should all validation succeed.
 
 =back
 
@@ -1974,19 +2043,19 @@ different.
 Seemingly the most well know of application builders.
 CGI::Ex::App is different in that it:
 
-  * Uses Template::Toolkit by default
+  * Uses Template::Toolkit compatible CGI::Ex::Template by default
       CGI::Ex::App can easily use another toolkit by simply
-      overriding the ->print method.
+      overriding the ->swap_template method.
       CGI::Application uses HTML::Template.
   * Offers integrated data validation.
-      CGI::Application has had custom addons created that
+      CGI::Application has had custom plugins created that
       add some of this functionality.  CGI::Ex::App has the benefit
-      that once validation is created,
+      that validation is automatically available in javascript as well.
   * Allows the user to print at any time (so long as proper headers
       are sent.  CGI::Application requires data to be pipelined.
   * Offers hooks into the various phases of each step ("mode" in
-      CGI::Application lingo).  CGI::Application essentially
-      provides ->runmode
+      CGI::Application lingo).  CGI::Application provides only ->runmode
+      which is only a dispatch.
   * Support for easily jumping around in navigation steps.
   * Support for storing some steps in another package.
 
@@ -2004,7 +2073,8 @@ CGI::Application.
 There are actually many simularities.  One of the nicest things about
 CGI::Prototype is that it is extremely short (very very short).  The
 ->activate starts the application in the same manner as CGI::Ex::App's
-=>navigate call.  Both use Template::Tookit as the default template system.
+->navigate call.  Both use Template::Tookit as the default template
+system (CGI::Ex::App uses CGI::Ex::Template which is TT compatible).
 CGI::Ex::App is differrent in that it:
 
   * Offers integrated data validation.
@@ -2013,9 +2083,405 @@ CGI::Ex::App is differrent in that it:
       that once validation is created,
   * Offers more hooks into the various phases of each step.
   * Support for easily jumping around in navigation steps.
-  * Support for storing some steps in another package.
+  * Support for storing only some steps in another package.
 
 =back
+
+
+=head1 SIMPLE EXTENDED EXAMPLE
+
+The following example shows the creation of a basic recipe
+database.  It requires the use of DBD::SQLite, but that is all.
+Once you have configured the db_file and base_dir_abs methods
+of the "recipe" file, you will have a working script that
+does CRUD for the recipe table.  The observant reader may ask - why
+not use Catalyst or Ruby on Rails?  The observant progammer will
+reply that making a framework do something simple is easy, but making
+it do something complex is complex and any framework that tries to
+do the those complex things for you is too complex.  CGI::Ex::App
+lets you write the complex logic but gives you the ability to
+not worry about the boring details such as template engines,
+or sticky forms, or cgi parameters, or data validation.  Once
+you are setup and are running, you are only left with providing
+the core logic of the application.
+
+    ### File: cgi-bin/recipe
+    ### --------------------------------------------
+    #!/usr/bin/perl -w
+
+    use lib qw(/var/www/lib);
+    use Recipe;
+    Recipe->navigate;
+
+
+    ### File: /var/www/lib/Recipe.pm
+    ### --------------------------------------------
+    package Recipe;
+
+    use strict;
+    use base qw(CGI::Ex::App);
+    use CGI::Ex::Dump qw(debug);
+
+    use DBI;
+    use DBD::SQLite;
+
+    ###------------------------------------------###
+
+    sub post_navigate {
+        # show what happened
+        debug shift->dump_history;
+    }
+
+    sub base_dir_abs { '/var/www/templates' }
+
+    sub base_dir_rel { 'content' }
+
+    sub db_file { '/var/www/recipe.sqlite' }
+
+    sub dbh {
+        my $self = shift;
+        if (! $self->{'dbh'}) {
+            my $file   = $self->db_file;
+            my $exists = -e $file;
+            $self->{'dbh'} = DBI->connect("dbi:SQLite:dbname=$file", '', '', {RaiseError => 1});
+            $self->create_tables if ! $exists;
+        }
+        return $self->{'dbh'};
+    }
+
+    sub create_tables {
+        my $self = shift;
+
+        $self->dbh->do("CREATE TABLE recipe (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title VARCHAR(50) NOT NULL,
+            ingredients VARCHAR(255) NOT NULL,
+            directions VARCHAR(255) NOT NULL,
+            date_added VARCHAR(20) NOT NULL
+        )");
+    }
+
+    ###----------------------------------------------------------------###
+
+    sub main_info_complete { 0 }
+
+    sub main_hash_swap {
+        my $self = shift;
+
+        my $s = "SELECT id, title, date_added
+                   FROM recipe
+                  ORDER BY date_added";
+        my $data = $self->dbh->selectall_arrayref($s);
+        my @data = map {my %h; @h{qw(id title date_added)} = @$_; \%h} @$data;
+
+        return {
+            recipies => \@data,
+        };
+    }
+
+    ###----------------------------------------------------------------###
+
+    sub add_name_step { 'edit' }
+
+    sub add_hash_validation {
+        return {
+            'group order' => [qw(title ingredients directions)],
+            title => {
+                required => 1,
+                max_len  => 30,
+            },
+            ingredients => {
+                required => 1,
+                max_len  => 255,
+            },
+            directions => {
+                required => 1,
+                max_len  => 255,
+            },
+        };
+    }
+
+    sub add_finalize {
+        my $self = shift;
+        my $form = $self->form;
+
+        my ($count) = $self->dbh->selectrow_array("SELECT COUNT(*) FROM recipe WHERE title = ?", {}, $form->{'title'});
+        if ($count) {
+            $self->add_errors(title => 'A recipe by this title already exists');
+            return 0;
+        }
+
+        my $s = "INSERT INTO recipe (title, ingredients, directions, date_added) VALUES (?, ?, ?, ?)";
+        $self->dbh->do($s, {}, $form->{'title'}, $form->{'ingredients'}, $form->{'directions'}, scalar(localtime));
+
+        $self->add_to_form(success => "Recipe added to the database");
+
+        return 1;
+    }
+
+    ###----------------------------------------------------------------###
+
+    sub edit_skip { shift->form->{'id'} ? 0 : 1 }
+
+    sub edit_hash_common {
+        my $self = shift;
+        return {} if $self->ready_validate;
+
+        my $sth  = $self->dbh->prepare("SELECT * FROM recipe WHERE id = ?");
+        $sth->execute($self->form->{'id'});
+        my $hash = $sth->fetchrow_hashref;
+
+        return $hash;
+    }
+
+    sub edit_hash_validation { shift->add_hash_validation(@_) }
+
+    sub edit_finalize {
+        my $self = shift;
+        my $form = $self->form;
+
+        my ($count) = $self->dbh->selectrow_array("SELECT COUNT(*) FROM recipe WHERE title = ? AND id != ?", {}, $form->{'title'}, $form->{'id'});
+        if ($count) {
+            $self->add_errors(title => 'A recipe by this title already exists');
+            return 0;
+        }
+
+        my $s = "UPDATE recipe SET title = ?, ingredients = ?, directions = ? WHERE id = ?";
+        $self->dbh->do($s, {}, $form->{'title'}, $form->{'ingredients'}, $form->{'directions'}, $form->{'id'});
+
+        $self->add_to_form(success => "Recipe updated in the database");
+
+        return 1;
+    }
+
+    ###----------------------------------------------------------------###
+
+    sub view_skip { shift->edit_skip(@_) }
+
+    sub view_hash_common { shift->edit_hash_common(@_) }
+
+    ###----------------------------------------------------------------###
+
+    sub delete_skip { shift->edit_skip(@_) }
+
+    sub delete_info_complete { 1 }
+
+    sub delete_finalize {
+        my $self = shift;
+        $self->dbh->do("DELETE FROM recipe WHERE id = ?", {}, $self->form->{'id'});
+
+        $self->add_to_form(success => "Recipe deleted from the database");
+        return 1;
+    }
+
+    1;
+
+    __END__
+
+
+
+    File: /var/www/templates/content/recipe/main.html
+    ### --------------------------------------------
+    <html>
+    <head>
+    <title>Recipe DB</title>
+    </head>
+    <h1>Recipe DB</h1>
+
+    [% IF success %]<span style="color:darkgreen"><h2>[% success %]</h2></span>[% END %]
+
+    <table style="border:1px solid blue">
+    <tr><th>#</th><th>Title</th><th>Date Added</th></tr>
+
+    [% FOR row IN recipies %]
+    <tr>
+      <td>[% loop.count %].</td>
+      <td><a href="[% script_name %]/view?id=[% row.id %]">[% row.title %]</a>
+        (<a href="[% script_name %]/edit?id=[% row.id %]">Edit</a>)
+      </td>
+      <td>[% row.date_added %]</td>
+    </tr>
+    [% END %]
+
+    <tr><td colspan=2 align=right><a href="[% script_name %]/add">Add new recipe</a></td></tr>
+    </table>
+
+    </html>
+
+
+    File: /var/www/templates/content/recipe/edit.html
+    ### --------------------------------------------
+    <html>
+    <head>
+    <title>[% step == 'add' ? "Add" : "Edit" %] Recipe</title>
+    </head>
+    <h1>[% step == 'add' ? "Add" : "Edit" %] Recipe</h1>
+
+    <form method=post name=[% form_name %]>
+    <input type=hidden name=step>
+
+    <table>
+
+    [% IF step != 'add' ~%]
+    <tr>
+      <td><b>Id:</b></td><td>[% id %]</td></tr>
+      <input type=hidden name=id>
+    </tr>
+    <tr>
+      <td><b>Date Added:</b></td><td>[% date_added %]</td></tr>
+    </tr>
+    [% END ~%]
+
+    <tr>
+      <td valign=top><b>Title:</b></td>
+      <td><input type=text name=title>
+          <span style='color:red' id=title_error>[% title_error %]</span></td>
+    </tr>
+    <tr>
+      <td valign=top><b>Ingredients:</b></td>
+      <td><textarea name=ingredients rows=10 cols=40 wrap=physical></textarea>
+          <span style='color:red' id=ingredients_error>[% ingredients_error %]</span></td>
+    </tr>
+    <tr>
+      <td valign=top><b>Directions:</b></td>
+      <td><textarea name=directions rows=10 cols=40 wrap=virtual></textarea>
+          <span style='color:red' id=directions_error>[% directions_error %]</span></td>
+    </tr>
+    <tr><td colspan=2 align=right><input type=submit value="[% step == 'add' ? 'Add' : 'Update' %]"></td></tr>
+    </table>
+    </form>
+
+    (<a href="[% script_name %]">Main Menu</a>)
+    [% IF step != 'add' %](<a href="[% script_name %]/delete?id=[% id %]">Delete this recipe</a>)[% END %]
+
+    [% js_validation %]
+
+    </html>
+
+
+    File: /var/www/templates/content/recipe/view.html
+    ### --------------------------------------------
+    <html>
+    <head>
+    <title>[% title %] - Recipe DB</title>
+    </head>
+    <h1>[% title %]</h1>
+    <h3>Date Added: [% date_added %]</h3>
+
+    <h2>Ingredients</h2>
+    [% ingredients %]
+
+    <h2>Directions</h2>
+    [% directions %]
+
+    <hr>
+    (<a href="[% script_name %]">Main Menu</a>) (<a href="[% script_name %]/edit?id=[% id %]">Edit this recipe</a>)
+
+    </html>
+
+    ### --------------------------------------------
+
+Notes:
+
+The dbh method returns an SQLite dbh handle and auto creates the
+schema.  You will normally want to use MySQL or Oracle, or Postgres
+and you will want your schema to NOT be autocreated.
+
+This sample uses hand rolled SQL.  Class::DBI or a similar module
+might make this example shorter.  However, more complex cases that
+need to involve two or three or four tables would probably be better
+off using the hand crafted SQL.
+
+This sample uses SQL.  You could write the application to use whatever
+storage you want - or even to do nothing with the submitted data.
+
+We had to write our own HTML (Catalyst and Ruby on Rails do this for
+you).  For most development work - the HTML should be in a static
+location so that it can be worked on by designers.  It is nice that
+the other frameworks give you stub html - but that is all it is.  It
+is worth about as much as copying and pasting the above examples.  All
+worthwhile HTML will go through a non-automated design/finalization
+process.
+
+The edit_hash_common returns an empty hashref if the form was ready to
+validate.  When hash_common is called and the form is ready to
+validate, that means the form failed validation and is now printing
+out the page.  To let us fall back and use the "sticky" form fields
+that were just submitted, we need to not provide values in the
+hash_common method.
+
+We use hash_common.  Values from hash_common are used for both
+template swapping and filling.  We could've used hash_swap and
+hash_fill independently.
+
+The hook main_info_complete is hard coded to 0.  This basically says
+that we will never try and validate or finalize the main step - which
+is most often the case.
+
+=head1 SEPARATING STEPS INTO SEPARATE FILES
+
+It may be useful sometimes to separate some or all of the steps of an
+application into separate files.  This is the way that CGI::Prototype
+works.  This is useful in cases were some steps and their hooks are
+overly large - or are seldom used.
+
+The following modifications can be made to the previous "recipe db"
+example that would move the "delete" step into its own file.  Similar
+actions can be taken to break other steps into their own file as well.
+
+
+    ### File: /var/www/lib/Recipe.pm
+    ### Same as before but add the following line:
+    ### --------------------------------------------
+
+    sub allow_morph { 1 }
+
+
+    ### File: /var/www/lib/Recipe/Delete.pm
+    ### Remove the delete_* subs from lib/Recipe.pm
+    ### --------------------------------------------
+    package Recipe::Delete;
+
+    use strict;
+    use base qw(Recipe);
+
+    sub skip { shift->edit_skip(@_) }
+
+    sub info_complete { 1 }
+
+    sub finalize {
+        my $self = shift;
+        $self->dbh->do("DELETE FROM recipe WHERE id = ?", {}, $self->form->{'id'});
+
+        $self->add_to_form(success => "Recipe deleted from the database");
+        return 1;
+    }
+
+
+Notes:
+
+The hooks that are called (skip, info_complete, and finalize) do not
+have to be prefixed with the step name because they are now in their
+own individual package space.  However, they could still be named
+delete_skip, delete_info_complete, and delete_finalize and the
+run_hook method will find them (this would allow several steps with
+the same "morph_package" to still be stored in the same external
+module).
+
+The method allow_morph is passed the step that we are attempting to
+morph to.  If allow_morph returns true every time, then it will try
+and require the extra packages everytime that step is ran.  You could
+limit the morphing process to run only on certain steps by using code
+similiar to the following:
+
+    sub allow_morph {
+        my ($self, $step) = @_;
+        return ($step eq 'delete') ? 1 : 0;
+    }
+
+The CGI::Ex::App temporarily blesses the object into the
+"morph_package" for the duration of the step and reblesses it into the
+original package upon exit.
 
 =head1 THANKS
 
