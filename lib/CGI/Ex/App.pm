@@ -40,14 +40,15 @@ sub init {}
 sub navigate {
     my $self = shift;
     my $args = ref($_[0]) ? shift : {@_};
+
     $self = $self->new($args) if ! ref $self;
+
+    $self->{'_time'} = time;
 
     eval {
 
-        $self->{'_time'} = time;
-
         ### a chance to do things at the very beginning
-        return $self if $self->pre_navigate;
+        return $self if ! $self->{'_no_pre_navigate'} && $self->pre_navigate;
 
         ### run the step loop
         eval {
@@ -59,13 +60,14 @@ sub navigate {
             die $@ if $@ ne "Long Jump\n";
         }
 
-        $self->{'_elapsed'} = time - $self->{'_time'};
-
         ### one chance to do things at the very end
-        $self->post_navigate;
+        $self->post_navigate if ! $self->{'_no_post_navigate'};
+
 
     };
     $self->handle_error($@) if $@; # catch any errors
+
+    $self->{'_time'} = time;
 
     return $self;
 }
@@ -385,8 +387,8 @@ sub first_step {
 
 ###----------------------------------------------------------------###
 
-sub pre_loop {}
-sub post_loop {}
+sub pre_loop { 0 }
+sub post_loop { 0 }
 
 ### return the appropriate hook to call
 sub find_hook {
@@ -446,8 +448,9 @@ sub dump_history {
     my $all  = shift || 0;
     my $hist = $self->history;
     my $dump = [];
-    push @$dump, sprintf("Elapsed: %.4f", $self->{'_elapsed'} || ($self->{'_time'} - time));
+    push @$dump, sprintf("Elapsed: %.4f", time - $self->{'_time'});
 
+    ### show terse - yet informative info
     foreach my $row (@$hist) {
         if (! ref($row)
             || ref($row) ne 'HASH'
@@ -886,11 +889,23 @@ sub hash_validation {
 sub hash_base {
     my ($self, $step) = @_;
 
-    return $self->{'hash_base'} ||= {
-        script_name   => $ENV{'SCRIPT_NAME'} || $0,
-        path_info     => $ENV{'PATH_INFO'}   || '',
-        js_validation => sub { $self->run_hook('js_validation', $step) },
-        form_name     => sub { $self->run_hook('form_name', $step) },
+    return $self->{'hash_base'} ||= do {
+        ### create a weak copy of self to use in closures
+        my $copy;
+        if (eval {require Scalar::Util} && defined &Scalar::Util::weaken) {
+            $copy = $self;
+            Scalar::Util::weaken($copy);
+        } else {
+            $copy = bless {%$self}, ref($self); # hackish way to avoid circular refs on older perls (pre 5.8)
+        }
+
+        my $hash = {
+            script_name     => $ENV{'SCRIPT_NAME'} || $0,
+            path_info       => $ENV{'PATH_INFO'}   || '',
+            js_validation   => sub { $copy->run_hook('js_validation', $step, shift) },
+            form_name       => sub { $copy->run_hook('form_name', $step) },
+            $self->step_key => $step,
+        }; # return of the do
     };
 }
 
@@ -976,7 +991,8 @@ sub js_run_step {
     $file = ($file =~  m!^(?:/js/|/)?(\w+(?:/\w+)*\.js)$!) ? $1 : '';
 
     $self->cgix->print_js($file);
-    $self->exit_nav_loop;
+    $self->{'_no_post_navigate'} = 1;
+    return 1;
 }
 
 ###----------------------------------------------------------------###
@@ -1011,10 +1027,13 @@ developer's way.  Your milage may vary.
 More examples will come with time.  Here are the basics for now.
 This example script would most likely be in the form of a cgi, accessible via
 the path http://yourhost.com/cgi-bin/my_app (or however you do CGIs on
-your system.  About the best way to get started is to pasted the following
-code into a cgi script and try it out.  A detailed walk through follows in the
-next section.
+your system.  About the best way to get started is to paste the following
+code into a cgi script (such as cgi-bin/my_app) and try it out.  A detailed
+walk-through follows in the next section.  There are other longer examples near
+the end of this document.
 
+    ### File: /var/www/cgi-bin/my_app (depending upon Apache configuration)
+    ### --------------------------------------------
     #!/usr/bin/perl -w
 
     use strict;
@@ -1030,8 +1049,8 @@ next section.
 
     ###------------------------------------------###
 
-    sub post_print {
-        # show what happened - useful for debugging the app
+    sub post_navigate {
+        # show what happened
         debug shift->dump_history;
     }
 
@@ -1040,31 +1059,55 @@ next section.
         # non-reference means filename
         return \ "<h1>Main Step</h1>
           <form method=post name=[% form_name %]>
-          <input type=text name=foo>
-          <span style='color:red' id=foo_error>[% foo_error %]</span><br>
-          <input type=submit>
+          <table>
+          <tr>
+            <td><b>Username:</b></td>
+            <td><input type=text name=username><span style='color:red' id=username_error>[% username_error %]</span></td>
+          </tr><tr>
+            <td><b>Password:</b></td>
+            <td><input type=text name=password><span style='color:red' id=password_error>[% password_error %]</span></td>
+          </tr><tr>
+            <td><b>Verify Password:</b></td>
+            <td><input type=text name=password2><span style='color:red' id=password2_error>[% password2_error %]</span></td>
+          </tr>
+          <tr><td colspan=2 align=right><input type=submit></td></tr>
+          </table>
           </form>
           [% js_validation %]
-          <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
         ";
     }
 
     sub main_hash_validation {
         return {
-            foo => {
+            'general no_alert'   => 1,
+            'general no_confirm' => 1,
+            'group order' => [qw(username password password2)],
+            username => {
                 required => 1,
-                min_len  =>  2,
-                max_len  => 20,
-                match    => 'm/^([a-z]\\d)+[a-z]?\$/',
-                match_error => 'Characters must alternate letter digit letter.',
-            }
+                min_len  =>  3,
+                max_len  => 30,
+                match    => 'm/^\w+$/',
+                match_error => 'You may only use letters and numbers.',
+            },
+            password => {
+                required => 1,
+                min_len  => 6,
+            },
+            password2 => {
+                equals => 'password',
+            },
         };
     }
 
     sub main_finalize {
         my $self = shift;
 
-        debug $self->form, "Do something useful with form here";
+        if ($self->form->{'username'} eq 'bar') {
+            $self->add_errors(username => 'A trivial check to say the username cannot be "bar"');
+            return 0;
+        }
+
+        debug $self->form, "Do something useful with form here in the finalize hook.";
 
         ### add success step
         $self->add_to_swap({success_msg => "We did something"});
@@ -1074,23 +1117,13 @@ next section.
     }
 
     sub success_file_print {
-        \ "<h1>Success Step</h1> All done.<br>
-           ([% success_msg %])<br>
-           (foo = [% foo %])";
+        \ "<div style=background:lightblue>
+           <h1>Success Step - [% success_msg %]</h1>
+           Username: <b>[% username %]</b><br>
+           Password: <b>[% password %]</b><br>
+           </div>
+          ";
     }
-
-    sub valid_steps { {success => 1} }
-      # the default_step "main" and the js_step "js" are valid paths
-
-    ### not necessary - this is the default hash_base
-    # sub hash_base { # used to include js_validation
-    #     my ($self, $step) = @_;
-    #     return $self->{'hash_base'} ||= {
-    #         script_name   => $ENV{'SCRIPT_NAME'} || '',
-    #         js_validation => sub { $self->run_hook('js_validation', $step) },
-    #         form_name     => sub { $self->run_hook('form_name', $step) },
-    #     };
-    # }
 
     __END__
 
