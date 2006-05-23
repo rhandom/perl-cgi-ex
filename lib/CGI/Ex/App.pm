@@ -435,7 +435,7 @@ sub run_hook {
     push @{ $self->history }, $hist;
 
     $hist->{'level'} = $self->{'_level'};
-    local $self->{'_level'} = 1 + $self->{'_level'} || 0;
+    local $self->{'_level'} = 1 + ($self->{'_level'} || 0);
 
     $hist->{'elapsed'}  = time - $hist->{'time'};
 
@@ -1027,11 +1027,11 @@ __END__
 
 =head1 DESCRIPTION
 
-Fill in the blanks and get a ready made CGI.  This module is somewhat
-similar in spirit to CGI::Application, CGI::Path, and CGI::Builder and any
-other "CGI framework."  As with the others, CGI::Ex::App tries to do as
-much of the mundane things, in a simple manner, without getting in the
-developer's way.  Your milage may vary.
+Fill in the blanks and get a ready made web application.  This module
+is somewhat similar in spirit to CGI::Application, CGI::Path, and
+CGI::Builder and any other "CGI framework."  As with the others,
+CGI::Ex::App tries to do as much of the mundane things, in a simple
+manner, without getting in the developer's way.  Your milage may vary.
 
 If you build applications that submit user information, validate it,
 re-display it, fill in forms, or separate logic into separate modules,
