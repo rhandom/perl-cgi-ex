@@ -540,6 +540,66 @@ sub fixup_after_morph {}
 sub fixup_before_unmorph {}
 
 ###----------------------------------------------------------------###
+### allow for authentication
+
+sub navigate_authenticated {
+    my $self = shift;
+    my $args = ref($_[0]) ? shift : {@_};
+
+    $self = $self->new($args) if ! ref $self;
+
+    $self->require_auth || return;
+
+    return $self->navigate;
+}
+
+sub auth_required {
+    my $self = shift;
+    $self->{'auth_required'} = shift if @_ == 1;
+    return $self->{'auth_required'};
+}
+
+sub is_authed {
+    my $self = shift;
+    $self->{'is_authed'} = shift if @_ == 1;
+    return $self->{'is_authed'};
+}
+
+sub require_auth {
+    my $self = shift;
+    return 1 if $self->is_authed;
+
+    $self->auth_required(1);
+
+    require CGI::Ex::Auth;
+    my $obj  = CGI::Ex::Auth->get_valid_auth($self->auth_args) || return;
+    my $data = $obj->last_auth_data || return;
+
+    $self->auth_data($data);
+    $self->is_authed(1);
+
+    return 1;
+}
+
+sub auth_data {
+    my $self = shift;
+    $self->{'auth_data'} = shift if @_ == 1;
+    return $self->{'auth_data'} || die "Missing auth data";
+}
+
+sub auth_args {
+    my $self = shift;
+    return {
+        cgix             => $self->cgix,
+        form             => $self->form,
+        cookies          => $self->cookies,
+        template_args    => $self->template_args('authentication'),
+        js_uri_path      => $self->js_uri_path,
+        get_pass_by_user => sub { '123qwe' },
+    };
+}
+
+###----------------------------------------------------------------###
 ### a few standard base accessors
 
 sub form {
@@ -576,24 +636,6 @@ sub vob_args {
     my $self = shift;
     return {
         cgix    => $self->cgix,
-    };
-}
-
-sub auth {
-    my $self = shift;
-    $self->{'auth'} = shift if @_ == 1;
-    return $self->{'auth'} ||= do {
-        require CGI::Ex::Auth;
-        CGI::Ex::Auth->new($self->auth_args); # return of the do
-    };
-}
-
-sub auth_args {
-    my $self = shift;
-    return {
-        cgix    => $self->cgix,
-        form    => $self->form,
-        cookies => $self->cookies,
     };
 }
 
