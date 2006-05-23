@@ -691,7 +691,8 @@ sub swap_template {
     my ($self, $step, $file, $swap) = @_;
 
     require CGI::Ex::Template;
-    my $t = CGI::Ex::Template->new($self->template_args($step));
+    my $args = $self->run_hook('template_args');
+    my $t = CGI::Ex::Template->new($args);
 
     my $out = '';
     $t->process($file, $swap, \$out) || die $t->error;
@@ -713,9 +714,15 @@ sub fill_template {
     return if ! $fill || $self->no_fill($step);
 
     ### fill in any forms
+    my $args = $self->run_hook('fill_args', $step);
+    local $args->{'text'} = $outref;
+    local $args->{'form'} = $fill;
+
     require CGI::Ex::Fill;
-    CGI::Ex::Fill::form_fill($outref, $fill);
+    CGI::Ex::Fill::fill($args);
 }
+
+sub fill_args { {} }
 
 sub no_fill { shift->{'no_fill'} }
 
@@ -1412,7 +1419,9 @@ during the run_step hook.
                 ->print (hook - passed current step, merged swap hash, and merged fill)
                      ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
                      ->swap_template (hook - processes the file with CGI::Ex::Template)
+                          ->template_args (hook - passed to CGI::Ex::Template->new)
                      ->fill_template (hook - fills the any forms with CGI::Ex::Fill)
+                          ->fill_args (hook - passed to CGI::Ex::Fill::fill)
                      ->print_out (hook - print headers and the content to STDOUT)
 
             ->post_print (hook - used for anything after the print process)
@@ -1579,7 +1588,9 @@ called is "view".
             "                view - name_module - name_module - 0.00007 - recipe",
             "                view - name_step - name_step - 0.00004 - view",
             "            view - swap_template - swap_template - 0.00161 - <html> ...",
+            "                view - template_args - template_args - 0.00008 - HASH(0x865abf8)",
             "            view - fill_template - fill_template - 0.00018 - 1",
+            "                view - fill_args - fill_args - 0.00003 - {}",
             "            view - print_out - print_out - 0.00015 - 1",
             "    view - post_print - post_print - 0.00003 - 0"
     ];
@@ -1628,11 +1639,22 @@ Called by the default new method.  Allows for any object
 initilizations that may need to take place.  Default action does
 nothing.
 
+=item fill_args (hook)
+
+Returns a hashref of args that will be passed to the CGI::Ex::Fill::fill.
+It is augmented with the template to swap and the fill hash.  This
+could be useful if you needed to only swap a particular form on the template
+page.  Arguments are passed directly to the fill function.
+
+   sub fill_args { {target => 'my_form'} }
+
 =item fill_template (hook)
 
 Arguments are a template and a hashref.  Takes the template that was
 prepared using swap_template, and swaps html form fields using the
 passed hashref.  Overriding this method can control the fill behavior.
+
+Calls the fill_args hook prior to calling CGI::Ex::Fill::fill
 
 =item file_print (hook)
 
@@ -2285,6 +2307,19 @@ through the current template engine (default engine is CGI::Ex::Template).
 Arguments are the template and the swap hashref.  The template can be either a
 scalar reference to the actual content, or the filename of the content.  If the
 filename is specified - it should be relative to base_dir_abs.
+
+=item template_args (hook)
+
+Returns a hashref of args that will be passed to the "new" method of CGI::Ex::Template.
+By default this hashref contains INCLUDE_PATH which is set equal to base_dir_abs.
+It can be augmented with any arguments that CGI::Ex::Template would understand.
+
+   sub template_args {
+       return {
+           INCLUDE_PATH => '/my/own/include/path',
+           WRAPPER => 'wrappers/main_wrapper.html',
+       };
+   }
 
 =item unmorph (method)
 
