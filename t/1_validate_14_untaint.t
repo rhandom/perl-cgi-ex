@@ -31,10 +31,11 @@ my $form = {};
 $form->{'foo'} = "123$taint";
 $form->{'bar'} = "456$taint";
 $form->{'baz'} = "789";
-if (!  is_tainted($form->{'foo'})
-    || is_tainted($form->{'baz'})) {
+if (!  is_tainted($form->{'foo'})) {
+    skip("Tainted hash key didn't work right", 14);
+} elsif (is_tainted($form->{'baz'})) {
     # untaint checking doesn't really work
-    skip("Hashes with mixed taint don't work right (older perls ?)", 14);
+    skip("Hashes with mixed taint don't work right", 14);
 }
 
 ###----------------------------------------------------------------###
