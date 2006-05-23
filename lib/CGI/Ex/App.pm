@@ -18,8 +18,6 @@ BEGIN {
     $VERSION = '2.00';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
-
-
 }
 
 sub croak {
@@ -1035,12 +1033,14 @@ other "CGI framework."  As with the others, CGI::Ex::App tries to do as
 much of the mundane things, in a simple manner, without getting in the
 developer's way.  Your milage may vary.
 
-If you build applications that submit user information, validated it,
+If you build applications that submit user information, validate it,
 re-display it, fill in forms, or separate logic into separate modules,
 then this module may be for you.  If all you need is a dispatch
 engine, then this still may be for you.  If all want is to look at
 user passed information, then this may still be for you.  If you like
-writing bare metal code, this could still be for you.
+writing bare metal code, this could still be for you.  If you don't want
+to write any code, this module will help - but you still need to
+provide you key actions.
 
 
 =head1 SYNOPSIS (A LONG "SYNOPSIS")
@@ -1232,7 +1232,9 @@ is ready for validation.  If not, or if validation fails, the step needs to
 be printed.  Eventually the file_print hook is called.  This hook should
 return either the filename of the template to be printed, or a reference
 to the actual template content.  In this example we return a reference
-to the content to be printed.
+to the content to be printed (this is useful for prototyping applications
+and is also fine in real world use - but generally production applications
+use external html templates).
 
 A few things to note about the template:
 
@@ -1653,6 +1655,10 @@ hook print.
     # the template engine would look in '/var/www/templates'
     # for a file by that name
 
+It may also return a reference to a string containing the html template.
+This is useful for prototyping applications and/or keeping all of
+the data for the appliation in a single location.
+
 =item file_val (hook)
 
 Returns a filename containing the validation.  Performs the same
@@ -1664,6 +1670,9 @@ The file should be readible by CGI::Ex::Validate::get_validation.
 
 This hook is only necessary if the hash_validation hook has not been
 overridden.
+
+This method an also return a hashref containing the validation - but
+then you may have wanted to override the hash_validation hook.
 
 =item finalize (hook)
 
@@ -2726,6 +2735,14 @@ is worth about as much as copying and pasting the above examples.  All
 worthwhile HTML will go through a non-automated design/finalization
 process.
 
+The add step used the same template as the edit step.  We did
+this using the add_name_step hook which returned "edit".  The template
+contains IF conditions to show different information if we were in
+add mode or edit mode.
+
+We reused code, validation, and templates.  Code and data reuse is a
+good thing.
+
 The edit_hash_common returns an empty hashref if the form was ready to
 validate.  When hash_common is called and the form is ready to
 validate, that means the form failed validation and is now printing
@@ -2869,10 +2886,13 @@ going to maintain the code later.
 
 =head1 THANKS
 
-Bizhosting.com - giving a problem that fit basic design patterns.
-Earl Cahill    - pushing the idea of more generic frameworks.
-Adam Erickson  - design feedback, bugfixing, feature suggestions.
-James Lance    - design feedback, bugfixing, feature suggestions.
+    Bizhosting.com - giving a problem that fit basic design patterns.
+
+    Earl Cahill    - pushing the idea of more generic frameworks.
+
+    Adam Erickson  - design feedback, bugfixing, feature suggestions.
+
+    James Lance    - design feedback, bugfixing, feature suggestions.
 
 =head1 AUTHOR
 
