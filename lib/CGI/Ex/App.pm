@@ -814,7 +814,7 @@ sub file_val {
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
     my $_step    = $self->run_hook('name_step', $step);
-    $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
+    $_step .= '.'. $self->ext_val if $_step !~ /\.\w+$/;
 
     foreach ($abs, $base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
 
@@ -965,7 +965,7 @@ sub add_to_hash {
 sub js_validation {
     my $self = shift;
     my $step = shift;
-    return '' if $self->ext_val eq 'htm'; # let htm validation do it itself
+    return '' if $self->ext_val =~ /^html?$/; # let htm validation do it itself
 
     my $form_name = shift || $self->run_hook('form_name', $step);
     my $hash_val  = shift || $self->run_hook('hash_validation', $step);
