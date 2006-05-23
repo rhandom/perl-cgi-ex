@@ -202,6 +202,7 @@ sub apache_request {
             require Apache;
             $self->{'apache_request'} = Apache->request;
         } elsif ($self->is_mod_perl_2) {
+            require Apache2::RequestRec;
             require Apache2::RequestUtil;
             $self->{'apache_request'} = Apache2::RequestUtil->request;
         }
@@ -652,103 +653,45 @@ sub swap_template {
 
 __END__
 
-=head1 OVERVIEW
-
 =head1 CGI::Ex SYNOPSIS
 
-    ### CGI Module Extensions
+    ### You probably don't want to use CGI::Ex directly
+    ### You probably should use CGI::Ex::App instead.
 
     my $cgix = CGI::Ex->new;
 
-    ### send the Content-type header - whether or not we are mod_perl
     $cgix->print_content_type;
-    print "Hello world\n";
 
-    ### see what was passed in
-    my $hashref = $cgix->form; # uses CGI by default
+    my $hash = $cgix->form;
 
-    ### send a location bounce (works even if content has been printed)
-    $cgix->location_bounce($new_url_location);
+    if ($hash->{'bounce'}) {
 
-    ### set a cookie (works even if content has been printed)
-    $cgix->set_cookie({ # uses CGI by default
-        name  => ...,
-        value => ...,
-    });
+        $cgix->set_cookie({
+            name  => ...,
+            value => ...,
+        });
 
-    ### read YAML, Storable, INI, XML, or JSON configuration files
-    my $val_hash = $cgix->conf_read($pathtovalidation);
-
-    ### validate the input
-    my $err_obj = $cgix->validate($hashref, $val_hash);
-    if ($err_obj) {
-      my $errors  = $err_obj->as_hash;
-      my $input   = "Some content";
-      my $content = "";
-      SomeTemplateObject->process($input, $errors, $content);
-      $cgix->fill({text => \$content, form => $hashref});
-      print $content;
-      exit;
+        $cgix->location_bounce($new_url_location);
+        exit;
     }
 
-    print "Success\n";
-
-    ### Filling functionality
-
-    $cgix->fill({text => \$text, form => \%hash});
-    $cgix->fill({text => \$text, form => CGI->new});
-    $cgix->fill({text => \$text, fdat    => \%hash});
-    $cgix->fill({text => \$text, fobject => $cgiobject});
-    $cgix->fill({text => \$text, form    => [\%hash1, $cgiobject]});
-    $cgix->fill({text => \$text); # uses $self->object as the form
-    $cgix->fill({text          => \$text,
-                   form          => \%hash,
-                   target        => 'formname',
-                   fill_password => 0,
-                   ignore_fields => ['one','two']});
-    $cgix->fill(\$text); # uses $self->object as the form
-    $cgix->fill(\$text, \%hash, 'formname', 0, ['one','two']);
-    my $copy = $cgix->fill({scalarref => \$text,    fdat => \%hash});
-    my $copy = $cgix->fill({arrayref  => \@lines,   fdat => \%hash});
-    my $copy = $cgix->fill({file      => $filename, fdat => \%hash});
-
-    ### Validation functionality
-
-    my $err_obj = $cgix->validate($form, $val_hash);
-    my $err_obj = $cgix->validate($form, $path_to_validation);
-    my $err_obj = $cgix->validate($form, $yaml_string);
-
-    ### get errors separated by key name
-    ### useful for inline errors
-    my $hash = $err_obj->as_hash;
-    my %hash = $err_obj->as_hash;
-
-    ### get aggregate list of errors
-    ### useful for central error description
-    my $array = $err_obj->as_array;
-    my @array = $err_obj->as_array;
-
-    ### get a string
-    ### useful for central error description
-    my $string = $err_obj->as_string;
-    my $string = "$err_obj";
-
-    $cgix->{raise_error} = 1;
-    $cgix->validate($form, $val_hash);
-      # SAME AS #
-    my $err_obj = $cgix->validate($form, $val_hash);
-    die $err_obj if $err_obj;
-
-    ### Settings functionality
-
-    ### read file via yaml
-    my $ref = $cgix->conf_read('/full/path/to/conf.yaml');
-
-    ### merge all found settings.pl files together
-    @CGI::Ex::Conf::DEFAULT_PATHS = qw(/tmp /my/data/dir /home/foo);
-    @CGI::Ex::Conf::DIRECTIVE     = 'MERGE';
-    @CGI::Ex::Conf::DEFAULT_EXT   = 'pl';
-    my $ref = $cgix->conf_read('settings');
+    if (scalar keys %$form) {
+         my $val_hash = $cgix->conf_read($pathtovalidation);
+         my $err_obj = $cgix->validate($hash, $val_hash);
+         if ($err_obj) {
+             my $errors  = $err_obj->as_hash;
+             my $input   = "Some content";
+             my $content = "";
+             $cgix->swap_template(\$input, $errors, $content);
+             $cgix->fill({text => \$content, form => $hashref});
+             print $content;
+             exit;
+         } else {
+             print "Success";
+         }
+    } else {
+         print "Main page";
+    }
 
 =head1 DESCRIPTION
 
@@ -756,7 +699,7 @@ CGI::Ex provides a suite of utilities to make writing CGI scripts
 more enjoyable.  Although they can all be used separately, the
 main functionality of each of the modules is best represented in
 the CGI::Ex::App module.  CGI::Ex::App takes CGI application building
-to the next step.  CGI::Ex::App is not a framework (which normally
+to the next step.  CGI::Ex::App is not quite a framework (which normally
 includes prebuilt html) instead CGI::Ex::App is an extended application
 flow that dramatically reduces CGI build time in most cases.  It does so
 using as little magic as possible.  See L<CGI::Ex::App>.
@@ -765,6 +708,11 @@ The main functionality is provided by several other modules that
 may be used separately, or together through the CGI::Ex interface.
 
 =over 4
+
+=item C<CGI::Ex::Template>
+
+A Template::Toolkit compatible processing engine.  With a few limitations,
+CGI::Ex::Template can be a drop in replacement for Template::Toolkit.
 
 =item C<CGI::Ex::Fill>
 
@@ -787,6 +735,11 @@ A general use configuration, or settings, or key / value file reader.  Has
 ability for providing key fallback as well as immutable key definitions.  Has
 default support for yaml, storable, perl, ini, and xml and open architecture
 for definition of others.  See L<CGI::Ex::Conf> for more information.
+
+=item C<CGI::Ex::Auth>
+
+A higly configurable web based authentication system.  See L<CGI::Ex::Auth> for
+more information.
 
 =back
 
