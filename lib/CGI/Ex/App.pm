@@ -288,7 +288,7 @@ sub step_key { shift->{'step_key'} || 'step' }
 ### determine the path to follow
 sub path {
     my $self = shift;
-    return $self->{path} ||= do {
+    return $self->{'path'} ||= do {
         my @path     = (); # default to empty path
         my $step_key = $self->step_key;
 
@@ -784,11 +784,12 @@ sub name_module {
     my $self = shift;
     my $step = shift || '';
 
-    return $self->{'name_module'} if $self->{'name_module'};
-
-    return ($0 =~ m/(\w+)(\.\w+)?$/)
-        ? $1  # allow for cgi-bin/foo or cgi-bin/foo.pl to resolve to "foo"
-        : die "Couldn't determine module name from \"name_module\" lookup ($step)";
+    return $self->{'name_module'} ||= do {
+        # allow for cgi-bin/foo or cgi-bin/foo.pl to resolve to "foo"
+        my $script = $ENV{'SCRIPT_NAME'} || $0;
+        $script =~ m/ (\w+) (?:\.\w+)? $/x || die "Couldn't determine module name from \"name_module\" lookup ($step)";
+        $1; # return of the do
+    };
 }
 
 ### which file is used for templating this step
@@ -1031,8 +1032,16 @@ __END__
 Fill in the blanks and get a ready made CGI.  This module is somewhat
 similar in spirit to CGI::Application, CGI::Path, and CGI::Builder and any
 other "CGI framework."  As with the others, CGI::Ex::App tries to do as
-much as possible, in a simple manner, without getting in the
+much of the mundane things, in a simple manner, without getting in the
 developer's way.  Your milage may vary.
+
+If you build applications that submit user information, validated it,
+re-display it, fill in forms, or separate logic into separate modules,
+then this module may be for you.  If all you need is a dispatch
+engine, then this still may be for you.  If all want is to look at
+user passed information, then this may still be for you.  If you like
+writing bare metal code, this could still be for you.
+
 
 =head1 SYNOPSIS (A LONG "SYNOPSIS")
 
@@ -1041,8 +1050,9 @@ This example script would most likely be in the form of a cgi, accessible via
 the path http://yourhost.com/cgi-bin/my_app (or however you do CGIs on
 your system.  About the best way to get started is to paste the following
 code into a cgi script (such as cgi-bin/my_app) and try it out.  A detailed
-walk-through follows in the next section.  There are other longer examples near
-the end of this document.
+walk-through follows in the next section.  There is also a longer recipe
+database example at the end of this document that covers other topics including
+making your module a mod_perl handler.
 
     ### File: /var/www/cgi-bin/my_app (depending upon Apache configuration)
     ### --------------------------------------------
@@ -1066,29 +1076,6 @@ the end of this document.
         debug shift->dump_history;
     }
 
-    sub main_file_print {
-        # reference to string means ref to content
-        # non-reference means filename
-        return \ "<h1>Main Step</h1>
-          <form method=post name=[% form_name %]>
-          <table>
-          <tr>
-            <td><b>Username:</b></td>
-            <td><input type=text name=username><span style='color:red' id=username_error>[% username_error %]</span></td>
-          </tr><tr>
-            <td><b>Password:</b></td>
-            <td><input type=text name=password><span style='color:red' id=password_error>[% password_error %]</span></td>
-          </tr><tr>
-            <td><b>Verify Password:</b></td>
-            <td><input type=text name=password2><span style='color:red' id=password2_error>[% password2_error %]</span></td>
-          </tr>
-          <tr><td colspan=2 align=right><input type=submit></td></tr>
-          </table>
-          </form>
-          [% js_validation %]
-        ";
-    }
-
     sub main_hash_validation {
         return {
             'general no_alert'   => 1,
@@ -1109,6 +1096,30 @@ the end of this document.
                 equals => 'password',
             },
         };
+    }
+
+    sub main_file_print {
+        # reference to string means ref to content
+        # non-reference means filename
+        return \ "<h1>Main Step</h1>
+          <form method=post name=[% form_name %]>
+          <input type=hidden name=step>
+          <table>
+          <tr>
+            <td><b>Username:</b></td>
+            <td><input type=text name=username><span style='color:red' id=username_error>[% username_error %]</span></td>
+          </tr><tr>
+            <td><b>Password:</b></td>
+            <td><input type=text name=password><span style='color:red' id=password_error>[% password_error %]</span></td>
+          </tr><tr>
+            <td><b>Verify Password:</b></td>
+            <td><input type=text name=password2><span style='color:red' id=password2_error>[% password2_error %]</span></td>
+          </tr>
+          <tr><td colspan=2 align=right><input type=submit></td></tr>
+          </table>
+          </form>
+          [% js_validation %]
+        ";
     }
 
     sub main_finalize {
@@ -1144,9 +1155,9 @@ Note: This example would be considerably shorter if the html file
 separate files.  Though CGI::Ex::App will work "out of the box" as
 shown it is more probable that any platform using it will customize
 the various hooks to their own tastes (for example, switching print to
-use a system other than CGI::Ex::Template).
+use a templating system other than CGI::Ex::Template).
 
-=head1 STEP BY STEP
+=head1 SYNOPSIS STEP BY STEP
 
 This section goes step by step over the previous example.
 
@@ -1169,38 +1180,36 @@ Now we need to invoke the process:
     # $obj->navigate;
     exit;
 
-Note: the "exit" isn't necessary - but it is kind of nice to infer that
-program flow doesn't go beyond the ->navigate call.
+Note: the "exit" isn't necessary - but it is kind of nice to infer
+that program flow doesn't go beyond the ->navigate call.
 
 The navigate routine is now going to try and "run" through a series of
-steps.  Navigate will call the ->path method which should return an arrayref
-containing the valid steps.  By default, if path method has not been overridden,
-the path method will default first to the step found in form key named ->step_name,
-then it will fall to the contents of $ENV{'PATH_INFO'}.  If navigation runs out
-of steps to run it will run the step found in ->default_step which defaults to 'main'.
-So the URI '/cgi-bin/my_app' would run the step 'main' first by default.  The URI
-'/cgi-bin/my_app?step=foo' would run the step 'foo' first.  The URI '/cgi-bin/my_app/bar'
-would run the step 'bar' first.
+steps.  Navigate will call the ->path method which should return an
+arrayref containing the valid steps.  By default, if path method has
+not been overridden, the path method will default first to the step
+found in form key named ->step_name, then it will fall to the contents
+of $ENV{'PATH_INFO'}.  If navigation runs out of steps to run it will
+run the step found in ->default_step which defaults to 'main'.  So the
+URI '/cgi-bin/my_app' would run the step 'main' first by default.  The
+URI '/cgi-bin/my_app?step=foo' would run the step 'foo' first.  The
+URI '/cgi-bin/my_app/bar' would run the step 'bar' first.
 
-CGI::Ex::App allows for running steps in a preset path.  The navigate method will go
-through a step of the path at a time and see if it is completed (various methods determine
-the definition of "completed").  This preset type of path can also be automated using the
-CGI::Path module.  Rather than using a preset path, CGI::Ex::App also has methods that
-allow for dynamic changing of the path, so that each step can determine which step to do next
-(see the jump, append_path, insert_path, and replace_path methods).
+CGI::Ex::App allows for running steps in a preset path.  The navigate
+method will go through a step of the path at a time and see if it is
+completed (various methods determine the definition of "completed").
+This preset type of path can also be automated using the CGI::Path
+module.  Rather than using a preset path, CGI::Ex::App also has
+methods that allow for dynamic changing of the path, so that each step
+can determine which step to do next (see the jump, append_path,
+insert_path, and replace_path methods).
 
-Because the default ->path call allows for testing arbitrary step names, it would be
-nice to restrict what they can use.  And you can with valid_steps.
+During development it would be nice to see what happened during the
+course of our navigation.  This is stored in the arrayref contained in
+->history.  There is a hook that runs after a step is printed its
+content called "post_print."  This chunk will display history after we
+have printed the content.
 
-    sub valid_steps { return {success => 1} }
-    # the default_step (default "main") and the js_step (default "js") are valid paths
-
-During development it would be nice to see what happened during the course of
-our navigation.  This is stored in the arrayref contained in ->history.  There
-is a hook that runs after a step is printed its content called "post_print."  This
-chunk will display history after we have printed the content.
-
-    sub post_print {
+    sub post_navigate {
         debug shift->dump_history;
     } # show what happened
 
@@ -1208,68 +1217,108 @@ Ok.  Finally we are looking at the methods used by each step of the path.  The
 hook mechanism of CGI::Ex::App will look first for a method ${step}_${hook_name}
 called before falling back to the method named $hook_name.
 
-    sub main_file_print {
-        # reference to string means ref to content
-        # non-reference means filename
-        return \ "<h1>Main Step</h1>
-          <form method=post name=[% form_name %]>
-          <input type=text name=foo>
-          <span style='color:red' id=foo_error>[% foo_error %]</span><br>
-          <input type=submit>
-          </form>
-          [% js_validation %]
-          <a href='[% script_name %]?step=foo'>Link to forbidden step</a>
-        ";
-    }
+    sub main_hash_validation {}
 
-    sub main_file_val {
-        # reference to string means ref to yaml document
-        # non-reference means filename
-        return \ "foo:
-          required: 1
-          min_len: 2
-          max_len: 20
-          match: 'm/^([a-z]\\d)+[a-z]?\$/'
-          match_error: Characters must alternate letter digit letter.
-          \n";
-    }
+The process flow will see if the data is ready to validate.  Once it is ready
+(usually when the user presses the submit button) the data will be validated.  The
+hash_validation hook is intended to describe the data and will be tested
+using CGI::Ex::Validate.  See the CGI::Ex::Validate perldoc for more
+information about the many types of validation available.
+
+    sub main_file_print { ... }
+
+The navigation process will see if user submitted information (the form)
+is ready for validation.  If not, or if validation fails, the step needs to
+be printed.  Eventually the file_print hook is called.  This hook should
+return either the filename of the template to be printed, or a reference
+to the actual template content.  In this example we return a reference
+to the content to be printed.
+
+A few things to note about the template:
+
+First, we add a hidden form field called step.  This will be filled in
+at a later point with the current step we are on.
+
+We provide locations to swap in inline errors.
+
+    <span style="color:red" id="username_error">[% username_error %]</span>
+
+As part of the error html we name each span with the name of the error.  This
+will allow for us to have Javascript update the error spots when the javascript
+finds an error.
+
+At the very end we add the TT variable [% js_validation %].  This swap in is
+provided by the default hash_base hook and will provide for form data to be
+validated using javascript.
+
+Once the process flow has deemed that the data is validated, it then calls
+the finalize hook.  Finalize is where the bulk of operations should go.
+We'll look at it more in depth.
 
     sub main_finalize {
         my $self = shift;
+        my $form = $self->form;
 
-        debug $self->form, "Do something useful with form here";
+At this point, all of the validated data is in the $form hashref.
+
+        if ($form->{'username'} eq 'bar') {
+            $self->add_errors(username => 'A trivial check to say the username cannot be "bar"');
+            return 0;
+        }
+
+It is most likely that though the data is of the correct type and formatting,
+it still isn't completely correct.  This previous section shows a hard coded
+test to see if the username was 'bar'.  If it was then an appropriate error will
+be set, the routine returns 0 and the run_step process knows that it needs to
+redisplay the form page for this step.  The username_error will be shown inline.
+The program could do more complex things such as checking to see if the username
+was already taken in a database.
+
+        debug $form, "Do something useful with form here in the finalize hook.";
+
+This debug $form piece is simply a place holder.  It is here that the program would
+do something useful such as add the information to a database.
 
         ### add success step
         $self->add_to_swap({success_msg => "We did something"});
+
+Now that we have finished finalize, we add a message that will be passed to the template
+engine.
+
         $self->append_path('success');
         $self->set_ready_validate(0);
+
+The program now needs to move on to the next step.  In this case we want to
+follow with a page that informs us we succeeded.  So, we append a step named "success".
+We also call set_ready_validate(0) to inform the navigation control that the
+form is no longer ready to validate - which will cause the success page to
+print without trying to validate the data.  It is normally a good idea
+to set this as leaving the engine in a "ready to validate" state can result
+in an recursive loop (that will be caught).
+
         return 1;
     }
 
-    sub success_file_print {
-        \ "<h1>Success Step</h1> All done.<br>
-           ([% success_msg %])<br>
-           (foo = [% foo %])";
-    }
+We then return 1 which tells the engine that we completed this step successfully
+and it needs to move on to the next step.
 
-    ### not necessary - this is the default hash_base
-    sub hash_base { # used to include js_validation
-        my ($self, $step) = @_;
-        return $self->{hash_base} ||= {
-            script_name   => $ENV{SCRIPT_NAME} || '',
-            js_validation => sub { $self->run_hook('js_validation', $step) },
-            form_name     => sub { $self->run_hook('form_name', $step) },
-        };
-    }
+Finally we run the "success" step because we told it to.  That step isn't
+ready to validate so it prints out the template page.
 
-  __END__
+For more of a real world example, it would be good to read the sample recipe db
+application included at the end of this document.
 
 =head1 DEFAULT PROGRAM FLOW
 
-The following pseudocode describes the process flow
+The following pseudo-code describes the process flow
 of the CGI::Ex::App framework.  Several portions of the flow
-are encapsulated in hooks which may be completely overridden
-to give different flow.  All of the default actions are shown.
+are encapsulated in hooks which may be completely overridden to give
+different flow.  All of the default actions are shown.  It may look
+like a lot to follow, but if the process is broken down into the
+discrete operations of step iteration, data validation, and template
+printing the flow feels more natural.
+
+The process starts off by calling ->navigate.
 
     navigate {
         eval {
@@ -1412,6 +1461,8 @@ possible to move some of those methods into an external package.
 
 See the discussions under the method named "hook" and run_hook for more details.
 
+The following is the alphabetical list of methods and hooks.
+
 =over 4
 
 =item allow_morph (method)
@@ -1453,6 +1504,24 @@ See the allow_morph and the morph method for more information.
 
 Should return a boolean value or hash of allowed steps - just as the
 allow_morph method does.
+
+=item append_path (method)
+
+Arguments are the steps to append.  Can be called any time.  Adds more
+steps to the end of the current path.
+
+=item current_step (method)
+
+Returns the current step that the nav_loop is functioning on.
+
+=item default_step (method)
+
+Step to show if the path runs out of steps.  Default value is the
+'default_step' property which defaults to 'main'.
+
+If nav_loop runs of the end of the path (runs out of steps), this
+method is called, the step is added to the path, and nav_loop calls
+itself recursively.
 
 =item dump_history (method)
 
@@ -1513,37 +1582,25 @@ called is "view".
             "    view - post_print - post_print - 0.00003 - 0"
     ];
 
+=item exit_nav_loop (method)
+
+This method should not normally used but there is no problem with
+using it on a regular basis.  Essentially it is a "goto" that allows
+for a long jump to the end of all nav_loops (even if they are
+recursively nested).  This effectively short circuits all remaining
+hooks for the current and remaining steps.  It is used to allow the
+->jump functionality.  If the application has morphed, it will be
+unmorphed before returning.
+
+=item first_step (method)
+
+Returns the first step of the path.  Note that first_step may not be the same
+thing as default_step if the path was overridden.
+
 =item form (method)
 
 Returns a hashref of the items passed to the CGI.  Returns
 $self->{form} which defaults to CGI::Ex::get_form.
-
-=item Method C<-E<gt>nav_loop>
-
-This is the main loop runner.  It figures out the current path
-and runs all of the appropriate hooks for each step of the path.  If
-nav_loop runs out of steps to run (which happens if no path is set, or if
-all other steps run successfully), it will insert the ->default_step into
-the path and run nav_loop again (recursively).  This way a step is always
-assured to run.  There is a method ->recurse_limit (default 15) that
-will catch logic errors (such as inadvertently running the same
-step over and over and over).
-
-=item Method C<-E<gt>new>
-
-Object creator.  Takes a hash or hashref.
-
-=item Method C<-E<gt>pre_navigate>
-
-Called from within navigate.  Called before the nav_loop method is started.
-If a true value is returned then navigation is skipped (the nav_loop is never
-started).
-
-=item Method C<-E<gt>post_navigate>
-
-Called from within navigate.  Called after the nav_loop has finished running.
-Will only run if there were no errors which died during the nav_loop
-process.
 
 =item handle_error (method)
 
@@ -1569,125 +1626,6 @@ Called by the default new method.  Allows for any object
 initilizations that may need to take place.  Default action does
 nothing.
 
-=item Method C<-E<gt>path>
-
-Return an arrayref (modifyable) of the steps in the path.  For each
-step the remaining hooks can be run.  Hook methods are looked up and
-ran using the method "run_hook" which uses the method "hook" to lookup
-the hook.  A history of ran hooks is stored in the array ref returned
-by $self->history.  Default will be a single step path looked up in
-$form->{path} or in $ENV{PATH_INFO}.  By default, path will look for
-$ENV{'PATH_INFO'} or the value of the form by the key step_key.  For
-the best functionality, the arrayref returned should be the same
-reference returned for every call to path - this ensures that other
-methods can add to the path (and will most likely break if the
-arrayref is not the same).  If navigation runs out of steps to run,
-the default step found in default_step will be run.
-
-=item Method C<-E<gt>default_step>
-
-Step to show if the path runs out of steps.  Default value is the
-'default_step' property or the value 'main'.
-
-=item Method C<-E<gt>step_key>
-
-Used by default to determine which step to put in the path.  The
-default path will only have one step within it
-
-=item Method C<-E<gt>set_path>
-
-Arguments are the steps to set.  Should be called before navigation
-begins.  This will set the path arrayref to the passed steps.
-
-=item Method C<-E<gt>append_path>
-
-Arguments are the steps to append.  Can be called any time.  Adds more
-steps to the end of the current path.
-
-=item Method C<-E<gt>replace_path>
-
-Arguments are the steps used to replace.  Can be called any time.
-Replaces the remaining steps (if any) of the current path.
-
-=item Method C<-E<gt>insert_path>
-
-Arguments are the steps to insert.  Can be called any time.  Inserts
-the new steps at the current path location.
-
-=item Method C<-E<gt>jump>
-
-This method should not normally be used.  It provides for moving to the
-next step at any point during the nav_loop.  It effectively short circuits
-the remaining hooks for the current step.  It does increment the recursion
-counter (which has a limit of ->recurse_limit - default 15).  It is normally
-better to allow the other hooks in the loop to carry on their normal functions
-and avoid jumping.  (Essentially, this hook behaves like a goto method to
-bypass everything else and continue at a different location in the path - there
-are times when it is necessary or useful - but most of the time should be
-avoided)
-
-Jump takes a single argument which is the location in the path to jump
-to.  This argument may be either a step name, the special words
-"FIRST, LAST, CURRENT, PREVIOUS, OR NEXT" or the number of steps to
-jump forward (or backward) in the path.  The default value, 1,
-indicates that CGI::Ex::App should jump to the next step (the default action for
-jump).  A value of 0 would repeat the current step (watch out for
-recursion).  A value of -1 would jump to the previous step.  The
-special value of "LAST" will jump to the last step.  The special value
-of "FIRST" will jump back to the first step.  In each of these cases,
-the path array retured by ->path is modified to allow for the jumping.
-
-    ### goto previous step
-    $self->jump($self->previous_step);
-    $self->jump('PREVIOUS');
-    $self->jump(-1);
-
-    ### goto next step
-    $self->jump($self->next_step);
-    $self->jump('NEXT');
-    $self->jump(1);
-    $self->jump;
-
-    ### goto current step (repeat)
-    $self->jump($self->current_step);
-    $self->jump('CURRENT');
-    $self->jump(0);
-
-    ### goto last step
-    $self->jump($self->last_step);
-    $self->jump('LAST');
-
-    ### goto first step
-    $self->jump($self->first_step);
-    $self->jump('FIRST');
-
-=item Method C<-E<gt>exit_nav_loop>
-
-This method should not normally used.  It allows for a long jump to the
-end of all nav_loops (even if they are recursively nested).  This
-effectively short circuits all remaining hooks for the current and
-remaining steps.  It is used to allow the ->jump functionality.  If the
-application has morphed, it will be unmorphed before returning.
-
-=item Method C<-E<gt>recurse_limit>
-
-Default 15.  Maximum number of times to allow nav_loop to call itself.
-If ->jump is used alot - the recurse_limit will be reached more quickly.
-It is safe to raise this as high as is necessary - so long as it is intentional.
-
-=item Method C<-E<gt>previous_step, -E<gt>current_step, -E<gt>next_step, -E<gt>last_step, -E<gt>first_step>
-
-Return the previous, current, next, last, and first step name - useful for figuring
-out where you are in the path.  Note that first_step may not be the same
-thing as default_step if the path was overridden.
-
-=item info_complete (hook)
-
-Calls the ready_validate hook to see if data is ready to validate.  If
-so it calls the validate hook to validate the data.  Should make
-sure the data is ready and valid.  Will not be run unless
-prepare returns true (default).
-
 =item fill_template (hook)
 
 Arguments are a template and a hashref.  Takes the template that was
@@ -1707,8 +1645,8 @@ hook print.
 
     sub base_dir_abs { '/var/www/templates' }
     sub base_dir_rel { 'content' }
-    sub name_module { 'recipe' }
-    sub ext_print { 'html' } # default
+    sub name_module  { 'recipe' }
+    sub ext_print    { 'html' } # default
 
     # ->file_print('this_step')
     # would return 'content/recipe/this_step.html'
@@ -1717,11 +1655,15 @@ hook print.
 
 =item file_val (hook)
 
-Returns a filename containing the validation.  Adds method
-base_dir_rel to hook name_module, and name_step and adds on the
-default file extension found in $self->ext_val which defaults to the
-global $EXT_VAL (the property $self->{ext_val} may also be set).  File
-should be readible by CGI::Ex::Validate::get_validation.
+Returns a filename containing the validation.  Performs the same
+as file_print, but uses ext_val to get the extention, and it adds
+base_dir_abs onto the returned value (file_print is relative to
+base_dir_abs, while file_val is fully qualified with base_dir_abs)
+
+The file should be readible by CGI::Ex::Validate::get_validation.
+
+This hook is only necessary if the hash_validation hook has not been
+overridden.
 
 =item finalize (hook)
 
@@ -1860,6 +1802,18 @@ pass it to CGI::Ex::Validate::get_validation.  If no file_val is
 returned or if the get_validation fails, an empty hash will be returned.
 Validation is implemented by ->vob which loads a CGI::Ex::Validate object.
 
+=item info_complete (hook)
+
+Calls the ready_validate hook to see if data is ready to validate.  If
+so it calls the validate hook to validate the data.  Should make
+sure the data is ready and valid.  Will not be run unless
+prepare returns true (default).
+
+=item insert_path (method)
+
+Arguments are the steps to insert.  Can be called any time.  Inserts
+the new steps at the current path location.
+
 =item js_uri_path (method)
 
 Return the URI path where the CGI/Ex/yaml_load.js and
@@ -1875,18 +1829,76 @@ default "path" handler.
 
 =item js_validation (hook)
 
-Requires YAML.pm.
-Will return Javascript that is capable of validating the form.  This
-is done using the capabilities of CGI::Ex::Validate.  This will call
-the hook hash_validation which will then be encoded into yaml and
-placed in a javascript string.  It will also call the hook form_name
-to determine which html form to attach the validation to.  The method
-js_uri_path is called to determine the path to the appropriate
-yaml_load.js and validate.js files.  If the method ext_val is htm,
-then js_validation will return an empty string as it assumes the htm
-file will take care of the validation itself.  In order to make use
-of js_validation, it must be added to either the hash_base, hash_common, hash_swap or
+Requires JSON or YAML.  Will return Javascript that is capable of
+validating the form.  This is done using the capabilities of
+CGI::Ex::Validate.  This will call the hook hash_validation which will
+then be encoded either json or into yaml and placed in a javascript
+string.  It will also call the hook form_name to determine which html
+form to attach the validation to.  The method js_uri_path is called to
+determine the path to the appropriate validate.js files.  If the
+method ext_val is htm, then js_validation will return an empty string
+as it assumes the htm file will take care of the validation itself.
+In order to make use of js_validation, it must be added to the
+variables returned by either the hash_base, hash_common, hash_swap or
 hash_form hook (see examples of hash_base used in this doc).
+
+By default it will try and use JSON first and then fail to YAML and
+then will fail to returning an html comment that does nothing.
+
+=item jump (method)
+
+This method should not normally be used but is fine to use it on a
+regular basis.  It provides for moving to the next step at any point
+during the nav_loop.  It effectively short circuits the remaining
+hooks for the current step.  It does increment the recursion counter
+(which has a limit of ->recurse_limit - default 15).  It is normally
+better to allow the other hooks in the loop to carry on their normal
+functions and avoid jumping.  (Essentially, this hook behaves like a
+goto method to bypass everything else and continue at a different
+location in the path - there are times when it is necessary or useful
+to do this).
+
+Jump takes a single argument which is the location in the path to jump
+to.  This argument may be either a step name, the special strings
+"FIRST, LAST, CURRENT, PREVIOUS, OR NEXT" or the number of steps to
+jump forward (or backward) in the path.  The default value, 1,
+indicates that CGI::Ex::App should jump to the next step (the default
+action for jump).  A value of 0 would repeat the current step (watch
+out for recursion).  A value of -1 would jump to the previous step.
+The special value of "LAST" will jump to the last step.  The special
+value of "FIRST" will jump back to the first step.  In each of these
+cases, the path array retured by ->path is modified to allow for the
+jumping (the path is modified so that the path history is not destroyed
+- if we were on step 3 and jumped to one, that path would contain
+1, 2, 3, *1, 2, 3, 4, etc and we would be at the *).
+
+    ### goto previous step
+    $self->jump($self->previous_step);
+    $self->jump('PREVIOUS');
+    $self->jump(-1);
+
+    ### goto next step
+    $self->jump($self->next_step);
+    $self->jump('NEXT');
+    $self->jump(1);
+    $self->jump;
+
+    ### goto current step (repeat)
+    $self->jump($self->current_step);
+    $self->jump('CURRENT');
+    $self->jump(0);
+
+    ### goto last step
+    $self->jump($self->last_step);
+    $self->jump('LAST');
+
+    ### goto first step
+    $self->jump($self->first_step);
+    $self->jump('FIRST');
+
+=item last_step (method)
+
+Returns the last step of the path.  Can be used to jump to the last step.
 
 =item morph (method)
 
@@ -1997,28 +2009,82 @@ of the current script.
     cgi-bin/my_app.pl  =>  my_app
     cgi/my_app         =>  my_app
 
+This method is provided so that each cgi or mod_perl application can
+have its own directory for storing html for its steps.
+
+See the file_print method for more information.
+
 =item name_step (hook)
 
 Return the step (appended to name_module) that should used when
 looking up the file in file_print and file_val lookups.  Defaults to
 the current step.
 
+=item nav_loop (method)
+
+This is the main loop runner.  It figures out the current path
+and runs all of the appropriate hooks for each step of the path.  If
+nav_loop runs out of steps to run (which happens if no path is set, or if
+all other steps run successfully), it will insert the ->default_step into
+the path and run nav_loop again (recursively).  This way a step is always
+assured to run.  There is a method ->recurse_limit (default 15) that
+will catch logic errors (such as inadvertently running the same
+step over and over and over because there is either no hash_validation,
+or the data is valid but the set_ready_validate(0) method was not called).
+
 =item navigate (method)
 
 Takes a class name or a CGI::Ex::App object as arguments.  If a class
-name is given it will instantiate an object by that class.  All returns
-from navigate will return the object.
+name is given it will call the "new" method to instantiate an object
+by that class (passing any extra arguments to the new method).  All
+returns from navigate will return the object.
 
 The method navigate is essentially a safe wrapper around the ->nav_loop
 method.  It will catch any dies and pass them to ->handle_error.
 
 This starts the process flow for the path and its steps.
 
+=item new (class method)
+
+Object creator.  Takes a hash or hashref of arguments that will
+become the initial properties of the object.  Calls the init
+method once the object has been blessed to allow for any other
+initilizations.
+
+    my $app = MyApp->new({name_module => 'my_app'});
+
+=item next_step (method)
+
+Returns the next step in the path.  If there is no next step, it
+returns the default_step.
+
 =item no_fill (method)
 
 Called from fill_template.  Passed the current step.  Should return
 boolean value of whether or not to fill in the form on the printed
 page. (prevents sticky forms on that step)
+
+=item path (method)
+
+Return an arrayref (modifyable) of the steps in the path.  For each
+step the run_step hook and all of its remaining hooks will be run.
+
+Hook methods are looked up and ran using the method "run_hook" which
+uses the method "find_hook" to lookup the hook.  A history of ran
+hooks is stored in the array ref returned by $self->history.
+
+By default the path method will look for $ENV{'PATH_INFO'} or the
+value in the form by the key step_key.  It will use this step to
+create a path with that one step as its contents.
+
+For the best functionality, the arrayref returned should be the same
+reference returned for every call to path - this ensures that other
+methods can add to the path (and will most likely break if the
+arrayref is not the same).
+
+If navigation runs out of steps to run, the default step found in
+default_step will be run.  This is what allows for us to default
+to the "main" step for many applications.
 
 =item post_loop (method)
 
@@ -2028,6 +2094,15 @@ If it returns a true value the navigation loop will be aborted.  If it
 does not return true, navigation continues by then inserting the step
 $self->default_step and running $self->nav_loop again (recurses) to
 fall back to the default step.
+
+=item post_navigate (method)
+
+Called from within navigate.  Called after the nav_loop has finished
+running but within the eval block to catch errors.  Will only run if
+there were no errors which died during the nav_loop process.
+
+It can be disabled from running by setting the _no_post_navigate
+property.
 
 =item post_print (hook)
 
@@ -2049,6 +2124,13 @@ of nav_loop).  At this point the path is set (but could be modified).
 The only argument is a reference to the path array.  If it returns a
 true value - the navigation routine is aborted.
 
+=item pre_navigate (method)
+
+Called at the very beginning of the navigate method, but within the
+eval block to catch errors.  Called before the nav_loop method is
+started.  If a true value is returned then navigation is skipped (the
+nav_loop is never started).
+
 =item pre_step (hook)
 
 Ran at the beginning of the loop before prepare, info_compelete, and
@@ -2066,6 +2148,10 @@ Called when any of prepare, info_complete, or finalize fail.  Prepares
 a form hash and a fill hash to pass to print.  The form hash is primarily
 intended for use by the templating system.  The fill hash is intended
 to be used to fill in any html forms.
+
+=item previous_step (method)
+
+List the step previous to this one.  Will return '' if there is no previous step.
 
 =item print (hook)
 
@@ -2089,6 +2175,26 @@ and check for its presence - such as the following:
 
 Changing the behavior of ready_validate can help in making wizard type
 applications.
+
+=item recurse_limit (method)
+
+Default 15.  Maximum number of times to allow nav_loop to call itself.
+The recurse level will increase everytime that ->jump is called, or if
+the end of the nav_loop is reached and the process tries to add the
+default_step and run it again.
+
+If ->jump is used alot - the recurse_limit will be reached more
+quickly.  It is safe to raise this as high as is necessary - so long
+as it is intentional.
+
+Often the limit is reached if a step did not have a validation hash,
+or if the set_ready_validate(0) method was not called once the data
+had been successfully validated and acted upon.
+
+=item replace_path (method)
+
+Arguments are the steps used to replace.  Can be called any time.
+Replaces the remaining steps (if any) of the current path.
 
 =item run_hook (method)
 
@@ -2120,6 +2226,13 @@ This hook performs the same base functionallity as a method defined in
 CGI::Applications ->run_modes.  The default run_step method provides
 much more granular control over the flow of the CGI.
 
+=item set_path (method)
+
+Arguments are the steps to set.  Should be called before navigation
+begins.  This will set the path arrayref to the passed steps.
+
+This method is not normally used.
+
 =item set_ready_validate (method)
 
 Sets that the validation is ready to validate.  Should set the value
@@ -2149,6 +2262,11 @@ next step (the current step is skipped).
 
 Returns a hashref that can store arbitrary user space data without
 clobering the internals of the application.
+
+=item step_key (method)
+
+Should return the keyname that will be used by the default "path"
+method to look for in the form.  Default value is 'step'.
 
 =item swap_template (hook)
 
@@ -2294,7 +2412,7 @@ or sticky forms, or cgi parameters, or data validation.  Once
 you are setup and are running, you are only left with providing
 the core logic of the application.
 
-    ### File: cgi-bin/recipe
+    ### File: /var/www/cgi-bin/recipe (depending upon Apache configuration)
     ### --------------------------------------------
     #!/usr/bin/perl -w
 
@@ -2692,6 +2810,62 @@ The CGI::Ex::App temporarily blesses the object into the
 "morph_package" for the duration of the step and reblesses it into the
 original package upon exit.  See the morph method and allow_morph for more
 information.
+
+=head1 RUNNING UNDER MOD_PERL
+
+The previous samples are essentially suitable for running under flat CGI,
+Fast CGI, or mod_perl Registry or mod_perl PerlRun type environments.  It
+is very easy to move the previous example to be a true mod_perl handler.
+
+To convert the previous recipe example, simply add the following:
+
+    ### File: /var/www/lib/Recipe.pm
+    ### Same as before but add the following lines:
+    ### --------------------------------------------
+
+    sub handler {
+        Recipe->navigate;
+        return;
+    }
+
+
+    ### File: apache2.conf - or whatever your apache conf file is.
+    ### --------------------------------------------
+    <Location /recipe>
+        SetHandler perl-script
+        PerlHandler Recipe
+    </Location>
+
+Notes:
+
+Both the /cgi-bin/recipe version and the /recipe version can co-exist.
+One of them will be a normal cgi and the other will correctly use
+mod_perl hooks for headers.
+
+Setting the location to /recipe means that the $ENV{SCRIPT_NAME} will
+also be set to /recipe.  This means that name_module method will
+resolve to "recipe".  If a different URI location is desired such as
+"/my_cool_recipe" but the program is to use the same template content
+(in the /var/www/templates/content/recipe directory), then we would
+need to explicitly set the "name_module" parameter.  It could be done
+in either of the following ways:
+
+    ### File: /var/www/lib/Recipe.pm
+    ### Same as before but add the following line:
+    ### --------------------------------------------
+
+    sub name_module { 'recipe' }
+
+    # OR
+
+    sub init {
+        my $self = shift;
+        $self->{'name_module'} = 'recipe';
+    }
+
+In most use cases it isn't necessary to set name_module, but it also
+doesn't hurt and in all cases it is more descriptive to anybody who is
+going to maintain the code later.
 
 =head1 THANKS
 
