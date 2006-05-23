@@ -19,14 +19,14 @@ use vars qw($VERSION
             $MARKER_SCRIPT
             $MARKER_COMMENT
             $OBJECT_METHOD
-            $TEMP_TARGET
+            $_TEMP_TARGET
             );
 use base qw(Exporter);
 
 BEGIN {
     $VERSION   = '2.00';
     @EXPORT    = qw(form_fill);
-    @EXPORT_OK = qw(form_fill html_escape get_tagval_by_key swap_tagval_by_key);
+    @EXPORT_OK = qw(fill form_fill html_escape get_tagval_by_key swap_tagval_by_key);
 };
 
 ### These directives are used to determine whether or not to
@@ -55,10 +55,30 @@ sub form_fill {
     my $text          = shift;
     my $ref           = ref($text) ? $text : \$text;
     my $form          = shift;
-    my $forms         = UNIVERSAL::isa($form, 'ARRAY') ? $form : [$form];
     my $target        = shift;
     my $fill_password = shift;
     my $ignore        = shift || {};
+
+    fill({
+        text          => $ref,
+        form          => $form,
+        target        => $target,
+        fill_password => $fill_password,
+        ignore_fields => $ignore,
+    });
+
+    return ref($text) ? 1 : $$ref;
+}
+
+sub fill {
+    my $args          = shift;
+    my $ref           = $args->{'text'};
+    my $form          = $args->{'form'};
+    my $target        = $args->{'target'};
+    my $ignore        = $args->{'ignore_fields'};
+    my $fill_password = $args->{'fill_password'};
+
+    my $forms = UNIVERSAL::isa($form, 'ARRAY') ? $form : [$form];
     $ignore = {map {$_ => 1} @$ignore} if UNIVERSAL::isa($ignore, 'ARRAY');
     $fill_password = 1 if ! defined $fill_password;
 
@@ -66,10 +86,10 @@ sub form_fill {
     ### allow for optionally removing comments and script
     my @comment;
     my @script;
-    if ($REMOVE_SCRIPT) {
+    if (defined($args->{'remove_script'}) ? $args->{'remove_script'} : $REMOVE_SCRIPT) {
         $$ref =~ s|(<script\b.+?</script>)|push(@script, $1);$MARKER_SCRIPT|egi;
     }
-    if ($REMOVE_COMMENT) {
+    if (defined($args->{'remove_comment'}) ? $args->{'remove_comment'} : $REMOVE_COMMENT) {
         $$ref =~ s|(<!--.*?-->)|push(@comment, $1);$MARKER_COMMENT|eg;
     }
 
@@ -78,7 +98,7 @@ sub form_fill {
     ### there is nested html inside the form tag that comes before
     ### the name field - if no close form tag - don't swap in anything
     if ($target) {
-        local $TEMP_TARGET = $target;
+        local $_TEMP_TARGET = $target;
         $$ref =~ s{(<form            # open form
                     [^>]+            # some space
                     \bname=([\"\']?) # the name tag
@@ -87,15 +107,19 @@ sub form_fill {
                     .+?              # as much as there is
                     (?=</form>))     # then end
                    }{
-                       local $REMOVE_SCRIPT  = undef;
-                       local $REMOVE_COMMENT = undef;
-                       &form_fill($1, $form, undef, $fill_password, $ignore);
+                       my $str = $1;
+                       local $args->{'text'} = \$str;
+                       local $args->{'remove_script'}  = 0;
+                       local $args->{'remove_comment'} = 0;
+                       local $args->{'target'}         = undef;
+                       fill($args);
+                       $str; # return of the s///;
                    }sigex;
 
         ### put scripts and comments back and return
         $$ref =~ s/$MARKER_COMMENT/shift(@comment)/eg if $#comment != -1;
         $$ref =~ s/$MARKER_SCRIPT/ shift(@script) /eg if $#script  != -1;
-        return ref($text) ? 1 : $$ref;
+        return 1;
     }
 
     ### build a sub to get a value from the passed forms on a request basis
@@ -114,11 +138,11 @@ sub form_fill {
             if (UNIVERSAL::isa($form, 'HASH') && defined $form->{$key}) {
                 $val = $form->{$key};
                 last;
-            } elsif ($meth = UNIVERSAL::can($form, $OBJECT_METHOD)) {
+            } elsif ($meth = UNIVERSAL::can($form, $args->{'object_method'} || $OBJECT_METHOD)) {
                 $val = $form->$meth($key);
                 last if defined $val;
             } elsif (UNIVERSAL::isa($form, 'CODE')) {
-                $val = &{ $form }($key, $TEMP_TARGET);
+                $val = $form->($key, $_TEMP_TARGET);
                 last if defined $val;
             }
         }
@@ -128,7 +152,7 @@ sub form_fill {
 
         ### fix up the value some
         if (UNIVERSAL::isa($val, 'CODE')) {
-            $val = &{ $val }($key, $TEMP_TARGET);
+            $val = $val->($key, $_TEMP_TARGET);
         }
         if (UNIVERSAL::isa($val, 'ARRAY')) {
             $val = [@$val]; # copy the values
@@ -295,7 +319,7 @@ sub form_fill {
     ### put scripts and comments back and return
     $$ref =~ s/$MARKER_COMMENT/shift(@comment)/eg if $#comment != -1;
     $$ref =~ s/$MARKER_SCRIPT/ shift(@script) /eg if $#script  != -1;
-    return ref($text) ? 1 : $$ref;
+    return 1;
 }
 
 
@@ -398,7 +422,7 @@ __END__
 
 =head1 SYNOPSIS
 
-    use CGI::Ex::Fill qw(form_fill);
+    use CGI::Ex::Fill qw(form_fill fill);
 
     my $text = my_own_template_from_somewhere();
 
@@ -410,8 +434,15 @@ __END__
 
 
     form_fill(\$text, $form); # modifies $text
+
     # OR
     # my $copy = form_fill($text, $form); # copies $text
+
+    # OR
+    fill({
+        text => \$text,
+        form => $form,
+    });
 
 
     # ALSO
@@ -421,6 +452,15 @@ __END__
     my $ignore = ['key1', 'key2']; # OR {key1 => 1, key2 => 1};
 
     form_fill(\$text, $form, $formname, $fp, $ignore);
+
+    # OR
+    fill({
+        text          => \$text,
+        form          => $form,
+        target        => 'my_formname',
+        fill_password => $fp,
+        ignore_fields => $ignore,
+    });
 
     # ALSO
 
@@ -439,7 +479,7 @@ HTML::FillInForm is based upon HTML::Parser while CGI::Ex::Fill is
 purely regex driven.  The performance of CGI::Ex::Fill will be better
 on HTML with many markup tags because HTML::Parser will parse each tag
 while CGI::Ex::Fill will search only for those tags it knows how to
-handle.
+handle.  And CGI::Ex::Fill generally won't break on malformed html.
 
 On tiny forms (< 1 k) form_fill was ~ 13% slower than FillInForm.  If
 the html document incorporated very many entities at all, the
@@ -452,15 +492,68 @@ increases.  See the benchmarks in the t/samples/bench_cgix_hfif.pl
 file for more information (ALL BENCHMARKS SHOULD BE TAKEN WITH A GRAIN
 OF SALT).
 
-=head1 ARGUMENTS
+There are two funtions, fill and form_fill.  The function fill takes
+a hashref of named arguments.  The function form_fill takes a list
+of positional parameters.
 
-The following are the arguments to the main function C<form_fill>.
+=head1 ARGUMENTS TO form_fill
+
+The following are the arguments to the main function C<fill>.
+
+=over 4
+
+=item text
+
+A reference to an html string that includes one or more forms.
+
+=item form
+
+A form hash, CGI object, or an array of hashrefs and objects.
+
+=item target
+
+The name of the form to swap.  Default is undef which means
+to swap all form entities in all forms.
+
+=item fill_password
+
+Default true.  If set to false, fields of type password will
+not be refilled.
+
+=item ignore_fields
+
+Hashref of fields to be ignored from swapping.
+
+=item remove_script
+
+Defaults to the package global $REMOVE_SCRIPT which defaults to true.
+Removes anything in <script></script> tags which often cause problems for
+parsers.
+
+=item remove_comment
+
+Defaults to the package global $REMOVE_COMMENT which defaults to true.
+Removes anything in <!-- --> tags which can sometimes cause problems for
+parsers.
+
+=item object_method
+
+The method to call on objects passed to the form argument.  Default value
+is the package global $OBJECT_METHOD which defaults to 'param'.  If a
+CGI object is passed, it would call param on that object passing
+the desired keyname as an argument.
+
+=back
+
+=head1 ARGUMENTS TO form_fill
+
+The following are the arguments to the legacy function C<form_fill>.
 
 =over 4
 
 =item C<\$html>
 
-A referrence to an html string that includes one or more forms or form
+A reference to an html string that includes one or more forms or form
 entities.
 
 =item C<\%FORM>
@@ -487,7 +580,7 @@ ignored during the fill in of the form.
 
 =head1 BEHAVIOR
 
-form_fill will attempt to DWYM when filling in values.  The following behaviors
+fill and form_fill will attempt to DWYM when filling in values.  The following behaviors
 are used on the following types of form elements.
 
 =over 4
