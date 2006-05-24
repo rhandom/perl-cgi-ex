@@ -500,6 +500,8 @@ See the get_valid_auth method.
         return {
             login_header => '<h1>My login header</h1>',
             login_footer => '[% TRY %][% INCLUDE login/login_footer.htm %][% CATCH %]<!-- [% error %] -->[% END %]',
+            secure_hash_keys => [qw(aaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbb ccccccccccccccccccccccc 2222222222222)],
+            # use_blowfish => 'my_blowfish_key',
         };
     }
 
