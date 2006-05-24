@@ -2550,6 +2550,7 @@ sub process {
 
     };
     if (my $err = $@) {
+        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
         if ($err->type !~ /stop|return|next|last|break/) {
             $self->{'error'} = $err;
             return;
@@ -2910,8 +2911,10 @@ sub filter_redirect {
 
 package CGI::Ex::Template::Exception;
 
-use overload '""' => \&as_string;
-use overload bool => sub { defined shift };
+use overload
+    '""' => \&as_string,
+    bool => sub { defined shift },
+    fallback => 1;
 
 sub new {
     my ($class, $type, $info, $node, $pos, $str_ref) = @_;
