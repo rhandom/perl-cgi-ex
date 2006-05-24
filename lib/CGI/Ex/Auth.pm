@@ -33,7 +33,7 @@ sub get_valid_auth {
     $self = $self->new(@_) if ! ref $self;
 
     ### shortcut that will print a js file as needed (such as the md5.js)
-    if ($self->script_name . $self->path_info eq $self->js_path . "/CGI/Ex/md5.js") {
+    if ($self->script_name . $self->path_info eq $self->js_uri_path . "/CGI/Ex/md5.js") {
         $self->cgix->print_js('CGI/Ex/md5.js');
         eval { die "Printed Javascript" };
         return;
@@ -98,19 +98,25 @@ sub get_valid_auth {
             });
         }
 
-        ### successful login - if they have cookies we are done
-        if ($has_cookies || $self->no_cookie_verify) {
+        ### successful login
+
+        ### bounce to redirect
+        if (my $redirect = $form->{ $self->key_redirect }) {
+            $self->location_bounce($redirect);
+            eval { die "Success login - bouncing to redirect" };
+            return;
+
+        ### if they have cookies we are done
+        } elsif ($has_cookies || $self->no_cookie_verify) {
             return $self;
 
         ### need to verify cookies are set-able
         } elsif ($is_form) {
             $form->{$self->key_verify} = $self->server_time;
-            my $key_r = $self->key_redirect;
-            if (! $form->{$key_r}) {              # make sure there is a redirect value
-                my $query = $self->cgix->make_form($form);
-                $form->{$key_r} = $self->script_name . $self->path_info . ($query ? "?$query" : "");
-            }
-            $self->location_bounce($form->{$key_r});
+            my $query = $self->cgix->make_form($form);
+            my $url   = $self->script_name . $self->path_info . ($query ? "?$query" : "");
+
+            $self->location_bounce($url);
             eval { die "Success login - bouncing to test cookie" };
             return;
         }
@@ -226,9 +232,9 @@ sub logout_redirect {
     return $self->{'logout_redirect'} || $self->script_name ."?loggedout=1";
 }
 
-sub js_path {
+sub js_uri_path {
     my $self = shift;
-    return $self->{'js_path'} ||= $self->script_name ."/js";
+    return $self->{'js_uri_path'} ||= $self->script_name ."/js";
 }
 
 ###----------------------------------------------------------------###
@@ -243,15 +249,13 @@ sub no_cookies_print {
 sub login_print {
     my $self = shift;
     my $hash = $self->login_hash_common;
+    my $template = $self->login_template;
 
     ### allow for a hooked override
     if (my $meth = $self->{'login_print'}) {
-        $self->$meth($hash);
+        $self->$meth($template, $hash);
         return 0;
     }
-
-    ### get, fill, and print a basic login template
-    my $template = $self->login_template;
 
     ### process the document
     require CGI::Ex::Template;
@@ -261,7 +265,7 @@ sub login_print {
 
     ### fill in form fields
     require CGI::Ex::Fill;
-    CGI::Ex::Fill::form_fill(\$out, $hash);
+    CGI::Ex::Fill::fill({text => \$out, form => $hash});
 
     ### print it
     $self->cgix->print_content_type;
@@ -299,7 +303,7 @@ sub login_hash_common {
         form_name          => $self->form_name,
         script_name        => $self->script_name,
         path_info          => $self->path_info,
-        md5_js_path        => $self->js_path ."/CGI/Ex/md5.js",
+        md5_js_path        => $self->js_uri_path ."/CGI/Ex/md5.js",
         use_plaintext      => $self->use_plaintext,
         $self->key_user    => $data->{'user'} || '',
         $self->key_pass    => '', # don't allow for this to get filled into the form
@@ -606,7 +610,7 @@ sub login_form {
     return shift->{'login_form'} || q {
     <div class="login_chunk">
     <span class="login_error">[% error %]</span>
-    <form class="login_form" name="[% form_name %]" method="post" action="[% script_name %]">
+    <form class="login_form" name="[% form_name %]" method="post" action="[% script_name %][% path_info %]">
     <input type="hidden" name="[% key_redirect %]" value="">
     <input type="hidden" name="[% key_payload %]" value="">
     <input type="hidden" name="[% key_time %]" value="">
@@ -648,10 +652,11 @@ sub login_script {
       var t = f.[% key_time %].value;
       var s = f.[% key_save %] && f.[% key_save %].checked ? -1 : f.[% key_expires_min %].value;
       var l = f.[% key_payload %].value;
+      var r = f.[% key_redirect %].value;
 
       var str = u+'/'+t+'/'+s+'/'+l;
       var sum = document.md5_hex(str +'/' + document.md5_hex(p));
-      var loc = f.action + '?[% key_user %]='+escape(str +'/'+ sum);
+      var loc = f.action + '?[% key_user %]='+escape(str +'/'+ sum)+'&[% key_redirect %]='+escape(r);
 
       location.href = loc;
       return false;
@@ -765,7 +770,7 @@ defined separately.
     form
     form_name
     get_pass_by_user
-    js_path
+    js_uri_path
     key_cookie
     key_expires_min
     key_logout
@@ -834,7 +839,7 @@ Passed to the template swapped during login_print.
     form_name          # $self->form_name,       # the name of the form
     script_name        # $self->script_name,     # where the server will post back to
     path_info          # $self->path_info,       # $ENV{PATH_INFO} if any
-    md5_js_path        # $self->js_path ."/CGI/Ex/md5.js", # script for cramming
+    md5_js_path        # $self->js_uri_path ."/CGI/Ex/md5.js", # script for cramming
     use_plaintext      # $self->use_plaintext,   # used to avoid cramming
     $self->key_user    # $data->{'user'},        # the username (if any)
     $self->key_pass    # '',                     # intentional blankout
