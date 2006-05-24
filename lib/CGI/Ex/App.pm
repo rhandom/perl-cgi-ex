@@ -32,7 +32,7 @@ sub croak {
 
 sub new {
     my $class = shift || croak "Usage: Package->new";
-    my $self  = ref($_[0]) ? shift : {@_};
+    my $self  = shift || {};
     bless $self, $class;
 
     $self->init;
@@ -45,14 +45,17 @@ sub init {}
 ###----------------------------------------------------------------###
 
 sub navigate {
-    my $self = shift;
-    my $args = ref($_[0]) ? shift : {@_};
-
+    my ($self, $args) = @_;
     $self = $self->new($args) if ! ref $self;
 
     $self->{'_time'} = time;
 
     eval {
+        ### allow for authentication
+        my $ref = $self->require_auth;
+        if ($ref && ! ref $ref) {
+            return $self if ! $self->get_valid_auth;
+        }
 
         ### a chance to do things at the very beginning
         return $self if ! $self->{'_no_pre_navigate'} && $self->pre_navigate;
@@ -95,26 +98,25 @@ sub nav_loop {
     ### allow for an early return
     return if $self->pre_loop($path); # a true value means to abort the navigate
 
-    ### get a hash of valid paths (if any)
-    my $valid_steps = $self->valid_steps;
+    my $req_auth = ref($self->require_auth) ? $self->require_auth : undef;
 
     ### iterate on each step of the path
     foreach ($self->{'path_i'} ||= 0;
              $self->{'path_i'} <= $#$path;
              $self->{'path_i'} ++) {
         my $step = $path->[$self->{'path_i'}];
-        next if $step !~ /^([^\W]\w*)$/; # don't process the step if it contains odd characters
+        if ($step !~ /^([^\W0-9]\w*)$/) { # don't process the step if it contains odd characters
+            $self->stash->{'forbidden_step'} = $step;
+            $self->replace_path($self->forbidden_step);
+            next;
+        }
         $step = $1; # untaint
 
-        ### check if this is an allowed step
-        if ($valid_steps
-            && ! $valid_steps->{$step}
-            && $step ne 'forbidden'
-            && $step ne $self->default_step
-            && $step ne $self->js_step) {
-            $self->stash->{'forbidden_step'} = $step;
-            $self->replace_path('forbidden');
-            next;
+        ### allow for per-step authentication
+        if ($req_auth
+            && $req_auth->{$step}
+            && ! $self->get_valid_auth) {
+            return;
         }
 
         ### allow for becoming another package (allows for some steps in external files)
@@ -164,29 +166,43 @@ sub default_step { shift->{'default_step'} || 'main' }
 
 sub js_step { shift->{'js_step'} || 'js' }
 
+sub forbidden_step { shift->{'forbidden_step'} || '__forbidden' }
+
 sub step_key { shift->{'step_key'} || 'step' }
 
 sub path {
     my $self = shift;
-    return $self->{'path'} ||= do {
-        my @path     = (); # default to empty path
-        my $step_key = $self->step_key;
+    if (! $self->{'path'}) {
+        my $path = $self->{'path'} = []; # empty path
 
-        if (my $step = $self->form->{$step_key}) {
-            push @path, $step;
-        } elsif ($ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ m|^/(\w+)|) {
-            push @path, lc $1;
+        my $step = $self->form->{ $self->step_key };
+        $step = lc($1) if ! $step && $ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ m|^/(\w+)|;
+
+        ### make sure the step is valid
+        if (defined $step) {
+            if ($step =~ /^_/) {         # can't begin with _
+                $self->stash->{'forbidden_step'} = $step;
+                push @$path, $self->forbidden_step;
+            } elsif ($self->valid_steps  # must be in valid_steps if defined
+                && ! $self->valid_steps->{$step}
+                && $step ne $self->default_step
+                && $step ne $self->js_step) {
+                $self->stash->{'forbidden_step'} = $step;
+                push @$path, $self->forbidden_step;
+            } else {
+                push @$path, $step;
+            }
         }
+    }
 
-        \@path; # return of the do
-    };
+    return $self->{'path'};
 }
 
 sub set_path {
     my $self = shift;
     my $path = $self->{'path'} ||= [];
     croak "Cannot call set_path after the navigation loop has begun" if $self->{'path_i'};
-    splice @$path, 0, $#$path + 1, @_; # change entries in the ref
+    splice @$path, 0, $#$path + 1, @_; # change entries in the ref (which updates other copies of the ref)
 }
 
 ### legacy - same as append_path
@@ -512,7 +528,9 @@ sub unmorph {
     my $step = shift || '__no_step';
     my $lin  = $self->{'__morph_lineage'} || return;
     my $cur  = ref $self;
+
     my $prev = pop(@$lin) || croak "unmorph called more times than morph - current ($cur)";
+    delete $self->{'__morph_lineage'} if ! @$lin;
 
     ### if we are not already that package - bless us there
     my $hist = {
@@ -543,61 +561,64 @@ sub fixup_before_unmorph {}
 ### allow for authentication
 
 sub navigate_authenticated {
-    my $self = shift;
-    my $args = ref($_[0]) ? shift : {@_};
-
+    my ($self, $args) = @_;
     $self = $self->new($args) if ! ref $self;
 
-    $self->require_auth || return;
+    $self->require_auth(1);
 
     return $self->navigate;
 }
 
-sub auth_required {
-    my $self = shift;
-    $self->{'auth_required'} = shift if @_ == 1;
-    return $self->{'auth_required'};
-}
-
-sub is_authed {
-    my $self = shift;
-    $self->{'is_authed'} = shift if @_ == 1;
-    return $self->{'is_authed'};
-}
-
 sub require_auth {
     my $self = shift;
-    return 1 if $self->is_authed;
-
-    $self->auth_required(1);
-
-    require CGI::Ex::Auth;
-    my $obj  = CGI::Ex::Auth->get_valid_auth($self->auth_args) || return;
-    my $data = $obj->last_auth_data || return;
-
-    $self->auth_data($data);
-    $self->is_authed(1);
-
-    return 1;
+    $self->{'require_auth'} = shift if @_ == 1;
+    return $self->{'require_auth'};
 }
+
+sub is_authed { shift->auth_data }
 
 sub auth_data {
     my $self = shift;
     $self->{'auth_data'} = shift if @_ == 1;
-    return $self->{'auth_data'} || die "Missing auth data";
+    return $self->{'auth_data'};
 }
 
-sub auth_args {
+sub get_valid_auth {
     my $self = shift;
-    return {
-        cgix             => $self->cgix,
-        form             => $self->form,
-        cookies          => $self->cookies,
-        template_args    => $self->template_args('authentication'),
-        js_uri_path      => $self->js_uri_path,
-        get_pass_by_user => sub { '123qwe' },
+    return 1 if $self->is_authed;
+
+    ### augment the args with sensible defaults
+    my $args = $self->auth_args;
+    $args->{'cgix'}             ||= $self->cgix;
+    $args->{'form'}             ||= $self->form;
+    $args->{'cookies'}          ||= $self->cookies;
+    $args->{'js_uri_path'}      ||= $self->js_uri_path;
+    $args->{'get_pass_by_user'} ||= sub { my ($auth, $user) = @_; $self->get_pass_by_user($user, $auth) };
+    $args->{'verify_user'}      ||= sub { my ($auth, $user) = @_; $self->verify_user(     $user, $auth) };
+    $args->{'cleanup_user'}     ||= sub { my ($auth, $user) = @_; $self->cleanup_user(    $user, $auth) };
+    $args->{'login_print'}      ||= sub {
+        my ($auth, $template, $hash) = @_;
+        my $out = $self->run_hook('swap_template', '__login', $template, $hash);
+        $self->run_hook('fill_template', '__login', \$out, $hash);
+        $self->run_hook('print_out', '__login', $out);
     };
+
+    require CGI::Ex::Auth;
+    my $obj = CGI::Ex::Auth->new($args);
+    my $resp = $obj->get_valid_auth;
+
+    my $data = $obj->last_auth_data;
+    delete $data->{'real_pass'} if defined $data; # data may be defined but false
+    $self->auth_data($data); # failed authentication may still have auth_data
+
+    return ($resp && $data) ? 1 : 0;
 }
+
+sub auth_args { {} }
+
+sub get_pass_by_user { die "get_pass_by_user is a virtual method and needs to be overridden for authentication to work" }
+sub cleanup_user { my ($self, $user) = @_; $user }
+sub verify_user  { 1 }
 
 ###----------------------------------------------------------------###
 ### a few standard base accessors
@@ -729,7 +750,7 @@ sub swap_template {
     my ($self, $step, $file, $swap) = @_;
 
     require CGI::Ex::Template;
-    my $args = $self->run_hook('template_args');
+    my $args = $self->run_hook('template_args', $step);
     my $t = CGI::Ex::Template->new($args);
 
     my $out = '';
@@ -1039,15 +1060,14 @@ sub js_run_step {
 ###----------------------------------------------------------------###
 ### a step that will be used if a valid_steps is defined
 ### and the current step of the path is not in valid_steps
+### or if the step is a "hidden" step that begins with _
+### or if the step name contains \W
 
-sub forbidden_info_complete { 0 }
+sub __forbidden_info_complete { 0 }
 
-sub forbidden_file_print {
-    my $self = shift;
-    my $step = $self->stash->{'forbidden_step'};
-    my $str = "You do not have access to \"$step\"";
-    return \ $str;
-}
+sub __forbidden_hash_swap { {forbidden_step => shift->stash->{'forbidden_step'}} }
+
+sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the step <b>\"[% forbidden_step %]\"</b>" }
 
 ###----------------------------------------------------------------###
 
@@ -1367,14 +1387,12 @@ The nav_loop method will run as follows:
         ->path (get the array of path steps)
             # look in $ENV{'PATH_INFO'}
             # look in ->form for ->step_key
+            # make sure step is in ->valid_steps (if defined)
 
         ->pre_loop($path)
             # navigation stops if true
 
         foreach step of path {
-
-            # check if step is in ->valid_steps
-            # but only if ->valid_steps is defined
 
             ->morph
                 # check ->allow_morph
@@ -1543,6 +1561,36 @@ allow_morph method does.
 
 Arguments are the steps to append.  Can be called any time.  Adds more
 steps to the end of the current path.
+
+=item auth_args (method)
+
+Should return a hashref that will be passed to the new method of CGI::Ex::Auth.
+It is augmented with arguments that integrate it into CGI::Ex::App.
+
+See the get_valid_auth method.
+
+    sub auth_args {
+        return {
+            login_header => '<h1>My login header</h1>',
+            login_footer => '[% TRY %][% INCLUDE login/login_footer.htm %][% CATCH %]<!-- [% error %] -->[% END %]',
+        };
+    }
+
+=item auth_data (method)
+
+Contains authentication data stored during the get_valid_auth method.
+The data is normally blessed into the CGI::Ex::Auth::Data package which
+evaluates to false if there was an error - so this data can be defined but false.
+
+=item cleanup_user (method)
+
+Installed as a hook during get_valid_auth.  Allows for cleaning
+up the username.  See the get_valid_auth method.
+
+     sub cleanup_user {
+         my ($self, $user) = @_;
+         return lc $user;
+     }
 
 =item current_step (method)
 
@@ -1759,10 +1807,71 @@ override the base package (it is still OK to use the full method name
 
 See the run_hook method and the morph method for more details.
 
+=item forbidden_step (method)
+
+Defaults to "__forbidden".  The name of a step to run should the current
+step name be invalid, or if a step found by the default path method
+is invalid.  See the path method.
+
 =item form_name (hook)
 
 Return the name of the form to attach the js validation to.  Used by
 js_validation.
+
+=item get_pass_by_user (method)
+
+This method is passed a username and the authentication object.  It
+should return the password for the given user.  See the get_pass_by_user
+method of CGI::Ex::Auth for more information.  Installed as a hook
+to the authentication object during the get_valid_auth method.
+
+=item get_valid_auth (method)
+
+If require_auth is true at either the application level or at the
+step level, get_valid_auth will be called.
+
+It will call auth_args to get some default args to pass to
+CGI::Ex::Auth->new.  It augments the args with sensible defaults that
+App already provides (such as form, cookies, and template facilities).
+It also installs hooks for the get_pass_by_user, cleanup_user, and verify_user
+hooks of CGI::Ex::Auth.
+
+It stores the $auth->last_auth_data in $self->auth_data for later use.  For
+example, to get the authenticated user:
+
+    sub require_auth { 1 }
+
+    sub cleanup_user {
+        my ($self, $user) = @_;
+        return lc $user;
+    }
+
+    sub get_pass_by_user {
+        my ($self, $user) = @_;
+        my $pass = $self->some_method_to_get_the_pass($user);
+        return $pass;
+    }
+
+    sub auth_args {
+        return {
+            login_header => '<h1>My login header</h1>',
+            login_footer => '[% TRY %][% INCLUDE login/login_footer.htm %][% CATCH %]<!-- [% error %] -->[% END %]',
+        };
+    }
+
+    sub main_hash_swap {
+        my $self = shift;
+        my $user = $self->auth_data->{'user'};
+        return {user => $user};
+    }
+
+Successful authentication is cached for the duration of the
+nav_loop so multiple steps will run the full authentication routine
+only once.
+
+Full customization of the login process and the login template can
+be done via the auth_args hash.  See the auth_args method and
+CGI::Ex::Auth perldoc for more information.
 
 =item hash_base (hook)
 
@@ -1868,6 +1977,11 @@ prepare returns true (default).
 Arguments are the steps to insert.  Can be called any time.  Inserts
 the new steps at the current path location.
 
+=item is_authed (method)
+
+Returns true if the object has successfull authentication data.  It
+returns false if the object has not been authenticated.
+
 =item js_uri_path (method)
 
 Return the URI path where the CGI/Ex/yaml_load.js and
@@ -1877,8 +1991,7 @@ otherwise it will default to "$ENV{SCRIPT_NAME}?step=js&js=" (the
 latter is more friendly with overridden paths).  A default handler for
 the "js" step has been provided in "js_run_step" (this handler will
 nicely print out the javascript found in the js files which are
-included with this distribution - if valid_steps is defined, it must
-include the step "js" - js_run_step will work properly with the
+included with this distribution.  js_run_step will work properly with the
 default "path" handler.
 
 =item js_validation (hook)
@@ -2098,12 +2211,16 @@ method.  It will catch any dies and pass them to ->handle_error.
 
 This starts the process flow for the path and its steps.
 
+=item navigate_authenticated (method)
+
+Same as the method navigate but sets require_auth(1) before
+running.  See the require_auth method.
+
 =item new (class method)
 
-Object creator.  Takes a hash or hashref of arguments that will
-become the initial properties of the object.  Calls the init
-method once the object has been blessed to allow for any other
-initilizations.
+Object creator.  Takes a hashref of arguments that will become the
+initial properties of the object.  Calls the init method once the
+object has been blessed to allow for any other initilizations.
 
     my $app = MyApp->new({name_module => 'my_app'});
 
@@ -2121,9 +2238,15 @@ Hook methods are looked up and ran using the method "run_hook" which
 uses the method "find_hook" to lookup the hook.  A history of ran
 hooks is stored in the array ref returned by $self->history.
 
-By default the path method will look for $ENV{'PATH_INFO'} or the
-value in the form by the key step_key.  It will use this step to
-create a path with that one step as its contents.
+If path has not been defined, the method will look first in the form
+for a key by the name found in ->step_key.  It will then look in
+$ENV{'PATH_INFO'}.  It will use this step to create a path with that
+one step as its contents.  If a step is passed in via either of these
+ways, the method will call valid_steps to make sure that the step
+is valid (by default valid_steps returns undef - which means that
+any step is valid).  Any step beginning with _ can not be passed in
+and are intended for use on private paths.  If a non-valid step is
+found, then path will be set to contain a single step of ->forbidden_step.
 
 For the best functionality, the arrayref returned should be the same
 reference returned for every call to path - this ensures that other
@@ -2151,6 +2274,13 @@ there were no errors which died during the nav_loop process.
 
 It can be disabled from running by setting the _no_post_navigate
 property.
+
+If per-step authentication is enabled and authentication fails,
+the post_navigate method will still be called (the post_navigate
+method can check the ->is_authed method to change behavior).  If
+application level authentication is enabled and authentication
+fails, none of the pre_navigate, nav_loop, or post_navigate methods
+will be called.
 
 =item post_print (hook)
 
@@ -2243,6 +2373,46 @@ had been successfully validated and acted upon.
 
 Arguments are the steps used to replace.  Can be called any time.
 Replaces the remaining steps (if any) of the current path.
+
+=item require_auth (method)
+
+Default undef.  Can return either a true value or a hashref of step names.
+
+If a hashref of stepnames is returned, authentication will be turned on
+at the step level.  In this mode if any step is accessed, the get_valid_auth
+method will be called.  If it fails, then the nav_loop will be stopped
+(the post_navigate method will be called - use the is_authed method to perform
+different functions).  Any step of the path not in the hash will not require
+authentication.  For example, to add authentication to add authentication
+to the add, edit and delete steps you could do:
+
+    sub require_auth { {add => 1, edit => 1, delete => 1} }
+
+If a non-hash true value is returned from the require_auth method then
+authentication will take place before the pre_navigation or the nav_loop methods.
+If authentication fails the navigation process is exited (the post_navigate
+method will not be called).
+
+    sub require_auth { 1 }
+
+Alternatively you can also could do either of the following:
+
+    __PACKAGE__->navigate_authenticated; # instead of __PACKAGE__->navigate;
+
+    # OR
+
+    sub init { shift->require_auth(1) }
+
+    # OR
+
+    __PACKAGE__->new({require_auth => 1}->navigate;
+
+If get_valid_auth returns true, in either case, the is_authed method will
+return true and the auth_data will contain the authenticated user's data.
+If it returns false, auth_data may possibly contain a defined but false
+data object with details as to why authentication failed.
+
+See the get_valid_auth method.
 
 =item run_hook (method)
 
@@ -2353,13 +2523,16 @@ See allow_morph and morph.
 Called by the default path method.  Should return a hashref of path
 steps that are allowed.  If the current step is not found in the hash
 (or is not the default_step or js_step) the path method will return a
-single step of "forbidden" and run its hooks.  If no hash or undef is
+single step of ->forbidden_step and run its hooks.  If no hash or undef is
 returned, all paths are allowed (default).  A key "forbidden_step"
 containing the step that was not valid will be placed in the stash.
 Often the valid_steps method does not need to be defined as arbitrary
 method calls are not possible with CGI::Ex::App.
 
-The pre_step, skip, prepare, and info_complete hooks allow for validating
+Any steps that begin with _ are also "not" valid for passing in via the form
+or path info.  See the path method.
+
+Also, the pre_step, skip, prepare, and info_complete hooks allow for validating
 the data before running finalize.
 
 =item validate (hook)
@@ -2384,6 +2557,18 @@ path.  A validation item of:
     {field => 'foo', required => 1, append_path => ['bar', 'baz']}
 
 would append 'bar' and 'baz' to the path should all validation succeed.
+
+=item verify_user (method)
+
+Installed as a hook to CGI::Ex::App during get_valid_auth.  Should return
+true if the user is ok.  Default is to always return true.  This can be
+used to abort early before the get_pass_by_user hook is called.
+
+     sub verify_user {
+         my ($self, $user) = @_;
+         return 0 if $user eq 'paul'; # don't let paul in
+         return 1;                    # let anybody else in
+     }
 
 =back
 
@@ -2935,6 +3120,75 @@ in either of the following ways:
 In most use cases it isn't necessary to set name_module, but it also
 doesn't hurt and in all cases it is more descriptive to anybody who is
 going to maintain the code later.
+
+=head1 ADDING AUTHENTICATION TO THE ENTIRE APPLICATION
+
+Having authentication is sometimes a good thing.  To force
+the entire application to be authenticated (require a valid username
+and password before doing anything) you could do the following.
+
+    ### File: /var/www/lib/Recipe.pm
+    ### Same as before but add
+    ### --------------------------------------------
+
+    sub get_pass_by_user {
+        my $self = shift;
+        my $user = shift;
+        my $pass = $self->lookup_and_cache_the_pass($user);
+        return $pass;
+    }
+
+
+    ### File: /var/www/cgi-bin/recipe (depending upon Apache configuration)
+    ### Change the line with ->navigate; to
+    ### --------------------------------------------
+
+    Recipe->navigate_authenticated;
+
+    # OR
+
+    ### File: /var/www/lib/Recipe.pm
+    ### Same as before but add
+    ### --------------------------------------------
+
+    sub require_auth { 1 }
+
+    # OR
+
+    ### File: /var/www/lib/Recipe.pm
+    ### Same as before but add
+    ### --------------------------------------------
+
+    sub init { shift->require_auth(1) }
+
+See the require_auth, get_valid_auth, and auth_args methods for more information.
+
+=head1 ADDING AUTHENTICATION TO INDIVIDUAL STEPS
+
+Sometimes you may only want to have certain steps require
+authentication.  For example, in the previous recipe example we
+might want to let the main and view steps be accessible to anybody,
+but require authentication for the add, edit, and delete steps.
+
+To do this, we would do the following to the original example (the
+navigation must start with ->navigate.  Starting with ->navigate_authenticated
+will cause all steps to require validation):
+
+    ### File: /var/www/lib/Recipe.pm
+    ### Same as before but add
+    ### --------------------------------------------
+
+    sub get_pass_by_user {
+        my $self = shift;
+        my $user = shift;
+        my $pass = $self->lookup_and_cache_the_pass($user);
+        return $pass;
+    }
+
+    sub require_auth { {add => 1, edit => 1, delete => 1} }
+
+That's it.  The add, edit, and delete steps will now require authentication.
+See the require_auth, get_valid_auth, and auth_args methods for more information.
 
 =head1 THANKS
 
