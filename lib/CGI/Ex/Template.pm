@@ -1434,8 +1434,7 @@ sub set_variable {
 sub vivify_args {
     my $self = shift;
     my $vars = shift;
-    my $args = shift || {};
-    return [map {$self->get_variable($_, $args)} @$vars];
+    return [map {$self->get_variable($_)} @$vars];
 }
 
 ###----------------------------------------------------------------###
@@ -1443,15 +1442,14 @@ sub vivify_args {
 sub play_operator {
     my $self = shift;
     my $tree = shift;
-    my $ARGS = shift || {};
-    my $op = $tree->[0];
 
-    if (my $code = $OP_DISPATCH->{$op}) {
+    if (my $code = $OP_DISPATCH->{$tree->[0]}) {
         my @args = map { $self->get_variable($tree->[$_]) } 1 .. $#$tree;
         local $^W;
         return $code->(@args);
     }
 
+    my $op = $tree->[0];
     $tree = [@$tree[1..$#$tree]];
 
     ### do constructors and short-circuitable operators
