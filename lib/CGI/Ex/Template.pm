@@ -17,8 +17,22 @@ use vars qw($VERSION
             $TAGS
             $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS
             $DIRECTIVES $QR_DIRECTIVE
-            $OPERATORS $OP_UNARY $OP_TRINARY $OP_EXTRA $OP_FUNC $QR_OP $QR_OP_UNARY $QR_OP_EXTRA
-            $QR_COMMENTS $QR_FILENAME $QR_AQ_NOTDOT $QR_AQ_SPACE
+
+            $OPERATORS
+            $OP_UNARY
+            $OP_BINARY
+            $OP_TRINARY
+            $OP_DISPATCH
+
+            $QR_OP
+            $QR_OP_UNARY
+            $QR_OP_PARENED
+
+            $QR_COMMENTS
+            $QR_FILENAME
+            $QR_AQ_NOTDOT
+            $QR_AQ_SPACE
+
             $PACKAGE_EXCEPTION $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
@@ -45,12 +59,12 @@ BEGIN {
         html     => ['<!--', '-->'], # HTML comments
     };
 
-    $SCALAR_OPS = {
+    $SCALAR_OPS ||= {
         chunk    => \&vmethod_chunk,
         collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
         defined  => sub { 1 },
         indent   => \&vmethod_indent,
-        format   => \&vmethod_format,
+        'format' => \&vmethod_format,
         hash     => sub { {value => $_[0]} },
         html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
         lcfirst  => sub { lcfirst $_[0] },
@@ -72,14 +86,14 @@ BEGIN {
         uri      => sub { local $_ = $_[0]; s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
     };
 
-    $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
+    $FILTER_OPS ||= { # generally - non-dynamic filters belong in scalar ops
         eval     => [\&filter_eval, 1],
         evaltt   => [\&filter_eval, 1],
         file     => [\&filter_redirect, 1],
         redirect => [\&filter_redirect, 1],
     };
 
-    $LIST_OPS = {
+    $LIST_OPS ||= {
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
         grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
         hash    => sub { my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
@@ -101,7 +115,7 @@ BEGIN {
         unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
     };
 
-    $HASH_OPS = {
+    $HASH_OPS ||= {
         defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
         delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
         each    => sub { [%{ $_[0] }] },
@@ -164,28 +178,44 @@ BEGIN {
     };
     $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= $|[\s;\#]) }x;
 
-    $OPERATORS ||= {qw(**  96   ^   96   pow 96
-                       !   93   unary_minus  93
-                       *   90   /   90   div 90   DIV 90
-                       %   90   mod 90   MOD 90
-                       +   85   -   85   _   85   ~   85
-                       <   80   >   80   <=  80   >=  80
-                       lt  80   gt  80   le  80   ge  80
-                       ==  75   !=  75   eq  75   ne  75
-                       &&  70
-                       ||  65
-                       ..  60
-                       ?   55
-                       =   52
-                       not 50   NOT 50
-                       and 45   AND 45
-                       or  40   OR  40
-                       hashref 1 arrayref 1
-                       )};
-    $OP_UNARY   ||= {'!' => '!', 'not' => '!', 'NOT' => '!', 'unary_minus' => '-'};
-    $OP_TRINARY ||= {'?' => ':'};
-    $OP_EXTRA   ||= {'=' => 1};
-    $OP_FUNC    ||= {};
+    ### setup the operator parsing
+    $OPERATORS ||= [
+        # name => # order, precedence, symbols, only_in_parens, sub to create
+        [2, 96, ['**', '^', 'pow'],  0, sub {     $_[0] ** $_[1]                  } ],
+        [1, 93, ['!'],               0, sub {   ! $_[0]                           } ],
+        [1, 93, ['-'],               0, sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
+        [2, 90, ['*'],               0, sub {     $_[0] *  $_[1]                  } ],
+        [2, 90, ['/'],               0, sub {     $_[0] /  $_[1]                  } ],
+        [2, 90, ['div', 'DIV'],      0, sub { int($_[0] /  $_[1])                 } ],
+        [2, 90, ['%', 'mod', 'MOD'], 0, sub {     $_[0] %  $_[1]                  } ],
+        [2, 85, ['+'],               0, sub {     $_[0] +  $_[1]                  } ],
+        [2, 85, ['-'],               0, sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
+        [2, 85, ['_', '~'],          0, sub { join "", @_                         } ],
+        [2, 80, ['<'],               0, sub {     $_[0] <  $_[1]                  } ],
+        [2, 80, ['>'],               0, sub {     $_[0] >  $_[1]                  } ],
+        [2, 80, ['<='],              0, sub {     $_[0] <= $_[1]                  } ],
+        [2, 80, ['>='],              0, sub {     $_[0] >= $_[1]                  } ],
+        [2, 80, ['lt'],              0, sub {     $_[0] lt $_[1]                  } ],
+        [2, 80, ['gt'],              0, sub {     $_[0] gt $_[1]                  } ],
+        [2, 80, ['le'],              0, sub {     $_[0] le $_[1]                  } ],
+        [2, 80, ['ge'],              0, sub {     $_[0] ge $_[1]                  } ],
+        [2, 75, ['==', 'eq'],        0, sub {     $_[0] eq $_[1]                  } ],
+        [2, 75, ['!=', 'ne'],        0, sub {     $_[0] ne $_[1]                  } ],
+        [2, 70, ['&&'],              0, undef                                       ],
+        [2, 65, ['||'],              0, undef                                       ],
+        [2, 60, ['..'],              0, sub {     $_[0] .. $_[1]                  } ],
+        [3, 55, ['?', ':'],          0, sub {     $_[0] ?  $_[1] : $_[2]          } ],
+        [2, 52, ['='],               1, undef                                       ],
+        [1, 50, ['not', 'NOT'],      0, sub {   ! $_[0]                           } ],
+        [2, 45, ['and', 'AND'],      0, undef                                       ],
+        [2, 40, ['or', 'OR'],        0, undef                                       ],
+        [0,  0, ['hash'],            0, sub { return {@_};                        } ],
+        [0,  0, ['array'],           0, sub { return [@_]                         } ],
+    ];
+    $OP_DISPATCH ||= {map {my $ref = $_; map {$_ => $ref->[4]} @{$ref->[2]}}                @$OPERATORS};
+    $OP_UNARY    ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 1} @$OPERATORS};
+    $OP_BINARY   ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 2} @$OPERATORS};
+    $OP_TRINARY  ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 3} @$OPERATORS};
     sub _op_qr { # no mixed \w\W operators
         my %used;
         my $chrs = join '|', map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W{2,}$/} @_;
@@ -195,13 +225,13 @@ BEGIN {
         $word = "\\b(?:$word)\\b" if $word;
         return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
     }
-    sub _build_op_qr       { _op_qr(sort(grep {! $OP_UNARY->{$_} && ! $OP_EXTRA->{$_}}
-                                         keys(%$OPERATORS), values(%$OP_TRINARY))) }
-    sub _build_op_qr_unary { _op_qr(sort %$OP_UNARY) } # grab keys and values
-    sub _build_op_qr_extra { _op_qr(sort keys %$OP_EXTRA) }
-    $QR_OP       ||= _build_op_qr();
-    $QR_OP_UNARY ||= _build_op_qr_unary();
-    $QR_OP_EXTRA ||= _build_op_qr_extra();
+    sub _build_op_qr       { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] > 1 && ! $_->[3]} @$OPERATORS) } # all binary, trinary, non-parened ops
+    sub _build_op_qr_unary { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] == 1            } @$OPERATORS) } # unary operators
+    sub _build_op_qr_paren { _op_qr(sort map {@{ $_->[2] }} grep {                 $_->[3]} @$OPERATORS) } # paren
+    $QR_OP         ||= _build_op_qr();
+    $QR_OP_UNARY   ||= _build_op_qr_unary();
+    $QR_OP_PARENED ||= _build_op_qr_paren();
+
 
     $QR_COMMENTS  = '(?-s: \# .* \s*)*';
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
@@ -741,10 +771,6 @@ sub parse_variable {
     if ($copy =~ s{ ^ ($QR_OP_UNARY) \s* $QR_COMMENTS }{}ox) {
         return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
         $has_unary = $1;
-        if (! $OP_UNARY->{$has_unary}) {
-            my $ref = $self->{'_op_unary_backref'} ||= {reverse %$OP_UNARY};
-            $has_unary = $ref->{$has_unary} || $self->throw("Couldn't find canonical name of unary \"$1\"");
-        }
     }
 
     my @var;
@@ -813,7 +839,7 @@ sub parse_variable {
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset presedence
-        my $arrayref = ['arrayref'];
+        my $arrayref = ['array'];
         while (defined(my $var = $self->parse_variable(\$copy))) {
             push @$arrayref, $var;
             $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
@@ -825,7 +851,7 @@ sub parse_variable {
     ### looks like a hash constructor
     } elsif ($copy =~ s{ ^ \{ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
-        my $hashref = ['hashref'];
+        my $hashref = ['hash'];
         while (defined(my $key = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
             $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox;
             my $val = $self->parse_variable(\$copy);
@@ -903,12 +929,13 @@ sub parse_variable {
         my $found;
         while ($copy =~ s{ ^ ($QR_OP) \s* $QR_COMMENTS }{}ox ## look for operators - then move along
                || ($ARGS->{'allow_parened_ops'}
-                   && $copy =~ s{ ^ ($QR_OP_EXTRA) \s* $QR_COMMENTS }{}ox) ) {
+                   && $copy =~ s{ ^ ($QR_OP_PARENED) \s* $QR_COMMENTS }{}ox) ) {
             local $self->{'_operator_precedence'} = 1;
             my $op   = $1;
             my $var2 = $self->parse_variable(\$copy);
+
             ### allow for unary operator precedence
-            if ($has_unary && ($OPERATORS->{$op} && $OPERATORS->{$op} < $OPERATORS->{$has_unary})) {
+            if ($has_unary && (($OP_BINARY->{$op} || $OP_TRINARY->{$op})->[1] < $OP_UNARY->{$has_unary}->[1])) {
                 if ($tree) {
                     if ($#$tree == 1) { # only one operator - keep simple things fast
                         $var = [\ [$tree->[0], $var, $tree->[1]], 0];
@@ -919,19 +946,19 @@ sub parse_variable {
                     undef $tree;
                     undef $found;
                 }
-                my $op_unary = $OP_UNARY->{$has_unary} || $has_unary;
-                $var = [ \ [ $op_unary, $var ], 0 ];
+                $var = [ \ [ $has_unary, $var ], 0 ];
                 undef $has_unary;
             }
 
             ### add the operator to the tree
             push (@{ $tree ||= [] }, $op, $var2);
-            $found->{$op} = $OPERATORS->{$op} if exists $OPERATORS->{$op};
+            my $ref = $OP_BINARY->{$op} || $OP_TRINARY->{$op};
+            $found->{$op} = $ref->[1];
         }
 
         ### if we found operators - tree the nodes by operator precedence
         if ($tree) {
-            if ($#$tree == 1) { # only one operator - keep simple things fast
+            if (@$tree == 2) { # only one operator - keep simple things fast
                 $var = [\ [$tree->[0], $var, $tree->[1]], 0];
             } else {
                 unshift @$tree, $var;
@@ -942,8 +969,7 @@ sub parse_variable {
 
     ### allow for unary on non-chained variables
     if ($has_unary) {
-        my $op_unary = $OP_UNARY->{$has_unary} || $has_unary;
-        $var = [ \ [ $op_unary, $var ], 0 ];
+        $var = [ \ [ $has_unary, $var ], 0 ];
     }
 
     $$str_ref = $copy; # commit the changes
@@ -965,9 +991,10 @@ sub apply_precedence {
 
         ### split the array on the current operator
         for (my $i = 0; $i <= $#$tree; $i ++) {
-            next if $tree->[$i] ne $op && (! exists $OP_TRINARY->{$op} || $OP_TRINARY->{$op} ne $tree->[$i]);
+            my $is_trinary = $OP_TRINARY->{$op} && grep {$_ eq $tree->[$i]} @{ $OP_TRINARY->{$op}->[2] };
+            next if $tree->[$i] ne $op && ! $is_trinary;
             push @trees, [splice @$tree, 0, $i, ()]; # everything up to the operator
-            push @trinary, $tree->[0] if exists $OP_TRINARY->{$op};
+            push @trinary, $tree->[0] if $is_trinary;
             shift @$tree; # pull off the operator
             $i = -1;
         }
@@ -975,24 +1002,33 @@ sub apply_precedence {
         push @trees, $tree if scalar @$tree; # elements after last operator
 
         ### now - for this level split on remaining operators, or add the variable to the tree
-        for (@trees) {
-            if ($#$_ == 0) {
-                $_ = $_->[0]; # single item - its not a tree
-            } elsif ($#$_ == 2) {
-                $_ = [ \ [ $_->[1], $_->[0], $_->[2] ], 0 ]; # single operator - put it straight on
+        for my $node (@trees) {
+            if (@$node == 1) {
+                $node = $node->[0]; # single item - its not a tree
+            } elsif (@$node == 3) {
+                $node = [ \ [ $node->[1], $node->[0], $node->[2] ], 0 ]; # single operator - put it straight on
             } else {
-                $_ = $self->apply_precedence($_, $found); # more complicated - recurse
+                $node = $self->apply_precedence($node, $found); # more complicated - recurse
             }
         }
 
-        ### all done if we are looking at binary operations
-        return [ \ [ $op, @trees ], 0 ] if $#trinary <= 1;
+        ### return binary
+        if ($OP_BINARY->{$op}) {
+            my $val = $trees[0];
+            $val = [ \ [ $op, $val, $trees[$_] ], 0 ] for 1 .. $#trees;
+            return $val;
+        }
+
+        ### return simple trinary
+        if (@trinary == 2) {
+            return [ \ [ $op, @trees ], 0 ];
+        }
 
         ### reorder complex trinary - rare case
         while ($#trinary >= 1) {
             ### if we look starting from the back - the first lead trinary op will always be next to its matching op
             for (my $i = $#trinary; $i >= 0; $i --) {
-                next if ! exists $OP_TRINARY->{$trinary[$i]};
+                next if $OP_TRINARY->{$trinary[$i]}->[2]->[1] eq $trinary[$i];
                 my ($op, $op2) = splice @trinary, $i, 2, (); # remove the pair of operators
                 my $node = [ \ [$op, @trees[$i .. $i + 2] ], 0 ];
                 splice @trees, $i, 3, $node;
@@ -1032,7 +1068,7 @@ sub parse_args {
     }
 
     ### allow for named arguments to be added also
-    push @args, [\ ['hashref', @named], 0] if scalar @named;
+    push @args, [\ ['hash', @named], 0] if scalar @named;
 
     return \@args;
 }
@@ -1080,7 +1116,6 @@ sub get_variable {
     my $var  = shift;
     my $ARGS = shift || {};
     my $i    = 0;
-    my $generated_list;
 
     ### determine the top level of this particular variable access
     my $ref  = $var->[$i++];
@@ -1090,8 +1125,7 @@ sub get_variable {
         if (ref($ref) eq 'SCALAR') { # a scalar literal
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') { # operator
-            return $self->play_operator($$ref) if ${ $ref }->[0] eq '\\'; # return the closure
-            $generated_list = 1 if ${ $ref }->[0] eq '..';
+            return $self->play_operator($$ref) if ${ $ref }->[0] =~ /^(\.\.|\\)$/;
             $ref = $self->play_operator($$ref);
         } else { # a named variable access (ie via $name.foo)
             $ref = $self->get_variable($ref);
@@ -1260,11 +1294,6 @@ sub get_variable {
         }
     }
 
-    ### allow for special behavior for the '..' operator
-    if ($generated_list && $ARGS->{'list_context'} && ref($ref) eq 'ARRAY') {
-        return @$ref;
-    }
-
     return $ref;
 }
 
@@ -1416,33 +1445,21 @@ sub play_operator {
     my $tree = shift;
     my $ARGS = shift || {};
     my $op = $tree->[0];
-    $tree = [@$tree[1..$#$tree]];
 
-    ### allow for operator function override
-    if (exists $OP_FUNC->{$op}) {
-        return $OP_FUNC->{$op}->($self, $op, $tree, $ARGS);
+    if (my $code = $OP_DISPATCH->{$op}) {
+        my @args = map { $self->get_variable($tree->[$_]) } 1 .. $#$tree;
+        local $^W;
+        return $code->(@args);
     }
 
+    $tree = [@$tree[1..$#$tree]];
+
     ### do constructors and short-circuitable operators
-    if ($op eq '~' || $op eq '_') {
-        return join "", grep {defined} @{ $self->vivify_args($tree) };
-    } elsif ($op eq '=') { # this can't be parsed in normal operations (due to tt limitation)
+    if ($op eq '=') { # this can't be parsed in normal operations (due to tt limitation)
         my ($var, $val) = @$tree;
         $val = $self->get_variable($val);
         $self->set_variable($var, $val);
         return $val;
-    } elsif ($op eq 'arrayref') {
-        return $self->vivify_args($tree, {list_context => 1});
-    } elsif ($op eq 'hashref') {
-        my $args = $self->vivify_args($tree);
-        push @$args, undef if ! ($#$args % 2);
-        return {@$args};
-    } elsif ($op eq '?') {
-        if ($self->get_variable($tree->[0])) {
-            return defined($tree->[1]) ? $self->get_variable($tree->[1]) : undef;
-        } else {
-            return defined($tree->[2]) ? $self->get_variable($tree->[2]) : undef;
-        }
     } elsif ($op eq '||' || $op eq 'or' || $op eq 'OR') {
         for my $node (@$tree) {
             my $var = $self->get_variable($node);
@@ -1456,48 +1473,7 @@ sub play_operator {
             return 0 if ! $var;
         }
         return $var;
-
-    } elsif ($op eq '!') {
-        my $var = ! $self->get_variable($tree->[0]);
-        return defined($var) ? $var : '';
-
     }
-
-    ### equality operators
-    local $^W = 0;
-    my $n = $self->get_variable($tree->[0]);
-    $tree = [@$tree[1..$#$tree]];
-    if ($op eq '==')    { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n eq $_) }; return 1 }
-    elsif ($op eq '!=') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n ne $_) }; return 1 }
-    elsif ($op eq 'eq') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n eq $_) }; return 1 }
-    elsif ($op eq 'ne') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n ne $_) }; return 1 }
-    elsif ($op eq '<')  { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n <  $_); $n = $_ }; return 1 }
-    elsif ($op eq '>')  { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n >  $_); $n = $_ }; return 1 }
-    elsif ($op eq '<=') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n <= $_); $n = $_ }; return 1 }
-    elsif ($op eq '>=') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n >= $_); $n = $_ }; return 1 }
-    elsif ($op eq 'lt') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n lt $_); $n = $_ }; return 1 }
-    elsif ($op eq 'gt') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n gt $_); $n = $_ }; return 1 }
-    elsif ($op eq 'le') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n le $_); $n = $_ }; return 1 }
-    elsif ($op eq 'ge') { for (@$tree) { $_ = $self->get_variable($_); return '' if ! ($n ge $_); $n = $_ }; return 1 }
-
-    ### numeric operators
-    my $args = $self->vivify_args($tree);
-    if (! @$args) {
-        if ($op eq '-') { return - $n }
-        $self->throw('operator', "Not enough args for operator \"$op\"");
-    }
-    if ($op eq '..')        { return [($n || 0) .. ($args->[-1] || 0)] }
-    elsif ($op eq '+')      { $n +=  $_ for @$args; return $n }
-    elsif ($op eq '-')      { $n -=  $_ for @$args; return $n }
-    elsif ($op eq '*')      { $n *=  $_ for @$args; return $n }
-    elsif ($op eq '/')      { $n /=  $_ for @$args; return $n }
-    elsif ($op eq 'div'
-           || $op eq 'DIV') { $n = int($n / $_) for @$args; return $n }
-    elsif ($op eq '%'
-           || $op eq 'mod'
-           || $op eq 'MOD') { $n %=  $_ for @$args; return $n }
-    elsif ($op eq '**'
-           || $op eq 'pow') { $n **= $_ for @$args; return $n }
 
     $self->throw('operator', "Un-implemented operation $op");
 }
