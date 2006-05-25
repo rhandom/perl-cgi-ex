@@ -1,11 +1,17 @@
 #!/usr/bin/perl -w
 
+=head1 NAME
+
+cgi_ex_2.cgi - Rewrite of cgi_ex_1.cgi using CGI::Ex::App
+
+=cut
+
 if (__FILE__ eq $0) {
-  &handler();
+  handler();
 }
 
 sub handler {
-  MyCGI->navigate();
+  MyCGI->navigate;
 }
 
 ###----------------------------------------------------------------###
@@ -16,8 +22,6 @@ use strict;
 use base CGI::Ex::App;
 use CGI::Ex::Dump qw(debug);
 
-###----------------------------------------------------------------###
-
 sub pre_loop {
   my $self = shift;
   my $path = shift;
@@ -26,10 +30,23 @@ sub pre_loop {
   }
 }
 
-sub userinfo_ready_validate {
+### this will work for both userinfo_hash_common and success_hash_common
+sub hash_common {
+  my $self = shift;
+  return {
+    title   => 'My Application',
+    script  => $ENV{SCRIPT_NAME},
+    color   => ['#ccf', '#aaf'],
+    history => $self->history,
+  }
+}
+
+sub ready_validate {
   my $self = shift;
   return $self->form->{processing} ? 1 : 0;
 }
+
+###----------------------------------------------------------------###
 
 sub userinfo_hash_validation {
   return {
@@ -52,7 +69,7 @@ sub userinfo_hash_validation {
   };
 }
 
-sub userinfo_hash_form {
+sub userinfo_hash_swap {
   my $self = shift;
   my $hash = $self->form;
   $hash->{form_name} = 'formfoo';
@@ -62,48 +79,10 @@ sub userinfo_hash_form {
   return $hash;
 }
 
-sub hash_common {
-  return {
-    title  => 'My Application',
-    script => $ENV{SCRIPT_NAME},
-    color  => ['#ccf', '#aaf'],
-  }
-}
-
-sub print {
-  my $self = shift;
-  my $step = shift;
-  my $form = shift;
-  my $fill = shift;
-
-  my $content = ($step eq 'userinfo') ? &get_content_form()
-    : ($step eq 'main') ? &get_content_success()
-    : "Don't have content for step \"$step\"";
-
-  $self->cgix->swap_template(\$content, $form);
-  $self->cgix->fill(\$content, $fill);
-
-  $self->cgix->print_content_type();
-  print $content;
-}
-
-### this works because we added /js onto $ENV{SCRIPT_NAME} above near js_val
-sub js_pre_step {
-  my $self = shift;
-  my $info = $ENV{PATH_INFO} || '';
-  if ($info =~ m|^/js(/\w+)+.js$|) {
-    $info =~ s|^/+js/+||;
-    $self->cgix->print_js($info);
-    return 1;
-  }
-  return 0;
-}
-
-
 ###----------------------------------------------------------------###
 
-sub get_content_form {
-  return qq{
+sub userinfo_file_print {
+  return \ qq {
     <html>
     <head>
       <title>[% title %]</title>
@@ -148,14 +127,14 @@ sub get_content_form {
 
     </form>
 
-    [% js_val %]
+    [% js_validation %]
     </body>
     </html>
   };
 }
 
-sub get_content_success {
-  return qq{
+sub success_file_print {
+  return \ qq{
     <html>
     <head><title>[% title %]</title></head>
     <body>
