@@ -1125,7 +1125,7 @@ sub get_variable {
         if (ref($ref) eq 'SCALAR') { # a scalar literal
             $ref = $$ref;
         } elsif (ref($ref) eq 'REF') { # operator
-            return $self->play_operator($$ref) if ${ $ref }->[0] =~ /^(\.\.|\\)$/;
+            return $self->play_operator($$ref) if ${ $ref }->[0] eq '..';
             $ref = $self->play_operator($$ref);
         } else { # a named variable access (ie via $name.foo)
             $ref = $self->get_variable($ref);
