@@ -184,6 +184,7 @@ sub _hash    { return bless(shift(), 'CGI::Ex::_hash'   ) }
 sub _array   { return bless(shift(), 'CGI::Ex::_array'  ) }
 sub _concat  { return bless(shift(), 'CGI::Ex::_concat' ) }
 sub _autobox { return bless(shift(), 'CGI::Ex::_autobox') }
+sub _not     { return bless(shift(), 'CGI::Ex::_not'    ) }
 
 sub throw {
     require CGI::Ex::Template;
@@ -606,7 +607,6 @@ sub call {
         }
     } else {
         if ($RT_DURING_COMPILE) {
-            $RT_DURING_COMPILE = undef; # allow subsequent args (if any) to not be affected
             $ref = $RT_NAMESPACE->{$ref};
         } else {
             return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
@@ -757,14 +757,14 @@ sub call {
             $chunk = $chunk->call($hash) if ref $chunk;
             die "$chunk is undefined\n";
         } else {
-            $ref = $self->undefined($self);
+            $ref = $self->undefined_any($self);
         }
     }
 
     return $ref;
 }
 
-sub undefined { $RT_UNDEFINED_SUB ? $RT_UNDEFINED_SUB->(@_) : '' }
+sub undefined_any { $RT_UNDEFINED_SUB ? $RT_UNDEFINED_SUB->(@_) : undef }
 
 sub set {
     my ($self, $val, $hash) = @_;
@@ -1027,11 +1027,6 @@ sub does_autobox { 1 }
 
 package CGI::Ex::_autobox;
 sub call { $_[0]->[0]->call($_[1]) }
-sub set {}
-sub does_autobox { 1 }
-
-package CGI::Ex::_literal;
-sub call { ${ $_[0] } }
 sub set {}
 sub does_autobox { 1 }
 
