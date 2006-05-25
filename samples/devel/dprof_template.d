@@ -28,11 +28,11 @@ my $swap = {
     cet   => $cet,
 };
 
-my $txt;
-#$txt = "[% one %]\n";
-$txt = ((" "x1000)."[% one %]\n")x100;
-$txt = "[%f=10; WHILE (g=f) ; f = f - 1 ; f ; END %]";
-#$txt = ("[% \"".(" "x10)."\$one\" %]\n")x1000;
+my $txt = '';
+$txt .= "[% one %]\n";
+$txt .= ((" "x1000)."[% one %]\n")x100;
+$txt .= "[%f=10; WHILE (g=f) ; f = f - 1 ; f ; END %]";
+$txt .= ("[% \"".(" "x10)."\$one\" %]\n")x1000;
 
 my $file = \$txt;
 
