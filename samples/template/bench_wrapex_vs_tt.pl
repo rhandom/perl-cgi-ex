@@ -86,6 +86,20 @@ This is some text.
 [% shell_footer %]
 };
 
+my $content_h = q{<TMPL_VAR NAME=shell_header>
+[% shell_start %]
+
+[% IF foo %]
+This is some text.
+[% END %]
+
+[% FOREACH i IN a_stuff %][% i %][% END %]
+[% pass_in_something %]
+
+[% shell_end %]
+[% shell_footer %]
+};
+
 if (open (my $fh, ">$dir/foo.tt")) {
     print $fh $content_t;
     close $fh;

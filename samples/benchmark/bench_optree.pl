@@ -9,6 +9,7 @@ bench_optree.pl - Look at different ways of storing data that transform fast.
 use strict;
 use Benchmark qw(cmpthese timethese);
 use CGI::Ex::Dump qw(debug);
+use constant skip_execute => 1;
 
 #my $obj = bless [1, 2], __PACKAGE__;
 #my $struct1 = \ [ '-', 1, 2 ];
@@ -36,23 +37,23 @@ sub get_var2 { ref($_[1]) ? $_[1]->call($_[0]) : $_[1] }
     package Num;
     sub new { my $c = shift; bless \@_, $c };
     sub call { $_[0]->[0] }
-    package Op;
+    package A::B;
     sub new { my $c = shift; bless \@_, $c }
 #    sub new { my $c = shift; bless [map{ref$_?$_:Num->new($_)} @_], $c }
-    package Op::Minus;
-    our @ISA = qw(Op);
+    package A::B::Minus;
+    our @ISA = qw(A::B);
     sub call { $_[1]->get_var2($_[0]->[0]) - $_[1]->get_var2($_[0]->[1]) }
-    package Op::Plus;
-    our @ISA = qw(Op);
+    package A::B::Plus;
+    our @ISA = qw(A::B);
     sub call { $_[1]->get_var2($_[0]->[0]) + $_[1]->get_var2($_[0]->[1]) }
-    package Op::Mult;
-    our @ISA = qw(Op);
+    package A::B::Mult;
+    our @ISA = qw(A::B);
     sub call { $_[1]->get_var2($_[0]->[0]) * $_[1]->get_var2($_[0]->[1]) }
-    package Op::Div;
-    our @ISA = qw(Op);
+    package A::B::Div;
+    our @ISA = qw(A::B);
     sub call { $_[1]->get_var2($_[0]->[0]) / $_[1]->get_var2($_[0]->[1]) }
-    package Op::Var;
-    our @ISA = qw(Op);
+    package A::B::Var;
+    our @ISA = qw(A::B);
 use vars qw($HASH_OPS $LIST_OPS $SCALAR_OPS $FILTER_OPS $OP_FUNC);
 BEGIN {
     $HASH_OPS   = $CGI::Ex::Template::HASH_OPS;
@@ -63,7 +64,7 @@ BEGIN {
 }
 use constant trace => 0;
 sub call {
-    my $var = shift;
+    my $var  = shift;
     my $self = shift;
     my $ARGS = shift || {};
     my $i    = 0;
@@ -74,92 +75,54 @@ sub call {
     my $args = $var->[$i++];
     warn "get_variable: begin \"$ref\"\n" if trace;
 
-    if ($ARGS->{'is_namespace_during_compile'}) {
-        $ref = $self->{'NAMESPACE'}->{$ref};
-    } else {
-        return if $ref =~ /^[_.]/; # don't allow vars that begin with _
-        $ref = $self->{'_vars'}->{$ref};
-    }
-
-    ### let the top level thing be a code block
-    if (ref $ref eq 'CODE') {
-        my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
-        if (defined $results[0]) {
-            $ref = ($#results > 0) ? \@results : $results[0];
-        } elsif (defined $results[1]) {
-            die $results[1]; # TT behavior - why not just throw in the plugin ?
+    if (defined $ref) {
+        if ($ARGS->{'is_namespace_during_compile'}) {
+            $ref = $self->{'NAMESPACE'}->{$ref};
         } else {
-            $ref = undef;
+            return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+            $ref = $self->{'_vars'}->{$ref};
         }
     }
 
-    ### vivify the chained levels
     my %seen_filters;
-    while (defined $ref && $#$var > $i) {
+    while (defined $ref) {
+
+        ### check at each point if the returned thing was a code
+        if (UNIVERSAL::isa($ref, 'CODE')) {
+            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
+            if (defined $results[0]) {
+                $ref = ($#results > 0) ? \@results : $results[0];
+            } elsif (defined $results[1]) {
+                die $results[1]; # TT behavior - why not just throw ?
+            } else {
+                $ref = undef;
+                last;
+            }
+        }
+
+        ### descend one chained level
+        last if $i >= $#$var;
         my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
         my $name         = $var->[$i++];
         my $args         = $var->[$i++];
         warn "get_variable: nested \"$name\"\n" if trace;
 
         ### allow for named portions of a variable name (foo.$name.bar)
-        $name = $name->call($self) if ref $name;
+        if (ref $name) {
+            $name = $name->call($self);
+            if (! defined($name) || $name =~ /^[_.]/) {
+                $ref = undef;
+                last;
+            }
+        }
+
         if ($name =~ /^_/) { # don't allow vars that begin with _
             $ref = undef;
             last;
         }
 
-        ### method calls on objects
-        if (UNIVERSAL::can($ref, 'can')) {
-            my @args = $args ? @{ $self->vivify_args($args) } : ();
-            my @results = eval { $ref->$name(@args) };
-            if (! $@) {
-                if (defined $results[0]) {
-                    $ref = ($#results > 0) ? \@results : $results[0];
-                } elsif (defined $results[1]) {
-                    die $results[1]; # TT behavior - why not just throw ?
-                } else {
-                    $ref = undef;
-                }
-                next;
-            }
-            die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
-            # fall on down to "normal" accessors
-        }
-
-        ### hash member access
-        if (UNIVERSAL::isa($ref, 'HASH')) {
-            if ($was_dot_call && exists($ref->{$name}) ) {
-                $ref = $ref->{$name};
-            } elsif ($HASH_OPS->{$name}) {
-                $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } elsif ($ARGS->{'is_namespace_during_compile'}) {
-                return $var; # abort - can't fold namespace variable
-            } else {
-                $ref = undef;
-                next;
-            }
-
-        ### array access
-        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ /^\d+$/) {
-                if ($name <= $#$ref) {
-                    $ref = $ref->[$name];
-                } else {
-                    $ref = undef;
-                    next;
-                }
-            } elsif ($LIST_OPS->{$name}) {
-                $ref = $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } else {
-                $ref = undef;
-                next;
-            }
-
-        ### scalar access
-        } elsif (! ref($ref) && defined($ref)) {
-
+        ### allow for scalar and filter access (this happens for every non virtual method call)
+        if (! ref $ref) {
             if ($SCALAR_OPS->{$name}) {                        # normal scalar op
                 $ref = $SCALAR_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
 
@@ -177,7 +140,6 @@ sub call {
                         $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                         die $err;
                     }
-
                 } elsif (! UNIVERSAL::isa($filter, 'ARRAY')) {
                     $self->throw('filter', "invalid FILTER entry for '$name' (not a CODE ref)");
 
@@ -206,29 +168,57 @@ sub call {
                     $var = [$name, 0, '|', @$filter, @{$var}[$i..$#$var]]; # splice the filter into our current tree
                     $i = 2;
                 }
-            } else {
                 if (scalar keys %seen_filters
                     && $seen_filters{$var->[$i - 5] || ''}) {
                     $self->throw('filter', "invalid FILTER entry for '".$var->[$i - 5]."' (not a CODE ref)");
                 }
-                $ref = undef;
-                next;
-            }
-        }
-
-        ### check at each point if the rurned thing was a code
-        if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
-            if (defined $results[0]) {
-                $ref = ($#results > 0) ? \@results : $results[0];
-            } elsif (defined $results[1]) {
-                die $results[1]; # TT behavior - why not just throw ?
             } else {
                 $ref = undef;
             }
+
+        } else {
+
+            ### method calls on objects
+            if (UNIVERSAL::can($ref, 'can')) {
+                my @args = $args ? @{ $self->vivify_args($args) } : ();
+                my @results = eval { $ref->$name(@args) };
+                if ($@) {
+                    die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
+                } elsif (defined $results[0]) {
+                    $ref = ($#results > 0) ? \@results : $results[0];
+                    next;
+                } elsif (defined $results[1]) {
+                    die $results[1]; # TT behavior - why not just throw ?
+                } else {
+                    $ref = undef;
+                    last;
+                }
+                # didn't find a method by that name - so fail down to hash and array access
+            }
+
+            ### hash member access
+            if (UNIVERSAL::isa($ref, 'HASH')) {
+                if ($was_dot_call && exists($ref->{$name}) ) {
+                    $ref = $ref->{$name};
+                } elsif ($HASH_OPS->{$name}) {
+                    $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                } elsif ($ARGS->{'is_namespace_during_compile'}) {
+                    return $var; # abort - can't fold namespace variable
+                } else {
+                    $ref = undef;
+                }
+
+            ### array access
+            } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+                if ($name =~ /^\d+$/) {
+                    $ref = ($name > $#$ref) ? undef : $ref->[$name];
+                } else {
+                    $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                }
+            }
         }
 
-    }
+    } # end of while
 
     ### allow for undefinedness
     if (! defined $ref) {
@@ -249,11 +239,18 @@ sub call {
     return $ref;
 }
 };
-sub plus  ($$) { Op::Plus->new( @_) }
-sub minus ($$) { Op::Minus->new(@_) }
-sub mult  ($$) { Op::Mult->new( @_) }
-sub div   ($$) { Op::Div->new(  @_) }
-sub var        { Op::Var->new(  @_) };
+sub plus  ($$) { A::B::Plus->new( @_) }
+sub minus ($$) { A::B::Minus->new(@_) }
+sub mult  ($$) { A::B::Mult->new( @_) }
+sub div   ($$) { A::B::Div->new(  @_) }
+sub var        { A::B::Var->new(  @_) };
+$INC{'A/B.pm'} = 1;
+$INC{'A/B/Plus.pm'} = 1;
+$INC{'A/B/Minus.pm'} = 1;
+$INC{'A/B/Mult.pm'} = 1;
+$INC{'A/B/Div.pm'} = 1;
+$INC{'A/B/Var.pm'} = 1;
+
 ###----------------------------------------------------------------###
 ### now benchmark the different variable storage methods
 
@@ -280,11 +277,13 @@ print eval($Y0)."\n";
 print $self->get_variable($Y1)."\n";
 print $self->get_var2($Y2)."\n";
 
-cmpthese timethese (-2, {
-    perl        => sub { eval $Y0 },
-    bare_data   => sub { $self->get_variable($Y1) },
-    method_call => sub { $self->get_var2($Y2) },
-}, 'auto');
+if (! skip_execute) {
+    cmpthese timethese (-2, {
+        perl        => sub { eval $Y0 },
+        bare_data   => sub { $self->get_variable($Y1) },
+        method_call => sub { $self->get_var2($Y2) },
+    }, 'auto');
+}
 
 ###----------------------------------------------------------------###
 
@@ -298,11 +297,13 @@ print eval($Z0)."\n";
 print $self->get_variable($Z1)."\n";
 print $self->get_var2($Z2)."\n";
 
-cmpthese timethese (-2, {
-    perl        => sub { eval $Z0 },
-    bare_data   => sub { $self->get_variable($Z1) },
-    method_call => sub { $self->get_var2($Z2) },
-}, 'auto');
+if (! skip_execute) {
+    cmpthese timethese (-2, {
+        perl        => sub { eval $Z0 },
+        bare_data   => sub { $self->get_variable($Z1) },
+        method_call => sub { $self->get_var2($Z2) },
+    }, 'auto');
+}
 
 ###----------------------------------------------------------------###
 
@@ -317,11 +318,13 @@ print eval($A0)."\n";
 print $self->get_variable($A1)."\n";
 print $self->get_var2($A2)."\n";
 
-cmpthese timethese (-2, {
-    perl        => sub { eval $A0 },
-    bare_data   => sub { $self->get_variable($A1) },
-    method_call => sub { $self->get_var2($A2) },
-}, 'auto');
+if (! skip_execute) {
+    cmpthese timethese (-2, {
+        perl        => sub { eval $A0 },
+        bare_data   => sub { $self->get_variable($A1) },
+        method_call => sub { $self->get_var2($A2) },
+    }, 'auto');
+}
 
 ###----------------------------------------------------------------###
 
@@ -335,11 +338,13 @@ print eval($B0)."\n";
 print $self->get_variable($B1)."\n";
 print $self->get_var2($B2)."\n";
 
-cmpthese timethese (-2, {
-    perl        => sub { eval $B0 },
-    bare_data   => sub { $self->get_variable($B1) },
-    method_call => sub { $self->get_var2($B2) },
-}, 'auto');
+if (! skip_execute) {
+    cmpthese timethese (-2, {
+        perl        => sub { eval $B0 },
+        bare_data   => sub { $self->get_variable($B1) },
+        method_call => sub { $self->get_var2($B2) },
+    }, 'auto');
+}
 
 ###----------------------------------------------------------------###
 ### Test (de)serialization speed
@@ -412,21 +417,25 @@ sub get_variable {
         }
     }
 
-    ### let the top level thing be a code block
-    if (ref $ref eq 'CODE') {
-        my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
-        if (defined $results[0]) {
-            $ref = ($#results > 0) ? \@results : $results[0];
-        } elsif (defined $results[1]) {
-            die $results[1]; # TT behavior - why not just throw in the plugin ?
-        } else {
-            $ref = undef;
-        }
-    }
 
-    ### vivify the chained levels
     my %seen_filters;
-    while (defined $ref && $#$var > $i) {
+    while (defined $ref) {
+
+        ### check at each point if the returned thing was a code
+        if (UNIVERSAL::isa($ref, 'CODE')) {
+            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
+            if (defined $results[0]) {
+                $ref = ($#results > 0) ? \@results : $results[0];
+            } elsif (defined $results[1]) {
+                die $results[1]; # TT behavior - why not just throw ?
+            } else {
+                $ref = undef;
+                last;
+            }
+        }
+
+        ### descend one chained level
+        last if $i >= $#$var;
         my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
         my $name         = $var->[$i++];
         my $args         = $var->[$i++];
@@ -438,7 +447,7 @@ sub get_variable {
                 $name = $self->get_variable($name);
                 if (! defined($name) || $name =~ /^[_.]/) {
                     $ref = undef;
-                    next;
+                    last;
                 }
             } else {
                 die "Shouldn't get a ". ref($name) ." during a vivify on chain";
@@ -449,58 +458,8 @@ sub get_variable {
             last;
         }
 
-        ### method calls on objects
-        if (UNIVERSAL::can($ref, 'can')) {
-            my @args = $args ? @{ $self->vivify_args($args) } : ();
-            my @results = eval { $ref->$name(@args) };
-            if (! $@) {
-                if (defined $results[0]) {
-                    $ref = ($#results > 0) ? \@results : $results[0];
-                } elsif (defined $results[1]) {
-                    die $results[1]; # TT behavior - why not just throw ?
-                } else {
-                    $ref = undef;
-                }
-                next;
-            }
-            die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
-            # fall on down to "normal" accessors
-        }
-
-        ### hash member access
-        if (UNIVERSAL::isa($ref, 'HASH')) {
-            if ($was_dot_call && exists($ref->{$name}) ) {
-                $ref = $ref->{$name};
-            } elsif ($HASH_OPS->{$name}) {
-                $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } elsif ($ARGS->{'is_namespace_during_compile'}) {
-                return $var; # abort - can't fold namespace variable
-            } else {
-                $ref = undef;
-                next;
-            }
-
-        ### array access
-        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ /^\d+$/) {
-                if ($name <= $#$ref) {
-                    $ref = $ref->[$name];
-                } else {
-                    $ref = undef;
-                    next;
-                }
-            } elsif ($LIST_OPS->{$name}) {
-                $ref = $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
-                next;
-            } else {
-                $ref = undef;
-                next;
-            }
-
-        ### scalar access
-        } elsif (! ref($ref) && defined($ref)) {
-
+        ### allow for scalar and filter access (this happens for every non virtual method call)
+        if (! ref $ref) {
             if ($SCALAR_OPS->{$name}) {                        # normal scalar op
                 $ref = $SCALAR_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
 
@@ -518,7 +477,6 @@ sub get_variable {
                         $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                         die $err;
                     }
-
                 } elsif (! UNIVERSAL::isa($filter, 'ARRAY')) {
                     $self->throw('filter', "invalid FILTER entry for '$name' (not a CODE ref)");
 
@@ -547,29 +505,57 @@ sub get_variable {
                     $var = [$name, 0, '|', @$filter, @{$var}[$i..$#$var]]; # splice the filter into our current tree
                     $i = 2;
                 }
-            } else {
                 if (scalar keys %seen_filters
                     && $seen_filters{$var->[$i - 5] || ''}) {
                     $self->throw('filter', "invalid FILTER entry for '".$var->[$i - 5]."' (not a CODE ref)");
                 }
-                $ref = undef;
-                next;
-            }
-        }
-
-        ### check at each point if the rurned thing was a code
-        if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
-            if (defined $results[0]) {
-                $ref = ($#results > 0) ? \@results : $results[0];
-            } elsif (defined $results[1]) {
-                die $results[1]; # TT behavior - why not just throw ?
             } else {
                 $ref = undef;
             }
+
+        } else {
+
+            ### method calls on objects
+            if (UNIVERSAL::can($ref, 'can')) {
+                my @args = $args ? @{ $self->vivify_args($args) } : ();
+                my @results = eval { $ref->$name(@args) };
+                if ($@) {
+                    die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
+                } elsif (defined $results[0]) {
+                    $ref = ($#results > 0) ? \@results : $results[0];
+                    next;
+                } elsif (defined $results[1]) {
+                    die $results[1]; # TT behavior - why not just throw ?
+                } else {
+                    $ref = undef;
+                    last;
+                }
+                # didn't find a method by that name - so fail down to hash and array access
+            }
+
+            ### hash member access
+            if (UNIVERSAL::isa($ref, 'HASH')) {
+                if ($was_dot_call && exists($ref->{$name}) ) {
+                    $ref = $ref->{$name};
+                } elsif ($HASH_OPS->{$name}) {
+                    $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                } elsif ($ARGS->{'is_namespace_during_compile'}) {
+                    return $var; # abort - can't fold namespace variable
+                } else {
+                    $ref = undef;
+                }
+
+            ### array access
+            } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+                if ($name =~ /^\d+$/) {
+                    $ref = ($name > $#$ref) ? undef : $ref->[$name];
+                } else {
+                    $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                }
+            }
         }
 
-    }
+    } # end of while
 
     ### allow for undefinedness
     if (! defined $ref) {

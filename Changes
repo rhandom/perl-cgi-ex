@@ -1,12 +1,23 @@
-1.15
-        * Allow for step to be automatically untainted during loop
-        * Fix base_dir_rel to work with "" as the dir
+2.00
+        * Added CGI::Ex::Template and test suites
+        * Allow for CGI::Ex::Template to be fully TT2 syntax compliant
+        * Re-implementation of CGI::Ex::Auth
+        * Allow for step to be automatically untainted during loop in CGI::Ex::App
+        * Fix base_dir_rel to work with "" as the dir in CGI::Ex::App
         * Bug fixes in CGI::Ex::Fill
         * Better perldoc in CGI::Ex::Fill
+        * Add named parameter function called fill in CGI::Ex::Fill
         * DProfd CGI::Ex::Conf for improvements
         * DProfd CGI::Ex::Validate for improvements
         * Added conf_read and conf_write methods for Conf
-        * Added CGI::Ex::Template and test suites
+        * Cleanup of all of the test
+        * Add missing tests
+        * Add Array Prototype fixes from Eamon Daly
+        * Add examples and cleanup to CGI::Ex::App
+        * Cleanup hooks in App (add fill_args and template_args)
+        * Change run_hook syntax in App
+        * Add dump_history with more history information
+        * Integrate CGI::Ex::Auth with App
 
 1.14   2005-02-28
         * Bug fix in validate (OR's were not working)
