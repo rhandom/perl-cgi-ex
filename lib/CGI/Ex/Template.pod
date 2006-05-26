@@ -47,6 +47,37 @@ apply to CET just fine (This pod tries to explain everything - but there is
 too much).  The section on differences between CET and TT will explain
 what too look out for.
 
+Note: A clarification on "faster".  All templates are going to take
+different amounts of time to process.  Different types of DIRECTIVES
+parse and play more quickly than others.  The test script
+samples/benchmark/bench_template.pl was used to obtain sample numbers.
+In general the following statements are true:
+
+    If you load a new Template object each time and pass a filename, CET
+    is around 4 times faster.
+
+    If you load a new Template object and pass a string ref, CET
+    is around 3.5 times faster.
+
+    If you load a new Template object and use CACHE_EXT, CET
+    is around 1.5 times faster.
+
+    If you use a cached object with a cached in memory template,
+    then CET is 50% faster.
+
+    If you use Template::Stash::XS with a cached in memory template,
+    then CET is about as fast.
+
+It is pretty hard to beat the speed of XS stash with compiled in
+memory templates.  Many systems don't have access to those so
+CET may make more sense.  Hopefully as TT is revised, many of the CET
+speed advantages can be incorporated so that the core TT is just as
+fast or faster.
+
+So should you use CGI::Ex::Template ?  Well, try it out.  It may
+give you no visible improvement.  Or it could.
+
+
 =head1 PUBLIC METHODS
 
 =over 4
@@ -75,16 +106,49 @@ The $in argument can be any one of:
 
     String containing the filename of the template to be processed.  The filename should
     be relative to INCLUDE_PATH.  (See INCLUDE_PATH, ABSOLUTE, and RELATIVE configuration items).
+    In memory caching and fileside caching are available for this type.
 
-    A reference to a scalar containing the contents of the template to be processed.  In memory
-    caching and fileside caching will not be avaible for these types - but CET is fast enough
-    that it should not matter.
+    A reference to a scalar containing the contents of the template to be processed.
 
-    
+    A coderef that will be called to return the contents of the template.
 
+    An open filehandle that will return the contents of the template when read.
 
+The $swap argument should be hashref containing key value pairs that will be
+available to variables swapped into the template.  Values can be hashrefs, hashrefs
+of hashrefs and so on, arrayrefs, arrayrefs of arrayrefs and so on, coderefs, objects,
+and simple scalar values such as numbers and strings.  See the section on variables.
+
+The $out argument can be any one of:
+
+    undef - meaning to print the completed template to STDOUT.
+
+    String containing a filename.  The completed template will be placed in the file.
+
+    A reference to a string.  The contents will be appended to the scalar reference.
+
+    A coderef.  The coderef will be called with the contents as a single argument.
+
+    An object that can run the method "print".  The contents will be passed as
+    a single argument to print.
+
+    An arrayref.  The contents will be pushed onto the array.
+
+    An open filehandle.  The contents will be printed to the open handle.
+
+Additionally - the $out argument can be configured using the OUTPUT configuration
+item.
 
 =item process_simple
+
+Similar to the process method but with the following restrictions:
+
+The $in parameter is limited to a filename or a reference a string containing the contents.
+
+The $out parameter may only be a reference to a scalar string that ouput will be appended to.
+
+Additionally, the following configuration variables will be ignored:  VARIABLES,
+PRE_DEFINE, BLOCKS, PRE_PROCESS, PROCESS, POST_PROCESS, AUTO_RESET, OUTPUT.
 
 =item error
 
@@ -203,14 +267,13 @@ by the pseudo context object and may disappear at some point.
 vmethod_* - implement virtual methods that are more than one line.
 
 weak_copy - used to create a weak reference to self to avoid circular references. (this
-is needed by macros and references.
-
+is needed by macros)
 
 =head1 TODO
 
     Add WRAPPER config item
+
     Add ERROR config item
-    Document which TT2 test suites pass
 
 =head1 HOW IS CGI::Ex::Template DIFFERENT
 
@@ -224,8 +287,6 @@ configuration and syntax of CET different from that of TT.
 Numerical hash keys work [% a = {1 => 2} %]
 
 Quoted hash key interpolation is fine [% a = {"$foo" => 1} %]
-
-Range operator returns an arrayref [% a = 1 .. 10 %]
 
 Multiple ranges in same constructor [% a = [1..10, 21..30] %]
 
@@ -298,18 +359,6 @@ Post operative directives can be nested.
 
 CATCH blocks can be empty.
 
-CHOMP at the end of a string.
-
-  CET will replace "[% 1 =%]\n" with "1 "
-
-  TT will replace "[% 1 =%]\n" with "1"
-
-  This is an internal one-off exception in TT that may or may not DWIM.
-  In CET - it always means to always replace whitespace on the line with
-  a space.  The template can be modified to either not have space - or
-  to end with ~%] which will remove any following space.
-
-
 CET does not generate Perl code.  It generates an "opcode" tree.
 
 CET uses storable for its compiled templates.  If EVAL_PERL is off,
@@ -331,7 +380,7 @@ There is no grammar.  CET has its own built in grammar system.
 
 There is no VIEW directive.
 
-There are no references.  (There was in initial BETA tests, but it was decided
+There are no references.  (There was in initial beta tests, but it was decided
 to remove the little used feature).
 
 The DEBUG directive only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
@@ -339,7 +388,19 @@ The DEBUG directive only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 When debug dirs is on, directives on different lines separated by colons show the line they
 are on rather than a general line range.
 
+There is no ANYCASE configuration item.  There was in initial beta tests, but it
+was dropped in favor of consistent parsing syntax.
+
+There is no V1DOLLAR configuration item.  This is a TT version 1 compatibility item and
+is not available in CET.
+
 =back
+
+=head1 VARIABLES
+
+This section discusses variables that can be used in the TT syntax.
+
+
 
 =head1 DIRECTIVES
 
@@ -424,6 +485,20 @@ defined or was zero length.
 
     [% foo = 'baz' %][% DEFAULT foo = 'bar' %][% foo %] => 'baz'
 
+=item DUMP
+
+This is not provided in TT.  DUMP inserts a Data::Dumper printout
+of the variable or expression.  If no argument is passed it will
+dump the entire contents of the current variable stash (with
+private keys removed.
+
+If the template is being processed in a web request, DUMP will html
+encode the DUMP automatically.
+
+    [% DUMP %] # dumps everything
+
+    [% DUMP 1 + 2 %]
+
 =item ELSE
 
 Used with the IF directive.  See the L</"IF"> directive.
@@ -462,17 +537,112 @@ Alias for FOREACH
 
 =item FOREACH
 
+Allows for iterating over the contents of any arrayref.  If the variable is not an
+arrayref, it is automatically promoted to one.
 
+    [% FOREACH i IN [1 .. 3] %]
+        The variable i = [% i %]
+    [%~ END %]
+
+    [% a = [1 .. 3] %]
+    [% FOREACH j IN a %]
+        The variable j = [% j %]
+    [%~ END %]
+
+Would print:
+
+        The variable i = 1
+        The variable i = 2
+        The variable i = 3
+
+        The variable j = 1
+        The variable j = 2
+        The variable j = 3
+
+You can also use the "=" instead of "IN" or "in".
+
+    [% FOREACH i = [1 .. 3] %]
+        The variable i = [% i %]
+    [%~ END %]
+
+    Same as before.
+
+Setting into a variable is optional.
+
+    [% a = [1 .. 3] %]
+    [% FOREACH a %] Hi [% END %]
+
+Would print:
+
+     hi  hi  hi 
+
+If the item being iterated is a hashref and the FOREACH does not
+set into a variable, then values of the hashref are copied into
+the variable stash.
+
+    [% FOREACH [{a => 1}, {a => 2}] %]
+        Key a = [% a %]
+    [%~ END %]
+
+Would print:
+
+        Key a = 1
+        Key a = 2
+
+The FOREACH process uses the CGI::Ex::Template::Iterator class to handle
+iterations (It is compatible with Template::Iterator).  During the FOREACH
+loop an object blessed into the iterator class is stored in the variable "loop".
+
+The loop variable provides the following information during a FOREACH:
+
+    index  - the current index
+    max    - the max index of the list
+    size   - the number of items in the list
+    count  - index + 1
+    number - index + 1
+    first  - true if on the first item
+    last   - true if on the last item
+    next   - return the next item in the list
+    prev   - return the previous item in the list
+
+The following:
+
+    [% FOREACH [1 .. 3] %] [% loop.count %]/[% loop.size %] [% END %]
+
+Would print:
+
+     1/3  2/3  3/3 
+
+The iterator is also available using a plugin.  This allows for access
+to multiple "loop" variables in a nested FOREACH directive.
+
+    [%~ USE outer_loop = Iterator(["a", "b"]) %]
+    [%~ FOREACH i = outer_loop %]
+        [%~ FOREACH j = ["X", "Y"] %]
+           [% outer_loop.count %]-[% loop.count %] = ([% i %] and [% j %])
+        [%~ END %]
+    [%~ END %]
+
+Would print:
+
+           1-1 = (a and X)
+           1-2 = (a and Y)
+           2-1 = (b and X)
+           2-2 = (b and Y)
 
 =item GET
 
-Return the value of a variable.
+Return the value of a variable or expression.
 
     [% GET a %]
 
 The GET keyword may be omitted.
 
     [% a %]
+
+    [% 7 + 2 - 3 %] => 6
+
+See the section on VARIABLES.
 
 =item IF (IF / ELSIF / ELSE)
 
@@ -499,11 +669,33 @@ If may also be used as a post operative directive.
 
 =item INCLUDE
 
+Parse the contents of a file or block and insert them.  Variables defined
+or modifications made to existing variables are discarded after
+a template is included.
 
+    [% INCLUDE path/to/template.html %]
+
+    [% INCLUDE "path/to/template.html" %]
+
+    [% file = "path/to/template.html" %]
+    [% INCLUDE $file %]
+
+    [% BLOCK foo %]This is foo[% END %]
+    [% INCLUDE foo %]
+
+Arguments may also be passed to the template:
+
+    [% INCLUDE "path/to/template.html" a = "An arg" b = "Another arg" %]
+
+Filenames must be relative to INCLUDE_PATH unless the ABSOLUTE
+or RELATIVE configuration items are set.
 
 =item INSERT
 
+Insert the contents of a file without template parsing.
 
+Filenames must be relative to INCLUDE_PATH unless the ABSOLUTE
+or RELATIVE configuration items are set.
 
 =item LAST
 
@@ -511,11 +703,42 @@ Used to exit out of a WHILE or FOREACH loop.
 
 =item MACRO
 
+Takes a directive and turns it into a variable that can take arguments.
 
+    [% MACRO foo(i, j) BLOCK %]You passed me [% i %] and [% j %].[% END %]
+
+    [%~ foo("a", "b") %]
+    [% foo(1, 2) %]
+
+Would print:
+
+    You passed me a and b.
+    You passed me 1 and 2.
+
+Another example:
+
+    [% MACRO bar(max) FOREACH i = [1 .. max] %]([% i %])[% END %]
+
+    [%~ bar(4) %]
+
+Would print:
+
+    (1)(2)(3)(4)
 
 =item META
 
+Used to define variables that will be available via either the
+template or component namespace.
 
+Once defined, they cannot be overwritten.
+
+    [% template.foobar %]
+    [%~ META foobar = 'baz' %]
+    [%~ META foobar = 'bing' %]
+
+Would print:
+
+    baz
 
 =item NEXT
 
@@ -523,15 +746,56 @@ Used to go to the next iteration of a WHILE or FOREACH loop.
 
 =item PERL
 
+Only available if the EVAL_PERL configuration item is true (default is false).
 
+Allow evaling the block of text as perl.  The block will be parsed and then evaled.
+
+    [% a = "BimBam" %]
+    [%~ PERL %]
+        my $a = "[% a %]";
+        print "The variable \$a was \"$a\"";
+        $stash->set('b', "FooBar");
+    [% END %]
+    [% b %]
+
+Would print:
+
+    The variable $a was "BimBam"
+    FooBar
+
+During execution, anything printed to stdout will be inserted into the template.  Also,
+the $stash and $context variables are set and are references to objects that mimic the
+interface provided by Template::Context and Template::Stash.  These are provided for
+compatibility only.  $self contains the current CGI::Ex::Template object.
 
 =item PROCESS
 
+Parse the contents of a file or block and insert them.  Unlike INCLUDE,
+no variable localization happens so variables defined or modifications made
+to existing variables remain after the template is processed.
 
+    [% PROCESS path/to/template.html %]
+
+    [% PROCESS "path/to/template.html" %]
+
+    [% file = "path/to/template.html" %]
+    [% PROCESS $file %]
+
+    [% BLOCK foo %]This is foo[% END %]
+    [% PROCESS foo %]
+
+Arguments may also be passed to the template:
+
+    [% PROCESS "path/to/template.html" a = "An arg" b = "Another arg" %]
+
+Filenames must be relative to INCLUDE_PATH unless the ABSOLUTE
+or RELATIVE configuration items are set.
 
 =item RAWPERL
 
-
+Only available if the EVAL_PERL configuration item is true (default is false).
+Similar to the PERL directive, but you will need to append
+to the $output variable rather than just calling PRINT.
 
 =item RETURN
 
@@ -556,7 +820,20 @@ No content will be processed beyond this point.
 
 =item SWITCH
 
+Allow for SWITCH and CASE functionality.
 
+   [% a = "hi" %]
+   [% b = "bar" %]
+   [% SWITCH a %]
+       [% CASE "foo"           %]a was foo
+       [% CASE b               %]a was bar
+       [% CASE ["hi", "hello"] %]You said hi or hello
+       [% CASE DEFAULT         %]I don't know what you said
+   [% END %]
+
+Would print:
+
+   You said hi or hello
 
 =item TAGS
 
@@ -590,11 +867,17 @@ The named tags are (duplicated from TT):
 
 =item UNLESS
 
+Same as IF but condition is negated.
+
+    [% UNLESS 0 %]hi[% END %]  => hi
 
 
 =item USE
 
+Allows for loading a Template::Toolkit style plugin.
 
+
+See the documentation for Template::Manual::Plugins.
 
 =item WHILE
 
@@ -794,17 +1077,11 @@ between and including the first and last arguments.
 
     [% t = [1 .. 5] %] => variable t contains an array with 1,2,3,4, and 5
 
-In CGI::Ex::Template, because .. is an operator that returns an array, you may
-also specify the previous example as the following (this does not work in TT):
-
-    [% t = 1 .. 5 %] => variable t contains an array with 1,2,3,4, and 5
-
-CGI::Ex::Template provides special functionality to allow the arrayref
-returned by .. to be expanded fully into a [] construtor as in C<[1 .. 5]>.
-Because of this it is possible to place multiple ranges in the
-same [] constructor.  This is not available in TT.
+It is possible to place multiple ranges in the same [] constructor.  This is not available in TT.
 
     [% t = [1..3, 6..8] %] => variable t contains an array with 1,2,3,6,7,8
+
+The .. operator is the only operator that returns a list of items.
 
 =item C<? :>
 
@@ -994,7 +1271,8 @@ the template are not available during the compile process.
 
 =item DELIMITER
 
-
+String to use to split INCLUDE_PATH with.  Default is :.  It is more
+straight forward to just send INCLUDE_PATH an arrayref of paths.
 
 =item END_TAG
 
@@ -1086,7 +1364,8 @@ with the appropriate values from the variable cache (if INTERPOLATE is on).
 
 =item RELATIVE
 
-
+Boolean.  Default false.  If true, allows filenames to be specified
+that are relative to the currently running process.
 
 =item START_TAG
 
@@ -1244,12 +1523,12 @@ The following table shows a variable or expression and the corresponding parsed 
     "one"              "one"
     "one"|length       [ \"one", 0, '|', 'length', 0 ]
     "one $a two"       [ \ [ '~', 'one ', ['a', 0], ' two' ], 0 ]
-    [0, 1, 2]          [ \ [ 'arrayref', 0, 1, 2 ], 0 ]
-    [0, 1, 2].size     [ \ [ 'arrayref', 0, 1, 2 ], 0, '.', 'size', 0 ]
-    ['a', a, $a ]      [ \ [ 'arrayref', 'a', ['a', 0], [['a', 0], 0] ], 0]
-    {a  => 'b'}        [ \ [ 'hashref',  'a', 'b' ], 0 ]
-    {a  => 'b'}.size   [ \ [ 'hashref',  'a', 'b' ], 0, '.', 'size', 0 ]
-    {$a => b}          [ \ [ 'hashref',  ['a', 0], ['b', 0] ], 0 ]
+    [0, 1, 2]          [ \ [ 'array', 0, 1, 2 ], 0 ]
+    [0, 1, 2].size     [ \ [ 'array', 0, 1, 2 ], 0, '.', 'size', 0 ]
+    ['a', a, $a ]      [ \ [ 'array', 'a', ['a', 0], [['a', 0], 0] ], 0]
+    {a  => 'b'}        [ \ [ 'hash',  'a', 'b' ], 0 ]
+    {a  => 'b'}.size   [ \ [ 'hash',  'a', 'b' ], 0, '.', 'size', 0 ]
+    {$a => b}          [ \ [ 'hash',  ['a', 0], ['b', 0] ], 0 ]
     1 + 2 + 3 + 4      [ \ [ '+', 1, 2, 3, 4 ], 0]
     a + b              [ \ [ '+', ['a', 0], ['b', 0] ], 0 ]
     a * (b + c)        [ \ [ '*', ['a', 0], [ \ ['+', ['b', 0], ['c', 0]], 0 ]], 0 ]
@@ -1274,10 +1553,7 @@ Some notes on the parsing.
 
 The following perl can be typed at the command line to view the parsed variable tree.
 
-    perl -e 'my $a = "\"one \$a two\"";
-       use CGI::Ex::Template;
-       use Data::Dumper;
-       print Dumper(CGI::Ex::Template->new->parse_variable(\$a));'
+    perl -e 'use CGI::Ex::Template; print CGI::Ex::Template::dump_parse("foo.bar + 2")."\n"'
 
 =head1 AUTHOR
 
