@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 459 - ($is_tt ? 55 : 0);
+use Test::More tests => 460 - ($is_tt ? 54 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -233,7 +233,6 @@ process_ok("[% SET name = 'two' %][% SET foo.\${name}.foo = 3 %][% foo.two.foo %
 
 process_ok("[% SET foo = [1..10] %][% foo.6 %]" => 7);
 process_ok("[% SET foo = [10..1] %][% foo.6 %]" => '');
-process_ok("[% SET foo = 1 .. 10 %][% foo.6 %]" => 7) if ! $is_tt;
 process_ok("[% SET foo = [-10..-1] %][% foo.6 %]" => -4);
 process_ok("[% SET foo = [1..10, 21..30] %][% foo.12 %]" => 23)         if ! $is_tt;
 process_ok("[% SET foo = [..100] bar = 7 %][% bar %][% foo.0 %]" => '');
@@ -392,6 +391,8 @@ process_ok("[% 5 || 6 %]" => 5);
 process_ok("[% 0 || 6 %]" => 6);
 process_ok("[% 0 && 6 %]" => 0);
 process_ok("[% 0 && 0 %]" => 0);
+process_ok("[% 5 && 6 && 7%]" => 7);
+process_ok("[% 0 || 1 || 2 %]" => 1);
 
 process_ok("[% 5 + (0 || 5) %]" => 10);
 
