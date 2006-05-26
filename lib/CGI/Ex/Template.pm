@@ -27,6 +27,7 @@ use vars qw($VERSION
             $QR_FILENAME
             $QR_AQ_NOTDOT
             $QR_AQ_SPACE
+            $QR_PRIVATE
 
             $PACKAGE_EXCEPTION $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
             $WHILE_MAX
@@ -232,6 +233,7 @@ BEGIN {
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_AQ_NOTDOT = "(?! \\s* $QR_COMMENTS \\.)";
     $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=[;+]) )'; # the + comes into play on filenames
+    $QR_PRIVATE   = qr/^_/;
 
     $WHILE_MAX   = 1000;
     $EXTRA_COMPILE_EXT = '.sto';
@@ -1125,7 +1127,7 @@ sub get_variable {
         } else { # a named variable access (ie via $name.foo)
             $ref = $self->get_variable($ref);
             if (defined $ref) {
-                return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+                return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
                 $ref = $self->{'_vars'}->{$ref};
             }
         }
@@ -1133,7 +1135,7 @@ sub get_variable {
         if ($ARGS->{'is_namespace_during_compile'}) {
             $ref = $self->{'NAMESPACE'}->{$ref};
         } else {
-            return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+            return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
             $ref = $self->{'_vars'}->{$ref};
         }
     }
@@ -1166,7 +1168,7 @@ sub get_variable {
         if (ref $name) {
             if (ref($name) eq 'ARRAY') {
                 $name = $self->get_variable($name);
-                if (! defined($name) || $name =~ /^[_.]/) {
+                if (! defined($name) || $name =~ $QR_PRIVATE || $name =~ /^\./) {
                     $ref = undef;
                     last;
                 }
@@ -1174,7 +1176,7 @@ sub get_variable {
                 die "Shouldn't get a ". ref($name) ." during a vivify on chain";
             }
         }
-        if ($name =~ /^_/) { # don't allow vars that begin with _
+        if ($name =~ $QR_PRIVATE) { # don't allow vars that begin with _
             $ref = undef;
             last;
         }
@@ -1306,7 +1308,7 @@ sub set_variable {
     if (ref $ref) {
         if (ref($ref) eq 'ARRAY') { # named access (ie via $name.foo)
             $ref = $self->get_variable($ref);
-            if (defined $ref && $ref !~ /^[_.]/) { # don't allow vars that begin with _
+            if (defined $ref && $ref !~ $QR_PRIVATE) { # don't allow vars that begin with _
                 if ($#$var <= $i) {
                     $self->{'_vars'}->{$ref} = $val;
                     return;
@@ -1320,7 +1322,7 @@ sub set_variable {
             return;
         }
     } elsif (defined $ref) {
-        return if $ref =~ /^[_.]/; # don't allow vars that begin with _
+        return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
         if ($#$var <= $i) {
             $self->{'_vars'}->{$ref} = $val;
             return;
@@ -1352,7 +1354,7 @@ sub set_variable {
                 die "Shouldn't get a ".ref($name)." during a vivify on chain";
             }
         }
-        if ($name =~ /^_/) { # don't allow vars that begin with _
+        if ($name =~ $QR_PRIVATE) { # don't allow vars that begin with _
             return;
         }
 
@@ -1579,7 +1581,7 @@ sub play_DUMP {
         $var =~ s/^[+-~=]?\s*DUMP\s+//;
         $var =~ s/\s*[+-~=]?$//;
     } else {
-        my @were_never_here = (qw(template component), grep {/^_/} keys %{ $self->{'_vars'} });
+        my @were_never_here = (qw(template component), grep {$_ =~ $QR_PRIVATE} keys %{ $self->{'_vars'} });
         local @{ $self->{'_vars'} }{ @were_never_here };
         delete @{ $self->{'_vars'} }{ @were_never_here };
         $out = Data::Dumper::Dumper($self->{'_vars'});
@@ -2409,7 +2411,7 @@ sub process_simple {
     my $self = shift;
     my $in   = shift || die "Missing input";
     my $swap = shift || die "Missing variable hash";
-    my $out  = shift || die "Missing output handle";
+    my $out  = shift || die "Missing output string ref";
 
     eval {
         delete $self->{'_debug_off'};
@@ -2870,6 +2872,21 @@ sub filter_redirect {
         close FH;
         return '';
     };
+}
+
+###----------------------------------------------------------------###
+
+sub dump_parse {
+    my $str = shift;
+    require Data::Dumper;
+    return Data::Dumper::Dumper(__PACKAGE__->new->parse_variable(\$str));
+}
+
+sub dump_get {
+    my ($str, $hash) = @_;
+    require Data::Dumper;
+    my $obj = __PACKAGE__->new('_vars' => $hash);
+    return Data::Dumper::Dumper($obj->get_variable($obj->parse_variable(\$str)));
 }
 
 ###----------------------------------------------------------------###
