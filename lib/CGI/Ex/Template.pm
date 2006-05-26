@@ -204,7 +204,7 @@ BEGIN {
         [2, 70, ['&&'],              0, undef                                       ],
         [2, 65, ['||'],              0, undef                                       ],
         [2, 60, ['..'],              0, sub {     $_[0] .. $_[1]                  } ],
-        [3, 55, ['?', ':'],          0, sub {     $_[0] ?  $_[1] : $_[2]          } ],
+        [3, 55, ['?', ':'],          0, undef                                       ],
         [2, 52, ['='],               1, undef                                       ],
         [1, 50, ['not', 'NOT'],      0, sub {   ! $_[0]                           } ],
         [2, 45, ['and', 'AND'],      0, undef                                       ],
@@ -1443,34 +1443,30 @@ sub play_operator {
     my $self = shift;
     my $tree = shift;
 
-    if (my $code = $OP_DISPATCH->{$tree->[0]}) {
+    if ($OP_DISPATCH->{$tree->[0]}) {
         my @args = map { $self->get_variable($tree->[$_]) } 1 .. $#$tree;
         local $^W;
-        return $code->(@args);
+        return $OP_DISPATCH->{$tree->[0]}->(@args);
     }
 
     my $op = $tree->[0];
-    $tree = [@$tree[1..$#$tree]];
 
-    ### do constructors and short-circuitable operators
-    if ($op eq '=') { # this can't be parsed in normal operations (due to tt limitation)
-        my ($var, $val) = @$tree;
-        $val = $self->get_variable($val);
-        $self->set_variable($var, $val);
+    ### do custom and short-circuitable operators
+    if ($op eq '=') {
+        my $val = $self->get_variable($tree->[2]);
+        $self->set_variable($tree->[1], $val);
         return $val;
-    } elsif ($op eq '||' || $op eq 'or' || $op eq 'OR') {
-        for my $node (@$tree) {
-            my $var = $self->get_variable($node);
-            return $var if $var;
-        }
-        return '';
+
+   } elsif ($op eq '||' || $op eq 'or' || $op eq 'OR') {
+        return $self->get_variable($tree->[1]) || $self->get_variable($tree->[2]) || '';
+
     } elsif ($op eq '&&' || $op eq 'and' || $op eq 'AND') {
-        my $var;
-        for my $node (@$tree) {
-            $var = $self->get_variable($node);
-            return 0 if ! $var;
-        }
-        return $var;
+        my $var = $self->get_variable($tree->[1]) && $self->get_variable($tree->[2]);
+        return $var ? $var : 0;
+
+    } elsif ($op eq '?') {
+        local $^W;
+        return $self->get_variable($tree->[1]) ? $self->get_variable($tree->[2]) : $self->get_variable($tree->[3]);
     }
 
     $self->throw('operator', "Un-implemented operation $op");
