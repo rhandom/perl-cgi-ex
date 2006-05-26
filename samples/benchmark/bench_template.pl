@@ -148,7 +148,11 @@ my $tests = {                                                             #     
     '45_capture'   => "[% foo = BLOCK %]Hi[% END %][% foo %]",            #  102%  #  386%  #  291%  #  304%  # 10606.5/s #
     '46_complex'   => "$longer_template",                                 #   55%  #  288%  #  133%  #  251%  # 1230.3/s #
     # overall                                                             #   95%  #  406%  #  251%  #  346%  #
-    # overall (with stash::xs)                                            #   30%  #  409%  #  228%  #  323%  #
+
+
+    # With Stash::XS
+    #'46_complex'   => "$longer_template",                                 #   -4%  #  274%  #   93%  #  228%  # 1201.9/s #
+    ## overall                                                             #   30%  #  377%  #  211%  #  317%  #
 };
 
 ### load the code representation
