@@ -1578,8 +1578,8 @@ sub play_DUMP {
     if ($ident) {
         $out = Data::Dumper::Dumper($self->get_variable($ident));
         $var = $info->{'text'};
-        $var =~ s/^[+-~=]?\s*DUMP\s+//;
-        $var =~ s/\s*[+-~=]?$//;
+        $var =~ s/^[+\-~=]?\s*DUMP\s+//;
+        $var =~ s/\s*[+\-~=]?$//;
     } else {
         my @were_never_here = (qw(template component), grep {$_ =~ $QR_PRIVATE} keys %{ $self->{'_vars'} });
         local @{ $self->{'_vars'} }{ @were_never_here };
@@ -1590,9 +1590,11 @@ sub play_DUMP {
     if ($ENV{'REQUEST_METHOD'}) {
         $out =~ s/</&lt;/g;
         $out = "<pre>$out</pre>";
-        $out =~ s/\$VAR1/$var/g;
+        $out =~ s/\$VAR1/$var/;
         $out = "<b>DUMP: File \"$info->{file}\" line $info->{line}</b>$out";
-    };
+    } else {
+        $out =~ s/\$VAR1/$var/;
+    }
 
     return $out;
 }
