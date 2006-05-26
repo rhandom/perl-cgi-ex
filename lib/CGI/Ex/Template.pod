@@ -1,0 +1,1286 @@
+=head1
+
+CGI::Ex::Template - Fast and lightweight TT2/3 template engine
+
+=head1 SYNOPSIS
+
+    my $t = CGI::Ex::Template->new(
+        INCLUDE_PATH => ['/path/to/templates'],
+    );
+
+    my $swap = {
+        key1 => 'val1',
+        key2 => 'val2',
+        code => sub { 42 },
+        hash => {a => 'b'},
+    };
+
+    $t->process('my/template.tt', $swap)
+        || die $t->error;
+
+    ### Anything in the Template::Toolkit SYNOPSIS would fit here also
+
+=head1 DESCRIPTION
+
+CGI::Ex::Template happened by accident.  The CGI::Ex suite included a
+base set of modules for doing anything from simple to complicated CGI
+applications.  Part of the suite was a simple variable interpolater
+that used TT2 style variables in TT2 style tags "[% foo.bar %]".  This
+was fine and dandy for a couple of years.  In winter of 2005-2006 CET
+was revamped to add a few features.  One thing led to another and now
+CET provides for most of the features of TT2 as well as some from TT3.
+CET is a fulfeatured implementation of the Template::Toolkit language.
+
+CGI::Ex::Template (CET hereafter) is smaller, faster, uses less memory
+and less CPU than TT2.  However, it is most likely less portable, less
+extendable, and probably has many of the bugs that TT2 has already massaged
+out from years of bug reports and patches from a very active community
+and mailing list.  CET does not have a vibrant community behind it.  Fixes
+applied to TT2 will take longer to get into CET, should they get in at all.
+An attempt will be made to follow updates made to TT2 to keep the two
+in sync at a language level.  There already has been, and it is expected that
+there will continue to be code sharing between the two projects.
+
+Most of the standard Template::Toolkit documentation covering directives,
+variables, configuration, plugins, filters, syntax, and vmethods should
+apply to CET just fine (This pod tries to explain everything - but there is
+too much).  The section on differences between CET and TT will explain
+what too look out for.
+
+=head1 PUBLIC METHODS
+
+=over 4
+
+=item new
+
+    my $obj = CGI::Ex::Template->new({
+        INCLUDE_PATH => ['/my/path/to/content', '/my/path/to/content2'],
+    });
+
+    Arguments may be passed as a hash or as a hashref.  Returns a CGI::Ex::Template object.
+
+    There are currently no errors during CGI::Ex::Template object creation.
+
+=item process
+
+This is the main method call for staring processing.  Any errors that results in the
+template being stopped processing will be stored and available via the ->error method.
+
+Process takes three arguments.
+
+    $t->process($in, $swap, $out)
+        || die $t->error;
+
+The $in argument can be any one of:
+
+    String containing the filename of the template to be processed.  The filename should
+    be relative to INCLUDE_PATH.  (See INCLUDE_PATH, ABSOLUTE, and RELATIVE configuration items).
+
+    A reference to a scalar containing the contents of the template to be processed.  In memory
+    caching and fileside caching will not be avaible for these types - but CET is fast enough
+    that it should not matter.
+
+    
+
+
+
+=item process_simple
+
+=item error
+
+Should something go wrong during a "process" command, the error that occured can
+be retrieved via the error method.
+
+    $obj->process('somefile.html', {a => 'b'}, \$string_ref)
+        || die $obj->error;
+
+=item define_vmethod
+
+This method is available for defining extra Virtual methods or filters.  This method is similar
+to Template::Stash::define_vmethod.
+
+=back
+
+=head1 SEMI PUBLIC METHODS
+
+The following list of methods are other interesting methods of CET that
+may be re-implemented by subclasses of CET.
+
+
+exception - Creates an exception object blessed into the package listed in
+$CGI::Ex::Template::PACKAGE_EXCEPTION.
+
+execute_tree - Executes a parsed tree (returned from parse_tree)
+
+get_variable - Turns a variable identity array into the parsed variable.  This
+method is also repsonsible for playing opererators and running virtual methods
+and filters.  The method could more accurately be called play_expression.
+
+include_filename - Takes a file path, and resolves it into the full filename using
+paths from INCLUDE_PATH or INCLUDE_PATHS.
+
+_insert - Resolves the file passed, and then returns its contents.
+
+list_filters - Dynamically loads the filters list from Template::Filters when a filter
+is used that is not natively implemented in CET.
+
+list_plugins - Returns an arrayref of modules that are under a base Namespace.
+
+  my @modules = @{ $self->list_plugins({base => 'Template::Plugins'}) }:
+
+load_parsed_tree - Given a filename or a string reference will return a parsed document
+hash that contains the parsed tree.
+
+  my $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");
+
+parse_args - Allow for the multitudinous ways that TT parses arguments.  This allows
+for positional as well as named arguments.  Named arguments can be separated with a "=" or "=>",
+and positional arguments should be separated by " " or ",".  This only returns an array
+of parsed variables.  Use vivify_args to translate to the actual values.
+
+parse_tree - Used by load_parsed_tree.  This is the main grammar engine of the program.  It
+uses method in the $DIRECTIVES hashref to parse different DIRECTIVE TYPES.
+
+parse_variable - Used to parse a variable, an expression, a literal string, or a number.  It
+returns a parsed variable tree.  Samples of parsed variables can be found in the VARIABLE PARSE TREE
+section.
+
+set_variable - Used to set a variable.  Expects a variable identity array and the value to set.  It
+will autovifiy as necessary.
+
+throw - Creates an exception object from the arguments and dies.
+
+undefined_any - Called during get_variable if a value is returned that is undefined.  This could
+be used to magically create variables on the fly.  This is similar to Template::Stash::undefined.
+It is suggested that undefined_get be used instead.  Default behavior returns undef.  You
+may also pass a coderef via the UNDEFINED_ANY configuration variable.  Also, you can try using
+the DEBUG => 'undef', configuration option which will throw an error on undefined variables.
+
+undefined_get - Called when a variable is undefined during a GET directive.  This is useful to
+see if a value that is about to get inserted into the text is undefined.  undefined_any is a little
+too general for most cases.  Also, you may pass a coderef via the UNDEFINED_GET configuration variable.
+
+vivify_args - Turns an arrayref of arg identities parsed by parse_args and turns
+them into the actual values.
+
+
+=head1 OTHER UTILITY METHODS
+
+The following is a brief list of other methods used by CET.  Generally, these
+shouldn't be overwritten by subclasses.
+
+apply_precedence - allows for parsed operator array to be translated to a tree based
+upon operator precedence.
+
+context - used to create a "pseudo" context object that allows for portability
+of TT plugins, filters, and perl blocks that need a context object.
+
+DEBUG - TT2 Holdover that is used once for binmode setting during a TT2 test.
+
+debug_node - used to get debug info on a directive if DEBUG_DIRS is set.
+
+filter_* - implement filters that are more than one line.
+
+get_line_number_by_index - used to turn string index position into line number
+
+interpolate_node - used for parsing text nodes for dollar variables when interpolate is on.
+
+parse_* - used by parse_tree to parse the template.  These are the grammar.
+
+play_* - used by execute_tree to execute the parsed tree.
+
+play_operator - to execute any found operators
+
+_process - called by process and the PROCESS, INCLUDE and other directives.
+
+slurp - reads contents of passed filename - throws file exception on error.
+
+split_paths - used to split INCLUDE_PATH or other directives if an arrayref is not passed.
+
+_vars - Return a reference to the current stash of variables.  This is currently only used
+by the pseudo context object and may disappear at some point.
+
+vmethod_* - implement virtual methods that are more than one line.
+
+weak_copy - used to create a weak reference to self to avoid circular references. (this
+is needed by macros and references.
+
+
+=head1 TODO
+
+    Add WRAPPER config item
+    Add ERROR config item
+    Document which TT2 test suites pass
+
+=head1 HOW IS CGI::Ex::Template DIFFERENT
+
+CET uses the same template syntax and configuration items
+as TT2, but the internals of CET were written from scratch.  In
+addition to this, the following is a list of some of the ways that
+configuration and syntax of CET different from that of TT.
+
+=over 4
+
+Numerical hash keys work [% a = {1 => 2} %]
+
+Quoted hash key interpolation is fine [% a = {"$foo" => 1} %]
+
+Range operator returns an arrayref [% a = 1 .. 10 %]
+
+Multiple ranges in same constructor [% a = [1..10, 21..30] %]
+
+Construtor types can call virtual methods
+
+   [% a = [1..10].reverse %]
+
+   [% "$foo".length %]
+
+   [% 123.length %]   # = 3
+
+   [% 123.4.length %]  # = 5
+
+   [% -123.4.length %] # = -5 ("." binds more tightly than "-")
+
+   [% (a ~ b).length %]
+
+   [% "hi".repeat(3) %]
+
+   [% {a => b}.size %]
+
+Reserved names are less reserved
+
+   [% GET GET %] # gets the variable named "GET"
+
+   [% GET $GET %] # gets the variable who's name is stored in "GET"
+
+Filters and SCALAR_OPS are interchangeable.
+
+   [% a | length %]
+
+   [% b . lower %]
+
+Pipe "|" can be used anywhere dot "." can be and means to call
+the virtual method.
+
+   [% a = {size => "foo"} %][% a.size %] # = foo
+
+   [% a = {size => "foo"} %][% a|size %] # = 1 (size of hash)
+
+Pipe "|" and "." can be mixed.
+
+   [% "aa" | repeat(2) . length %] # = 4
+
+Whitespace is less meaningful.
+
+   [% 2-1 %] # = 1 (fails in TT)
+
+Added pow operator.
+
+   [% 2 ** 3 %] [% 2 pow 3 %] # = 8 8
+
+FOREACH variables can be nested
+
+   [% FOREACH f.b = [1..10] ; f.b ; END %]
+
+   Note that nested variables are subject to scoping issues.
+   f.b will not be reset to its value before the FOREACH.
+
+Post operative directives can be nested.
+
+   [% one IF two IF three %]
+
+   same as
+
+   [% IF three %][% IF two %][% one %][% END %][% END %]
+
+
+   [% a = [[1..3], [5..7]] %][% i FOREACH i = j FOREACH j = a %] # = 123567
+
+CATCH blocks can be empty.
+
+CHOMP at the end of a string.
+
+  CET will replace "[% 1 =%]\n" with "1 "
+
+  TT will replace "[% 1 =%]\n" with "1"
+
+  This is an internal one-off exception in TT that may or may not DWIM.
+  In CET - it always means to always replace whitespace on the line with
+  a space.  The template can be modified to either not have space - or
+  to end with ~%] which will remove any following space.
+
+
+CET does not generate Perl code.  It generates an "opcode" tree.
+
+CET uses storable for its compiled templates.  If EVAL_PERL is off,
+CET will not eval_string on ANY piece of information.
+
+There is no context.  CET provides a context object that mimics the
+Template::Context interface for use by some TT filters, eval perl
+blocks, and plugins.
+
+There is no stash.  CET only supports the variables passed in
+VARIABLES, PRE_DEFINE, and those passed to the process method.  CET
+provides a stash object that mimics the Template::Stash interface for
+use by some TT filters, eval perl blocks, and plugins.
+
+There is no provider.  CET uses the load_parsed_tree method to get and
+cache templates.
+
+There is no grammar.  CET has its own built in grammar system.
+
+There is no VIEW directive.
+
+There are no references.  (There was in initial BETA tests, but it was decided
+to remove the little used feature).
+
+The DEBUG directive only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
+
+When debug dirs is on, directives on different lines separated by colons show the line they
+are on rather than a general line range.
+
+=back
+
+=head1 DIRECTIVES
+
+This section containts the alphabetical list of DIRECTIVES available in
+the TT language.  DIRECTIVES are the "functions" that implement the Template Toolkit
+mini-language.  For further discussion and examples, please refer to the
+TT directives documentation.
+
+
+=over 4
+
+=item BLOCK
+
+Saves a block of text under a name for later use in PROCESS, INCLUDE,
+and WRAPPER directives.  Blocks may be placed anywhere within the
+template being processed including after where they are used.
+
+    [% BLOCK foo %]Some text[% END %]
+    [% PROCESS foo %]
+
+    Would print
+
+    Some text
+
+    [% INCLUDE foo %]
+    [% BLOCK foo %]Some text[% END %]
+
+    Would print
+
+    Some text
+
+Anonymous BLOCKS can be used for capturing.
+
+    [% a = BLOCK %]Some text[% END %][% a %]
+
+    Would print
+
+    Some text
+
+Anonymous BLOCKS can be used with macros.
+
+
+=item BREAK
+
+Alias for LAST.  Used for exiting FOREACH and WHILE loops.
+
+=item CALL
+
+Calls the variable (and any underlying coderefs) as in the GET method, but
+always returns an empty string.
+
+=item CASE
+
+Used with the SWITCH directive.  See the L</"SWITCH"> directive.
+
+=item CATCH
+
+Used with the TRY directive.  See the L</"TRY"> directive.
+
+=item CLEAR
+
+Clears any of the content currently generated in the innermost block
+or template.  This can be useful when used in conjuction with the TRY
+statement to clear generated content if an error occurs later.
+
+=item DEBUG
+
+Used to reset the DEBUG_FORMAT configuration variable, or to turn
+DEBUG statements on or off.  This only has effect if the DEBUG_DIRS or
+DEBUG_ALL flags were passed to the DEBUG configuration variable.
+
+    [% DEBUG format '($file) (line $line) ($text)' %]
+    [% DEBUG on %]
+    [% DEBUG off %]
+
+=item DEFAULT
+
+Similar to SET, but only sets the value if a previous value was not
+defined or was zero length.
+
+    [% DEFAULT foo = 'bar' %][% foo %] => 'bar'
+
+    [% foo = 'baz' %][% DEFAULT foo = 'bar' %][% foo %] => 'baz'
+
+=item ELSE
+
+Used with the IF directive.  See the L</"IF"> directive.
+
+=item ELSIF
+
+Used with the IF directive.  See the L</"IF"> directive.
+
+=item END
+
+Used to end a block directive.
+
+=item FILTER
+
+Used to apply different treatments to blocks of text.  It may operate as a BLOCK
+directive or as a post operative directive.  CET supports all of the filters in
+Template::Filters.  The lines between scalar virtual methods and filters is blurred (or
+non-existent) in CET.  Anything that is a scalar virtual method may be used as a FILTER.
+
+TODO - enumerate the at least 7 ways to pass and use filters.
+
+=item '|'
+
+Alias for the FILTER directive.  Note that | is similar to the
+'.' in CGI::Ex::Template.  Therefore a pipe cannot be used directly after a
+variable name in some situations (the pipe will act only on that variable).
+This is the behavior employed by TT3.
+
+=item FINAL
+
+Used with the TRY directive.  See the L</"TRY"> directive.
+
+=item FOR
+
+Alias for FOREACH
+
+=item FOREACH
+
+
+
+=item GET
+
+Return the value of a variable.
+
+    [% GET a %]
+
+The GET keyword may be omitted.
+
+    [% a %]
+
+=item IF (IF / ELSIF / ELSE)
+
+Allows for conditional testing.  Expects an expression as its only
+argument.  If the expression is true, the contents of its block are
+processed.  If false, the processor looks for an ELSIF block.  If an
+ELSIF's expression is true then it is processed.  Finally it looks for
+an ELSE block which is processed if none of the IF or ELSIF's
+expressions were true.
+
+    [% IF a == b %]A equaled B[% END %]
+
+    [% IF a == b -%]
+        A equaled B
+    [%- ELSIF a == c -%]
+        A equaled C
+    [%- ELSE -%]
+        Couldn't determine that A equaled anything.
+    [%- END %]
+
+If may also be used as a post operative directive.
+
+    [% 'A equaled B' IF a == b %]
+
+=item INCLUDE
+
+
+
+=item INSERT
+
+
+
+=item LAST
+
+Used to exit out of a WHILE or FOREACH loop.
+
+=item MACRO
+
+
+
+=item META
+
+
+
+=item NEXT
+
+Used to go to the next iteration of a WHILE or FOREACH loop.
+
+=item PERL
+
+
+
+=item PROCESS
+
+
+
+=item RAWPERL
+
+
+
+=item RETURN
+
+Used to exit the innermost block or template and continue processing
+in the surrounding block or template.
+
+=item SET
+
+Used to set variables.
+
+   [% SET a = 1 %][% a %]             => "1"
+   [% a = 1 %][% a %]                 => "1"
+   [% b = 1 %][% SET a = b %][% a %]  => "1"
+   [% a = 1 %][% SET a %][% a %]      => ""
+   [% SET a = [1, 2, 3] %][% a.1 %]   => "2"
+   [% SET a = {b => 'c'} %][% a.b %]  => "c"
+
+=item STOP
+
+Used to exit the entire process method (out of all blocks and templates).
+No content will be processed beyond this point.
+
+=item SWITCH
+
+
+
+=item TAGS
+
+Change the type of enclosing braces used to delineate template tags.  This
+remains in effect until the end of the enclosing block or template or until
+the next TAGS directive.  Either a named set of tags must be supplied, or
+two tags themselves must be supplied.
+
+    [% TAGS html %]
+
+    [% TAGS <!-- --> %]
+
+The named tags are (duplicated from TT):
+
+    template => ['[%',   '%]'],  # default
+    metatext => ['%%',   '%%'],  # Text::MetaText
+    star     => ['[*',   '*]'],  # TT alternate
+    php      => ['<?',   '?>'],  # PHP
+    asp      => ['<%',   '%>'],  # ASP
+    mason    => ['<%',   '>' ],  # HTML::Mason
+    html     => ['<!--', '-->'], # HTML comments
+
+
+=item THROW
+
+
+
+=item TRY
+
+
+
+=item UNLESS
+
+
+
+=item USE
+
+
+
+=item WHILE
+
+
+
+
+=item WRAPPER
+
+Block directive.  Processes contents of its block and then passes them
+in the [% content %] variable to the block or filename listed in the
+WRAPPER tag.
+
+    [% WRAPPER foo %]
+    My content to be processed.[% a = 2 %]
+    [% END %]
+
+    [% BLOCK foo %]
+    A header ([% a %]).
+    [% content %]
+    A footer ([% a %]).
+    [% END %]
+
+This would print.
+
+    A header (2).
+    My content to be processed.
+    A footer (2).
+
+The WRAPPER directive may also be used as a post directive.
+
+    [% BLOCK baz %]([% content %])[% END -%]
+    [% "foobar" WRAPPER baz %]
+
+Would print
+
+    (foobar)');
+
+=back
+
+
+
+=head1 OPERATORS
+
+The following operators are available in CGI::Ex::Template.  Except
+where noted these are the same operators available in TT.  They are
+listed in the order of their precedence (the higher the precedence the
+tighter it binds).
+
+=over 4
+
+=item C<.>
+
+Binary.  The dot operator.  Allows for accessing sub-members, methods, or
+virtual methods of nested data structures.
+
+    my $obj->process(\$content, {a => {b => [0, {c => [34, 57]}]}}, \$output);
+
+    [% a.b.1.c.0 %] => 34
+
+Note: on access to hashrefs, any hash keys that match the sub key
+name will be used before a virtual method of the same name.  For example if a
+passed hash contained pair with a keyname "defined" and a value of "2", then
+any calls to hash.defined(subkeyname) would always return 2 rather
+than using the vmethod named "defined."  To get around this limitation use the
+"|" operator (listed next).
+
+=item C<|>
+
+Binary.  The pipe operator.  Similar to the dot operator.  Allows for
+explicit calling of virtual methods and filters (filters are "merged"
+with virtual methods in CGI::Ex::Template and TT3) when accessing
+hashrefs.  See the note for the "." operator.
+
+The pipe character is similar to TT2 in that it can be used in place
+of a directive as an alias for FILTER.  It similar to TT3 in that it
+can be used for virtual method access.  This duality is one source of
+difference between CGI::Ex::Template and TT2 compatibility.  Templates
+that have directives that end with a variable name that then use the
+"|" directive to apply a filter will be broken as the "|" will be
+applied to the variable name.
+
+The following two cases will do the same thing.
+
+    [% foo | html %]
+
+    [% foo FILTER html %]
+
+Though they do the same thing, internally, foo|html is stored as a single
+variable while "foo FILTER html" is stored as the variable foo which is then
+passed to the the FILTER html.
+
+A TT2 sample that would break in CGI::Ex::Template or TT3 is:
+
+    [% PROCESS foo a = b | html %]
+
+Under TT2 the content returned by "PROCESS foo a = b" would all be
+passed to the html filter.  Under CGI::Ex::Template and TT3, b would
+be passed to the html filter before assigning it to the variable "a"
+before the template foo was processed.
+
+A simple fix is to do any of the following:
+
+    [% PROCESS foo a = b FILTER html %]
+
+    [% | html %][% PROCESS foo a = b %][% END %]
+
+    [% FILTER html %][% PROCESS foo a = b %][% END %]
+
+This shouldn't be too much hardship and offers the great return of disambiguating
+virtual method access.
+
+=item C<**  ^  pow>
+
+Binary.  X raised to the Y power.  This isn't available in TT 2.14.
+
+    [% 2 ** 3 %] => 8
+
+=item C<!>
+
+Unary not.  Negation of the value.
+
+=item C<-  unary_minus>
+
+Unary minus.  Returns the value multiplied by -1.  The operator
+"unary_minus" is used internally by CGI::Ex::Template to provide for -
+to be listed in the precedence table twice.
+
+    [% a = 1 ; b = -a ; b %] => -1
+
+=item C<*>
+
+Binary. Multiplication.
+
+=item C</  div  DIV>
+
+Binary. Division.  Note that / is floating point division, but div and
+DIV are integer division.
+
+   [% 10  /  4 %] => 2.5
+   [% 10 div 4 %] => 2
+
+=item C<%  mod  MOD>
+
+Binary. Modulus.
+
+   [% 15 % 8 %] => 7
+
+=item C<+>
+
+Binary.  Addition.
+
+=item C<->
+
+Binary.  Minus.
+
+=item C<_  ~>
+
+Binary.  String concatenation.
+
+    [% "a" ~ "b" %] => ab
+
+=item C<< <  >  <=  >= >>
+
+Binary.  Numerical comparators.
+
+=item C<lt  gt  le  ge>
+
+Binary.  String comparators.
+
+=item C<==  eq>
+
+Binary.  Equality test.  TT chose to use Perl's eq for both operators.
+There is no test for numeric equality.
+
+=item C<!= ne>
+
+Binary.  Non-equality test.  TT chose to use Perl's ne for both
+operators.  There is no test for numeric non-equality.
+
+=item C<&&>
+
+Multiple arity.  And.  All values must be true.  If all values are true, the last
+value is returned as the truth value.
+
+    [% 2 && 3 && 4 %] => 4
+
+=item C<||>
+
+Multiple arity.  Or.  The first true value is returned.
+
+    [% 0 || '' || 7 %] => 7
+
+=item C<..>
+
+Binary.  Range creator.  Returns an arrayref containing the values
+between and including the first and last arguments.
+
+    [% t = [1 .. 5] %] => variable t contains an array with 1,2,3,4, and 5
+
+In CGI::Ex::Template, because .. is an operator that returns an array, you may
+also specify the previous example as the following (this does not work in TT):
+
+    [% t = 1 .. 5 %] => variable t contains an array with 1,2,3,4, and 5
+
+CGI::Ex::Template provides special functionality to allow the arrayref
+returned by .. to be expanded fully into a [] construtor as in C<[1 .. 5]>.
+Because of this it is possible to place multiple ranges in the
+same [] constructor.  This is not available in TT.
+
+    [% t = [1..3, 6..8] %] => variable t contains an array with 1,2,3,6,7,8
+
+=item C<? :>
+
+Trinary.  Can be nested with other ?: pairs.
+
+    [% 1 ? 2 : 3 %] => 2
+    [% 0 ? 2 : 3 %] => 3
+
+=item C<=>
+
+Assignment.  Sets the lefthand side to the value of the righthand side.  In order
+to not conflict with SET, FOREACH and other operations, this operator is only
+available in parenthesis.  Returns the value of the righthand side.
+
+   [% (a = 1) %] --- [% a %] => 1 --- 1
+
+=item C<not  NOT>
+
+Lower precedence version of the '!' operator.
+
+=item C<and  AND>
+
+Lower precedence version of the '&&' operator.
+
+=item C<or OR>
+
+Lower precedence version of the '||' operator.
+
+=item C<hashref>
+
+Multiple arity.  This operator is not used in TT.  It is used internally
+by CGI::Ex::Template to delay the creation of a hashref until the
+execution of the compiled template.
+
+=item C<arrayref>
+
+Multiple arity.  This operator is not used in TT.  It is used internally
+by CGI::Ex::Template to delay the creation of an arrayref until the
+execution of the compiled template.
+
+=back
+
+
+
+=head1 CONFIGURATION
+
+The following TT2 configuration variables are supported (in
+alphabetical order).  Note: for further discussion you can refer to
+the TT config documentation.
+
+These variables should be passed to the "new" constructor.
+
+   my $obj = CGI::Ex::Template->new(
+       VARIABLES  => \%hash_of_variables,
+       AUTO_RESET => 0,
+       TRIM       => 1,
+       POST_CHOMP => 2,
+       PRE_CHOMP  => 1,
+   );
+
+
+=over 4
+
+=item ABSOLUTE
+
+Boolean.  Default false.  Are absolute paths allowed for included files.
+
+=item AUTO_RESET
+
+Boolean.  Default 1.  Clear blocks that were set during the process method.
+
+=item BLOCKS
+
+A hashref of blocks that can be used by the process method.
+
+   BLOCKS => {
+       block_1 => sub { ... }, # coderef that returns a block
+       block_2 => 'A String',  # simple string
+   },
+
+Note that a Template::Document cannot be supplied as a value (TT
+supports this).  However, it is possible to supply a value that is
+equal to the hashref returned by the load_parsed_tree method.
+
+=item CACHE_SIZE
+
+Number of compiled templates to keep in memory.  Default undef.
+Undefined means to allow all templates to cache.  A value of 0 will
+force no caching.  The cache mechanism will clear templates that have
+not been used recently.
+
+=item COMPILE_DIR
+
+Base directory to store compiled templates.  Default undef. Compiled
+templates will only be stored if one of COMPILE_DIR and COMPILE_EXT is
+set.
+
+=item COMPILE_EXT
+
+Extension to add to stored compiled template filenames.  Default undef.
+
+=item CONSTANTS
+
+Hashref.  Used to define variables that will be "folded" into the
+compiled template.  Variables defined here cannot be overridden.
+
+    CONSTANTS => {my_constant => 42},
+
+    A template containing:
+
+    [% constants.my_constant %]
+
+    Will have the value 42 compiled in.
+
+Constants defined in this way can be chained as in [%
+constant.foo.bar.baz %] but may only interpolate values that are set
+before the compile process begins.  This goes one step beyond TT in
+that any variable set in VARIABLES, or PRE_DEFINE, or passed to the
+process method are allowed - they are not in TT.  Variables defined in
+the template are not available during the compile process.
+
+    GOOD:
+
+    CONSTANTS => {
+        foo  => {
+            bar => {baz => 42},
+            bim => 57,
+        },
+        bing => 'baz',
+        bang => 'bim',
+    },
+    VARIABLES => {
+        bam  => 'bar',
+    },
+
+    In the template
+
+    [% constants.foo.${constants.bang} %]
+
+    Will correctly print 57.
+
+    GOOD (non-tt behavior)
+
+    [% constants.foo.$bam.${constants.bing} %]
+
+    CGI::Ex::Template will print 42 because the value of bam is
+    known at compile time.  TT would print '' because the value of $bam
+    is not yet defined in the TT engine.
+
+    BAD:
+
+    In the template:
+
+    [% bam = 'somethingelse' %]
+    [% constants.foo.$bam.${constants.bing} %]
+
+    Will still print 42 because the value of bam used comes from
+    variables defined before the template was compiled.  TT will still print ''.
+
+=item CONSTANT_NAMESPACE
+
+
+=item DEBUG
+
+    Takes a list of constants |'ed together which enables different
+    debugging modes.  Alternately the lowercase names may be used (multiple
+    values joined by a ",".
+
+    The only supported TT values are:
+    DEBUG_UNDEF (2)    - debug when an undefined value is used.
+    DEBUG_DIRS  (8)    - debug when a directive is used.
+    DEBUG_ALL   (2047) - turn on all debugging.
+
+    Either of the following would turn on undef and directive debugging:
+
+    DEBUG => 'undef, dirs',            # preferred
+    DEBUG => 2 | 8,
+    DEBUG => DEBUG_UNDEF | DEBUG_DIRS, # constants from Template::Constants
+
+=item DEBUG_FORMAT
+
+
+
+=item DEFAULT
+
+
+
+=item DELIMITER
+
+
+
+=item END_TAG
+
+
+
+=item EVAL_PERL
+
+Boolean.  Default false.  If set to a true value, PERL and RAWPERL blocks
+will be allowed to run.  This is a potential security hole, as arbitrary
+perl can be included in the template.  If Template::Toolkit is installed,
+a true EVAL_PERL value also allows the perl and evalperl filters to be used.
+
+=item FILTERS
+
+
+
+=item INCLUDE_PATH
+
+A string or an arrayref or coderef that returns an arrayref that
+contains directories to look for files included by processed
+templates.
+
+=item INCLUDE_PATHS
+
+Non-TT item.  Same as INCLUDE_PATH but only takes an arrayref.  If not specified
+then INCLUDE_PATH is turned into an arrayref and stored in INCLUDE_PATHS.
+Overrides INCLUDE_PATH.
+
+=item INTERPOLATE
+
+Boolean.  Specifies whether variables in text portions of the template will be
+interpolated.  For example, the $variable and ${var.value} would be substituted
+with the appropriate values from the variable cache (if INTERPOLATE is on).
+
+    [% IF 1 %]The variable $variable had a value ${var.value}[% END %]
+
+
+=item LOAD_PERL
+
+
+
+=item NAMESPACE - no Template::Namespace::Constants support
+
+
+
+=item OUTPUT
+
+
+
+=item OUTPUT_PATH
+
+
+
+=item PLUGINS
+
+
+
+=item PLUGIN_BASE
+
+
+
+=item POST_CHOMP
+
+
+
+=item POST_PROCESS
+
+
+
+=item PRE_CHOMP
+
+
+
+=item PRE_DEFINE
+
+
+
+=item PRE_PROCESS
+
+
+
+=item PROCESS
+
+
+
+=item RECURSION
+
+
+
+=item RELATIVE
+
+
+
+=item START_TAG
+
+
+
+=item TAG_STYLE
+
+
+=item TRIM
+
+Remove leading and trailing whitespace from blocks and templates.
+This operation is performed after all enclosed template tags have
+been executed.
+
+=item UNDEFINED_ANY
+
+This is not a TT configuration option.  This option expects to be a code
+ref that will be called if a variable is undefined during a call to get_variable.
+It is passed the variable identity array as a single argument.  This
+is most similar to the "undefined" method of Template::Stash.  It allows
+for the "auto-defining" of a variable for use in the template.  It is
+suggested that UNDEFINED_GET be used instead as UNDEFINED_ANY is a little
+to general in defining variables.
+
+You can also sub class the module and override the undefined_any method.
+
+=item UNDEFINED_GET
+
+This is not a TT configuration option.  This option expects to be a code
+ref that will be called if a variable is undefined during a call to GET.
+It is passed the variable identity array as a single argument.  This is more useful
+than UNDEFINED_ANY in that it is only called during a GET directive
+rather than in embedded expressions (such as [% a || b || c %]).
+
+You can also sub class the module and override the undefined_get method.
+
+=item VARIABLES
+
+A hashref of variables to initialize the template stash with.  These
+variables are available for use in any of the executed templates.
+
+=back
+
+
+
+=head1 UNSUPPORTED TT CONFIGURATION
+
+=over 4
+
+=item ANYCASE
+
+This will not be supported.  You will have to use the full case directive names.
+(It was in the beta code but was removed prior to release).
+
+=item WRAPPER
+
+This will be supported - just not done yet.
+
+=item ERROR
+
+This will be supported - just not done yet.
+
+=item V1DOLLAR
+
+This will not be supported.
+
+=item LOAD_TEMPLATES
+
+CGI::Ex::Template has its own mechanism for loading and storing
+compiled templates.  TT would use a Template::Provider that would
+return a Template::Document.  The closest thing in CGI::Ex::Template
+is the load_parsed_template method.  There is no immediate plan to
+support the TT behavior.
+
+=item LOAD_PLUGINS
+
+CGI::Ex::Template uses its own mechanism for loading plugins.  TT
+would use a Template::Plugins object to load plugins requested via the
+USE directive.  The functionality for doing this in CGI::Ex::Template
+is contained in the list_plugins method and the play_USE method.  There
+is no immediate plan to support the TT behavior.
+
+Full support is offered for the PLUGINS and LOAD_PERL configuration items.
+
+Also note that CGI::Ex::Template only natively supports the Iterator plugin.
+Any of the other plugins requested will need to provided by installing
+Template::Toolkit or the appropriate plugin module.
+
+=item LOAD_FILTERS
+
+CGI::Ex::Template uses its own mechanism for loading filters.  TT
+would use the Template::Filters object to load filters requested via the
+FILTER directive.  The functionality for doing this in CGI::Ex::Template
+is contained in the list_filters method and the get_variable method.
+
+Full support is offered for the FILTERS configuration item.
+
+=item TOLERANT
+
+This option is used by the LOAD_TEMPLATES and LOAD_PLUGINS options and
+is not applicable in CGI::Ex::Template.
+
+=item SERVICE
+
+CGI::Ex::Template has no concept of service (theoretically the CGI::Ex::Template
+is the "service").
+
+=item CONTEXT
+
+CGI::Ex::Template provides its own pseudo context object to plugins,
+filters, and perl blocks.  The CGI::Ex::Template model doesn't really
+allow for a separate context.  CGI::Ex::Template IS the context.
+
+=item STASH
+
+CGI::Ex::Template manages its own stash of variables.  A pseudo stash
+object is available via the pseudo context object for use in plugins,
+filters, and perl blocks.
+
+=item PARSER
+
+CGI::Ex::Template has its own built in parser.  The closest similarity is
+the parse_tree method.  The output of parse_tree is an optree that is
+later run by execute_tree.
+
+=item GRAMMAR
+
+CGI::Ex::Template maintains its own grammar.  The grammar is defined
+in the parse_tree method and the callbacks listed in the global
+$DIRECTIVES hashref.
+
+=back
+
+
+=head1 VARIABLE PARSE TREE
+
+CGI::Ex::Template parses templates into an tree of operations.  Even
+variable access is parsed into a tree.  This is done in a manner
+somewhat similar to the way that TT operates except that nested
+variables such as foo.bar|baz contain the '.' or '|' in between each
+name level.  Opererators are parsed and stored as part of the variable (it
+may be more appropriate to say we are parsing a term or an expression).
+
+The following table shows a variable or expression and the corresponding parsed tree
+(this is what the parse_variable method would return).
+
+    one                [ 'one',  0 ]
+    one()              [ 'one',  [] ]
+    one.two            [ 'one',  0, '.', 'two',  0 ]
+    one|two            [ 'one',  0, '|', 'two',  0 ]
+    one.$two           [ 'one',  0, '.', ['two', 0 ], 0 ]
+    one(two)           [ 'one',  [ ['two', 0] ] ]
+    one.${two().three} [ 'one',  0, '.', ['two', [], '.', 'three', 0], 0]
+    2.34               2.34
+    "one"              "one"
+    "one"|length       [ \"one", 0, '|', 'length', 0 ]
+    "one $a two"       [ \ [ '~', 'one ', ['a', 0], ' two' ], 0 ]
+    [0, 1, 2]          [ \ [ 'arrayref', 0, 1, 2 ], 0 ]
+    [0, 1, 2].size     [ \ [ 'arrayref', 0, 1, 2 ], 0, '.', 'size', 0 ]
+    ['a', a, $a ]      [ \ [ 'arrayref', 'a', ['a', 0], [['a', 0], 0] ], 0]
+    {a  => 'b'}        [ \ [ 'hashref',  'a', 'b' ], 0 ]
+    {a  => 'b'}.size   [ \ [ 'hashref',  'a', 'b' ], 0, '.', 'size', 0 ]
+    {$a => b}          [ \ [ 'hashref',  ['a', 0], ['b', 0] ], 0 ]
+    1 + 2 + 3 + 4      [ \ [ '+', 1, 2, 3, 4 ], 0]
+    a + b              [ \ [ '+', ['a', 0], ['b', 0] ], 0 ]
+    a * (b + c)        [ \ [ '*', ['a', 0], [ \ ['+', ['b', 0], ['c', 0]], 0 ]], 0 ]
+    (a + b)            [ \ [ '+', ['a', 0], ['b', 0] ]], 0 ]
+    (a + b) * c        [ \ [ '*', [ \ [ '+', ['a', 0], ['b', 0] ], 0 ], ['c', 0] ], 0 ]
+    a ? b : c          [ \ [ '?', ['a', 0], ['b', 0], ['c', 0] ], 0 ]
+    a || b || c        [ \ [ '||', ['a', 0], ['b', 0], ['c', 0] ], 0 ]
+    ! a                [ \ [ '!', ['a', 0] ], 0 ]
+
+Some notes on the parsing.
+
+    Operators are parsed as part of the variable and become part of the variable tree.
+
+    Operators are stored in the variable tree using a reference to the arrayref - which
+    allows for quickly decending the parsed variable tree and determining that the next
+    node is an operator.
+
+    Parens () can be used at any point in an expression to disambiguate precedence.
+
+    "Variables" that appear to be literal strings or literal numbers
+    are returned as the literal (no operator tree).
+
+The following perl can be typed at the command line to view the parsed variable tree.
+
+    perl -e 'my $a = "\"one \$a two\"";
+       use CGI::Ex::Template;
+       use Data::Dumper;
+       print Dumper(CGI::Ex::Template->new->parse_variable(\$a));'
+
+=head1 AUTHOR
+
+Paul Seamons <mail at seamons dot com>
+
+=cut
