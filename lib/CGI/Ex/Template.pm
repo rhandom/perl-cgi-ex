@@ -233,9 +233,9 @@ BEGIN {
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_AQ_NOTDOT = "(?! \\s* $QR_COMMENTS \\.)";
     $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=[;+]) )'; # the + comes into play on filenames
-    $QR_PRIVATE   = qr/^_/;
+    $QR_PRIVATE   ||= qr/^_/;
 
-    $WHILE_MAX   = 1000;
+    $WHILE_MAX    ||= 1000;
     $EXTRA_COMPILE_EXT = '.sto';
 };
 
@@ -842,7 +842,7 @@ sub parse_variable {
             $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         }
         $copy =~ s{ ^ \] \s* $QR_COMMENTS }{}ox
-            || $self->throw('parse.missing.square', "Missing close \]", undef, length($$str_ref) - length($copy));
+            || $self->throw('parse.missing.square_bracket', "Missing close \]", undef, length($$str_ref) - length($copy));
         push @var, \ $arrayref;
 
     ### looks like a hash constructor
@@ -856,7 +856,7 @@ sub parse_variable {
             $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         }
         $copy =~ s{ ^ \} \s* $QR_COMMENTS }{}ox
-            || $self->throw('parse.missing.curly', "Missing close \} ($copy)", undef, length($$str_ref) - length($copy));
+            || $self->throw('parse.missing.curly_bracket', "Missing close \} ($copy)", undef, length($$str_ref) - length($copy));
         push @var, \ $hashref;
 
     ### looks like a paren grouper
@@ -2879,16 +2879,10 @@ sub filter_redirect {
 ###----------------------------------------------------------------###
 
 sub dump_parse {
+    my $obj = UNIVERSAL::isa($_[0], __PACKAGE__) ? shift : __PACKAGE__->new;
     my $str = shift;
     require Data::Dumper;
-    return Data::Dumper::Dumper(__PACKAGE__->new->parse_variable(\$str));
-}
-
-sub dump_get {
-    my ($str, $hash) = @_;
-    require Data::Dumper;
-    my $obj = __PACKAGE__->new('_vars' => $hash);
-    return Data::Dumper::Dumper($obj->get_variable($obj->parse_variable(\$str)));
+    return Data::Dumper::Dumper($obj->parse_variable(\$str));
 }
 
 ###----------------------------------------------------------------###
