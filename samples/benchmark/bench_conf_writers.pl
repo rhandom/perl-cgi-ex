@@ -2,7 +2,7 @@
 
 use strict;
 use vars qw($PLACEHOLDER);
-use Benchmark qw(cmpthese);
+use Benchmark qw(cmpthese timethese);
 use CGI::Ex::Conf;
 use POSIX qw(tmpnam);
 
@@ -151,6 +151,14 @@ if (eval {require XML::Simple}) {
   $files{xml} = $_file;
 }
 
+if (eval {require JSON}) {
+  my $_file = $tmpnam. '.json';
+  $TESTS{xml} = sub {
+    $cob->write_ref($_file, $str);
+  };
+  $files{xml} = $_file;
+}
+
 ### tell file locations
 foreach my $key (sort keys %files) {
   print "$key => $files{$key}\n";
@@ -165,7 +173,7 @@ foreach my $key (keys %TESTS) {
 }
 
 
-cmpthese($n, \%TESTS);
+cmpthese timethese ($n, \%TESTS);
 
 ### comment out this line to inspect files
 unlink $_ foreach values %files;
