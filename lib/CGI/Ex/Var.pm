@@ -10,6 +10,11 @@ Experimental - The storage structure will change to match CGI::Ex::Template by t
 
 =cut
 
+###----------------------------------------------------------------###
+#  Copyright 2006 - Paul Seamons                                     #
+#  Distributed under the Perl Artistic License without warranty      #
+###----------------------------------------------------------------###
+
 use strict;
 
 use vars qw(
