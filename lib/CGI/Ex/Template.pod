@@ -82,7 +82,7 @@ give you no visible improvement.  Or it could.
 
 =over 4
 
-=item new
+=item C<new>
 
     my $obj = CGI::Ex::Template->new({
         INCLUDE_PATH => ['/my/path/to/content', '/my/path/to/content2'],
@@ -92,7 +92,7 @@ give you no visible improvement.  Or it could.
 
     There are currently no errors during CGI::Ex::Template object creation.
 
-=item process
+=item C<process>
 
 This is the main method call for staring processing.  Any errors that results in the
 template being stopped processing will be stored and available via the ->error method.
@@ -139,7 +139,7 @@ The $out argument can be any one of:
 Additionally - the $out argument can be configured using the OUTPUT configuration
 item.
 
-=item process_simple
+=item C<process_simple>
 
 Similar to the process method but with the following restrictions:
 
@@ -150,7 +150,7 @@ The $out parameter may only be a reference to a scalar string that ouput will be
 Additionally, the following configuration variables will be ignored:  VARIABLES,
 PRE_DEFINE, BLOCKS, PRE_PROCESS, PROCESS, POST_PROCESS, AUTO_RESET, OUTPUT.
 
-=item error
+=item C<error>
 
 Should something go wrong during a "process" command, the error that occured can
 be retrieved via the error method.
@@ -158,7 +158,7 @@ be retrieved via the error method.
     $obj->process('somefile.html', {a => 'b'}, \$string_ref)
         || die $obj->error;
 
-=item define_vmethod
+=item C<define_vmethod>
 
 This method is available for defining extra Virtual methods or filters.  This method is similar
 to Template::Stash::define_vmethod.
@@ -412,7 +412,7 @@ TT directives documentation.
 
 =over 4
 
-=item BLOCK
+=item C<BLOCK>
 
 Saves a block of text under a name for later use in PROCESS, INCLUDE,
 and WRAPPER directives.  Blocks may be placed anywhere within the
@@ -443,30 +443,30 @@ Anonymous BLOCKS can be used for capturing.
 Anonymous BLOCKS can be used with macros.
 
 
-=item BREAK
+=item C<BREAK>
 
 Alias for LAST.  Used for exiting FOREACH and WHILE loops.
 
-=item CALL
+=item C<CALL>
 
 Calls the variable (and any underlying coderefs) as in the GET method, but
 always returns an empty string.
 
-=item CASE
+=item C<CASE>
 
 Used with the SWITCH directive.  See the L</"SWITCH"> directive.
 
-=item CATCH
+=item C<CATCH>
 
 Used with the TRY directive.  See the L</"TRY"> directive.
 
-=item CLEAR
+=item C<CLEAR>
 
 Clears any of the content currently generated in the innermost block
 or template.  This can be useful when used in conjuction with the TRY
 statement to clear generated content if an error occurs later.
 
-=item DEBUG
+=item C<DEBUG>
 
 Used to reset the DEBUG_FORMAT configuration variable, or to turn
 DEBUG statements on or off.  This only has effect if the DEBUG_DIRS or
@@ -476,7 +476,7 @@ DEBUG_ALL flags were passed to the DEBUG configuration variable.
     [% DEBUG on %]
     [% DEBUG off %]
 
-=item DEFAULT
+=item C<DEFAULT>
 
 Similar to SET, but only sets the value if a previous value was not
 defined or was zero length.
@@ -485,7 +485,7 @@ defined or was zero length.
 
     [% foo = 'baz' %][% DEFAULT foo = 'bar' %][% foo %] => 'baz'
 
-=item DUMP
+=item C<DUMP>
 
 This is not provided in TT.  DUMP inserts a Data::Dumper printout
 of the variable or expression.  If no argument is passed it will
@@ -499,19 +499,19 @@ encode the DUMP automatically.
 
     [% DUMP 1 + 2 %]
 
-=item ELSE
+=item C<ELSE>
 
 Used with the IF directive.  See the L</"IF"> directive.
 
-=item ELSIF
+=item C<ELSIF>
 
 Used with the IF directive.  See the L</"IF"> directive.
 
-=item END
+=item C<END>
 
 Used to end a block directive.
 
-=item FILTER
+=item C<FILTER>
 
 Used to apply different treatments to blocks of text.  It may operate as a BLOCK
 directive or as a post operative directive.  CET supports all of the filters in
@@ -520,22 +520,22 @@ non-existent) in CET.  Anything that is a scalar virtual method may be used as a
 
 TODO - enumerate the at least 7 ways to pass and use filters.
 
-=item '|'
+=item C<'|'>
 
 Alias for the FILTER directive.  Note that | is similar to the
 '.' in CGI::Ex::Template.  Therefore a pipe cannot be used directly after a
 variable name in some situations (the pipe will act only on that variable).
 This is the behavior employed by TT3.
 
-=item FINAL
+=item C<FINAL>
 
 Used with the TRY directive.  See the L</"TRY"> directive.
 
-=item FOR
+=item C<FOR>
 
 Alias for FOREACH
 
-=item FOREACH
+=item C<FOREACH>
 
 Allows for iterating over the contents of any arrayref.  If the variable is not an
 arrayref, it is automatically promoted to one.
@@ -630,7 +630,11 @@ Would print:
            2-1 = (b and X)
            2-2 = (b and Y)
 
-=item GET
+FOREACH may also be used as a post operative directive.
+
+    [% "$i" FOREACH i = [1 .. 5] %] => 12345
+
+=item C<GET>
 
 Return the value of a variable or expression.
 
@@ -644,7 +648,7 @@ The GET keyword may be omitted.
 
 See the section on VARIABLES.
 
-=item IF (IF / ELSIF / ELSE)
+=item C<IF (IF / ELSIF / ELSE)>
 
 Allows for conditional testing.  Expects an expression as its only
 argument.  If the expression is true, the contents of its block are
@@ -663,11 +667,11 @@ expressions were true.
         Couldn't determine that A equaled anything.
     [%- END %]
 
-If may also be used as a post operative directive.
+IF may also be used as a post operative directive.
 
     [% 'A equaled B' IF a == b %]
 
-=item INCLUDE
+=item C<INCLUDE>
 
 Parse the contents of a file or block and insert them.  Variables defined
 or modifications made to existing variables are discarded after
@@ -690,18 +694,18 @@ Arguments may also be passed to the template:
 Filenames must be relative to INCLUDE_PATH unless the ABSOLUTE
 or RELATIVE configuration items are set.
 
-=item INSERT
+=item C<INSERT>
 
 Insert the contents of a file without template parsing.
 
 Filenames must be relative to INCLUDE_PATH unless the ABSOLUTE
 or RELATIVE configuration items are set.
 
-=item LAST
+=item C<LAST>
 
 Used to exit out of a WHILE or FOREACH loop.
 
-=item MACRO
+=item C<MACRO>
 
 Takes a directive and turns it into a variable that can take arguments.
 
@@ -725,7 +729,7 @@ Would print:
 
     (1)(2)(3)(4)
 
-=item META
+=item C<META>
 
 Used to define variables that will be available via either the
 template or component namespace.
@@ -740,11 +744,11 @@ Would print:
 
     baz
 
-=item NEXT
+=item C<NEXT>
 
 Used to go to the next iteration of a WHILE or FOREACH loop.
 
-=item PERL
+=item C<PERL>
 
 Only available if the EVAL_PERL configuration item is true (default is false).
 
@@ -768,7 +772,7 @@ the $stash and $context variables are set and are references to objects that mim
 interface provided by Template::Context and Template::Stash.  These are provided for
 compatibility only.  $self contains the current CGI::Ex::Template object.
 
-=item PROCESS
+=item C<PROCESS>
 
 Parse the contents of a file or block and insert them.  Unlike INCLUDE,
 no variable localization happens so variables defined or modifications made
@@ -791,18 +795,18 @@ Arguments may also be passed to the template:
 Filenames must be relative to INCLUDE_PATH unless the ABSOLUTE
 or RELATIVE configuration items are set.
 
-=item RAWPERL
+=item C<RAWPERL>
 
 Only available if the EVAL_PERL configuration item is true (default is false).
 Similar to the PERL directive, but you will need to append
 to the $output variable rather than just calling PRINT.
 
-=item RETURN
+=item C<RETURN>
 
 Used to exit the innermost block or template and continue processing
 in the surrounding block or template.
 
-=item SET
+=item C<SET>
 
 Used to set variables.
 
@@ -813,12 +817,12 @@ Used to set variables.
    [% SET a = [1, 2, 3] %][% a.1 %]   => "2"
    [% SET a = {b => 'c'} %][% a.b %]  => "c"
 
-=item STOP
+=item C<STOP>
 
 Used to exit the entire process method (out of all blocks and templates).
 No content will be processed beyond this point.
 
-=item SWITCH
+=item C<SWITCH>
 
 Allow for SWITCH and CASE functionality.
 
@@ -835,7 +839,7 @@ Would print:
 
    You said hi or hello
 
-=item TAGS
+=item C<TAGS>
 
 Change the type of enclosing braces used to delineate template tags.  This
 remains in effect until the end of the enclosing block or template or until
@@ -856,35 +860,136 @@ The named tags are (duplicated from TT):
     mason    => ['<%',   '>' ],  # HTML::Mason
     html     => ['<!--', '-->'], # HTML comments
 
+=item C<THROW>
 
-=item THROW
+Allows for throwing an exception.  If the exception is not caught
+via the TRY DIRECTIVE, the template will abort processing of the directive.
 
+    [% THROW mytypes.sometime arg1 => val1 %]
 
+See the TRY directive for examples of usage.
 
-=item TRY
+=item C<TRY>
 
+The TRY block directive will catch exceptions that are thrown
+while processing its block.   its from the
+template
 
+    [% TRY %]
+    [% THROW mytypes.sometime arg1 => val1 %]
+    [% CATCH %]
+    [% DUMP %]
+    [% END %]
 
-=item UNLESS
+Note: Parse errors cannot be caught unless they are in an eval FILTER.
+
+=item C<UNLESS>
 
 Same as IF but condition is negated.
 
     [% UNLESS 0 %]hi[% END %]  => hi
 
+Can also be a post operative directive.
 
-=item USE
+=item C<USE>
 
 Allows for loading a Template::Toolkit style plugin.
 
+    [% USE iter = Iterator(['foo', 'bar']) %]
+    [%~ iter.get_first %]
+    [% iter.size %]
+
+Would print:
+
+    foo
+    2
+
+Note that it is possible to send arguments to the new object
+constructor.  It is also possible to omit the variable name being
+assigned.  In that case the name of the plugin becomes the variable.
+
+    [% USE Iterator(['foo', 'bar', 'baz']) %]
+    [%~ Iterator.get_first %]
+    [% Iterator.size %]
+
+Would print:
+
+    foo
+    3
+
+Plugins that are loaded are looked up for in the namespace listed in
+the PLUGIN_BASE directive which defaults to Template::Plugin.  So in
+the previous example, if Template::Toolkit was installed, the iter
+object would loaded by the class Template::Plugin::Iterator.  In CET,
+an effective way to disable plugins is to set the PLUGIN_BASE to a
+non-existant base such as "_" (In TT it will still fall back to look
+in Template::Plugin).
+
+Note: The iterator plugin will fall back and use
+CGI::Ex::Template::Iterator if Template::Toolkit is not installed.  No
+other plugins come installed with CGI::Ex::Template.
+
+The names of the Plugin being loaded from PLUGIN_BASE are case
+insensitive.  However, using case insensitive names is bad as it
+requires scanning the @INC directories for any module matching the
+PLUGIN_BASE and caching the result (ok - not that bad).
+
+If the plugin is not found and the LOAD_PERL directive is set, then
+CET will try and load a module by that name (note: this type of lookup
+is case sensitive and will not scan the @INC dirs for a matching
+file).
+
+    # The LOAD_PERL directive should be set to 1
+    [% USE cet = CGI::Ex::Template %]
+    [%~ cet.dump_parse('2 * 3').replace('\s+', ' ') %]
+
+Would print:
+
+    $VAR1 = [ \[ '*', '2', '3' ], 0 ];
+
+See the PLUGIN_BASE, PLUGINS, and PLUGIN_FACTORY configuration items.
 
 See the documentation for Template::Manual::Plugins.
 
-=item WHILE
+=item C<WHILE>
 
+Will process a block of code while a condition is true.
 
+    [% WHILE i < 3 %]
+        [%~ i = i + 1 %]
+        i = [% i %]
+    [%~ END %]
 
+Would print:
 
-=item WRAPPER
+        i = 1
+        i = 2
+        i = 3
+
+You could also do:
+
+    [% i = 4 %]
+    [% WHILE (i = i - 1) %]
+        i = [% i %]
+    [%~ END %]
+
+Would print:
+
+        i = 3
+        i = 2
+        i = 1
+
+Note that (f = f - 1) is a valid expression that returns the value
+of the assignment.  The parenthesis are not optional.
+
+WHILE has a built in limit of 1000 iterations.  This is controlled by the
+global variable $WHILE_MAX in CGI::Ex::Template.
+
+WHILE may also be used as a post operative directive.
+
+    [% "$i" WHILE (i = i + 1) < 7 %] => 123456
+
+=item C<WRAPPER>
 
 Block directive.  Processes contents of its block and then passes them
 in the [% content %] variable to the block or filename listed in the
@@ -1110,16 +1215,16 @@ Lower precedence version of the '&&' operator.
 
 Lower precedence version of the '||' operator.
 
-=item C<hashref>
+=item C<hash>
 
 Multiple arity.  This operator is not used in TT.  It is used internally
-by CGI::Ex::Template to delay the creation of a hashref until the
+by CGI::Ex::Template to delay the creation of a hash until the
 execution of the compiled template.
 
-=item C<arrayref>
+=item C<array>
 
 Multiple arity.  This operator is not used in TT.  It is used internally
-by CGI::Ex::Template to delay the creation of an arrayref until the
+by CGI::Ex::Template to delay the creation of an array until the
 execution of the compiled template.
 
 =back
@@ -1263,11 +1368,13 @@ the template are not available during the compile process.
 
 =item DEBUG_FORMAT
 
-
+Change the format of messages inserted when DEBUG has DEBUG_DIRS set on.
+This essentially the same thing as setting the format using the DEBUG
+directive.
 
 =item DEFAULT
 
-
+The name of a default template file to use if the passed on is not found.
 
 =item DELIMITER
 
@@ -1276,7 +1383,7 @@ straight forward to just send INCLUDE_PATH an arrayref of paths.
 
 =item END_TAG
 
-
+Set a string to use as the closing delimiter for TT.  Default is "%]".
 
 =item EVAL_PERL
 
@@ -1356,11 +1463,13 @@ with the appropriate values from the variable cache (if INTERPOLATE is on).
 
 =item PROCESS
 
-
+Specify a file to use as the template rather than the one passed in
+to the ->process method.
 
 =item RECURSION
 
-
+Boolean.  Default false.  Indicates that INCLUDED or PROCESSED files
+can refer to each other in a circular fasion.  Be careful about recursion.
 
 =item RELATIVE
 
@@ -1369,10 +1478,12 @@ that are relative to the currently running process.
 
 =item START_TAG
 
-
+Set a string to use as the opening delimiter for TT.  Default is "[%".
 
 =item TAG_STYLE
 
+Allow for setting the type of tag delimiters to use for parsing the TT.
+See the TAGS directive for a listing of the available types.
 
 =item TRIM
 
@@ -1529,13 +1640,13 @@ The following table shows a variable or expression and the corresponding parsed 
     {a  => 'b'}        [ \ [ 'hash',  'a', 'b' ], 0 ]
     {a  => 'b'}.size   [ \ [ 'hash',  'a', 'b' ], 0, '.', 'size', 0 ]
     {$a => b}          [ \ [ 'hash',  ['a', 0], ['b', 0] ], 0 ]
-    1 + 2 + 3 + 4      [ \ [ '+', 1, 2, 3, 4 ], 0]
+    1 + 2              [ \ [ '+', 1, 2 ], 0]
     a + b              [ \ [ '+', ['a', 0], ['b', 0] ], 0 ]
     a * (b + c)        [ \ [ '*', ['a', 0], [ \ ['+', ['b', 0], ['c', 0]], 0 ]], 0 ]
     (a + b)            [ \ [ '+', ['a', 0], ['b', 0] ]], 0 ]
     (a + b) * c        [ \ [ '*', [ \ [ '+', ['a', 0], ['b', 0] ], 0 ], ['c', 0] ], 0 ]
     a ? b : c          [ \ [ '?', ['a', 0], ['b', 0], ['c', 0] ], 0 ]
-    a || b || c        [ \ [ '||', ['a', 0], ['b', 0], ['c', 0] ], 0 ]
+    a || b || c        [ \ [ '||', ['a', 0], [ \ [ '||', ['b', 0], ['c', 0] ], 0 ] ], 0 ]
     ! a                [ \ [ '!', ['a', 0] ], 0 ]
 
 Some notes on the parsing.
@@ -1551,12 +1662,17 @@ Some notes on the parsing.
     "Variables" that appear to be literal strings or literal numbers
     are returned as the literal (no operator tree).
 
-The following perl can be typed at the command line to view the parsed variable tree.
+The following perl can be typed at the command line to view the parsed variable tree:
 
     perl -e 'use CGI::Ex::Template; print CGI::Ex::Template::dump_parse("foo.bar + 2")."\n"'
 
+Also the following can be included in a template to view the output in a template:
+
+    [% USE cet = CGI::Ex::Template %]
+    [%~ cet.dump_parse('foo.bar + 2').replace('\s+', ' ') %]
+
 =head1 AUTHOR
 
-Paul Seamons <mail at seamons dot com>
+Paul Seamons <paul at seamons dot com>
 
 =cut
