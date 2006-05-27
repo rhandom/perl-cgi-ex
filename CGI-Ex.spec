@@ -1,5 +1,5 @@
 %define name CGI-Ex
-%define version 1.14
+%define version 2.00
 
 %define __find_provides %( echo -n /usr/lib/rpm/find-provides && [ -x /usr/lib/rpm/find-provides.perl ] && echo .perl )
 %define __find_requires %( echo -n /usr/lib/rpm/find-requires && [ -x /usr/lib/rpm/find-requires.perl ] && echo .perl )
@@ -19,12 +19,17 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-buildroot
 Provides:       %{name} = %{version}
 
 %description
-CGI::Ex is a Perl module that offers an extended suite of
-functionality, over and above that offered by CGI, HTML::FillInForm,
-and the host of Validator scripts on CPAN.  CGI::Ex tries to use the
-best functions from existing modules and extend them with rich
-functionality.  Particularly of interest is CGI::Ex::App which
-provides extremely easy yet robust CGI developement.
+CGI::Ex provides a suite of utilities to make writing CGI scripts
+more enjoyable.  Although they can all be used separately, the
+main functionality of each of the modules is best represented in
+the CGI::Ex::App module.  CGI::Ex::App takes CGI application building
+to the next step.  CGI::Ex::App is not quite a framework (which normally
+includes prebuilt html) instead CGI::Ex::App is an extended application
+flow that dramatically reduces CGI build time in most cases.  It does so
+using as little magic as possible.  See L<CGI::Ex::App>.
+
+The main functionality is provided by several other modules that
+may be used separately, or together through the CGI::Ex interface.
 
 %prep
 %setup -q -n %{name}-%{version}

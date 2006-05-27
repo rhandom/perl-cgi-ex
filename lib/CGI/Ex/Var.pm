@@ -4,6 +4,10 @@ package CGI::Ex::Var;
 
 CGI::Ex::Var - Variable and expression parsing and execution for CGI::Ex::Template (and other takers)
 
+=head1 DESCRIPTION
+
+Experimental - The storage structure will change to match CGI::Ex::Template by the next release.
+
 =cut
 
 use strict;
