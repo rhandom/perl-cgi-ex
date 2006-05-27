@@ -32,10 +32,10 @@ my $swap = {
     filt  => sub {sub {$_[0]x2}},
 };
 
-#use Template::Stash;;
-#my $s = Template::Stash->new($swap);
-use Template::Stash::XS;
-$s = Template::Stash::XS->new($swap);
+use Template::Stash;;
+my $s = Template::Stash->new($swap);
+#use Template::Stash::XS;
+#$s = Template::Stash::XS->new($swap);
 
 ###----------------------------------------------------------------###
 ### get objects ready
