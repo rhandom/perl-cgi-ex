@@ -1011,8 +1011,8 @@ sub apply_precedence {
 
         ### return binary
         if ($OP_BINARY->{$op}) {
-            my $val = $trees[0];
-            $val = [ \ [ $op, $val, $trees[$_] ], 0 ] for 1 .. $#trees;
+            my $val = $trees[-1];
+            $val = [ \ [ $op, $trees[$_], $val ], 0 ] for reverse (0 .. $#trees - 1); # reverse order - helps out ||
             return $val;
         }
 
