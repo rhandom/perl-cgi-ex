@@ -1,5 +1,16 @@
 package CGI::Ex::Die;
 
+=head1 NAME
+
+CGI::Ex::Die - A CGI::Carp::FatalsToBrowser type utility.
+
+=cut
+
+###----------------------------------------------------------------###
+#  Copyright 2006 - Paul Seamons                                     #
+#  Distributed under the Perl Artistic License without warranty      #
+###----------------------------------------------------------------###
+
 use strict;
 use vars qw($no_recurse
             $EXTENDED_ERRORS $SHOW_TRACE $IGNORE_EVAL
@@ -150,10 +161,6 @@ sub die_handler {
 1;
 
 __END__
-
-=head1 NAME
-
-CGI::Ex::Die - A CGI::Carp::FatalsToBrowser type utility.
 
 =head1 SYNOPSIS
 
