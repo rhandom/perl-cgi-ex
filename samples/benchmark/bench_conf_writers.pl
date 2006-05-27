@@ -151,14 +151,6 @@ if (eval {require XML::Simple}) {
   $files{xml} = $_file;
 }
 
-if (eval {require JSON}) {
-  my $_file = $tmpnam. '.json';
-  $TESTS{xml} = sub {
-    $cob->write_ref($_file, $str);
-  };
-  $files{xml} = $_file;
-}
-
 ### tell file locations
 foreach my $key (sort keys %files) {
   print "$key => $files{$key}\n";
