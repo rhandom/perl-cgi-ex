@@ -182,8 +182,8 @@ insert_path, and replace_path methods).
 
 During development it would be nice to see what happened during the
 course of our navigation.  This is stored in the arrayref contained in
-->history.  There is a hook that runs after a step is printed its
-content called "post_print."  This chunk will display history after we
+->history.  There is a method that is called after all of the navigation
+has taken place called "post_navigate".  This chunk will display history after we
 have printed the content.
 
     sub post_navigate {
@@ -192,9 +192,12 @@ have printed the content.
 
 Ok.  Finally we are looking at the methods used by each step of the path.  The
 hook mechanism of CGI::Ex::App will look first for a method ${step}_${hook_name}
-called before falling back to the method named $hook_name.
+called before falling back to the method named $hook_name.  Internally in the
+code there is a call that looks like $self->run_hook('hash_validation', $step).  In
+this case the step is main.  The dispatch mechanism finds our method at the following
+chunk of code.
 
-    sub main_hash_validation {}
+    sub main_hash_validation { ... }
 
 The process flow will see if the data is ready to validate.  Once it is ready
 (usually when the user presses the submit button) the data will be validated.  The
@@ -435,10 +438,10 @@ This would first look for a method named "edit_print".  If it is unable to
 find a method by that name, it will look for a method named "print".  If it
 is unable to find this method - it will die.
 
-If allow_morph is turned on the same methods are searched for.  It just becomes
+If allow_morph is set to true, the same methods are searched for but it becomes
 possible to move some of those methods into an external package.
 
-See the discussions under the method named "hook" and run_hook for more details.
+See the discussions under the methods named "find_hook" and "run_hook" for more details.
 
 The following is the alphabetical list of methods and hooks.
 
@@ -494,7 +497,7 @@ steps to the end of the current path.
 Should return a hashref that will be passed to the new method of CGI::Ex::Auth.
 It is augmented with arguments that integrate it into CGI::Ex::App.
 
-See the get_valid_auth method.
+See the get_valid_auth method and the CGI::Ex::Auth documentation.
 
     sub auth_args {
         return {
@@ -509,7 +512,10 @@ See the get_valid_auth method.
 
 Contains authentication data stored during the get_valid_auth method.
 The data is normally blessed into the CGI::Ex::Auth::Data package which
-evaluates to false if there was an error - so this data can be defined but false.
+evaluates to false if there was an error and true if the authentication
+was successful - so this data can be defined but false.
+
+See the get_valid_auth method.
 
 =item cleanup_user (method)
 
@@ -540,7 +546,9 @@ Show simplified trace information of which steps were called, the
 order they were called in, the time they took to run, and a brief list
 of the output (to see the full response returned by each hook, pass a
 true value as the only argument to dump_history -
-$self->dump_history(1)).
+$self->dump_history(1)).  Indentation is also applied to show which
+hooks called other hooks.
+
 
 The first line shows the amount of time elapsed for the entire
 navigate execution.  Subsequent lines contain:
@@ -552,10 +560,9 @@ navigate execution.  Subsequent lines contain:
     Output - the response of the hook - shown in shortened form.
 
 Note - to get full output responses - pass a true value to
-dump_history - or just call ->history.  Times displayed are to 4
+dump_history - or just call ->history.  Times displayed are to 5
 decimal places - this accuracy can only be provided if the Time::HiRes
-module is installed on your system (it will only use it if available).
-Indentation is also applied to show which hooks called other hooks.
+module is installed on your system (it will only be used if installed).
 
 It is usually best to print this history during the post_navigate
 method as in the following:
@@ -603,7 +610,8 @@ for a long jump to the end of all nav_loops (even if they are
 recursively nested).  This effectively short circuits all remaining
 hooks for the current and remaining steps.  It is used to allow the
 ->jump functionality.  If the application has morphed, it will be
-unmorphed before returning.
+unmorphed before returning.  Also - the post_navigate method will
+still be called.
 
 =item first_step (method)
 
