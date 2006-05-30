@@ -80,6 +80,9 @@ give you no visible improvement.  Or it could.
 
 =head1 PUBLIC METHODS
 
+The following seciton lists most of the publicly available methods.  Some less
+commonly used public methods are listed later in this document.
+
 =over 4
 
 =item C<new>
@@ -164,110 +167,6 @@ This method is available for defining extra Virtual methods or filters.  This me
 to Template::Stash::define_vmethod.
 
 =back
-
-=head1 SEMI PUBLIC METHODS
-
-The following list of methods are other interesting methods of CET that
-may be re-implemented by subclasses of CET.
-
-
-exception - Creates an exception object blessed into the package listed in
-$CGI::Ex::Template::PACKAGE_EXCEPTION.
-
-execute_tree - Executes a parsed tree (returned from parse_tree)
-
-get_variable - Turns a variable identity array into the parsed variable.  This
-method is also repsonsible for playing opererators and running virtual methods
-and filters.  The method could more accurately be called play_expression.
-
-include_filename - Takes a file path, and resolves it into the full filename using
-paths from INCLUDE_PATH or INCLUDE_PATHS.
-
-_insert - Resolves the file passed, and then returns its contents.
-
-list_filters - Dynamically loads the filters list from Template::Filters when a filter
-is used that is not natively implemented in CET.
-
-list_plugins - Returns an arrayref of modules that are under a base Namespace.
-
-  my @modules = @{ $self->list_plugins({base => 'Template::Plugins'}) }:
-
-load_parsed_tree - Given a filename or a string reference will return a parsed document
-hash that contains the parsed tree.
-
-  my $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");
-
-parse_args - Allow for the multitudinous ways that TT parses arguments.  This allows
-for positional as well as named arguments.  Named arguments can be separated with a "=" or "=>",
-and positional arguments should be separated by " " or ",".  This only returns an array
-of parsed variables.  Use vivify_args to translate to the actual values.
-
-parse_tree - Used by load_parsed_tree.  This is the main grammar engine of the program.  It
-uses method in the $DIRECTIVES hashref to parse different DIRECTIVE TYPES.
-
-parse_variable - Used to parse a variable, an expression, a literal string, or a number.  It
-returns a parsed variable tree.  Samples of parsed variables can be found in the VARIABLE PARSE TREE
-section.
-
-set_variable - Used to set a variable.  Expects a variable identity array and the value to set.  It
-will autovifiy as necessary.
-
-throw - Creates an exception object from the arguments and dies.
-
-undefined_any - Called during get_variable if a value is returned that is undefined.  This could
-be used to magically create variables on the fly.  This is similar to Template::Stash::undefined.
-It is suggested that undefined_get be used instead.  Default behavior returns undef.  You
-may also pass a coderef via the UNDEFINED_ANY configuration variable.  Also, you can try using
-the DEBUG => 'undef', configuration option which will throw an error on undefined variables.
-
-undefined_get - Called when a variable is undefined during a GET directive.  This is useful to
-see if a value that is about to get inserted into the text is undefined.  undefined_any is a little
-too general for most cases.  Also, you may pass a coderef via the UNDEFINED_GET configuration variable.
-
-vivify_args - Turns an arrayref of arg identities parsed by parse_args and turns
-them into the actual values.
-
-
-=head1 OTHER UTILITY METHODS
-
-The following is a brief list of other methods used by CET.  Generally, these
-shouldn't be overwritten by subclasses.
-
-apply_precedence - allows for parsed operator array to be translated to a tree based
-upon operator precedence.
-
-context - used to create a "pseudo" context object that allows for portability
-of TT plugins, filters, and perl blocks that need a context object.
-
-DEBUG - TT2 Holdover that is used once for binmode setting during a TT2 test.
-
-debug_node - used to get debug info on a directive if DEBUG_DIRS is set.
-
-filter_* - implement filters that are more than one line.
-
-get_line_number_by_index - used to turn string index position into line number
-
-interpolate_node - used for parsing text nodes for dollar variables when interpolate is on.
-
-parse_* - used by parse_tree to parse the template.  These are the grammar.
-
-play_* - used by execute_tree to execute the parsed tree.
-
-play_operator - to execute any found operators
-
-_process - called by process and the PROCESS, INCLUDE and other directives.
-
-slurp - reads contents of passed filename - throws file exception on error.
-
-split_paths - used to split INCLUDE_PATH or other directives if an arrayref is not passed.
-
-_vars - Return a reference to the current stash of variables.  This is currently only used
-by the pseudo context object and may disappear at some point.
-
-vmethod_* - implement virtual methods that are more than one line.
-
-weak_copy - used to create a weak reference to self to avoid circular references. (this
-is needed by macros)
 
 =head1 TODO
 
@@ -587,43 +486,92 @@ In CET it is also possible to call virtual methods on literal values.
 
 =item Single quoted string.
 
-    [% 'foobar' %]       Prints "foobar".
-    [% '$foo\n' %]       Prints "$foo\n".
-    [% 'That\'s nice' %] Prints "That's nice".
+Returns the string.  No variable interpolation happens.
+
+    [% 'foobar' %]          Prints "foobar".
+    [% '$foo\n' %]          Prints "$foo\\n".  # the \\n is a literal "\" and a "\n"
+    [% 'That\'s nice' %]    Prints "That's nice".
+    [% str = 'A string' %]  Sets the value of str.
+    [% 'A string'.split %]  Splits the string on ' ' and returns the list.
+
+Note: virtual methods can only be used on literal strings in CET, not in TT.
 
 =item Double quoted string.
 
-    [% 
+Returns the string.  Variable interpolation happens.
 
-A literal is a double-quoted string, single-quoted string, integer or number.
+    [% "foobar" %]                   Prints "foobar".
+    [% "$foo"   %]                   Prints "bar" (assuming the value of foo is bar).
+    [% "${foo}  %]                   Prints "bar" (assuming the value of foo is bar).
+    [% "foobar\n" %]                 Prints "foobar\n".  # the \n is a newline.
+    [% str = "Hello" %]              Sets the value of str.
+    [% "foo".replace('foo','bar') %] Prints "bar".
 
+Note: virtual methods can only be used on literal strings in CET, not in TT.
 
+=item Array Constructor.
 
+    [% [1, 2, 3] %]               Prints something like ARRAY(0x8309e90).
+    [% [4, 5, 6].size %]          Prints 3.
+    [% [7, 8, 9].reverse.0 %]     Prints 9.
+    [% array1 = [1 .. 3] %]       Sets the value of array1.
+    [% array2 = [foo, 'a', []] %] Sets the value of array2.
 
+Note: virtual methods can only be used on array contructors in CET, not in TT.
+
+=item Hash Constructor.
+
+    [% {foo => 'bar'} %]                 Prints something like HASH(0x8305880)
+    [% {a => 'A', b => 'B'}.size %]      Prints 2.
+    [% {'a' => 'A', 'b' => 'B'}.size %]  Prints 2.
+    [% hash = {foo => 'bar', c => {}} %] Sets the value of hash.
+
+Note: virtual methods can only be used on hash contructors in CET, not in TT.
+
+=head1 EXPRESSIONS
+
+Expressions are one or more variables or literals joined together
+operators.  An expression can be used anywhere a variable can be used
+with the exception of the variable name of SET, and the filename of
+PROCESS, INCLUDE, WRAPPER, and INSERT.
+
+The following section shows some samples of expressions.  For a full list
+of available operators, please see the section titled OPERATORS.
+
+    [% 1 + 2 %]           Prints 3
+    [% 1 + 2 * 3 %]       Prints 7
+    [% (1 + 2) * 3 %]     Prints 9
+
+    [% x = 2 %]
+    [% y = 3 %]
+    [% z = x * (y - 1) %] Prints 4
 
 =head1 VIRTUAL METHODS
 
-The following is the list of builtin virtual methods and filters that can be called on each type of data.
+The following is the list of builtin virtual methods and filters that
+can be called on each type of data.
 
-In CGI::Ex::Template, the "|" operator can be used to call virtual methods just the same way
-that the "." operator can.  The main difference between the two is that on access to hashrefs or
-objects, the "|" means to always call the virtual method or filter rather than
-looking in the hashref for a key by that name, or trying to call that method on the object.  This
-is similar to how TT3 will function.
+In CGI::Ex::Template, the "|" operator can be used to call virtual
+methods just the same way that the "." operator can.  The main
+difference between the two is that on access to hashrefs or objects,
+the "|" means to always call the virtual method or filter rather than
+looking in the hashref for a key by that name, or trying to call that
+method on the object.  This is similar to how TT3 will function.
 
 =head2 SCALAR VIRTUAL METHODS AND FILTERS
 
-The following is is the list of builtin virtual methods and filters that
-can be called on scalar datatypes.  In CET and TT3, filters and virtual methods
-are more closely related.  In general anywhere a virtual method can be used a
-filter can be used also - and vice-versa - all scalar virtual methods can be used as
-filters.
+The following is is the list of builtin virtual methods and filters
+that can be called on scalar datatypes.  In CET and TT3, filters and
+virtual methods are more closely related.  In general anywhere a
+virtual method can be used a filter can be used also - and vice-versa
+- all scalar virtual methods can be used as filters.
 
-In addition to the filters listed below, CET will automatically load Template::Filters
-and use them if Template::Toolkit is installed.
+In addition to the filters listed below, CET will automatically load
+Template::Filters and use them if Template::Toolkit is installed.
 
-In addition to the scalar virtual methods, any scalar will be automatically converted
-to a single item list if a list virtual method is called on it.
+In addition to the scalar virtual methods, any scalar will be
+automatically converted to a single item list if a list virtual method
+is called on it.
 
 =over 4
 
@@ -917,10 +865,11 @@ The following methods can be called on hash type data structures:
 
 =head1 DIRECTIVES
 
-This section containts the alphabetical list of DIRECTIVES available in
-the TT language.  DIRECTIVES are the "functions" that implement the Template Toolkit
-mini-language.  For further discussion and examples, please refer to the
-TT directives documentation.
+This section containts the alphabetical list of DIRECTIVES available
+in the TT language.  DIRECTIVES are the "functions" and control
+structures that implement the Template Toolkit mini-language.  For
+further discussion and examples, please refer to the TT directives
+documentation.
 
 
 =over 4
@@ -1394,7 +1343,8 @@ template
     [% DUMP %]
     [% END %]
 
-Note: Parse errors cannot be caught unless they are in an eval FILTER.
+Note: Parse errors cannot be caught unless they are in an eval FILTER, or are
+in a separate template being INCLUDEd or PROCESSed.
 
 =item C<UNLESS>
 
@@ -1560,14 +1510,15 @@ name will be used before a virtual method of the same name.  For example if a
 passed hash contained pair with a keyname "defined" and a value of "2", then
 any calls to hash.defined(subkeyname) would always return 2 rather
 than using the vmethod named "defined."  To get around this limitation use the
-"|" operator (listed next).
+"|" operator (listed next).  Also - on objects the "." will always try and
+call the method by that name.  To always call the vmethod - use "|".
 
 =item C<|>
 
 Binary.  The pipe operator.  Similar to the dot operator.  Allows for
 explicit calling of virtual methods and filters (filters are "merged"
 with virtual methods in CGI::Ex::Template and TT3) when accessing
-hashrefs.  See the note for the "." operator.
+hashrefs and objects.  See the note for the "." operator.
 
 The pipe character is similar to TT2 in that it can be used in place
 of a directive as an alias for FILTER.  It similar to TT3 in that it
@@ -2183,6 +2134,187 @@ Also the following can be included in a template to view the output in a templat
 
     [% USE cet = CGI::Ex::Template %]
     [%~ cet.dump_parse('foo.bar + 2').replace('\s+', ' ') %]
+
+
+=head1 SEMI PUBLIC METHODS
+
+The following list of methods are other interesting methods of CET that
+may be re-implemented by subclasses of CET.
+
+=over 4
+
+=item C<dump_parse>
+
+This method allows for returning a Data::Dumper dump of a parsed variable.  It is mainly used for testing.
+
+=item C<exception>
+
+Creates an exception object blessed into the package listed in
+$CGI::Ex::Template::PACKAGE_EXCEPTION.
+
+=item C<execute_tree>
+
+Executes a parsed tree (returned from parse_tree)
+
+=item C<get_variable>
+
+Turns a variable identity array into the parsed variable.  This
+method is also repsonsible for playing opererators and running virtual methods
+and filters.  The method could more accurately be called play_expression.
+
+=item C<include_filename>
+
+Takes a file path, and resolves it into the full filename using
+paths from INCLUDE_PATH or INCLUDE_PATHS.
+
+=item C<_insert>
+
+Resolves the file passed, and then returns its contents.
+
+=item C<list_filters>
+
+Dynamically loads the filters list from Template::Filters when a filter
+is used that is not natively implemented in CET.
+
+=item C<list_plugins>
+
+Returns an arrayref of modules that are under a base Namespace.
+
+  my @modules = @{ $self->list_plugins({base => 'Template::Plugins'}) }:
+
+=item C<load_parsed_tree>
+
+Given a filename or a string reference will return a parsed document
+hash that contains the parsed tree.
+
+  my $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");
+
+=item C<parse_args>
+
+Allow for the multitudinous ways that TT parses arguments.  This allows
+for positional as well as named arguments.  Named arguments can be separated with a "=" or "=>",
+and positional arguments should be separated by " " or ",".  This only returns an array
+of parsed variables.  Use vivify_args to translate to the actual values.
+
+=item C<parse_tree>
+
+Used by load_parsed_tree.  This is the main grammar engine of the program.  It
+uses method in the $DIRECTIVES hashref to parse different DIRECTIVE TYPES.
+
+=item C<parse_variable>
+
+Used to parse a variable, an expression, a literal string, or a number.  It
+returns a parsed variable tree.  Samples of parsed variables can be found in the VARIABLE PARSE TREE
+section.
+
+=item C<set_variable>
+
+Used to set a variable.  Expects a variable identity array and the value to set.  It
+will autovifiy as necessary.
+
+=item C<throw>
+
+Creates an exception object from the arguments and dies.
+
+=item C<undefined_any>
+
+Called during get_variable if a value is returned that is undefined.  This could
+be used to magically create variables on the fly.  This is similar to Template::Stash::undefined.
+It is suggested that undefined_get be used instead.  Default behavior returns undef.  You
+may also pass a coderef via the UNDEFINED_ANY configuration variable.  Also, you can try using
+the DEBUG => 'undef', configuration option which will throw an error on undefined variables.
+
+=item C<undefined_get>
+
+Called when a variable is undefined during a GET directive.  This is useful to
+see if a value that is about to get inserted into the text is undefined.  undefined_any is a little
+too general for most cases.  Also, you may pass a coderef via the UNDEFINED_GET configuration variable.
+
+=item C<vivify_args>
+
+Turns an arrayref of arg identities parsed by parse_args and turns
+them into the actual values.
+
+=back
+
+
+=head1 OTHER UTILITY METHODS
+
+The following is a brief list of other methods used by CET.  Generally, these
+shouldn't be overwritten by subclasses.
+
+=over 4
+
+=item C<apply_precedence>
+
+Allows for parsed operator array to be translated to a tree based
+upon operator precedence.
+
+=item C<context>
+
+Used to create a "pseudo" context object that allows for portability
+of TT plugins, filters, and perl blocks that need a context object.
+
+=ITEM C<DEBUG>
+
+TT2 Holdover that is used once for binmode setting during a TT2 test.
+
+=item C<debug_node>
+
+Used to get debug info on a directive if DEBUG_DIRS is set.
+
+=item C<filter_*>
+
+Methods by these names implement filters that are more than one line.
+
+=item C<get_line_number_by_index>
+
+Used to turn string index position into line number
+
+=item C<interpolate_node>
+
+Used for parsing text nodes for dollar variables when interpolate is on.
+
+=item C<parse_*>
+
+Methods by these names are used by parse_tree to parse the template.  These are the grammar.
+
+=item C<play_*>
+
+Methods by these names are used by execute_tree to execute the parsed tree.
+
+=item C<play_operator>
+
+Used to execute any found operators
+
+=item C<_process>
+
+Called by process and the PROCESS, INCLUDE and other directives.
+
+=item C<slurp>
+
+Reads contents of passed filename - throws file exception on error.
+
+=item C<split_paths>
+
+Used to split INCLUDE_PATH or other directives if an arrayref is not passed.
+
+=item C<_vars>
+
+Return a reference to the current stash of variables.  This is currently only used
+by the pseudo context object and may disappear at some point.
+
+=item C<vmethod_*>
+
+Methods by these names implement virtual methods that are more than one line.
+
+=item C<weak_copy>
+
+Used to create a weak reference to self to avoid circular references. (this
+is needed by macros)
+
+=back
+
 
 =head1 AUTHOR
 
