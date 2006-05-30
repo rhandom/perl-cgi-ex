@@ -1239,7 +1239,7 @@ sub get_variable {
         } else {
 
             ### method calls on objects
-            if (UNIVERSAL::can($ref, 'can')) {
+            if ($was_dot_call && UNIVERSAL::can($ref, 'can')) {
                 my @args = $args ? @{ $self->vivify_args($args) } : ();
                 my @results = eval { $ref->$name(@args) };
                 if ($@) {
@@ -2366,10 +2366,10 @@ sub _vars {
 sub include_filename {
     my ($self, $file) = @_;
     if ($file =~ m|^/|) {
-        $self->throw('file', "$file ABSOLUTE paths disabled") if ! $self->{'ABSOLUTE'};
+        $self->throw('file', "$file absolute paths are not allowed (set ABSOLUTE option)") if ! $self->{'ABSOLUTE'};
         return $file if -e $file;
-    } elsif ($file =~ m|^\./|) {
-        $self->throw('file', "$file RELATIVE paths disabled") if ! $self->{'RELATIVE'};
+    } elsif ($file =~ m{(^|/)\.\./}) {
+        $self->throw('file', "$file relative paths are not allowed (set RELATIVE option)") if ! $self->{'RELATIVE'};
         return $file if -e $file;
     }
 
@@ -2857,6 +2857,8 @@ sub filter_eval {
 sub filter_redirect {
     my ($context, $file, $options) = @_;
     my $path = $context->config->{'OUTPUT_PATH'} || $context->throw('redirect', 'OUTPUT_PATH is not set');
+    $context->throw('redirect', 'Invalid filename - cannot include "/../"')
+        if $file =~ m{(^|/)\.\./};
 
     return sub {
         my $text = shift;
