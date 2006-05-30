@@ -1243,7 +1243,8 @@ sub get_variable {
                 my @args = $args ? @{ $self->vivify_args($args) } : ();
                 my @results = eval { $ref->$name(@args) };
                 if ($@) {
-                    die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
+                    my $class = ref $ref;
+                    die $@ if ref $@ || $@ !~ /Can\'t locate object method "\Q$name\E" via package "\Q$class\E"/;
                 } elsif (defined $results[0]) {
                     $ref = ($#results > 0) ? \@results : $results[0];
                     next;
