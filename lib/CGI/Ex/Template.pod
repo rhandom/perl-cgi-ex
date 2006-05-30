@@ -1650,7 +1650,7 @@ virtual method access.
 
 =item C<**  ^  pow>
 
-Binary.  X raised to the Y power.  This isn't available in TT 2.14.
+Binary.  X raised to the Y power.  This isn't available in TT 2.15.
 
     [% 2 ** 3 %] => 8
 
