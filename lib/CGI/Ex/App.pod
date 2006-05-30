@@ -860,10 +860,10 @@ By default - forms are sticky and data from previous requests will try
 and populate the form.  You can use the fill_template hook to disable
 templating on a single page or on all pages.
 
-This method can be used to prepopulate the form as well (such as on an
+This method can be used to pre-populate the form as well (such as on an
 edit step).  If a form fails validation, hash_fill will also be called
 and will only want the submitted form fields to be sticky.  You can
-use the ready_validate hook to prevent prepopulation in these cases as
+use the ready_validate hook to prevent pre-population in these cases as
 follows:
 
     sub edit_hash_fill {
@@ -1294,7 +1294,7 @@ applications.
 =item recurse_limit (method)
 
 Default 15.  Maximum number of times to allow nav_loop to call itself.
-The recurse level will increase everytime that ->jump is called, or if
+The recurse level will increase every time that ->jump is called, or if
 the end of the nav_loop is reached and the process tries to add the
 default_step and run it again.
 
