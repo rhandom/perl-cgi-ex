@@ -483,7 +483,7 @@ handle.  And CGI::Ex::Fill generally won't break on malformed html.
 
 On tiny forms (< 1 k) form_fill was ~ 13% slower than FillInForm.  If
 the html document incorporated very many entities at all, the
-performace of FillInForm goes down (adding 360 <br> tags pushed
+performance of FillInForm goes down (adding 360 <br> tags pushed
 form_fill to ~ 350% faster).  However, if you are only filling in one
 form every so often, then it shouldn't matter which you use - but
 form_fill will be nicer on the tags and won't balk at ugly html and
@@ -492,7 +492,7 @@ increases.  See the benchmarks in the t/samples/bench_cgix_hfif.pl
 file for more information (ALL BENCHMARKS SHOULD BE TAKEN WITH A GRAIN
 OF SALT).
 
-There are two funtions, fill and form_fill.  The function fill takes
+There are two functions, fill and form_fill.  The function fill takes
 a hashref of named arguments.  The function form_fill takes a list
 of positional parameters.
 
@@ -797,12 +797,12 @@ Because there are too many problems that could occur with html
 comments and javascript, form_fill temporarily removes them during the
 fill.  You may disable this behavior by setting $REMOVE_COMMENT and
 $REMOVE_SCRIPT to 0 before calling form_fill.  The main reason for
-doing this would be if you wanted to have form elments inside the
+doing this would be if you wanted to have form elements inside the
 javascript and comments get filled.  Disabling the removal only
 results in a speed increase of 5%. The function uses \0COMMENT\0 and
-\0SCRIPT\0 as placeholders so i'd avoid these in your text (Actually
-they may be reset to whatever you'd like via $MARKER_COMMENT and
-$MARKER_SCRIPT).
+\0SCRIPT\0 as placeholders so it would be good to avoid these in your
+text (Actually they may be reset to whatever you'd like via
+$MARKER_COMMENT and $MARKER_SCRIPT).
 
 =head1 UTILITY FUNCTIONS
 
@@ -832,12 +832,12 @@ Swap out values in an html tag (key="value" pairs).
 
 =back
 
-=head1 AUTHOR
-
-Paul Seamons
-
 =head1 LICENSE
 
 This module may distributed under the same terms as Perl itself.
+
+=head1 AUTHOR
+
+Paul Seamons
 
 =cut
