@@ -1169,7 +1169,7 @@ developer to add their own types.
 
 CGI::Ex::Validate can work in a simple way like all of the other
 validators do.  However, it also allows for grouping of validation
-items and conditional validaion of groups or individual items.  This
+items and conditional validation of groups or individual items.  This
 is more in line with the normal validation procedures for a website.
 
 It also has full support for providing the same validation in javascript.
@@ -1272,7 +1272,7 @@ Referencing yaml_load.js and validate.js can be done in any of
 several ways.  They can be copied to or symlinked to a fixed location
 in the servers html directory.  They can also be printed out by a cgi.
 The method C<-E<gt>print_js> has been provided in CGI::Ex for printing
-js files found in the perl heirchy.  See L<CGI::Ex> for more details.
+js files found in the perl hierarchy.  See L<CGI::Ex> for more details.
 The $JS_URI_PATH of "/cgi-bin/js" could contain the following:
 
     #!/usr/bin/perl -w
@@ -1486,7 +1486,7 @@ to allow more than one item by any given name).
 Somewhat like min_values and max_values except that you specify the
 fields that participate in the count.  Also - entries that are not
 defined or do not have length are not counted.  An optional "of" can
-be placed after the number for human readibility.
+be placed after the number for human readability.
 
     min_in_set => "2 of foo bar baz",
       # two of the fields foo, bar or baz must be set
@@ -1496,7 +1496,7 @@ be placed after the number for human readibility.
     min_in_set => "2 OF foo bar baz",
 
     validate_if => {field => 'whatever', max_in_set => '0 of whatever'},
-      # only run validation if there were zero occurances of whatever
+      # only run validation if there were zero occurrences of whatever
 
 =item C<enum>
 
@@ -1592,7 +1592,7 @@ validation and an error is added.
 =item C<custom_js>
 
 Custom value - only available in JS.  Allows for extra programming types.
-May be either a boolean value predermined before calling validate, or may be
+May be either a boolean value pre-determined before calling validate, or may be
 section of javascript that will be eval'ed.  The last value (return value) of
 the eval'ed javascript will determine if validation passed.  A false value indicates
 the value did not pass validation.  A true value indicates that it did.  See
@@ -1715,7 +1715,7 @@ not trim.
 
 Pass a swap pattern to change the actual value of the form.
 Any perl regex can be passed but it is suggested that javascript
-compatible regex's are used to make generate_js possible.
+compatible regexes are used to make generate_js possible.
 
     {field => 'foo', replace => 's/(\d{3})(\d{3})(\d{3})/($1) $2-$3/'}
 
@@ -1752,10 +1752,10 @@ The error object has several methods for determining what the errors were.
 =item C<as_array>
 
 Returns an array or arrayref (depending on scalar context) of errors that
-occurred in the order that they occured.  Individual groups may have a heading
+occurred in the order that they occurred.  Individual groups may have a heading
 and the entire validation will have a heading (the default heading can be changed
-via the 'as_array_title' general option).  Each error that occured is a separate
-item and are prepended with 'as_array_prefix' (which is a general option - default
+via the 'as_array_title' general option).  Each error that occurred is a separate
+item and are pre-pended with 'as_array_prefix' (which is a general option - default
 is '  ').  The as_array_ options may also be set via a hashref passed to as_array.
 as_array_title defaults to 'Please correct the following items:'.
 
@@ -1777,8 +1777,8 @@ as_array_title defaults to 'Please correct the following items:'.
 Returns values of as_array joined with a newline.  This method is used as
 the stringification for the error object.  Values of as_array are joined with
 'as_string_join' which defaults to "\n".  If 'as_string_header' is set, it will
-be prepended onto the error string.  If 'as_string_footer' is set, it will be
-postpended onto the error string.
+be pre-pended onto the error string.  If 'as_string_footer' is set, it will be
+appended onto the error string.
 
   ### if this returns the following
   my $string = $err_obj->as_string;
@@ -1803,12 +1803,12 @@ occurred.   Each key is the field name of the form that failed validation with
 'as_hash_suffix' added on as a suffix.  as_hash_suffix is available as a general option
 and may also be passed in via a hashref as the only argument to as_hash.
 The default value is '_error'.  The values of the hash are arrayrefs of errors
-that occured to that form element.
+that occurred to that form element.
 
 By default as_hash will return the values of the hash as arrayrefs (a list of the errors
-that occured to that key).  It is possible to also return the values as strings.
-Three options are available for formatting: 'as_hash_header' which will be prepended
-onto the error string, 'as_hash_footer' which will be postpended, and 'as_hash_join' which
+that occurred to that key).  It is possible to also return the values as strings.
+Three options are available for formatting: 'as_hash_header' which will be pre-pended
+onto the error string, 'as_hash_footer' which will be appended, and 'as_hash_join' which
 will be used to join the arrayref.  The only argument required to force the
 stringification is 'as_hash_join'.
 
@@ -1932,11 +1932,11 @@ as_string_join.  Default value is "\n".
 
 =item C<'general as_string_header'>
 
-If set, will be prepended onto the string when as_string is called.
+If set, will be pre-pended onto the string when as_string is called.
 
 =item C<'general as_string_footer'>
 
-If set, will be prepended onto the string when as_string is called.
+If set, will be pre-pended onto the string when as_string is called.
 
 =item C<'general as_hash_suffix'>
 
@@ -1952,7 +1952,7 @@ arrayrefs of the errors.  This can be done by setting as_hash_join to a non-true
 =item C<'general as_hash_header'>
 
 If as_hash_join has been set to a true value, as_hash_header may be set to
-a string that will be prepended on to the error string.
+a string that will be pre-pended on to the error string.
 
 =item C<'general as_hash_footer'>
 
