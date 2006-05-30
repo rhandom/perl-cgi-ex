@@ -68,6 +68,9 @@ In general the following statements are true:
     If you use Template::Stash::XS with a cached in memory template,
     then CET is about as fast.
 
+    Using TT with a compiled-in-memory template is only 33
+    faster than CET with a new object compiling each time.
+
 It is pretty hard to beat the speed of XS stash with compiled in
 memory templates.  Many systems don't have access to those so
 CET may make more sense.  Hopefully as TT is revised, many of the CET
@@ -1694,6 +1697,86 @@ execution of the compiled template.
 =back
 
 
+=head1 CHOMPING
+
+Chomping refers to the handling of whitespace immediately before and
+immediately after template tags.  By default, nothing happens to this
+whitespace.  Modifiers can be placed just inside the opening and just
+before the closing tags to control this behavior.
+
+Additionally, the PRE_CHOMP and POST_CHOMP configuration variables can
+be set and will globally control all chomping behavior for tags that
+do not have their own chomp modifier.  PRE_CHOMP and POST_CHOMP can
+be set to any of the following values:
+
+    none:      0   +   Template::Constants::CHOMP_NONE
+    one:       1   -   Template::Constants::CHOMP_ONE
+    collapse:  2   =   Template::Constants::CHOMP_COLLAPSE
+    greedy:    3   ~   Template::Constants::CHOMP_GREEDY
+
+=over 4
+
+=item CHOMP_NONE
+
+Don't do any chomping.  The "+" sign is used to indicate CHOMP_NONE.
+
+    Hello.
+
+    [%+ "Hi." +%]
+
+    Howdy.
+
+Would print:
+
+    Hello.
+
+    Hi.
+
+    Howdy.
+
+=item CHOMP_ONE (formerly known as CHOMP_ALL)
+
+Delete any whitespace up to the adjacent newline.  The "-" is used to indicate CHOMP_ONE.
+
+    Hello.
+
+    [%- "Hi." -%]
+
+    Howdy.
+
+Would print:
+
+    Hello.
+    Hi.
+    Howdy.
+
+=item CHOMP_COLLAPSE
+
+Collapse adjacent whitepace to a single space.  The "=" is used to indicate CHOMP_COLLAPSE.
+
+    Hello.
+
+    [%- "Hi." -%]
+
+    Howdy.
+
+Would print:
+
+    Hello. Hi. Howdy.
+
+=item CHOMP_GREEDY
+
+Remove all adjacent whitespace.  The "~" is used to indicate CHOMP_GREEDY.
+
+    Hello.
+
+    [%- "Hi." -%]
+
+    Howdy.
+
+Would print:
+
+    Hello.Hi.Howdy.
 
 =head1 CONFIGURATION
 
@@ -1707,8 +1790,8 @@ These variables should be passed to the "new" constructor.
        VARIABLES  => \%hash_of_variables,
        AUTO_RESET => 0,
        TRIM       => 1,
-       POST_CHOMP => 2,
-       PRE_CHOMP  => 1,
+       POST_CHOMP => "=",
+       PRE_CHOMP  => "-",
    );
 
 
@@ -1812,6 +1895,8 @@ the template are not available during the compile process.
 
 =item CONSTANT_NAMESPACE
 
+Allow for setting the top level of values passed in CONSTANTS.  Default
+value is 'constants'.
 
 =item DEBUG
 
@@ -1858,7 +1943,35 @@ a true EVAL_PERL value also allows the perl and evalperl filters to be used.
 
 =item FILTERS
 
+Allow for passing in TT style filters.
 
+    my $filters = {
+        filter1 =>  sub { my $str = shift; $s =~ s/./1/gs; $s },
+        filter2 => [sub { my $str = shift; $s =~ s/./2/gs; $s }, 0],
+        filter3 => [sub { my ($context, @args) = @_; return sub { my $s = shift; $s =~ s/./3/gs; $s } }, 1],
+    };
+
+    my $str = q{
+        [% a = "Hello" %]
+        1([% a | filter1 %])
+        2([% a | filter2 %])
+        3([% a | filter3 %])
+    };
+
+    my $obj = CGI::Ex::Template->new(FILTERS => $filters);
+    $obj->process(\$str) || die $obj->error;
+
+Would print:
+
+        (11111)
+        (22222)
+        (33333)
+
+Filters passed in as an arrayref should contain a coderef and a value
+indicating if they are dynamic or static (true meaning dynamic).  The
+dynamic filters are passed the pseudo context object and any arguments
+and should return a coderef that will be called as the filter.  The filter
+coderef is then passed the string.
 
 =item INCLUDE_PATH
 
@@ -1883,31 +1996,61 @@ with the appropriate values from the variable cache (if INTERPOLATE is on).
 
 =item LOAD_PERL
 
+Indicates if the USE directive can fall back and try and load a perl module
+if the indicated module was not found in the PLUGIN_BASE path.  See the
+USE directive.
 
+=item NAMESPACE
 
-=item NAMESPACE - no Template::Namespace::Constants support
+No Template::Namespace::Constants support.  Hashref of hashrefs representing
+constants that will be folded into the template at compile time.
 
+    CGI::Ex::Template->new(NAMESPACE => {constants => {
+         foo => 'bar',
+    }});
 
+Is the same as
+
+    CGI::Ex::Template->new(CONSTANTS => {
+         foo => 'bar',
+    });
+
+Any number of hashes can be added to the NAMESPACE hash.
 
 =item OUTPUT
 
+Alternate way of passing in the output location for processed templates.
+If process is not passed an output argument, it will look for this value.
 
+See the process method for a listing of possible values.
 
 =item OUTPUT_PATH
 
-
+Base path for files written out via the process method or via the redirect
+and file filters.  See the redirect virtual method and the process method
+for more information.
 
 =item PLUGINS
 
+A hashref of mappings of plugin modules.
 
+   PLUGINS => {
+      Iterator => 'Template::Plugin::Iterator',
+      DBI      => 'MyDBI',
+   },
+
+See the USE directive for more information.
 
 =item PLUGIN_BASE
 
-
+Default value is Template::Plugin.  The base module namespace
+that template plugins will be looked for.  See the USE directive
+for more information.
 
 =item POST_CHOMP
 
-
+Set the type of chomping at the ending of a tag.
+See the section on chomping for more information.
 
 =item POST_PROCESS
 
@@ -1915,11 +2058,12 @@ with the appropriate values from the variable cache (if INTERPOLATE is on).
 
 =item PRE_CHOMP
 
-
+Set the type of chomping at the beginning of a tag.
+See the section on chomping for more information.
 
 =item PRE_DEFINE
 
-
+Same as the VARIABLES configuration item.
 
 =item PRE_PROCESS
 
@@ -1981,6 +2125,7 @@ You can also sub class the module and override the undefined_get method.
 
 A hashref of variables to initialize the template stash with.  These
 variables are available for use in any of the executed templates.
+See the section on VARIABLES for the types of information that can be passed in.
 
 =back
 
