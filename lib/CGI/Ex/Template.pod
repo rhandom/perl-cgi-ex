@@ -396,7 +396,7 @@ is not available in CET.
 
 =back
 
-=head1 VARIABLES, LITERALS AND EXPRESSIONS
+=head1 VARIABLES
 
 This section discusses how to use variables and expressions in the TT mini-language.
 
@@ -408,13 +408,15 @@ a hashref as the second argument to the process method, or by setting the "VARIA
 
     ### some sample variables
     my %vars = (
-        one       => 1,
+        one       => '1.0',
         foo       => 'bar',
+        vname     => 'one',
         some_code => sub { "You passed me (".join(', ', @_).")" },
         some_data => {
-            a => 'A',
-            b => 3234,
-            c => [3, 1, 4, 1, 5, 9],
+            a     => 'A',
+            bar   => 3234,
+            c     => [3, 1, 4, 1, 5, 9],
+            vname => 'one',
         },
         my_list   => [20 .. 50],
         cet       => CGI::Ex::Template->new,
@@ -427,16 +429,20 @@ a hashref as the second argument to the process method, or by setting the "VARIA
     ### pass the variables during object creation (will be available to every process call)
     my $cet = CGI::Ex::Template->new(VARIABLES => \%vars);
 
+=head1 GETTING VARIABLES
+
 Once you have variables defined, they can be used directly in the template by using their name
-in the stash.
+in the stash.  Or by using the GET directive.
 
     [% foo %]
     [% one %]
+    [% GET foo %]
 
 Would print when processed:
 
     bar
-    1
+    1.0
+    bar
 
 To access members of a hashref or an arrayref, you can chain together the names using a ".".
 
@@ -465,18 +471,156 @@ Would print:
     You passed me (bar).
     You passed me (1, 2, 3).
 
-Finally,
+If the value of a variable is an object, methods can be called using the "." operator.
+
+    [% cet %]
+
+    [% cet.dump_parse('1 + 2').replace('\s+', ' ') %]
+
+Would print something like:
+
+    CGI::Ex::Template=HASH(0x814dc28)
+
+    $VAR1 = [ \[ '+', '1', '2' ], 0 ];
+
+Each type of data has virtual methods associated with them.  Virtual methods
+allow for access to common functions.  For the full list of built in virtual
+methods, please see the section titled VIRTUAL METHODS
+
+    [% foo.length %]
+    [% my_list.size %]
+    [% some_data.c.join(" | ") %]
+
+Would print:
+
+    3
+    31
+    3 | 1 | 4 | 5 | 9
+
+It is also possible to "interpolate" variable names using a "$".  This allows for storing
+the name of a variable inside another variable.  If a variable name is a little
+more complex, it can be embedded inside of "${" and "}".
+
+    [% $vname %]
+    [% ${vname} %]
+    [% ${some_data.vname} %]
+    [% some_data.$foo %]
+    [% some_data.${foo} %]
+
+Would print:
+
+    1.0
+    1.0
+    1.0
+    3234
+    3234
+
+=head2 SETTING VARIABLES.
+
+To define variables during processing, you can use the = operator.  In most cases
+this is the same as using the SET directive.
+
+    [% a = 234 %][% a %]
+    [% SET b = "Hello" %][% b %]
+
+Would print:
+
+    234
+    Hello
+
+It is also possible to create arrayrefs and hashrefs.
+
+    [% a = [1, 2, 3] %]
+    [% b = {key1 => 'val1', 'key2' => 'val2'} %]
+
+    [% a.1 %]
+    [% b.key1 %] [% b.key2 %]
+
+Would print:
+
+    2
+    val1 val2
+
+It is possible to set multiple values at the same time.
+
+    [% SET a = 'A'
+           b = 'B'
+           c = 'C' %]
+    [% a %]    [% b %]    [% c %]
+
+Would print:
+
+    A    B    C
+
+It is also possible to unset variables, or to set members of
+nested data structures.
+
+    [% a = 1 %]
+    [% SET a %]
+
+    [% b.0.c = 37 %]
+
+    ([% a %])
+    [% b.0.c %]
+
+Would print
+
+    ()
+    37
+
+=head1 LITERALS AND CONSTRUCTORS
+
+The following are the types of literals allowed in CET.  They can be used as arguments
+to functions, in place of variables in directives, and in place of variables in expressions.
+
+In CET it is also possible to call virtual methods on literal values.
+
+=over 4
+
+=item Integers and Numbers.
+
+    [% 23423   %]        Prints an integer.
+    [% 3.14159 %]        Prints a number.
+    [% pi = 3.14159 %]   Sets the value of the variable.
+    [% 3.13159.length %] Prints 7 (the string length of the number)
+
+
+=item Single quoted string.
+
+    [% 'foobar' %]       Prints "foobar".
+    [% '$foo\n' %]       Prints "$foo\n".
+    [% 'That\'s nice' %] Prints "That's nice".
+
+=item Double quoted string.
+
+    [% 
+
+A literal is a double-quoted string, single-quoted string, integer or number.
+
+
+
+
 
 =head1 VIRTUAL METHODS
 
 The following is the list of builtin virtual methods and filters that can be called on each type of data.
+
+In CGI::Ex::Template, the "|" operator can be used to call virtual methods just the same way
+that the "." operator can.  The main difference between the two is that on access to hashrefs or
+objects, the "|" means to always call the virtual method or filter rather than
+looking in the hashref for a key by that name, or trying to call that method on the object.  This
+is similar to how TT3 will function.
 
 =head2 SCALAR VIRTUAL METHODS AND FILTERS
 
 The following is is the list of builtin virtual methods and filters that
 can be called on scalar datatypes.  In CET and TT3, filters and virtual methods
 are more closely related.  In general anywhere a virtual method can be used a
-filter can be used also.
+filter can be used also - and vice-versa - all scalar virtual methods can be used as
+filters.
+
+In addition to the filters listed below, CET will automatically load Template::Filters
+and use them if Template::Toolkit is installed.
 
 In addition to the scalar virtual methods, any scalar will be automatically converted
 to a single item list if a list virtual method is called on it.
