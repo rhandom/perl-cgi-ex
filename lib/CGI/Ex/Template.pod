@@ -396,11 +396,275 @@ is not available in CET.
 
 =back
 
-=head1 VARIABLES
+=head1 VARIABLES, LITERALS AND EXPRESSIONS
 
-This section discusses variables that can be used in the TT syntax.
+This section discusses how to use variables and expressions in the TT mini-language.
 
+A variable is the most simple construct to insert into the TT mini language.  A variable
+name will look for the matching value inside CGI::Ex::Templates internal stash of variables
+which is essentially a hash reference.  This stash is initially populated by either passing
+a hashref as the second argument to the process method, or by setting the "VARIABLES" or
+"PRE_DEFINE" configuration variables.
 
+    ### some sample variables
+    my %vars = (
+        one       => 1,
+        foo       => 'bar',
+        some_code => sub { "You passed me (".join(', ', @_).")" },
+        some_data => {
+            a => 'A',
+            b => 3234,
+            c => [3, 1, 4, 1, 5, 9],
+        },
+        my_list   => [20 .. 50],
+        cet       => CGI::Ex::Template->new,
+    );
+
+    ### pass the variables into the CET process
+    $cet->process($template_name, \%vars)
+         || die $cet->error;
+
+    ### pass the variables during object creation (will be available to every process call)
+    my $cet = CGI::Ex::Template->new(VARIABLES => \%vars);
+
+Once you have variables defined, they can be used directly in the template by using their name
+in the stash.
+
+    [% foo %]
+    [% one %]
+
+Would print when processed:
+
+    bar
+    1
+
+To access members of a hashref or an arrayref, you can chain together the names using a ".".
+
+    [% some_data.a %]
+    [% my_list.0] [% my_list.1 %]
+    [% some_data.c.2 %]
+
+Would print:
+
+    A
+    20 21
+    4
+
+If the value of a variable is a code reference, it will be called.  You can add a set of parenthesis
+and arguments to pass arguments.  Arguments are variables and can be as complex as necessary.
+
+    [% some_code %]
+    [% some_code() %]
+    [% some_code(foo) %]
+    [% some_code(one, 2, 3) %]
+
+Would print:
+
+    You passed me ().
+    You passed me ().
+    You passed me (bar).
+    You passed me (1, 2, 3).
+
+Finally,
+
+=head1 VIRTUAL METHODS
+
+The following is the list of builtin virtual methods and filters that can be called on each type of data.
+
+=head2 SCALAR VIRTUAL METHODS AND FILTERS
+
+The following is is the list of builtin virtual methods and filters that
+can be called on scalar datatypes.  In CET and TT3, filters and virtual methods
+are more closely related.  In general anywhere a virtual method can be used a
+filter can be used also.
+
+=over 4
+
+        chunk    => \&vmethod_chunk,
+        collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
+        defined  => sub { 1 },
+        indent   => \&vmethod_indent,
+        'format' => \&vmethod_format,
+        hash     => sub { {value => $_[0]} },
+        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
+        lcfirst  => sub { lcfirst $_[0] },
+        length   => sub { defined($_[0]) ? length($_[0]) : 0 },
+        lower    => sub { lc $_[0] },
+        match    => \&vmethod_match,
+        null     => sub { '' },
+        remove   => sub { vmethod_replace(shift, shift, '', 1) },
+        repeat   => \&vmethod_repeat,
+        replace  => \&vmethod_replace,
+        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
+        size     => sub { 1 },
+        split    => \&vmethod_split,
+        stderr   => sub { print STDERR $_[0]; '' },
+        substr   => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
+        trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
+        ucfirst  => sub { ucfirst $_[0] },
+        upper    => sub { uc $_[0] },
+        uri      => sub { local $_ = $_[0]; s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
+
+        eval     => [\&filter_eval, 1],
+        evaltt   => [\&filter_eval, 1],
+        file     => [\&filter_redirect, 1],
+        redirect => [\&filter_redirect, 1],
+
+=back
+
+=head2 LIST VIRTUAL METHODS
+
+=over 4
+
+The following methods can be called on an arrayref type data structures (scalar
+types will automatically promote to a single element list and call these methods
+if needed):
+
+=item first
+
+    [% mylist.first(3) %]  Returns a list of the the first 3 items in the list.
+
+=item grep
+
+    [% mylist.grep("^\w+\.\w+$") %] Returns a list of all items matching the pattern.
+
+=item hash
+
+    [% mylist.hash %] Returns a hashref with the array indexes as keys and the values as values.
+
+=item join
+
+    [% mylist.join %] Joins on space.
+    [% mylist.join(", ") Joins on the passed argument.
+
+=item last
+
+    [% mylist.last(3) %]  Returns a list of the the last 3 items in the list.
+
+=item list
+
+    [% mylist.list %] Returns a reference to the list.
+
+=item max
+
+    [% mylist.max %] Returns the last item in the array.
+
+=item merge
+
+    [% mylist.merge(list2) %] Returns a new list with all defined items from list2 added.
+
+=item nsort
+
+    [% mylist.nsort %] Returns the numerically sorted items of the list.  If the items are
+    hashrefs, a key containing the field to sort on can be passed.
+
+=item pop
+
+    [% mylist.pop %] Removes and returns the last element from the arrayref (the stash is modified).
+
+=item push
+
+    [% mylist.push(23) %] Adds an element to the end of the arrayref (the stash is modified).
+
+=item reverse
+
+    [% mylist.reverse %] Returns the list in reverse order.
+
+=item shift
+
+    [% mylist.shift %] Removes and returns the first element of the arrayref (the stash is modified).
+
+=item size
+
+    [% mylist.size %] Returns the number of elements in the array.
+
+=item slice
+
+    [% mylist.slice(i, n) %] Returns a list from the arrayref beginning at index i and continuing for n items.
+
+=item sort
+
+    [% mylist.sort %] Returns the alphabetically sorted items of the list.  If the items are
+    hashrefs, a key containing the field to sort on can be passed.
+
+=item splice
+
+    [% mylist.splice(i, n) %] Removes items from array beginning at i and continuing for n items.
+
+    [% mylist.splice(i, n, list2) %] Same as before, but replaces removed items with the items
+    from list2.
+
+=item unique
+
+    [% mylist.unique %] Return a list of the unique items in the array.
+
+=item unshift
+
+    [% mylist.unshift(23) %] Adds an item to the beginning of the arrayref.
+
+=back 4
+
+=head2 HASH VIRTUAL METHODS
+
+The following methods can be called on hash type data structures:
+
+=over 4
+
+=item defined
+
+    [% myhash.defined('a') %]  Checks if a is defined in the hash.
+
+=item delete
+
+    [% myhash.delete('a') %]  Deletes the item from the hash.
+
+=item each
+
+    [% myhash.each.join(", ") %]  Turns the contents of the hash into a list - subject
+    to change as TT is changing the operations of each and list.
+
+=item exists
+
+    [% myhash.exists('a') %]  Checks if a is in the hash.
+
+=item hash
+
+    [% myhash.hash %]  Returns a reference to the hash.
+
+=item import
+
+    [% myhash.import(hash2) %]  Overlays the keys of hash2 over the keys of myhash.
+
+=item keys
+
+    [% myhash.keys.join(', ') %] Returns an arrayref of the keys of the hash.
+
+=item list
+
+    [% myhash.list %] Returns an arrayref with the hash as a single value (subject to change).
+
+=item pairs
+
+    [% myhash.pairs %] Returns an arrayref of hashrefs where each hash contains {key => $key, value => $value}
+    for each value of the hash.
+
+=item nsort
+
+    [% myhash.nsort.join(", ") %] Returns a numerically sorted list of the keys.
+
+=item size
+
+    [% myhash.size %] Returns the number of key/value pairs in the hash.
+
+=item sort
+
+    [% myhash.sort.join(", ") Returns an alphabetically sorted list.
+
+=item values
+
+    [% myhash.values.join(', ') %] Returns an arrayref of the values of the hash.
+
+=back
 
 =head1 DIRECTIVES
 
