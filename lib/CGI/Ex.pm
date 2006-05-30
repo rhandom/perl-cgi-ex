@@ -700,7 +700,7 @@ more enjoyable.  Although they can all be used separately, the
 main functionality of each of the modules is best represented in
 the CGI::Ex::App module.  CGI::Ex::App takes CGI application building
 to the next step.  CGI::Ex::App is not quite a framework (which normally
-includes prebuilt html) instead CGI::Ex::App is an extended application
+includes pre-built html) instead CGI::Ex::App is an extended application
 flow that dramatically reduces CGI build time in most cases.  It does so
 using as little magic as possible.  See L<CGI::Ex::App>.
 
@@ -738,7 +738,7 @@ for definition of others.  See L<CGI::Ex::Conf> for more information.
 
 =item C<CGI::Ex::Auth>
 
-A higly configurable web based authentication system.  See L<CGI::Ex::Auth> for
+A highly configurable web based authentication system.  See L<CGI::Ex::Auth> for
 more information.
 
 =back
@@ -764,7 +764,7 @@ follows (and in order of position):
 
 Text should be a reference to a scalar string containing the html to
 be modified (actually it could be any reference or object reference
-that can be modfied as a string).  It will be modified in place.
+that can be modified as a string).  It will be modified in place.
 Another named argument B<scalarref> is available if you would like to
 copy rather than modify.
 
@@ -774,11 +774,11 @@ Form may be a hashref, a cgi style object, a coderef, or an array of
 multiple hashrefs, cgi objects, and coderefs.  Hashes should be key
 value pairs.  CGI objects should be able
 to call the method B<param> (This can be overrided).  Coderefs should
-expect expect the field name as an argument and should return a value.
+expect the field name as an argument and should return a value.
 Values returned by form may be undef, scalar, arrayref, or coderef
 (coderef values should expect an argument of field name and should
 return a value).  The code ref options are available to delay or add
-options to the bringing in of form informatin - without having to
+options to the bringing in of form information - without having to
 tie the hash.  Coderefs are not available in HTML::FillInForm.  Also
 HTML::FillInForm only allows CGI objects if an arrayref is used.
 
@@ -803,7 +803,7 @@ not available in CGI::Ex::Fill.
 
 =back
 
-Other named arguments are available for compatiblity with HTML::FillInForm.
+Other named arguments are available for compatibility with HTML::FillInForm.
 They may only be used as named arguments.
 
 =over 4
@@ -867,7 +867,7 @@ be read in depending upon file extension.
 =item C<-E<gt>get_form>
 
 Very similar to CGI->new->Vars except that arrays are returned as
-arrays.  Not sure why CGI::Val didn't do this anyway (well - yes -
+arrays.  Not sure why CGI didn't do this anyway (well - yes -
 legacy Perl 4 - but at some point things need to be updated).
 
     my $hash = $cgix->get_form;
