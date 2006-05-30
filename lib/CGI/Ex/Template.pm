@@ -79,7 +79,7 @@ BEGIN {
         trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
         ucfirst  => sub { ucfirst $_[0] },
         upper    => sub { uc $_[0] },
-        uri      => sub { local $_ = $_[0]; s/([^,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
+        uri      => \&vmethod_uri,
     };
 
     $FILTER_OPS ||= { # generally - non-dynamic filters belong in scalar ops
@@ -2844,6 +2844,13 @@ sub vmethod_split {
     my ($str, $pat, @args) = @_;
     $str = '' if ! defined $str;
     return defined $pat ? [split $pat, $str, @args] : [split ' ', $str, @args];
+}
+
+sub vmethod_uri {
+    my $str = shift;
+    utf8::encode($str) if defined &utf8::encode;
+    $str =~ s/([^A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg;
+    return $str;
 }
 
 sub filter_eval {
