@@ -478,37 +478,142 @@ can be called on scalar datatypes.  In CET and TT3, filters and virtual methods
 are more closely related.  In general anywhere a virtual method can be used a
 filter can be used also.
 
+In addition to the scalar virtual methods, any scalar will be automatically converted
+to a single item list if a list virtual method is called on it.
+
 =over 4
 
-        chunk    => \&vmethod_chunk,
-        collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
-        defined  => sub { 1 },
-        indent   => \&vmethod_indent,
-        'format' => \&vmethod_format,
-        hash     => sub { {value => $_[0]} },
-        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
-        lcfirst  => sub { lcfirst $_[0] },
-        length   => sub { defined($_[0]) ? length($_[0]) : 0 },
-        lower    => sub { lc $_[0] },
-        match    => \&vmethod_match,
-        null     => sub { '' },
-        remove   => sub { vmethod_replace(shift, shift, '', 1) },
-        repeat   => \&vmethod_repeat,
-        replace  => \&vmethod_replace,
-        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
-        size     => sub { 1 },
-        split    => \&vmethod_split,
-        stderr   => sub { print STDERR $_[0]; '' },
-        substr   => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
-        trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
-        ucfirst  => sub { ucfirst $_[0] },
-        upper    => sub { uc $_[0] },
-        uri      => sub { local $_ = $_[0]; s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
+=item chunk
 
-        eval     => [\&filter_eval, 1],
-        evaltt   => [\&filter_eval, 1],
-        file     => [\&filter_redirect, 1],
-        redirect => [\&filter_redirect, 1],
+    [% item.chunk(60).join("\n") %] Split string up into a list of chunks of text 60 chars wide.
+
+=item collapse
+
+    [% item.collapse %] Strip leading and trailing whitespace and collapse all other space to one space.
+
+=item defined
+
+    [% item.defined %] Always true - because the undef sub translates all undefs to ''.
+
+=item indent
+
+    [% item.indent(3) %] Indent that number of spaces.
+
+    [% item.indent("Foo: ") %] Add the string "Foo: " to the beginning of every line.
+
+=item eval
+
+    [% item.eval %] Process the string as though it was a template.  This will start the parsing
+    engine and will use the same configuration as the current process.  CET is several times
+    faster at doing this than TT is and is considered acceptible.
+
+=item evaltt
+
+    Same as the eval filter.
+
+=item file
+
+    Same as the redirect filter.
+
+=item format
+
+    [% item.format('%d') %] Print the string out in the specified format.  Each line is
+    processed separately.
+
+=item hash
+
+    [% item.hash %] Returns a one item hash with a key of "value" and a value of the item.
+
+=item html
+
+    [% item.html %] Performs a very basic html encoding (swaps out &, <, > and " for the html entities)
+
+=item lcfirst
+
+    [% item.lcfirst %] Capitalize the leading letter.
+
+=item length
+
+    [% item.length %] Return the length of the string.
+
+=item lower
+
+    [% item.lower %] Return a lower-casified string.
+
+=item match
+
+    [% item.match("(\w+) (\w+)") %] Return a list of items matching the pattern.
+
+    [% item.match("(\w+) (\w+)", 1) %] Same as before - but match globally.
+
+=item null
+
+    [% item.null %] Do nothing.
+
+=item remove
+
+    [% item.remove("\s+") %] Same as remove - but is global and replaces with nothing.
+
+=item redirect
+
+    [% item.redirect("output_file.html") %] - Writes the contents out to the specified file.  The filename
+    must be relative to the OUTPUT_PATH configuration variable and the OUTPUT_PATH variable must be set.
+
+=item repeat
+
+    [% item.repeat(3) %] Repeat the item 3 times
+
+    [% item.repeat(3, ' | ') %] Repeat the item 3 times separated with ' | '
+
+=item replace
+
+    [% item.replace("\s+", "&nbsp;") %] Globally replace all space with &nbsp;
+
+    [% item.replace("foo", "bar", 0) Replace the first instance of foo with bar.
+
+    [% item.replace("(\w+)", "($1)") %] Surround all words with parenthesis.
+
+=item search
+
+    [% item.search("(\w+)" %] Tests if the given pattern is in the string.
+
+=item size
+
+    [% item.size %] Always returns 1.
+
+=item split    => \&vmethod_split,
+
+    [% item.split %] Returns an arrayref from the item split on " "
+
+    [% item.split("\s+") %] Returns an arrayref from the item split on /\s+/
+
+    [% item.split("\s+", 3) %] Returns an arrayref from the item split on /\s+/ splitting until 3 elements are found.
+
+=item stderr
+
+    [% item.stderr %] Print the item to the current STDERR handle.
+
+=item substr
+
+    [% item.substr(i) %] Returns a substring of item starting at i and going to the end of the string.
+
+    [% item.substr(i, n) %] Returns a substring of item starting at i and going n characters.
+
+=item trim
+
+    [% item.trim %] Strips leading and trailing whitespace.
+
+=item ucfirst
+
+    [% item.ucfirst %] Lower-case the leading letter.
+
+=item upper
+
+    [% item.upper %] Return a upper-casified string.
+
+=item uri
+
+    [% item.uri %] Perform a very basic URI encoding.
 
 =back
 
