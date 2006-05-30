@@ -22,14 +22,15 @@ CGI::Ex::Template - Fast and lightweight TT2/3 template engine
 
 =head1 DESCRIPTION
 
-CGI::Ex::Template happened by accident.  The CGI::Ex suite included a
-base set of modules for doing anything from simple to complicated CGI
-applications.  Part of the suite was a simple variable interpolater
-that used TT2 style variables in TT2 style tags "[% foo.bar %]".  This
-was fine and dandy for a couple of years.  In winter of 2005-2006 CET
-was revamped to add a few features.  One thing led to another and now
-CET provides for most of the features of TT2 as well as some from TT3.
-CET is a fulfeatured implementation of the Template::Toolkit language.
+CGI::Ex::Template happened by accident (accidentally on purpose).  The
+CGI::Ex::Template (CET hereafter) was originally a part of the CGI::Ex
+suite that performed simple variable interpolation.  It used TT2 style
+variables in TT2 style tags "[% foo.bar %]".  That was all the
+original CGI::Ex::Template did.  This was fine and dandy for a couple
+of years.  In winter of 2005-2006 CET was revamped to add a few
+features.  One thing led to another and soon CET provided for most of
+the features of TT2 as well as some from TT3.  CGI::Ex::Template is a
+full-featured implementation of the Template::Toolkit language.
 
 CGI::Ex::Template (CET hereafter) is smaller, faster, uses less memory
 and less CPU than TT2.  However, it is most likely less portable, less
@@ -39,7 +40,8 @@ and mailing list.  CET does not have a vibrant community behind it.  Fixes
 applied to TT2 will take longer to get into CET, should they get in at all.
 An attempt will be made to follow updates made to TT2 to keep the two
 in sync at a language level.  There already has been, and it is expected that
-there will continue to be code sharing between the two projects.
+there will continue to be code sharing between the two projects.  (Acutally
+I will try and keep applicable fixes in sync with TT).
 
 Most of the standard Template::Toolkit documentation covering directives,
 variables, configuration, plugins, filters, syntax, and vmethods should
@@ -83,7 +85,7 @@ give you no visible improvement.  Or it could.
 
 =head1 PUBLIC METHODS
 
-The following seciton lists most of the publicly available methods.  Some less
+The following section lists most of the publicly available methods.  Some less
 commonly used public methods are listed later in this document.
 
 =over 4
@@ -112,7 +114,7 @@ The $in argument can be any one of:
 
     String containing the filename of the template to be processed.  The filename should
     be relative to INCLUDE_PATH.  (See INCLUDE_PATH, ABSOLUTE, and RELATIVE configuration items).
-    In memory caching and fileside caching are available for this type.
+    In memory caching and file side caching are available for this type.
 
     A reference to a scalar containing the contents of the template to be processed.
 
@@ -151,14 +153,14 @@ Similar to the process method but with the following restrictions:
 
 The $in parameter is limited to a filename or a reference a string containing the contents.
 
-The $out parameter may only be a reference to a scalar string that ouput will be appended to.
+The $out parameter may only be a reference to a scalar string that output will be appended to.
 
 Additionally, the following configuration variables will be ignored:  VARIABLES,
 PRE_DEFINE, BLOCKS, PRE_PROCESS, PROCESS, POST_PROCESS, AUTO_RESET, OUTPUT.
 
 =item C<error>
 
-Should something go wrong during a "process" command, the error that occured can
+Should something go wrong during a "process" command, the error that occurred can
 be retrieved via the error method.
 
     $obj->process('somefile.html', {a => 'b'}, \$string_ref)
@@ -192,7 +194,7 @@ Quoted hash key interpolation is fine [% a = {"$foo" => 1} %]
 
 Multiple ranges in same constructor [% a = [1..10, 21..30] %]
 
-Construtor types can call virtual methods
+Constructor types can call virtual methods
 
    [% a = [1..10].reverse %]
 
@@ -563,10 +565,10 @@ method on the object.  This is similar to how TT3 will function.
 
 =head2 SCALAR VIRTUAL METHODS AND FILTERS
 
-The following is is the list of builtin virtual methods and filters
-that can be called on scalar datatypes.  In CET and TT3, filters and
+The following is the list of builtin virtual methods and filters
+that can be called on scalar data types.  In CET and TT3, filters and
 virtual methods are more closely related.  In general anywhere a
-virtual method can be used a filter can be used also - and vice-versa
+virtual method can be used a filter can be used also - and vice versa
 - all scalar virtual methods can be used as filters.
 
 In addition to the filters listed below, CET will automatically load
@@ -600,7 +602,7 @@ is called on it.
 
     [% item.eval %] Process the string as though it was a template.  This will start the parsing
     engine and will use the same configuration as the current process.  CET is several times
-    faster at doing this than TT is and is considered acceptible.
+    faster at doing this than TT is and is considered acceptable.
 
 =item evaltt
 
@@ -722,7 +724,7 @@ if needed):
 
 =item first
 
-    [% mylist.first(3) %]  Returns a list of the the first 3 items in the list.
+    [% mylist.first(3) %]  Returns a list of the first 3 items in the list.
 
 =item grep
 
@@ -739,7 +741,7 @@ if needed):
 
 =item last
 
-    [% mylist.last(3) %]  Returns a list of the the last 3 items in the list.
+    [% mylist.last(3) %]  Returns a list of the last 3 items in the list.
 
 =item list
 
@@ -868,7 +870,7 @@ The following methods can be called on hash type data structures:
 
 =head1 DIRECTIVES
 
-This section containts the alphabetical list of DIRECTIVES available
+This section contains the alphabetical list of DIRECTIVES available
 in the TT language.  DIRECTIVES are the "functions" and control
 structures that implement the Template Toolkit mini-language.  For
 further discussion and examples, please refer to the TT directives
@@ -928,7 +930,7 @@ Used with the TRY directive.  See the L</"TRY"> directive.
 =item C<CLEAR>
 
 Clears any of the content currently generated in the innermost block
-or template.  This can be useful when used in conjuction with the TRY
+or template.  This can be useful when used in conjunction with the TRY
 statement to clear generated content if an error occurs later.
 
 =item C<DEBUG>
@@ -1217,7 +1219,7 @@ Used to go to the next iteration of a WHILE or FOREACH loop.
 
 Only available if the EVAL_PERL configuration item is true (default is false).
 
-Allow evaling the block of text as perl.  The block will be parsed and then evaled.
+Allow eval'ing the block of text as perl.  The block will be parsed and then eval'ed.
 
     [% a = "BimBam" %]
     [%~ PERL %]
@@ -1232,7 +1234,7 @@ Would print:
     The variable $a was "BimBam"
     FooBar
 
-During execution, anything printed to stdout will be inserted into the template.  Also,
+During execution, anything printed to STDOUT will be inserted into the template.  Also,
 the $stash and $context variables are set and are references to objects that mimic the
 interface provided by Template::Context and Template::Stash.  These are provided for
 compatibility only.  $self contains the current CGI::Ex::Template object.
@@ -1408,7 +1410,7 @@ Would print something like:
 You can also give the CATCH block a type to catch.  And you
 can nest TRY blocks.  If types are specified, CET will try and
 find the closest matching type.  Also, an error object can
-be rethrown using $error as the argument to THROW.
+be re-thrown using $error as the argument to THROW.
 
     [% TRY %]
       [% TRY %]
@@ -1472,7 +1474,7 @@ the PLUGIN_BASE directive which defaults to Template::Plugin.  So in
 the previous example, if Template::Toolkit was installed, the iter
 object would loaded by the class Template::Plugin::Iterator.  In CET,
 an effective way to disable plugins is to set the PLUGIN_BASE to a
-non-existant base such as "_" (In TT it will still fall back to look
+non-existent base such as "_" (In TT it will still fall back to look
 in Template::Plugin).
 
 Note: The iterator plugin will fall back and use
@@ -1482,7 +1484,7 @@ other plugins come installed with CGI::Ex::Template.
 The names of the Plugin being loaded from PLUGIN_BASE are case
 insensitive.  However, using case insensitive names is bad as it
 requires scanning the @INC directories for any module matching the
-PLUGIN_BASE and caching the result (ok - not that bad).
+PLUGIN_BASE and caching the result (OK - not that bad).
 
 If the plugin is not found and the LOAD_PERL directive is set, then
 CET will try and load a module by that name (note: this type of lookup
@@ -1497,7 +1499,7 @@ Would print:
 
     $VAR1 = [ \[ '*', '2', '3' ], 0 ];
 
-See the PLUGIN_BASE, PLUGINS, and PLUGIN_FACTORY configuration items.
+See the PLUGIN_BASE, and PLUGINS configuration items.
 
 See the documentation for Template::Manual::Plugins.
 
@@ -1592,13 +1594,14 @@ virtual methods of nested data structures.
 
     [% a.b.1.c.0 %] => 34
 
-Note: on access to hashrefs, any hash keys that match the sub key
-name will be used before a virtual method of the same name.  For example if a
-passed hash contained pair with a keyname "defined" and a value of "2", then
-any calls to hash.defined(subkeyname) would always return 2 rather
-than using the vmethod named "defined."  To get around this limitation use the
-"|" operator (listed next).  Also - on objects the "." will always try and
-call the method by that name.  To always call the vmethod - use "|".
+Note: on access to hashrefs, any hash keys that match the sub key name
+will be used before a virtual method of the same name.  For example if
+a passed hash contained pair with a keyname "defined" and a value of
+"2", then any calls to hash.defined(another_keyname) would always
+return 2 rather than using the vmethod named "defined."  To get around
+this limitation use the "|" operator (listed next).  Also - on objects
+the "." will always try and call the method by that name.  To always
+call the vmethod - use "|".
 
 =item C<|>
 
@@ -1621,9 +1624,9 @@ The following two cases will do the same thing.
 
     [% foo FILTER html %]
 
-Though they do the same thing, internally, foo|html is stored as a single
-variable while "foo FILTER html" is stored as the variable foo which is then
-passed to the the FILTER html.
+Though they do the same thing, internally, foo|html is stored as a
+single variable while "foo FILTER html" is stored as the variable foo
+which is then passed to the FILTER html.
 
 A TT2 sample that would break in CGI::Ex::Template or TT3 is:
 
@@ -1748,7 +1751,7 @@ Trinary.  Can be nested with other ?: pairs.
 
 =item C<=>
 
-Assignment.  Sets the lefthand side to the value of the righthand side.  In order
+Assignment.  Sets the left-hand side to the value of the righthand side.  In order
 to not conflict with SET, FOREACH and other operations, this operator is only
 available in parenthesis.  Returns the value of the righthand side.
 
@@ -1836,7 +1839,7 @@ Would print:
 
 =item CHOMP_COLLAPSE
 
-Collapse adjacent whitepace to a single space.  The "=" is used to indicate CHOMP_COLLAPSE.
+Collapse adjacent whitespace to a single space.  The "=" is used to indicate CHOMP_COLLAPSE.
 
     Hello.
 
@@ -2155,7 +2158,7 @@ Same as the VARIABLES configuration item.
 
 =item PRE_PROCESS
 
-A list of templates to be processed before and prepended to the content
+A list of templates to be processed before and pre-pended to the content
 before the main template.  During this processing the "template"
 namespace will contain the name of the main file being processed.
 
@@ -2169,7 +2172,7 @@ to the ->process method.
 =item RECURSION
 
 Boolean.  Default false.  Indicates that INCLUDED or PROCESSED files
-can refer to each other in a circular fasion.  Be careful about recursion.
+can refer to each other in a circular manner.  Be careful about recursion.
 
 =item RELATIVE
 
@@ -2318,7 +2321,7 @@ CGI::Ex::Template parses templates into an tree of operations.  Even
 variable access is parsed into a tree.  This is done in a manner
 somewhat similar to the way that TT operates except that nested
 variables such as foo.bar|baz contain the '.' or '|' in between each
-name level.  Opererators are parsed and stored as part of the variable (it
+name level.  Operators are parsed and stored as part of the variable (it
 may be more appropriate to say we are parsing a term or an expression).
 
 The following table shows a variable or expression and the corresponding parsed tree
@@ -2355,10 +2358,10 @@ Some notes on the parsing.
     Operators are parsed as part of the variable and become part of the variable tree.
 
     Operators are stored in the variable tree using a reference to the arrayref - which
-    allows for quickly decending the parsed variable tree and determining that the next
+    allows for quickly descending the parsed variable tree and determining that the next
     node is an operator.
 
-    Parens () can be used at any point in an expression to disambiguate precedence.
+    Parenthesis () can be used at any point in an expression to disambiguate precedence.
 
     "Variables" that appear to be literal strings or literal numbers
     are returned as the literal (no operator tree).
@@ -2396,7 +2399,7 @@ Executes a parsed tree (returned from parse_tree)
 =item C<get_variable>
 
 Turns a variable identity array into the parsed variable.  This
-method is also repsonsible for playing opererators and running virtual methods
+method is also responsible for playing operators and running virtual methods
 and filters.  The method could more accurately be called play_expression.
 
 =item C<include_filename>
