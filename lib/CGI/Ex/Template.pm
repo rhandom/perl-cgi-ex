@@ -71,7 +71,7 @@ BEGIN {
         remove   => sub { vmethod_replace(shift, shift, '', 1) },
         repeat   => \&vmethod_repeat,
         replace  => \&vmethod_replace,
-        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
+        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return scalar $str =~ /$pat/ },
         size     => sub { 1 },
         split    => \&vmethod_split,
         stderr   => sub { print STDERR $_[0]; '' },
@@ -79,7 +79,7 @@ BEGIN {
         trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
         ucfirst  => sub { ucfirst $_[0] },
         upper    => sub { uc $_[0] },
-        uri      => sub { local $_ = $_[0]; s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
+        uri      => sub { local $_ = $_[0]; s/([^,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg; $_ },
     };
 
     $FILTER_OPS ||= { # generally - non-dynamic filters belong in scalar ops
