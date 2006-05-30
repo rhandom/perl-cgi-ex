@@ -1330,24 +1330,108 @@ The named tags are (duplicated from TT):
 Allows for throwing an exception.  If the exception is not caught
 via the TRY DIRECTIVE, the template will abort processing of the directive.
 
-    [% THROW mytypes.sometime arg1 => val1 %]
+    [% THROW mytypes.sometime 'Something happened' arg1 => val1 %]
 
 See the TRY directive for examples of usage.
 
 =item C<TRY>
 
 The TRY block directive will catch exceptions that are thrown
-while processing its block.   its from the
-template
-
-    [% TRY %]
-    [% THROW mytypes.sometime arg1 => val1 %]
-    [% CATCH %]
-    [% DUMP %]
-    [% END %]
+while processing its block (It cannot catch parse errors unless
+they are in included files or evaltt'ed strings.   The TRY block
+will then look for a CATCH block that will be processed.  While
+it is being processed, the "error" variable will be set with the thrown
+exception as the value.  After the TRY block - the FINAL
+block will be ran whether or not an error was thrown (unless a CATCH
+block throws an error).
 
 Note: Parse errors cannot be caught unless they are in an eval FILTER, or are
 in a separate template being INCLUDEd or PROCESSed.
+
+    [% TRY %]
+    Nothing bad happened.
+    [% CATCH %]
+    Caught the error.
+    [% FINAL %]
+    This section runs no matter what happens.
+    [% END %]
+
+Would print:
+
+    Nothing bad happened.
+    This section runs no matter what happens.
+
+Another example:
+
+    [% TRY %]
+    [% THROW "Something happened" %]
+    [% CATCH %]
+      Error:               [% error %]
+      Error.type:          [% error.type %]
+      Error.info:          [% error.info %]
+    [% FINAL %]
+      This section runs no matter what happens.
+    [% END %]
+
+Would print:
+
+      Error:               undef error - Something happened
+      Error.type:          undef
+      Error.info:          Something happened
+      This section runs no matter what happens.
+
+You can give the error a type and more information including named arguments.
+This information replaces the "info" property of the exception.
+
+    [% TRY %]
+    [% THROW foo.bar "Something happened" "grrrr" foo => 'bar' %]
+    [% CATCH %]
+      Error:               [% error %]
+      Error.type:          [% error.type %]
+      Error.info:          [% error.info %]
+      Error.info.0:        [% error.info.0 %]
+      Error.info.1:        [% error.info.1 %]
+      Error.info.args.0:   [% error.info.args.0 %]
+      Error.info.foo:      [% error.info.foo %]
+    [% END %]
+
+Would print something like:
+
+      Error:               foo.bar error - HASH(0x82a395c)
+      Error.type:          foo.bar
+      Error.info:          HASH(0x82a395c)
+      Error.info.0:        Something happened
+      Error.info.1:        grrrr
+      Error.info.args.0:   Something happened
+      Error.info.foo:      bar
+
+You can also give the CATCH block a type to catch.  And you
+can nest TRY blocks.  If types are specified, CET will try and
+find the closest matching type.  Also, an error object can
+be rethrown using $error as the argument to THROW.
+
+    [% TRY %]
+      [% TRY %]
+        [% THROW foo.bar "Something happened" %]
+      [% CATCH bar %]
+        Caught bar.
+      [% CATCH DEFAULT %]
+        Caught default - but rethrew.
+        [% THROW $error %]
+      [% END %]
+    [% CATCH foo %]
+      Caught foo.
+    [% CATCH foo.bar %]
+      Caught foo.bar.
+    [% CATCH %]
+      Caught anything else.
+    [% END %]
+
+Would print:
+
+        Caught default - but rethrew.
+
+      Caught foo.bar.
 
 =item C<UNLESS>
 
@@ -2054,7 +2138,11 @@ See the section on chomping for more information.
 
 =item POST_PROCESS
 
+A list of templates to be processed and appended to the content
+after the main template.  During this processing the "template"
+namespace will contain the name of the main file being processed.
 
+This is useful for adding a global footer to all templates.
 
 =item PRE_CHOMP
 
@@ -2067,7 +2155,11 @@ Same as the VARIABLES configuration item.
 
 =item PRE_PROCESS
 
+A list of templates to be processed before and prepended to the content
+before the main template.  During this processing the "template"
+namespace will contain the name of the main file being processed.
 
+This is useful for adding a global header to all templates.
 
 =item PROCESS
 
