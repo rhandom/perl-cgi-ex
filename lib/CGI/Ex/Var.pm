@@ -1186,4 +1186,12 @@ sub does_autobox { 0 }
 
 ###----------------------------------------------------------------###
 
+=head1 DESCRIPTION
+
+Experimental.  An attempt for abstracting out a fast parser and hash
+from CGI::Ex::Template.  It is functional - but currently too
+cumbersome for use in CET.
+
+=cut
+
 1;
