@@ -8,7 +8,7 @@ Fill in the blanks and get a ready made web application.  This module
 is somewhat similar in spirit to CGI::Application, CGI::Path, and
 CGI::Builder and any other "CGI framework."  As with the others,
 CGI::Ex::App tries to do as much of the mundane things, in a simple
-manner, without getting in the developer's way.  Your milage may vary.
+manner, without getting in the developer's way.  Your mileage may vary.
 
 If you build applications that submit user information, validate it,
 re-display it, fill in forms, or separate logic into separate modules,
@@ -138,7 +138,7 @@ use a templating system other than CGI::Ex::Template).
 
 This section goes step by step over the previous example.
 
-Well - we start out with with the customary CGI introduction.
+Well - we start out with the customary CGI introduction.
 
     #!/usr/bin/perl -w
 
@@ -409,7 +409,7 @@ It is important to learn the function and placement of each of the
 hooks in the process flow in order to make the most of CGI::Ex::App.
 It is enough to begin by learning a few common hooks - such as
 hash_validation, hash_swap, and finalize, and then learn about other
-hooks as needs arise.  Sometimes, it is enought to simply override the
+hooks as needs arise.  Sometimes, it is enough to simply override the
 run_step hook and take care of processing the entire step yourself.
 
 Because of the hook based system, and because CGI::Ex::App uses
@@ -474,13 +474,13 @@ To enable morph on specific steps, do either of the following:
         return $step =~ /^(edit|delete)$/;
     }
 
-See the morph "hook" for mor information.
+See the morph "hook" for more information.
 
 =item allow_nested_morph (method)
 
 Similar to the allow_morph hook, but allows for one more level of morphing.
 This is useful in cases where the base class was morphed early on, or
-if a step needs to call a substep but morph first.
+if a step needs to call a sub-step but morph first.
 
 See the allow_morph and the morph method for more information.
 
@@ -687,16 +687,16 @@ hook print.
 
 It may also return a reference to a string containing the html template.
 This is useful for prototyping applications and/or keeping all of
-the data for the appliation in a single location.
+the data for the application in a single location.
 
 =item file_val (hook)
 
 Returns a filename containing the validation.  Performs the same
-as file_print, but uses ext_val to get the extention, and it adds
+as file_print, but uses ext_val to get the extension, and it adds
 base_dir_abs onto the returned value (file_print is relative to
 base_dir_abs, while file_val is fully qualified with base_dir_abs)
 
-The file should be readible by CGI::Ex::Validate::get_validation.
+The file should be readable by CGI::Ex::Validate::get_validation.
 
 This hook is only necessary if the hash_validation hook has not been
 overridden.
@@ -839,12 +839,12 @@ is more intended for step level populating of both swap and fill.
 =item hash_errors (hook)
 
 Called in preparation for print after failed prepare, info_complete,
-or finalize.  Should contain a hash of any errors that occured.  Will
-be merged into hash_form before the pass to print.  Eash error that
-occured will be passed to method format_error before being added to
+or finalize.  Should contain a hash of any errors that occurred.  Will
+be merged into hash_form before the pass to print.  Each error that
+occurred will be passed to method format_error before being added to
 the hash.  If an error has occurred, the default validate will
 automatically add {has_errors =>1}.  To the error hash at the time of
-validation.  has_errors will also be added during the merge incase the
+validation.  has_errors will also be added during the merge in case the
 default validate was not used.  Can be populated by passing a hash to
 ->add_to_errors or ->add_errors.
 
@@ -916,7 +916,7 @@ the new steps at the current path location.
 
 =item is_authed (method)
 
-Returns true if the object has successfull authentication data.  It
+Returns true if the object has successful authentication data.  It
 returns false if the object has not been authenticated.
 
 =item js_uri_path (method)
@@ -971,7 +971,7 @@ action for jump).  A value of 0 would repeat the current step (watch
 out for recursion).  A value of -1 would jump to the previous step.
 The special value of "LAST" will jump to the last step.  The special
 value of "FIRST" will jump back to the first step.  In each of these
-cases, the path array retured by ->path is modified to allow for the
+cases, the path array returned by ->path is modified to allow for the
 jumping (the path is modified so that the path history is not destroyed
 - if we were on step 3 and jumped to one, that path would contain
 1, 2, 3, *1, 2, 3, 4, etc and we would be at the *).
@@ -1033,7 +1033,7 @@ the step "my_step" that has allow_morph = 1, will do the following:
     Continue on with the run_step for the current step.
 
 At any exit point of the loop, the unmorph call is made which
-reblesses the object into the original package.
+re-blesses the object into the original package.
 
 Samples of allowing morph:
 
@@ -1105,7 +1105,7 @@ See the morph method.
 
 =item name_module (hook)
 
-Return the name (relative path) that should be prepended to name_step
+Return the name (relative path) that should be pre-pended to name_step
 during the default file_print and file_val lookups.  Defaults to
 the value in $self->{name_module} which in turn defaults to the name
 of the current script.
@@ -1168,7 +1168,7 @@ returns the default_step.
 
 =item path (method)
 
-Return an arrayref (modifyable) of the steps in the path.  For each
+Return an arrayref (modifiable) of the steps in the path.  For each
 step the run_step hook and all of its remaining hooks will be run.
 
 Hook methods are looked up and ran using the method "run_hook" which
@@ -1298,7 +1298,7 @@ The recurse level will increase everytime that ->jump is called, or if
 the end of the nav_loop is reached and the process tries to add the
 default_step and run it again.
 
-If ->jump is used alot - the recurse_limit will be reached more
+If ->jump is used often - the recurse_limit will be reached more
 quickly.  It is safe to raise this as high as is necessary - so long
 as it is intentional.
 
@@ -1377,7 +1377,7 @@ If this hook returns true, the nav_loop is exited (meaning the
 run_step hook displayed a printed page).  If it returns false, the
 nav_loop continues on to run the next step.
 
-This hook performs the same base functionallity as a method defined in
+This hook performs the same base functionality as a method defined in
 CGI::Applications ->run_modes.  The default run_step method provides
 much more granular control over the flow of the CGI.
 
@@ -1409,14 +1409,14 @@ zero for form elements named "processing."
 
 =item skip (hook)
 
-Ran at the beginning of the loop before prepare, info_compelete, and
+Ran at the beginning of the loop before prepare, info_complete, and
 finalize are called.  If it returns true, nav_loop moves on to the
 next step (the current step is skipped).
 
 =item stash (method)
 
 Returns a hashref that can store arbitrary user space data without
-clobering the internals of the application.
+worrying about overwriting the internals of the application.
 
 =item step_key (method)
 
@@ -1450,7 +1450,7 @@ It can be augmented with any arguments that CGI::Ex::Template would understand.
 Allows for returning an object back to its previous blessed state if
 the "morph" method was successful in morphing the App object.  This
 only happens if the object was previously morphed into another object
-type.  Before the object is reblessed the method fixup_before_unmorph
+type.  Before the object is re-blessed the method fixup_before_unmorph
 is called.
 
 See allow_morph and morph.
@@ -1560,10 +1560,10 @@ CGI::Application.
 
 =item C<CGI::Prototype>
 
-There are actually many simularities.  One of the nicest things about
+There are actually many similarities.  One of the nicest things about
 CGI::Prototype is that it is extremely short (very very short).  The
 ->activate starts the application in the same manner as CGI::Ex::App's
-->navigate call.  Both use Template::Tookit as the default template
+->navigate call.  Both use Template::Toolkit as the default template
 system (CGI::Ex::App uses CGI::Ex::Template which is TT compatible).
 CGI::Ex::App is differrent in that it:
 
@@ -1585,7 +1585,7 @@ database.  It requires the use of DBD::SQLite, but that is all.
 Once you have configured the db_file and base_dir_abs methods
 of the "recipe" file, you will have a working script that
 does CRUD for the recipe table.  The observant reader may ask - why
-not use Catalyst or Ruby on Rails?  The observant progammer will
+not use Catalyst or Ruby on Rails?  The observant programmer will
 reply that making a framework do something simple is easy, but making
 it do something complex is complex and any framework that tries to
 do the those complex things for you is too complex.  CGI::Ex::App
@@ -1891,7 +1891,7 @@ Notes:
 
 The dbh method returns an SQLite dbh handle and auto creates the
 schema.  You will normally want to use MySQL or Oracle, or Postgres
-and you will want your schema to NOT be autocreated.
+and you will want your schema to NOT be auto-created.
 
 This sample uses hand rolled SQL.  Class::DBI or a similar module
 might make this example shorter.  However, more complex cases that
@@ -1925,7 +1925,7 @@ that were just submitted, we need to not provide values in the
 hash_common method.
 
 We use hash_common.  Values from hash_common are used for both
-template swapping and filling.  We could've used hash_swap and
+template swapping and filling.  We could have used hash_swap and
 hash_fill independently.
 
 The hook main_info_complete is hard coded to 0.  This basically says
@@ -1984,9 +1984,9 @@ module).
 
 The method allow_morph is passed the step that we are attempting to
 morph to.  If allow_morph returns true every time, then it will try
-and require the extra packages everytime that step is ran.  You could
+and require the extra packages every time that step is ran.  You could
 limit the morphing process to run only on certain steps by using code
-similiar to the following:
+similar to the following:
 
     sub allow_morph { return {delete => 1} }
 
@@ -1998,7 +1998,7 @@ similiar to the following:
     }
 
 The CGI::Ex::App temporarily blesses the object into the
-"morph_package" for the duration of the step and reblesses it into the
+"morph_package" for the duration of the step and re-blesses it into the
 original package upon exit.  See the morph method and allow_morph for more
 information.
 
