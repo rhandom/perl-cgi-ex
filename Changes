@@ -1,4 +1,9 @@
-2.00
+2.01   2006-05-31
+        * Added App refine_path hook.
+        * Added App destroy method.
+        * Fix CGI::Ex::Template perldoc.
+
+2.00   2006-05-30
         * Added CGI::Ex::Template and test suites
         * Allow for CGI::Ex::Template to be fully TT2 syntax compliant
         * Re-implementation of CGI::Ex::Auth
