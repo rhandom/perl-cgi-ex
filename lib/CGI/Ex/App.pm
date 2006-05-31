@@ -37,6 +37,8 @@ sub new {
 
 sub init {}
 
+sub destroy {}
+
 ###----------------------------------------------------------------###
 
 sub navigate {
@@ -73,6 +75,8 @@ sub navigate {
     $self->handle_error($@) if $@; # catch any errors
 
     $self->{'_time'} = time;
+
+    $self->destroy;
 
     return $self;
 }
