@@ -2,7 +2,7 @@ package CGI::Ex::Var;
 
 =head1 NAME
 
-CGI::Ex::Var - Variable and expression parsing and execution for CGI::Ex::Template (and other takers)
+CGI::Ex::Var - Variable and expression parsing (exprimental)
 
 =head1 DESCRIPTION
 
