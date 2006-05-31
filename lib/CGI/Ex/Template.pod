@@ -1,4 +1,4 @@
-=head1
+=head1 NAME
 
 CGI::Ex::Template - Fast and lightweight TT2/3 template engine
 
