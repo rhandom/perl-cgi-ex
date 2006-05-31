@@ -158,7 +158,7 @@ Now we need to invoke the process:
     exit;
 
 Note: the "exit" isn't necessary - but it is kind of nice to infer
-that program flow doesn't go beyond the ->navigate call.
+that process flow doesn't go beyond the ->navigate call.
 
 The navigate routine is now going to try and "run" through a series of
 steps.  Navigate will call the ->path method which should return an
@@ -290,7 +290,7 @@ ready to validate so it prints out the template page.
 For more of a real world example, it would be good to read the sample recipe db
 application included at the end of this document.
 
-=head1 DEFAULT PROGRAM FLOW
+=head1 DEFAULT PROCESS FLOW
 
 The following pseudo-code describes the process flow
 of the CGI::Ex::App framework.  Several portions of the flow
@@ -311,6 +311,8 @@ The process starts off by calling ->navigate.
             ->post_navigate
         }
         # dying errors will run the ->handle_error method
+
+        ->destroy
     }
 
 =head2 nav_loop
@@ -336,6 +338,11 @@ The nav_loop method will run as follows:
                 # if no package is found, process continues in current file
 
             ->run_step (hook)
+
+            ->refine_path (hook)
+                # only called if run_step returned false (page not printed)
+                ->next_step (hook) # find next step and add to path
+                ->set_ready_validate(0) (hook)
 
             ->unmorph
                 # only called if morph worked
@@ -545,6 +552,12 @@ Step to show if the path runs out of steps.  Default value is the
 If nav_loop runs of the end of the path (runs out of steps), this
 method is called, the step is added to the path, and nav_loop calls
 itself recursively.
+
+=item destroy (method)
+
+Called at the end of navigate after all other actions have run.  Can
+be used for undoing things done in the ->init method called during
+the ->new method.
 
 =item dump_history (method)
 
@@ -1167,10 +1180,17 @@ object has been blessed to allow for any other initilizations.
 
     my $app = MyApp->new({name_module => 'my_app'});
 
-=item next_step (method)
+=item next_step (hook and method)
 
 Returns the next step in the path.  If there is no next step, it
 returns the default_step.
+
+It can be used as a method to return the next step in the path
+to pass to a method such as ->jump.
+
+It is also used as a hook by the refine_path hook.  If there is no
+more steps, it will call the next_step hook to try and find a step to
+append to the path.
 
 =item path (method)
 
@@ -1297,6 +1317,23 @@ and check for its presence - such as the following:
 Changing the behavior of ready_validate can help in making wizard type
 applications.
 
+=item refine_path (hook)
+
+Called at the end of nav_loop.  Passed a single value indicating
+if there are currently more steps in the path.
+
+The default implementation returns if there are still more steps
+in the path.  Otherwise, it calls the next_step hook and appends
+it to the path with the append_path method, and then calls
+the set_ready_validate hook and passes it 0.
+
+This allows you to simply put
+
+    sub edit_next_step { '_edit_success' }
+
+In your code and it will automatically do the right thing and
+go to the _edit_success step.
+
 =item recurse_limit (method)
 
 Default 15.  Maximum number of times to allow nav_loop to call itself.
@@ -1394,24 +1431,37 @@ begins.  This will set the path arrayref to the passed steps.
 
 This method is not normally used.
 
-=item set_ready_validate (method)
+=item set_ready_validate (hook and method)
 
-Sets that the validation is ready to validate.  Should set the value
+Sets that the validation is ready (or not) to validate.  Should set the value
 checked by the hook ready_validate.  The following would complement the
 processing flag above:
 
     sub set_ready_validate {
         my $self = shift;
-        if (shift) {
+        my ($step, $is_ready) = (@_ == 2) ? @_ : (undef, shift);
+        if ($is_ready) {
             $self->form->{'processing'} = 1;
         } else {
             delete $self->form->{'processing'};
         }
+        return $is_ready;
     }
 
 Note that for this example the form key "processing" was deleted.  This
 is so that the call to fill in any html forms won't swap in a value of
 zero for form elements named "processing."
+
+Also note that this method may be called as a hook as in
+
+    $self->run_hook('set_ready_validate', $step, 0)
+    # OR
+    $self->set_ready_validate($step, 0);
+
+Or it can take a single argument and should set the ready status
+regardless of the step as in:
+
+    $self->set_ready_validate(0);
 
 =item skip (hook)
 
@@ -1480,16 +1530,17 @@ the data before running finalize.
 
 =item validate (hook)
 
-Runs validation on the information posted in $self->form.  Uses
-CGI::Ex::Validate for the default validation.  Calls the hook
-hash_validation to load validation information.  Should return true if
-the form passed validation and false otherwise.  Errors are stored as
-a hash in $self->{hash_errors} via method add_errors and can be
-checked for at a later time with method has_errors (if the default
-validate was used).
+Passed the form from $self->form.  Runs validation on the information
+contained in the passed form.  Uses CGI::Ex::Validate for the default
+validation.  Calls the hook hash_validation to load validation hashref
+(an empty hash means to pass validation).  Should return true if the
+form passed validation and false otherwise.  Errors are stored as a
+hash in $self->{hash_errors} via method add_errors and can be checked
+for at a later time with method has_errors (if the default validate
+was used).
 
-There are many ways and types to validate the data.  Please see the L<CGI::Ex::Validate>
-module.
+There are many ways and types to validate the data.  Please see the
+L<CGI::Ex::Validate> module.
 
 Upon success, it will look through all of the items which were
 validated, if any of them contain the keys append_path, insert_path,
