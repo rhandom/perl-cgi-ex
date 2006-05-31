@@ -300,6 +300,8 @@ like a lot to follow, but if the process is broken down into the
 discrete operations of step iteration, data validation, and template
 printing the flow feels more natural.
 
+=head2 navigate
+
 The process starts off by calling ->navigate.
 
     navigate {
@@ -310,6 +312,8 @@ The process starts off by calling ->navigate.
         }
         # dying errors will run the ->handle_error method
     }
+
+=head2 nav_loop
 
 The nav_loop method will run as follows:
 
@@ -349,6 +353,8 @@ The nav_loop method will run as follows:
         ->nav_loop (called again recursively)
 
     } end of nav_loop
+
+=head2 run_step (hook)
 
 For each step of the path the following methods will be run
 during the run_step hook.
