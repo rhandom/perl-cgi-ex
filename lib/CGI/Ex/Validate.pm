@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.00';
+$VERSION = '2.01';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;

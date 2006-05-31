@@ -36,7 +36,7 @@ use vars qw($VERSION
             );
 
 BEGIN {
-    $VERSION = '2.00';
+    $VERSION = '2.01';
 
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
