@@ -7,11 +7,11 @@
 =cut
 
 use strict;
-use Test::More tests => 15;
+use Test::More tests => 17;
 
 SKIP: {
 
-skip("Missing YAML.pm", 15) if ! eval { require 'YAML.pm' };
+skip("Missing YAML.pm", 17) if ! eval { require 'YAML.pm' };
 
 use_ok('CGI::Ex::Validate');
 
