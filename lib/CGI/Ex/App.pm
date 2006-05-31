@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.00';
+    $VERSION = '2.01';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
 }
@@ -118,13 +118,20 @@ sub nav_loop {
         $self->morph($step);
 
         ### run the guts of the step
-        my $status = $self->run_hook('run_step', $step);
-
-        $self->unmorph($step);
+        my $handled = $self->run_hook('run_step', $step);
 
         ### Allow for the run_step to intercept.
         ### A true status means the run_step took over navigation.
-        return if $status;
+        if ($handled) {
+            $self->unmorph($step);
+            return;
+        }
+
+        ### if there are no future steps - allow for this step to designate one to follow
+        my $is_at_end = $self->{'path_i'} >= $#$path ? 1 : 0;
+        $self->run_hook('refine_path', $step, $is_at_end);
+
+        $self->unmorph($step);
     }
 
     ### allow for one exit point after the loop
@@ -320,31 +327,26 @@ sub step_by_path_index {
 
 sub previous_step {
     my $self = shift;
-    croak "previous_step is readonly" if $#_ != -1;
     return $self->step_by_path_index( ($self->{'path_i'} || 0) - 1 );
 }
 
 sub current_step {
     my $self = shift;
-    croak "current_step is readonly" if $#_ != -1;
     return $self->step_by_path_index( ($self->{'path_i'} || 0) );
 }
 
-sub next_step {
+sub next_step { # method and hook
     my $self = shift;
-    croak "next_step is readonly" if $#_ != -1;
     return $self->step_by_path_index( ($self->{'path_i'} || 0) + 1 );
 }
 
 sub last_step {
     my $self = shift;
-    croak "last_step is readonly" if $#_ != -1;
     return $self->step_by_path_index( $#{ $self->path } );
 }
 
 sub first_step {
     my $self = shift;
-    croak "first_step is readonly" if $#_ != -1;
     return $self->step_by_path_index( 0 );
 }
 
@@ -377,7 +379,6 @@ sub run_hook {
     if (! $code) {
         croak "Could not find a method named ${step}_${hook} or ${hook}";
     }
-
 
     ### record history
     my $hist = {
@@ -460,9 +461,9 @@ sub allow_nested_morph {
 }
 
 sub morph {
-    my $self = shift;
-    my $step = shift || return;
-    return if ! (my $allow = $self->allow_morph($step));
+    my $self  = shift;
+    my $step  = shift || return;
+    my $allow = $self->allow_morph($step) || return;
 
     ### place to store the lineage
     my $lin = $self->{'__morph_lineage'} ||= [];
@@ -474,13 +475,14 @@ sub morph {
         meth  => 'morph',
         found => 'morph',
         time  => time,
-        elapsed => 0,
+        elapsed  => 0,
+        response => 0
     };
     push @{ $self->history }, $hist;
 
     if (ref($allow) && ! $allow->{$step}) { # hash - but no step - record for unbless
         $hist->{'found'} .= " (not allowed to morph to that step)";
-        return;
+        return 0;
     }
 
     ### make sure we haven't already been reblessed
@@ -489,7 +491,7 @@ sub morph {
             || (ref($allow) && ! $allow->{$step})         # hash - but no step
             )) {
         $hist->{'found'} .= $allow ? " (not allowed to nested_morph to that step)" : " (nested_morph disabled)";
-        return; # just return - don't die so that we can morph early
+        return 0; # just return - don't die so that we can morph early
     }
 
     ### if we are not already that package - bless us there
@@ -516,6 +518,8 @@ sub morph {
         }
     }
 
+    $hist->{'response'} = 1;
+    return 1;
 }
 
 sub unmorph {
@@ -533,7 +537,8 @@ sub unmorph {
         meth  => 'unmorph',
         found => 'unmorph',
         time  => time,
-        elapsed => 0,
+        elapsed  => 0,
+        response => 0,
     };
     push @{ $self->history }, $hist;
 
@@ -545,6 +550,7 @@ sub unmorph {
         $hist->{'found'} .= " (already isa $cur)";
     }
 
+    $hist->{'response'} = 1;
     return $self;
 }
 
@@ -698,6 +704,16 @@ sub run_step {
     return 0;
 }
 
+sub refine_path {
+    my ($self, $step, $is_at_end) = @_;
+    return 0 if ! $is_at_end; # if we aren't at the end of the path, don't do anything
+
+    my $next_step = $self->run_hook('next_step', $step) || return 0;
+    $self->run_hook('set_ready_validate', $step, 0);
+    $self->append_path($next_step);
+    return 1;
+}
+
 sub prepared_print {
     my $self = shift;
     my $step = shift;
@@ -840,30 +856,27 @@ sub file_val {
 }
 
 sub info_complete {
-    my $self = shift;
-    my $step = shift;
-
+    my ($self, $step) = @_;
     return 0 if ! $self->run_hook('ready_validate', $step);
-    return 0 if ! $self->run_hook('validate', $step);
+    return 0 if ! $self->run_hook('validate', $step, $self->form);
     return 1;
 }
 
 sub ready_validate {
-    my $self = shift;
-    my $step = shift;
-
+    my ($self, $step) = @_;
     return ($ENV{'REQUEST_METHOD'} && $ENV{'REQUEST_METHOD'} eq 'POST') ? 1 : 0;
 }
 
-sub set_ready_validate {
-    my ($self, $ready) = @_;
-    $ENV{'REQUEST_METHOD'} = ($ready) ? 'POST' : 'GET';
+sub set_ready_validate { # hook and method
+    my $self = shift;
+    my ($step, $is_ready) = (@_ == 2) ? @_ : (undef, shift);
+    $ENV{'REQUEST_METHOD'} = ($is_ready) ? 'POST' : 'GET';
+    return $is_ready;
 }
 
 sub validate {
-    my $self = shift;
-    my $step = shift;
-    my $form = shift || $self->form;
+    my ($self, $step, $form) = @_;
+
     my $hash = $self->run_hook('hash_validation', $step);
     my $what_was_validated = [];
 
