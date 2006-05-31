@@ -11,9 +11,7 @@ use Test::More tests => 22;
 
 SKIP: {
 
-skip("Missing YAML.pm", 22) if ! eval { require 'YAML' };
-
-local $^W = 1;
+skip("Missing YAML.pm", 22) if ! eval { require 'YAML.pm' };
 
 use_ok('CGI::Ex::Validate');
 
