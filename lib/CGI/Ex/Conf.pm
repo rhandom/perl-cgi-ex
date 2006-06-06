@@ -28,7 +28,7 @@ use vars qw($VERSION
             );
 @EXPORT_OK = qw(conf_read conf_write);
 
-$VERSION = '2.01';
+$VERSION = '2.02';
 
 $DEFAULT_EXT = 'conf';
 
@@ -131,10 +131,14 @@ sub conf_read {
   ### determine the handler
   my $handler = $EXT_READERS{$ext} || croak "Unknown file extension: $ext";
 
-  return eval { scalar $handler->($file, $args) } || do {
-    warn "Couldn't read $file: $@ " if ! $args->{no_warn_on_fail};
-    return undef;
-  };
+  ### don't die if the file is not found - do die otherwise
+  if (! -e $file) {
+      eval { die "Conf file $file not found" };
+      warn "Conf file $file not found" if ! $args->{'no_warn_on_fail'};
+      return;
+  }
+
+  return eval { scalar $handler->($file, $args) } || die "Error while reading conf file $file\n$@";
 }
 
 sub read_ref {
@@ -419,12 +423,7 @@ sub conf_write {
     $handler = $EXT_WRITERS{$ext} || croak "Unknown file extension: $ext";
   }
 
-  return eval { scalar $handler->($file, $conf, $args) } || do {
-    warn "Couldn't write $file: $@ " if ! $args->{no_warn_on_fail};
-    return 0;
-  };
-
-  return 1;
+  return eval { scalar $handler->($file, $conf, $args) } || die "Error while writing conf file $file\n$@";
 }
 
 sub write_ref {
@@ -753,6 +752,8 @@ overwritable) by adding a suffix of _immutable or _immu to the key (ie
 matches $IMMUTABLE_KEY, the entire file is considered immutable.
 The immutable defaults may be overriden using $IMMUTABLE_QR and $IMMUTABLE_KEY.
 
+Errors during read die.  If the file does not exist undef is returned.
+
 =item C<-E<gt>write_ref>
 
 Takes a file and the reference to be written.  Figures out the type
@@ -765,6 +766,8 @@ Allows for writing back out the information read in by ->read.  If multiple
 paths where used - the directive 'FIRST' will write the changes to the first
 file in the path - otherwise the last path will be used.  If ->read had found
 immutable keys, then those keys are removed before writing.
+
+Errors during write die.
 
 =item C<-E<gt>preload_files>
 
