@@ -1,3 +1,9 @@
+2.02   2006-05-31
+        * Fix the yaml tests
+        * Add failed_sleep to Auth
+        * Various pod fixes
+        * Allow for conf_read and write errors to die - we really do need to have those bubble up.
+
 2.01   2006-05-31
         * Added App refine_path hook.
         * Added App destroy method.
