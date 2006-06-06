@@ -932,9 +932,9 @@ sub hash_validation {
       if (ref($file) && ! UNIVERSAL::isa($file, 'SCALAR')) {
           $hash = $file;
 
-      ### read the file - if it fails - errors should be in the webserver error logs
+      ### read the file - if it is not found, errors will be in the webserver logs (all else dies)
       } elsif ($file) {
-          $hash = eval { $self->vob->get_validation($file) } || {};
+          $hash = $self->vob->get_validation($file) || {};
 
       } else {
           $hash = {};
