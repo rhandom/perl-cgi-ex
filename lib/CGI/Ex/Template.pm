@@ -689,8 +689,14 @@ sub parse_tree {
             $node->[2] = $continue;
             $post_op   = $node;
 
-        } else { # error
-            $self->throw('parse', "Found trailing info \"$tag\"", $node) if length $tag;
+        ### unlink TT2 - look for another directive
+        } elsif (length $tag) {
+            #$self->throw('parse', "Found trailing info \"$tag\"", $node);
+            $continue  = $j - length $tag;
+            $node->[2] = $continue;
+            $post_op   = undef;
+
+        } else {
             $continue = undef;
             $post_op  = undef;
         }
@@ -2196,30 +2202,22 @@ sub parse_SET {
     my $copy = $$tag_ref;
     my $func;
     while (length $$tag_ref) {
-        my $set;
-        my $get_val;
+        my $set = $initial_var || $self->parse_variable($tag_ref);
+        last if ! defined $set;
         my $val;
-        if ($initial_var) {
-            $set = $initial_var;
-            undef $initial_var;
-            $get_val = 1;
-        } else {
-            $set = $self->parse_variable($tag_ref);
-            last if ! defined $set;
-            $get_val = $$tag_ref =~ s{ ^ = >? \s* }{}x;
-        }
-        if (! $get_val) { # no next val
-            $val = undef;
-        } elsif ($$tag_ref =~ $QR_DIRECTIVE   # find a word
-                 && $DIRECTIVES->{$1}) {      # is it a directive - if so set up capturing
-            $node->[6] = 1;           # set a flag to keep parsing
-            $val = $node->[4] ||= []; # setup storage
-            push @SET, [$set, $val];
-            last;
-        } else { # get a normal variable
-            $val = $self->parse_variable($tag_ref);
+        if ($initial_var || $$tag_ref =~ s{ ^ = >? \s* }{}x) {
+            if ($$tag_ref =~ $QR_DIRECTIVE   # find a word
+                && $DIRECTIVES->{$1}) {      # is it a directive - if so set up capturing
+                $node->[6] = 1;           # set a flag to keep parsing
+                $val = $node->[4] ||= []; # setup storage
+                push @SET, [$set, $val];
+                last;
+            } else { # get a normal variable
+                $val = $self->parse_variable($tag_ref);
+            }
         }
         push @SET, [$set, $val];
+        last if $initial_var;
     }
     return \@SET;
 }
