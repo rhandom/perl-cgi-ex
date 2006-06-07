@@ -9,12 +9,12 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template'; #real    0m1.243s #user    0m0.695s #sys     0m0.018s
-    $module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
+    #$module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => 478 - ($is_tt ? 68 : 0);
+use Test::More tests => 479 - ($is_tt ? 69 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -312,7 +312,7 @@ process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
 process_ok("[% -123.2.length %]" => -5) if ! $is_tt; # the - doesn't bind as tight as the dot methods
 process_ok("[% (-123.2).length %]" => 6) if ! $is_tt;
 process_ok("[% a = 23; a.0 %]" => 23) if ! $is_tt; # '0' is a scalar_op
-process_ok('[% 0.rand %]' => qr/^0\.\d+$/) if ! $is_tt;
+process_ok('[% 1.rand %]' => qr/^0\.\d+$/) if ! $is_tt;
 
 process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
 process_ok("[% n.repeat(0) %]" => '',   {n => 1});
@@ -352,6 +352,7 @@ process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => 
 process_ok('[% "hi" FILTER foo(2) %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {my$a=$_[1];sub{$_[0]x$a}},1]}]});
 
 process_ok('[% ["a".."z"].random %]' => qr/^[a-z]/) if ! $is_tt;
+process_ok('[% ["a".."z"].${ 26.rand } %]' => qr/^[a-z]/) if ! $is_tt;
 
 process_ok("[% ' ' | uri %]" => '%20');
 
