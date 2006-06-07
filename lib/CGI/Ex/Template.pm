@@ -58,6 +58,7 @@ BEGIN {
 
     $SCALAR_OPS ||= {
         '0'      => sub { shift },
+        as       => \&vmethod_as_scalar,
         chunk    => \&vmethod_chunk,
         collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
         defined  => sub { 1 },
@@ -93,6 +94,7 @@ BEGIN {
     };
 
     $LIST_OPS ||= {
+        as      => \&vmethod_as_list,
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
         grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
         hash    => sub { my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
@@ -116,6 +118,7 @@ BEGIN {
     };
 
     $HASH_OPS ||= {
+        as      => \&vmethod_as_hash,
         defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
         delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
         each    => sub { [%{ $_[0] }] },
@@ -2890,6 +2893,29 @@ sub define_vmethod {
         die "Invalid type vmethod type $type";
     }
     return 1;
+}
+
+sub vmethod_as_scalar {
+    my ($str, $pat) = @_;
+    $pat = '%s' if ! defined $pat;
+    local $^W;
+    return sprintf $pat, $str;
+}
+
+sub vmethod_as_list {
+    my ($ref, $pat, $sep) = @_;
+    $pat = '%s' if ! defined $pat;
+    $sep = ' '  if ! defined $sep;
+    local $^W;
+    return join($sep, map {sprintf $pat, $_} @$ref);
+}
+
+sub vmethod_as_hash {
+    my ($ref, $pat, $sep) = @_;
+    $pat = "%s\t%s" if ! defined $pat;
+    $sep = "\n"  if ! defined $sep;
+    local $^W;
+    return join($sep, map {sprintf $pat, $_, $ref->{$_}} sort keys %$ref);
 }
 
 sub vmethod_chunk {
