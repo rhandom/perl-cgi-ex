@@ -533,6 +533,9 @@ Note: virtual methods can only be used on array contructs in CET, not in TT.
     [% hash = {foo => 'bar', c => {}} %] Sets the value of hash.
     [% {a => 'A', b => 'B'}.size %]      Prints 2.
     [% {'a' => 'A', 'b' => 'B'}.size %]  Prints 2.
+    [% name = "Tom" %]
+    [% {Tom => 'You are Tom',
+        Kay => 'You are Kay'}.$name %]   Prints You are Tom
 
 Note: virtual methods can only be used on hash contructs in CET, not in TT.
 
@@ -770,6 +773,11 @@ if needed):
 =item push
 
     [% mylist.push(23) %] Adds an element to the end of the arrayref (the stash is modified).
+
+=item random
+
+    [% mylist.random %] Returns a random item from the list.
+    [% ['a' .. 'z'].random %]
 
 =item reverse
 
