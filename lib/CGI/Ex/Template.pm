@@ -18,6 +18,7 @@ use vars qw($VERSION
             $OP_BINARY
             $OP_TRINARY
             $OP_DISPATCH
+            $OP_SELF_MOD
 
             $QR_OP
             $QR_OP_UNARY
@@ -56,6 +57,7 @@ BEGIN {
     };
 
     $SCALAR_OPS ||= {
+        '0'      => sub { shift },
         chunk    => \&vmethod_chunk,
         collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
         defined  => sub { 1 },
@@ -177,54 +179,62 @@ BEGIN {
 
     ### setup the operator parsing
     $OPERATORS ||= [
-        # name => # order, precedence, symbols, only_in_parens, sub to create
-        [2, 96, ['**', '^', 'pow'],  0, sub {     $_[0] ** $_[1]                  } ],
-        [1, 93, ['!'],               0, sub {   ! $_[0]                           } ],
-        [1, 93, ['-'],               0, sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        [2, 90, ['*'],               0, sub {     $_[0] *  $_[1]                  } ],
-        [2, 90, ['/'],               0, sub {     $_[0] /  $_[1]                  } ],
-        [2, 90, ['div', 'DIV'],      0, sub { int($_[0] /  $_[1])                 } ],
-        [2, 90, ['%', 'mod', 'MOD'], 0, sub {     $_[0] %  $_[1]                  } ],
-        [2, 85, ['+'],               0, sub {     $_[0] +  $_[1]                  } ],
-        [2, 85, ['-'],               0, sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        [2, 85, ['_', '~'],          0, sub { join "", @_                         } ],
-        [2, 80, ['<'],               0, sub {     $_[0] <  $_[1]                  } ],
-        [2, 80, ['>'],               0, sub {     $_[0] >  $_[1]                  } ],
-        [2, 80, ['<='],              0, sub {     $_[0] <= $_[1]                  } ],
-        [2, 80, ['>='],              0, sub {     $_[0] >= $_[1]                  } ],
-        [2, 80, ['lt'],              0, sub {     $_[0] lt $_[1]                  } ],
-        [2, 80, ['gt'],              0, sub {     $_[0] gt $_[1]                  } ],
-        [2, 80, ['le'],              0, sub {     $_[0] le $_[1]                  } ],
-        [2, 80, ['ge'],              0, sub {     $_[0] ge $_[1]                  } ],
-        [2, 75, ['==', 'eq'],        0, sub {     $_[0] eq $_[1]                  } ],
-        [2, 75, ['!=', 'ne'],        0, sub {     $_[0] ne $_[1]                  } ],
-        [2, 70, ['&&'],              0, undef                                       ],
-        [2, 65, ['||'],              0, undef                                       ],
-        [2, 60, ['..'],              0, sub {     $_[0] .. $_[1]                  } ],
-        [3, 55, ['?', ':'],          0, undef                                       ],
-        [2, 52, ['='],               1, undef                                       ],
-        [1, 50, ['not', 'NOT'],      0, sub {   ! $_[0]                           } ],
-        [2, 45, ['and', 'AND'],      0, undef                                       ],
-        [2, 40, ['or', 'OR'],        0, undef                                       ],
-        [0,  0, ['hash'],            0, sub { return {@_};                        } ],
-        [0,  0, ['array'],           0, sub { return [@_]                         } ],
+        # name => # order, precedence, symbols, self-modifier(sm) or only_in_parens(p), sub to create
+        [2, 96, ['**', 'pow'],       '',   sub {     $_[0] ** $_[1]                  } ],
+        [1, 93, ['!'],               '',   sub {   ! $_[0]                           } ],
+        [1, 93, ['-'],               '',   sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
+        [2, 90, ['*'],               '',   sub {     $_[0] *  $_[1]                  } ],
+        [2, 90, ['/'],               '',   sub {     $_[0] /  $_[1]                  } ],
+        [2, 90, ['div', 'DIV'],      '',   sub { int($_[0] /  $_[1])                 } ],
+        [2, 90, ['%', 'mod', 'MOD'], '',   sub {     $_[0] %  $_[1]                  } ],
+        [2, 85, ['+'],               '',   sub {     $_[0] +  $_[1]                  } ],
+        [2, 85, ['-'],               '',   sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
+        [2, 85, ['~', '_'],          '',   sub { join "", @_                         } ],
+        [2, 80, ['<'],               '',   sub {     $_[0] <  $_[1]                  } ],
+        [2, 80, ['>'],               '',   sub {     $_[0] >  $_[1]                  } ],
+        [2, 80, ['<='],              '',   sub {     $_[0] <= $_[1]                  } ],
+        [2, 80, ['>='],              '',   sub {     $_[0] >= $_[1]                  } ],
+        [2, 80, ['lt'],              '',   sub {     $_[0] lt $_[1]                  } ],
+        [2, 80, ['gt'],              '',   sub {     $_[0] gt $_[1]                  } ],
+        [2, 80, ['le'],              '',   sub {     $_[0] le $_[1]                  } ],
+        [2, 80, ['ge'],              '',   sub {     $_[0] ge $_[1]                  } ],
+        [2, 75, ['==', 'eq'],        '',   sub {     $_[0] eq $_[1]                  } ],
+        [2, 75, ['!=', 'ne'],        '',   sub {     $_[0] ne $_[1]                  } ],
+        [2, 70, ['&&'],              '',   undef                                       ],
+        [2, 65, ['||'],              '',   undef                                       ],
+        [2, 60, ['..'],              '',   sub {     $_[0] .. $_[1]                  } ],
+        [3, 55, ['?', ':'],          '',   undef                                       ],
+        [2, 53, ['+='],              'sm', sub { ${ $_[0] }  += $_[1]                } ],
+        [2, 53, ['-='],              'sm', sub { ${ $_[0] }  -= $_[1]                } ],
+        [2, 53, ['*='],              'sm', sub { ${ $_[0] }  *= $_[1]                } ],
+        [2, 53, ['/='],              'sm', sub { ${ $_[0] }  /= $_[1]                } ],
+        [2, 53, ['%='],              'sm', sub { ${ $_[0] }  %= $_[1]                } ],
+        [2, 53, ['**='],             'sm', sub { ${ $_[0] } **= $_[1]                } ],
+        [2, 53, ['~=', '_='],        'sm', sub { ${ $_[0] }  .= $_[1]                } ],
+        [2, 52, ['='],               'p',  undef                                       ],
+        [1, 50, ['not', 'NOT'],      '',   sub {   ! $_[0]                           } ],
+        [2, 45, ['and', 'AND'],      '',   undef                                       ],
+        [2, 40, ['or', 'OR'],        '',   undef                                       ],
+        [0,  0, ['hash'],            '',   sub { return {@_};                        } ],
+        [0,  0, ['array'],           '',   sub { return [@_]                         } ],
     ];
-    $OP_DISPATCH ||= {map {my $ref = $_; map {$_ => $ref->[4]} @{$ref->[2]}}                @$OPERATORS};
+    $OP_DISPATCH ||= {map {my $ref = $_; map {$_ => $ref->[4]} @{$ref->[2]}} grep {$_->[3] ne 'sm'} @$OPERATORS};
+    $OP_SELF_MOD ||= {map {my $ref = $_; map {$_ => $ref->[4]} @{$ref->[2]}} grep {$_->[3] eq 'sm'} @$OPERATORS};
     $OP_UNARY    ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 1} @$OPERATORS};
     $OP_BINARY   ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 2} @$OPERATORS};
     $OP_TRINARY  ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 3} @$OPERATORS};
     sub _op_qr { # no mixed \w\W operators
         my %used;
-        my $chrs = join '|', map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W{2,}$/} @_;
-        my $chr  = join '',  map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
-        my $word = join '|',                    grep {++$used{$_} < 2} grep {/^\w+$/}    @_;
+        my $chrs = join '|', reverse sort map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W{2,}$/} @_;
+        my $chr  = join '',               map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
+        my $word = join '|', reverse sort                    grep {++$used{$_} < 2} grep {/^\w+$/}    @_;
         $chr = "[$chr]" if $chr;
         $word = "\\b(?:$word)\\b" if $word;
         return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
     }
-    sub _build_op_qr       { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] > 1 && ! $_->[3]} @$OPERATORS) } # all binary, trinary, non-parened ops
+    sub _build_op_qr       { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] > 1 && $_->[3] ne 'p'} @$OPERATORS) } # all binary, trinary, non-parened ops
     sub _build_op_qr_unary { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] == 1            } @$OPERATORS) } # unary operators
-    sub _build_op_qr_paren { _op_qr(sort map {@{ $_->[2] }} grep {                 $_->[3]} @$OPERATORS) } # paren
+    sub _build_op_qr_paren { _op_qr(sort map {@{ $_->[2] }} grep {               $_->[3] eq 'p'} @$OPERATORS) } # paren
     $QR_OP         ||= _build_op_qr();
     $QR_OP_UNARY   ||= _build_op_qr_unary();
     $QR_OP_PARENED ||= _build_op_qr_paren();
@@ -781,6 +791,17 @@ sub parse_variable {
         push @var, \ $number;
         $is_literal = 1;
 
+    ### allow for quoted array constructor
+    } elsif ($copy =~ s{ ^ qw (\W) \s* }{}x) {
+        my $quote = $1;
+        $quote =~ y|([{<|)]}>|;
+        $copy =~ s{ ^ (.*) \Q$quote\E \s* $QR_COMMENTS }{}sx
+            || $self->throw('parse.missing.array_close', "Missing close \"$quote\"", undef, length($$str_ref) - length($copy));
+        my $str = $1;
+        $str =~ s{ ^ \s+ | \s+ $ }{}x;
+        my $arrayref = ['array', split /\s+/, $str];
+        push @var, \ $arrayref;
+
     ### looks like a normal variable start
     } elsif ($copy =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox) {
         push @var, $1;
@@ -1296,6 +1317,13 @@ sub get_variable {
     return $ref;
 }
 
+### set_variable could also be implemented as the following - but it is a speed hit
+#sub set_variable {
+#    my ($self, $var, $val, $ARGS) = @_;
+#    my $ref = $self->ref_variable($var, $ARGS) || return;
+#    $$ref = $val;
+#}
+
 sub set_variable {
     my ($self, $var, $val, $ARGS) = @_;
     $ARGS ||= {};
@@ -1424,6 +1452,128 @@ sub set_variable {
     return;
 }
 
+sub ref_variable {
+    my ($self, $var, $ARGS) = @_;
+    $ARGS ||= {};
+    my $i = 0;
+
+    ### allow for the parse tree to store literals - the literal is used as a name (like [% 'a' = 'A' %])
+    $var = [$var, 0] if ! ref $var;
+
+    ### determine the top level of this particular variable access
+    my $ref  = $var->[$i++];
+    my $args = $var->[$i++];
+    if (ref $ref) {
+        if (ref($ref) eq 'ARRAY') { # named access (ie via $name.foo)
+            $ref = $self->get_variable($ref);
+            if (defined $ref && $ref !~ $QR_PRIVATE) { # don't allow vars that begin with _
+                if ($#$var <= $i) {
+                    return \ $self->{'_vars'}->{$ref};
+                } else {
+                    $ref = $self->{'_vars'}->{$ref} ||= {};
+                }
+            } else {
+                return;
+            }
+        } else { # all other types can't be set
+            return;
+        }
+    } elsif (defined $ref) {
+        return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
+        if ($#$var <= $i) {
+            return \ $self->{'_vars'}->{$ref};
+        } else {
+            $ref = $self->{'_vars'}->{$ref} ||= {};
+        }
+    }
+
+    while (defined $ref) {
+
+        ### check at each point if the returned thing was a code
+        if (UNIVERSAL::isa($ref, 'CODE')) {
+            my @results = $ref->($args ? map { $self->get_variable($_) } @$args : ());
+            if (defined $results[0]) {
+                $ref = ($#results > 0) ? \@results : $results[0];
+            } elsif (defined $results[1]) {
+                die $results[1]; # TT behavior - why not just throw ?
+            } else {
+                return;
+            }
+        }
+
+        ### descend one chained level
+        last if $i >= $#$var;
+        my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
+        my $name         = $var->[$i++];
+        my $args         = $var->[$i++];
+
+        ### allow for named portions of a variable name (foo.$name.bar)
+        if (ref $name) {
+            if (ref($name) eq 'ARRAY') {
+                $name = $self->get_variable($name);
+                if (! defined($name) || $name =~ /^[_.]/) {
+                    return;
+                }
+            } else {
+                die "Shouldn't get a ".ref($name)." during a vivify on chain";
+            }
+        }
+        if ($name =~ $QR_PRIVATE) { # don't allow vars that begin with _
+            return;
+        }
+
+        ### scalar access
+        if (! ref $ref) {
+            return;
+
+        ### method calls on objects
+        } elsif (UNIVERSAL::can($ref, 'can')) {
+            my @args = $args ? map { $self->get_variable($_) } @$args : ();
+            my @results = eval { $ref->$name(@args) };
+            if (! $@) {
+                if (defined $results[0]) {
+                    $ref = ($#results > 0) ? \@results : $results[0];
+                } elsif (defined $results[1]) {
+                    die $results[1]; # TT behavior - why not just throw ?
+                } else {
+                    return;
+                }
+                next;
+            }
+            my $class = ref $ref;
+            die $@ if ref $@ || $@ !~ /Can\'t locate object method "\Q$name\E" via package "\Q$class\E"/;
+            # fall on down to "normal" accessors
+        }
+
+        ### hash member access
+        if (UNIVERSAL::isa($ref, 'HASH')) {
+            if ($#$var <= $i) {
+                return \ $ref->{$name};
+            } else {
+                $ref = $ref->{$name} ||= {};
+                next;
+            }
+
+        ### array access
+        } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+            if ($name =~ /^\d+$/) {
+                if ($#$var <= $i) {
+                    return \ $ref->[$name];
+                } else {
+                    $ref = $ref->[$name] ||= {};
+                    next;
+                }
+            } else {
+                return;
+            }
+
+        }
+
+    }
+
+    return;
+}
+
 ###----------------------------------------------------------------###
 
 sub play_operator {
@@ -1434,6 +1584,12 @@ sub play_operator {
         my @args = map { $self->get_variable($tree->[$_]) } 1 .. $#$tree;
         local $^W;
         return $OP_DISPATCH->{$tree->[0]}->(@args);
+    }
+    if ($OP_SELF_MOD->{$tree->[0]}) {
+        my $ref  = $self->ref_variable($tree->[1]);
+        my @args = map { $self->get_variable($tree->[$_]) } 2 .. $#$tree;
+        local $^W;
+        return $OP_SELF_MOD->{$tree->[0]}->($ref, @args);
     }
 
     my $op = $tree->[0];
