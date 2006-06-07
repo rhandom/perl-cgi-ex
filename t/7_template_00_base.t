@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 460 - ($is_tt ? 54 : 0);
+use Test::More tests => 462 - ($is_tt ? 55 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -334,8 +334,9 @@ process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => 
 process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {$_[0]x2},0]}]});
 process_ok('[% "hi" FILTER foo(2) %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {my$a=$_[1];sub{$_[0]x$a}},1]}]});
 
-### this does work - but requires that Template::Filters is installed
-#process_ok("[% ' ' | uri %]" => '%20');
+process_ok('[% ["a".."z"].random %]' => qr/^[a-z]/) if ! $is_tt;
+
+process_ok("[% ' ' | uri %]" => '%20');
 
 ###----------------------------------------------------------------###
 ### chomping
