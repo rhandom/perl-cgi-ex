@@ -9,12 +9,12 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template'; #real    0m1.243s #user    0m0.695s #sys     0m0.018s
-    #$module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
+#    $module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => 479 - ($is_tt ? 69 : 0);
+use Test::More tests => 481 - ($is_tt ? 71 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -246,7 +246,6 @@ process_ok("[% SET foo = ['z'..'a'] %][% foo.6 %]" => '');
 process_ok("[% SET foo = ['a'..'z'].reverse %][% foo.6 %]" => 't')      if ! $is_tt;
 
 process_ok("[% foo = 1 %][% foo %]" => '1');
-process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo = 1 ; bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo.bar = 2 %][% foo.bar %]" => '2');
 
@@ -254,6 +253,10 @@ process_ok('[% a = "a" %][% (b = a) %][% a %][% b %]' => 'aaa');
 process_ok('[% a = "a" %][% (c = (b = a)) %][% a %][% b %][% c %]' => 'aaaa');
 
 process_ok("[% a = qw{Foo Bar Baz} ; a.2 %]" => 'Baz') if ! $is_tt;
+
+process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
+process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '232') if ! $is_tt;
+process_ok("[% a = 1 a = a + 2 a %]" => 3) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### Reserved words
