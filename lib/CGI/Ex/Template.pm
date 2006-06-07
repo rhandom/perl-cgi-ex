@@ -23,6 +23,7 @@ use vars qw($VERSION
 
             $QR_OP
             $QR_OP_PREFIX
+            $QR_OP_ASSIGN
 
             $QR_COMMENTS
             $QR_FILENAME
@@ -243,9 +244,10 @@ BEGIN {
     }
     sub _build_op_qr        { _op_qr(map {@{ $_->[2] }} grep {$_->[0] ne 'prefix'} @$OPERATORS) }
     sub _build_op_qr_prefix { _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'prefix'} @$OPERATORS) }
+    sub _build_op_qr_assign { _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'assign'} @$OPERATORS) }
     $QR_OP        = _build_op_qr();
     $QR_OP_PREFIX = _build_op_qr_prefix();
-
+    $QR_OP_ASSIGN = _build_op_qr_assign();
 
     $QR_COMMENTS  = '(?-s: \# .* \s*)*';
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
@@ -648,9 +650,9 @@ sub parse_tree {
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_variable(\$tag))) {
             push @$pointer, $node;
-            if ($tag =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox) {
+            if ($tag =~ s{ ^ ($QR_OP_ASSIGN) >? \s* $QR_COMMENTS }{}ox) {
                 $node->[0] = 'SET';
-                $node->[3] = eval { $DIRECTIVES->{'SET'}->[0]->($self, \$tag, $node, $var) };
+                $node->[3] = eval { $DIRECTIVES->{'SET'}->[0]->($self, \$tag, $node, $1, $var) };
                 if (my $err = $@) {
                     $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
@@ -1598,7 +1600,7 @@ sub parse_DEFAULT { $DIRECTIVES->{'SET'}->[0]->(@_) }
 sub play_DEFAULT {
     my ($self, $set) = @_;
     foreach (@$set) {
-        my ($set, $default) = @$_;
+        my ($op, $set, $default) = @$_;
         next if ! defined $set;
         my $val = $self->get_variable($set);
         if (! $val) {
@@ -2087,27 +2089,40 @@ sub play_RAWPERL {
 }
 
 sub parse_SET {
-    my ($self, $tag_ref, $node, $initial_var) = @_;
+    my ($self, $tag_ref, $node, $initial_op, $initial_var) = @_;
     my @SET;
     my $copy = $$tag_ref;
     my $func;
+
+    if ($initial_op) {
+        if ($$tag_ref =~ $QR_DIRECTIVE   # find a word
+            && $DIRECTIVES->{$1}) {      # is it a directive - if so set up capturing
+            $node->[6] = 1;              # set a flag to keep parsing
+            my $val = $node->[4] ||= []; # setup storage
+            return [[$initial_op, $initial_var, $val]];
+        } else { # get a normal variable
+            return [[$initial_op, $initial_var, $self->parse_variable($tag_ref)]];
+        }
+    }
+
     while (length $$tag_ref) {
-        my $set = $initial_var || $self->parse_variable($tag_ref);
+        my $set = $self->parse_variable($tag_ref);
         last if ! defined $set;
-        my $val;
-        if ($initial_var || $$tag_ref =~ s{ ^ = >? \s* }{}x) {
+
+        if ($$tag_ref =~ s{ ^ ($QR_OP_ASSIGN) >? \s* }{}x) {
+            my $op = $1;
             if ($$tag_ref =~ $QR_DIRECTIVE   # find a word
                 && $DIRECTIVES->{$1}) {      # is it a directive - if so set up capturing
-                $node->[6] = 1;           # set a flag to keep parsing
-                $val = $node->[4] ||= []; # setup storage
-                push @SET, [$set, $val];
+                $node->[6] = 1;              # set a flag to keep parsing
+                my $val = $node->[4] ||= []; # setup storage
+                push @SET, [$op, $set, $val];
                 last;
             } else { # get a normal variable
-                $val = $self->parse_variable($tag_ref);
+                push @SET, [$op, $set, $self->parse_variable($tag_ref)];
             }
+        } else {
+            push @SET, ['=', $set, undef];
         }
-        push @SET, [$set, $val];
-        last if $initial_var;
     }
     return \@SET;
 }
@@ -2115,7 +2130,7 @@ sub parse_SET {
 sub play_SET {
     my ($self, $set, $node) = @_;
     foreach (@$set) {
-        my ($set, $val) = @$_;
+        my ($op, $set, $val) = @$_;
         if (! defined $val) { # not defined
             $val = '';
         } elsif ($node->[4] && $val == $node->[4]) { # a captured directive
@@ -2125,6 +2140,10 @@ sub play_SET {
             $self->execute_tree($sub_tree, \$val);
         } else { # normal var
             $val = $self->get_variable($val);
+        }
+
+        if ($OP_DISPATCH->{$op}) {
+            $val = $OP_DISPATCH->{$op}->($self->get_variable($set), $val);
         }
 
         $self->set_variable($set, $val);
