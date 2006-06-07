@@ -14,15 +14,15 @@ use vars qw($VERSION
             $DIRECTIVES $QR_DIRECTIVE
 
             $OPERATORS
-            $OP_UNARY
-            $OP_BINARY
-            $OP_TRINARY
             $OP_DISPATCH
-            $OP_SELF_MOD
+            $OP_ASSIGN
+            $OP
+            $OP_PREFIX
+            $OP_POSTFIX
+            $OP_TERNARY
 
             $QR_OP
-            $QR_OP_UNARY
-            $QR_OP_PARENED
+            $QR_OP_PREFIX
 
             $QR_COMMENTS
             $QR_FILENAME
@@ -182,66 +182,69 @@ BEGIN {
     $QR_DIRECTIVE = qr{ ^ (\w+|\|) (?= $|[\s;\#]) }x;
 
     ### setup the operator parsing
-    $OPERATORS ||= [
-        # name => # order, precedence, symbols, self-modifier(sm) or only_in_parens(p), sub to create
-        [2, 96, ['**', 'pow'],       '',   sub {     $_[0] ** $_[1]                  } ],
-        [1, 93, ['!'],               '',   sub {   ! $_[0]                           } ],
-        [1, 93, ['-'],               '',   sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        [2, 90, ['*'],               '',   sub {     $_[0] *  $_[1]                  } ],
-        [2, 90, ['/'],               '',   sub {     $_[0] /  $_[1]                  } ],
-        [2, 90, ['div', 'DIV'],      '',   sub { int($_[0] /  $_[1])                 } ],
-        [2, 90, ['%', 'mod', 'MOD'], '',   sub {     $_[0] %  $_[1]                  } ],
-        [2, 85, ['+'],               '',   sub {     $_[0] +  $_[1]                  } ],
-        [2, 85, ['-'],               '',   sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        [2, 85, ['~', '_'],          '',   sub { join "", @_                         } ],
-        [2, 80, ['<'],               '',   sub {     $_[0] <  $_[1]                  } ],
-        [2, 80, ['>'],               '',   sub {     $_[0] >  $_[1]                  } ],
-        [2, 80, ['<='],              '',   sub {     $_[0] <= $_[1]                  } ],
-        [2, 80, ['>='],              '',   sub {     $_[0] >= $_[1]                  } ],
-        [2, 80, ['lt'],              '',   sub {     $_[0] lt $_[1]                  } ],
-        [2, 80, ['gt'],              '',   sub {     $_[0] gt $_[1]                  } ],
-        [2, 80, ['le'],              '',   sub {     $_[0] le $_[1]                  } ],
-        [2, 80, ['ge'],              '',   sub {     $_[0] ge $_[1]                  } ],
-        [2, 75, ['==', 'eq'],        '',   sub {     $_[0] eq $_[1]                  } ],
-        [2, 75, ['!=', 'ne'],        '',   sub {     $_[0] ne $_[1]                  } ],
-        [2, 70, ['&&'],              '',   undef                                       ],
-        [2, 65, ['||'],              '',   undef                                       ],
-        [2, 60, ['..'],              '',   sub {     $_[0] .. $_[1]                  } ],
-        [3, 55, ['?', ':'],          '',   undef                                       ],
-        [2, 53, ['+='],              'sm', sub { ${ $_[0] }  += $_[1]                } ],
-        [2, 53, ['-='],              'sm', sub { ${ $_[0] }  -= $_[1]                } ],
-        [2, 53, ['*='],              'sm', sub { ${ $_[0] }  *= $_[1]                } ],
-        [2, 53, ['/='],              'sm', sub { ${ $_[0] }  /= $_[1]                } ],
-        [2, 53, ['%='],              'sm', sub { ${ $_[0] }  %= $_[1]                } ],
-        [2, 53, ['**='],             'sm', sub { ${ $_[0] } **= $_[1]                } ],
-        [2, 53, ['~=', '_='],        'sm', sub { ${ $_[0] }  .= $_[1]                } ],
-        [2, 52, ['='],               'p',  undef                                       ],
-        [1, 50, ['not', 'NOT'],      '',   sub {   ! $_[0]                           } ],
-        [2, 45, ['and', 'AND'],      '',   undef                                       ],
-        [2, 40, ['or', 'OR'],        '',   undef                                       ],
-        [0,  0, ['hash'],            '',   sub { return {@_};                        } ],
-        [0,  0, ['array'],           '',   sub { return [@_]                         } ],
+    $OPERATORS = [
+        # type      precedence symbols              action (undef means play_operator will handle)
+        ['prefix',  98,        ['++'],              undef                                       ],
+        ['prefix',  98,        ['--'],              undef                                       ],
+        ['postfix', 98,        ['++'],              undef                                       ],
+        ['postfix', 98,        ['--'],              undef                                       ],
+        ['infix',   96,        ['**', 'pow'],       sub {     $_[0] ** $_[1]                  } ],
+        ['prefix',  93,        ['!'],               sub {   ! $_[0]                           } ],
+        ['prefix',  93,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
+        ['infix',   90,        ['*'],               sub {     $_[0] *  $_[1]                  } ],
+        ['infix',   90,        ['/'],               sub {     $_[0] /  $_[1]                  } ],
+        ['infix',   90,        ['div', 'DIV'],      sub { int($_[0] /  $_[1])                 } ],
+        ['infix',   90,        ['%', 'mod', 'MOD'], sub {     $_[0] %  $_[1]                  } ],
+        ['infix',   85,        ['+'],               sub {     $_[0] +  $_[1]                  } ],
+        ['infix',   85,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
+        ['infix',   85,        ['~', '_'],          sub { join "", @_                         } ],
+        ['infix',   80,        ['<'],               sub {     $_[0] <  $_[1]                  } ],
+        ['infix',   80,        ['>'],               sub {     $_[0] >  $_[1]                  } ],
+        ['infix',   80,        ['<='],              sub {     $_[0] <= $_[1]                  } ],
+        ['infix',   80,        ['>='],              sub {     $_[0] >= $_[1]                  } ],
+        ['infix',   80,        ['lt'],              sub {     $_[0] lt $_[1]                  } ],
+        ['infix',   80,        ['gt'],              sub {     $_[0] gt $_[1]                  } ],
+        ['infix',   80,        ['le'],              sub {     $_[0] le $_[1]                  } ],
+        ['infix',   80,        ['ge'],              sub {     $_[0] ge $_[1]                  } ],
+        ['infix',   75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]                  } ],
+        ['infix',   75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]                  } ],
+        ['infix',   70,        ['&&'],              undef                                       ],
+        ['infix',   65,        ['||'],              undef                                       ],
+        ['infix',   60,        ['..'],              sub {     $_[0] .. $_[1]                  } ],
+        ['ternary', 55,        ['?', ':'],          undef                                       ],
+        ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]                  } ],
+        ['assign',  53,        ['-='],              sub {     $_[0] -  $_[1]                  } ],
+        ['assign',  53,        ['*='],              sub {     $_[0] *  $_[1]                  } ],
+        ['assign',  53,        ['/='],              sub {     $_[0] /  $_[1]                  } ],
+        ['assign',  53,        ['%='],              sub {     $_[0] %  $_[1]                  } ],
+        ['assign',  53,        ['**='],             sub {     $_[0]**  $_[1]                  } ],
+        ['assign',  53,        ['~=', '_='],        sub {     $_[0] .  $_[1]                  } ],
+        ['assign',  52,        ['='],               undef                                       ],
+        ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]                           } ],
+        ['infix',   45,        ['and', 'AND'],      undef                                       ],
+        ['infix',   40,        ['or', 'OR'],        undef                                       ],
+        ['',         0,        ['hash'],            sub { return {@_};                        } ],
+        ['',         0,        ['array'],           sub { return [@_]                         } ],
     ];
-    $OP_DISPATCH ||= {map {my $ref = $_; map {$_ => $ref->[4]} @{$ref->[2]}} grep {$_->[3] ne 'sm'} @$OPERATORS};
-    $OP_SELF_MOD ||= {map {my $ref = $_; map {$_ => $ref->[4]} @{$ref->[2]}} grep {$_->[3] eq 'sm'} @$OPERATORS};
-    $OP_UNARY    ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 1} @$OPERATORS};
-    $OP_BINARY   ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 2} @$OPERATORS};
-    $OP_TRINARY  ||= {map {my $ref = $_; map {$_ => $ref} @{$ref->[2]}} grep {$_->[0] == 3} @$OPERATORS};
+    $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
+    $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
+    $OP_DISPATCH = {map {my $ref = $_; map {$_ => $ref->[3]} @{$ref->[2]}} grep {$_->[3]             } @$OPERATORS};
+    $OP_ASSIGN   = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'assign' } @$OPERATORS};
+    $OP_POSTFIX  = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'postfix'} @$OPERATORS}; # bool is postfix
+    $OP_TERNARY  = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'ternary'} @$OPERATORS}; # bool is ternary
     sub _op_qr { # no mixed \w\W operators
         my %used;
         my $chrs = join '|', reverse sort map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W{2,}$/} @_;
-        my $chr  = join '',               map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
+        my $chr  = join '',          sort map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
         my $word = join '|', reverse sort                    grep {++$used{$_} < 2} grep {/^\w+$/}    @_;
         $chr = "[$chr]" if $chr;
         $word = "\\b(?:$word)\\b" if $word;
         return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
     }
-    sub _build_op_qr       { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] > 1 && $_->[3] ne 'p'} @$OPERATORS) } # all binary, trinary, non-parened ops
-    sub _build_op_qr_unary { _op_qr(sort map {@{ $_->[2] }} grep {$_->[0] == 1            } @$OPERATORS) } # unary operators
-    sub _build_op_qr_paren { _op_qr(sort map {@{ $_->[2] }} grep {               $_->[3] eq 'p'} @$OPERATORS) } # paren
-    $QR_OP         ||= _build_op_qr();
-    $QR_OP_UNARY   ||= _build_op_qr_unary();
-    $QR_OP_PARENED ||= _build_op_qr_paren();
+    sub _build_op_qr        { _op_qr(map {@{ $_->[2] }} grep {$_->[0] ne 'prefix'} @$OPERATORS) }
+    sub _build_op_qr_prefix { _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'prefix'} @$OPERATORS) }
+    $QR_OP        = _build_op_qr();
+    $QR_OP_PREFIX = _build_op_qr_prefix();
 
 
     $QR_COMMENTS  = '(?-s: \# .* \s*)*';
@@ -784,11 +787,11 @@ sub parse_variable {
 
     my $copy = $$str_ref; # copy while parsing to allow for errors
 
-    ### test for leading unary operators
-    my $has_unary;
-    if ($copy =~ s{ ^ ($QR_OP_UNARY) \s* $QR_COMMENTS }{}ox) {
+    ### test for leading prefix operators
+    my $has_prefix;
+    if ($copy =~ s{ ^ ($QR_OP_PREFIX) \s* $QR_COMMENTS }{}ox) {
         return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
-        $has_unary = $1;
+        $has_prefix = $1;
     }
 
     my @var;
@@ -959,15 +962,18 @@ sub parse_variable {
     if (! $self->{'_operator_precedence'}) {
         my $tree;
         my $found;
-        while ($copy =~ s{ ^ ($QR_OP) \s* $QR_COMMENTS }{}ox ## look for operators - then move along
-               || ($ARGS->{'allow_parened_ops'}
-                   && $copy =~ s{ ^ ($QR_OP_PARENED) \s* $QR_COMMENTS }{}ox) ) {
+        while ($copy =~ s{ ^ ($QR_OP) (\s* $QR_COMMENTS) }{}ox) { ## look for operators - then move along
+            if (! $ARGS->{'allow_parened_ops'} && $OP_ASSIGN->{$1}) {
+                $copy = $1 . $2 . $copy;
+                last;
+            }
+
             local $self->{'_operator_precedence'} = 1;
             my $op   = $1;
-            my $var2 = $self->parse_variable(\$copy);
+            my $var2 = $OP_POSTFIX->{$op} ? 1 : $self->parse_variable(\$copy); # cheat - give a "second value" to postfix ops
 
-            ### allow for unary operator precedence
-            if ($has_unary && (($OP_BINARY->{$op} || $OP_TRINARY->{$op})->[1] < $OP_UNARY->{$has_unary}->[1])) {
+            ### allow for prefix operator precedence
+            if ($has_prefix && $OP->{$op}->[1] < $OP_PREFIX->{$has_prefix}->[1]) {
                 if ($tree) {
                     if ($#$tree == 1) { # only one operator - keep simple things fast
                         $var = [\ [$tree->[0], $var, $tree->[1]], 0];
@@ -978,14 +984,13 @@ sub parse_variable {
                     undef $tree;
                     undef $found;
                 }
-                $var = [ \ [ $has_unary, $var ], 0 ];
-                undef $has_unary;
+                $var = [ \ [ $has_prefix, $var ], 0 ];
+                undef $has_prefix;
             }
 
             ### add the operator to the tree
             push (@{ $tree ||= [] }, $op, $var2);
-            my $ref = $OP_BINARY->{$op} || $OP_TRINARY->{$op};
-            $found->{$op} = $ref->[1];
+            $found->{$op} = $OP->{$op}->[1];
         }
 
         ### if we found operators - tree the nodes by operator precedence
@@ -999,9 +1004,9 @@ sub parse_variable {
         }
     }
 
-    ### allow for unary on non-chained variables
-    if ($has_unary) {
-        $var = [ \ [ $has_unary, $var ], 0 ];
+    ### allow for prefix on non-chained variables
+    if ($has_prefix) {
+        $var = [ \ [ $has_prefix, $var ], 0 ];
     }
 
     $$str_ref = $copy; # commit the changes
@@ -1019,14 +1024,14 @@ sub apply_precedence {
         local $found->{$op};
         delete $found->{$op};
         my @trees;
-        my @trinary;
+        my @ternary;
 
         ### split the array on the current operator
         for (my $i = 0; $i <= $#$tree; $i ++) {
-            my $is_trinary = $OP_TRINARY->{$op} && grep {$_ eq $tree->[$i]} @{ $OP_TRINARY->{$op}->[2] };
-            next if $tree->[$i] ne $op && ! $is_trinary;
+            my $is_ternary = $OP_TERNARY->{$op} && grep {$_ eq $tree->[$i]} @{ $OP->{$op}->[2] };
+            next if $tree->[$i] ne $op && ! $is_ternary;
             push @trees, [splice @$tree, 0, $i, ()]; # everything up to the operator
-            push @trinary, $tree->[0] if $is_trinary;
+            push @ternary, $tree->[0] if $is_ternary;
             shift @$tree; # pull off the operator
             $i = -1;
         }
@@ -1044,29 +1049,29 @@ sub apply_precedence {
             }
         }
 
-        ### return binary
-        if ($OP_BINARY->{$op}) {
+        ### return infix and assign
+        if (! $OP_TERNARY->{$op}) {
             my $val = $trees[-1];
             $val = [ \ [ $op, $trees[$_], $val ], 0 ] for reverse (0 .. $#trees - 1); # reverse order - helps out ||
             return $val;
         }
 
-        ### return simple trinary
-        if (@trinary == 2) {
+        ### return simple ternary
+        if (@ternary == 2) {
             return [ \ [ $op, @trees ], 0 ];
         }
 
-        ### reorder complex trinary - rare case
-        while ($#trinary >= 1) {
-            ### if we look starting from the back - the first lead trinary op will always be next to its matching op
-            for (my $i = $#trinary; $i >= 0; $i --) {
-                next if $OP_TRINARY->{$trinary[$i]}->[2]->[1] eq $trinary[$i];
-                my ($op, $op2) = splice @trinary, $i, 2, (); # remove the pair of operators
+        ### reorder complex ternary - rare case
+        while ($#ternary >= 1) {
+            ### if we look starting from the back - the first lead ternary op will always be next to its matching op
+            for (my $i = $#ternary; $i >= 0; $i --) {
+                next if $OP->{$ternary[$i]}->[2]->[1] eq $ternary[$i];
+                my ($op, $op2) = splice @ternary, $i, 2, (); # remove the pair of operators
                 my $node = [ \ [$op, @trees[$i .. $i + 2] ], 0 ];
                 splice @trees, $i, 3, $node;
             }
         }
-        return $trees[0]; # at this point the trinary has been reduced to a single operator
+        return $trees[0]; # at this point the ternary has been reduced to a single operator
 
     }
 
@@ -1594,15 +1599,14 @@ sub play_operator {
     my $tree = shift;
 
     if ($OP_DISPATCH->{$tree->[0]}) {
-        my @args = map { $self->get_variable($tree->[$_]) } 1 .. $#$tree;
         local $^W;
-        return $OP_DISPATCH->{$tree->[0]}->(@args);
-    }
-    if ($OP_SELF_MOD->{$tree->[0]}) {
-        my $ref  = $self->ref_variable($tree->[1]);
-        my @args = map { $self->get_variable($tree->[$_]) } 2 .. $#$tree;
-        local $^W;
-        return $OP_SELF_MOD->{$tree->[0]}->($ref, @args);
+        if ($OP_ASSIGN->{$tree->[0]}) {
+            my $val = $OP_DISPATCH->{$tree->[0]}->( $self->get_variable($tree->[1]), $self->get_variable($tree->[2]) );
+            $self->set_variable($tree->[1], $val);
+            return $val;
+        } else {
+            return $OP_DISPATCH->{$tree->[0]}->( map { $self->get_variable($tree->[$_]) } 1 .. $#$tree );
+        }
     }
 
     my $op = $tree->[0];
@@ -1623,6 +1627,18 @@ sub play_operator {
     } elsif ($op eq '?') {
         local $^W;
         return $self->get_variable($tree->[1]) ? $self->get_variable($tree->[2]) : $self->get_variable($tree->[3]);
+
+    } elsif ($op eq '++') {
+        local $^W;
+        my $val = 0 + $self->get_variable($tree->[1]);
+        $self->set_variable($tree->[1], $val + 1);
+        return $tree->[2] ? $val : $val + 1; # ->[2] is set to 1 during parsing of postfix ops
+
+    } elsif ($op eq '--') {
+        local $^W;
+        my $val = 0 + $self->get_variable($tree->[1]);
+        $self->set_variable($tree->[1], $val - 1);
+        return $tree->[2] ? $val : $val - 1; # ->[2] is set to 1 during parsing of postfix ops
     }
 
     $self->throw('operator', "Un-implemented operation $op");
