@@ -101,6 +101,7 @@ BEGIN {
         nsort   => \&vmethod_nsort,
         pop     => sub { pop @{ $_[0] } },
         push    => sub { my $ref = shift; push @$ref, @_; return '' },
+        random  => sub { my $ref = shift; $ref->[ rand @$ref ] },
         reverse => sub { [ reverse @{ $_[0] } ] },
         shift   => sub { shift  @{ $_[0] } },
         size    => sub { scalar @{ $_[0] } },
