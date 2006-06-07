@@ -9,12 +9,12 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template'; #real    0m1.243s #user    0m0.695s #sys     0m0.018s
-#    $module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
+    #$module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => 489 - ($is_tt ? 79 : 0);
+use Test::More tests => 505 - ($is_tt ? 94 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -296,15 +296,6 @@ process_ok("[% CALL foo %]" => '',   {foo => sub {$t++; 'hi'}});
 ok($t == 3, "CALL method actually called var");
 
 ###----------------------------------------------------------------###
-### self-modifier
-process_ok("[% a = 1; (a += 2) %]"  => 3)  if ! $is_tt;
-process_ok("[% a = 1; (a -= 2) %]"  => -1) if ! $is_tt;
-process_ok("[% a = 4; (a /= 2) %]"  => 2)  if ! $is_tt;
-process_ok("[% a = 1; (a *= 2) %]"  => 2)  if ! $is_tt;
-process_ok("[% a = 3; (a **= 2) %]" => 9)  if ! $is_tt;
-process_ok("[% a = 1; (a %= 2) %]"  => 1)  if ! $is_tt;
-
-###----------------------------------------------------------------###
 ### virtual methods / filters
 
 process_ok("[% [0 .. 10].reverse.1 %]" => 9) if ! $is_tt;
@@ -390,6 +381,14 @@ process_ok("[% foo -%]\n " => ' ');
 process_ok("[% foo -%]\n\n\n" => "\n\n");
 process_ok("[% foo -%] \n " => ' ');
 
+
+###----------------------------------------------------------------###
+### concat
+
+process_ok('[% a = "foo"; a _ "bar" %]' => 'foobar');
+process_ok('[% a = "foo"; a ~ "bar" %]' => 'foobar') if ! $is_tt;
+process_ok('[% a = "foo"; a ~= "bar"; a %]' => 'foobar') if ! $is_tt;
+
 ###----------------------------------------------------------------###
 ### math operations
 
@@ -415,6 +414,29 @@ process_ok("[% 1 + 2 ** 3 %]" => 9) if ! $is_tt;
 process_ok("[% 2 * 2 ** 3 %]" => 16) if ! $is_tt;
 process_ok("[% SET foo = 1 %][% foo + 2 %]" => 3);
 process_ok("[% SET foo = 1 %][% (foo + 2) %]" => 3);
+
+process_ok("[% a = 1; (a += 2) %]"  => 3)  if ! $is_tt;
+process_ok("[% a = 1; (a -= 2) %]"  => -1) if ! $is_tt;
+process_ok("[% a = 4; (a /= 2) %]"  => 2)  if ! $is_tt;
+process_ok("[% a = 1; (a *= 2) %]"  => 2)  if ! $is_tt;
+process_ok("[% a = 3; (a **= 2) %]" => 9)  if ! $is_tt;
+process_ok("[% a = 1; (a %= 2) %]"  => 1)  if ! $is_tt;
+
+process_ok('[% a += 1 %]-[% a %]-[% a += 1 %]-[% a %]' => '-1--2') if ! $is_tt;
+process_ok('[% (a += 1) %]-[% (a += 1) %]' => '1-2') if ! $is_tt;
+
+process_ok('[% a = 2; a -= 3; a %]' => '-1') if ! $is_tt;
+process_ok('[% a = 2; a *= 3; a %]' => '6') if ! $is_tt;
+process_ok('[% a = 2; a /= .5; a %]' => '4') if ! $is_tt;
+process_ok('[% a = 8; a %= 3; a %]' => '2') if ! $is_tt;
+process_ok('[% a = 2; a **= 3; a %]' => '8') if ! $is_tt;
+
+process_ok('[% a = 1 %][% ++a %][% a %]' => '22') if ! $is_tt;
+process_ok('[% a = 1 %][% a++ %][% a %]' => '12') if ! $is_tt;
+process_ok('[% a = 1 %][% --a %][% a %]' => '00') if ! $is_tt;
+process_ok('[% a = 1 %][% a-- %][% a %]' => '10') if ! $is_tt;
+process_ok('[% a++ FOR [1..3] %]' => '012') if ! $is_tt;
+process_ok('[% --a FOR [1..3] %]' => '-1-2-3') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### boolean operations
