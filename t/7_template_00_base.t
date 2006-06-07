@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 465 - ($is_tt ? 55 : 0);
+use Test::More tests => 474 - ($is_tt ? 64 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -182,6 +182,8 @@ process_ok("[% __foo %]2" => '2', {__foo => 1});
 process_ok("[% _foo = 1 %][% _foo %]2" => '2');
 process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
 
+process_ok("[% qw/Foo Bar Baz/.0 %]" => 'Foo');
+
 ###----------------------------------------------------------------###
 ### variable SETting
 
@@ -249,6 +251,8 @@ process_ok("[% foo.bar = 2 %][% foo.bar %]" => '2');
 process_ok('[% a = "a" %][% (b = a) %][% a %][% b %]' => 'aaa');
 process_ok('[% a = "a" %][% (c = (b = a)) %][% a %][% b %][% c %]' => 'aaaa');
 
+process_ok("[% a = qw{Foo Bar Baz} ; a.2 %]" => 'Baz');
+
 ###----------------------------------------------------------------###
 ### Reserved words
 
@@ -287,6 +291,15 @@ process_ok("[% CALL foo %]" => '',   {foo => sub {$t++; 'hi'}});
 ok($t == 3, "CALL method actually called var");
 
 ###----------------------------------------------------------------###
+### self-modifier
+process_ok("[% a = 1; (a += 2) %]"  => 3);
+process_ok("[% a = 1; (a -= 2) %]"  => -1);
+process_ok("[% a = 4; (a /= 2) %]"  => 2);
+process_ok("[% a = 1; (a *= 2) %]"  => 2);
+process_ok("[% a = 3; (a **= 2) %]" => 9);
+process_ok("[% a = 1; (a %= 2) %]"  => 1);
+
+###----------------------------------------------------------------###
 ### virtual methods / filters
 
 process_ok("[% [0 .. 10].reverse.1 %]" => 9) if ! $is_tt;
@@ -296,6 +309,7 @@ process_ok("[% 123.length %]" => 3) if ! $is_tt;
 process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
 process_ok("[% -123.2.length %]" => -5) if ! $is_tt; # the - doesn't bind as tight as the dot methods
 process_ok("[% (-123.2).length %]" => 6) if ! $is_tt;
+process_ok("[% a = 23; a.0 %]" => 23) if ! $is_tt; # '0' is a scalar_op
 
 process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
 process_ok("[% n.repeat(0) %]" => '',   {n => 1});
