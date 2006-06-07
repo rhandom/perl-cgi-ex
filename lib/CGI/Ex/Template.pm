@@ -1312,8 +1312,7 @@ sub set_variable {
             $ref = $self->get_variable($ref);
             if (defined $ref && $ref !~ $QR_PRIVATE) { # don't allow vars that begin with _
                 if ($#$var <= $i) {
-                    $self->{'_vars'}->{$ref} = $val;
-                    return;
+                    return $self->{'_vars'}->{$ref} = $val;
                 } else {
                     $ref = $self->{'_vars'}->{$ref} ||= {};
                 }
@@ -1326,20 +1325,28 @@ sub set_variable {
     } elsif (defined $ref) {
         return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
         if ($#$var <= $i) {
-            $self->{'_vars'}->{$ref} = $val;
-            return;
+            return $self->{'_vars'}->{$ref} = $val;
         } else {
             $ref = $self->{'_vars'}->{$ref} ||= {};
         }
     }
 
-    ### let the top level thing be a code block
-    if (UNIVERSAL::isa($ref, 'CODE')) {
-        return;
-    }
+    while (defined $ref) {
 
-    ### vivify the chained levels
-    while (defined $ref && $#$var > $i) {
+        ### check at each point if the returned thing was a code
+        if (UNIVERSAL::isa($ref, 'CODE')) {
+            my @results = $ref->($args ? map { $self->get_variable($_) } @$args : ());
+            if (defined $results[0]) {
+                $ref = ($#results > 0) ? \@results : $results[0];
+            } elsif (defined $results[1]) {
+                die $results[1]; # TT behavior - why not just throw ?
+            } else {
+                return;
+            }
+        }
+
+        ### descend one chained level
+        last if $i >= $#$var;
         my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
         my $name         = $var->[$i++];
         my $args         = $var->[$i++];
@@ -1349,8 +1356,7 @@ sub set_variable {
             if (ref($name) eq 'ARRAY') {
                 $name = $self->get_variable($name);
                 if (! defined($name) || $name =~ /^[_.]/) {
-                    $ref = undef;
-                    next;
+                    return;
                 }
             } else {
                 die "Shouldn't get a ".ref($name)." during a vivify on chain";
@@ -1360,8 +1366,12 @@ sub set_variable {
             return;
         }
 
+        ### scalar access
+        if (! ref $ref) {
+            return;
+
         ### method calls on objects
-        if (UNIVERSAL::can($ref, 'can')) {
+        } elsif (UNIVERSAL::can($ref, 'can')) {
             my $lvalueish;
             my @args = $args ? map { $self->get_variable($_) } @$args : ();
             if ($i >= $#$var) {
@@ -1375,7 +1385,7 @@ sub set_variable {
                 } elsif (defined $results[1]) {
                     die $results[1]; # TT behavior - why not just throw ?
                 } else {
-                    $ref = undef;
+                    return;
                 }
                 return if $lvalueish;
                 next;
@@ -1388,8 +1398,7 @@ sub set_variable {
         ### hash member access
         if (UNIVERSAL::isa($ref, 'HASH')) {
             if ($#$var <= $i) {
-                $ref->{$name} = $val;
-                return;
+                return $ref->{$name} = $val;
             } else {
                 $ref = $ref->{$name} ||= {};
                 next;
@@ -1399,8 +1408,7 @@ sub set_variable {
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
             if ($name =~ /^\d+$/) {
                 if ($#$var <= $i) {
-                    $ref->[$name] = $val;
-                    return;
+                    return $ref->[$name] = $val;
                 } else {
                     $ref = $ref->[$name] ||= {};
                     next;
@@ -1409,26 +1417,11 @@ sub set_variable {
                 return;
             }
 
-        ### scalar access
-        } elsif (! ref($ref) && defined($ref)) {
-            return;
-        }
-
-        ### check at each point if the returned thing was a code
-        if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? map { $self->get_variable($_) } @$args : ());
-            if (defined $results[0]) {
-                $ref = ($#results > 0) ? \@results : $results[0];
-            } elsif (defined $results[1]) {
-                die $results[1]; # TT behavior - why not just throw ?
-            } else {
-                return;
-            }
         }
 
     }
 
-    return $ref;
+    return;
 }
 
 ###----------------------------------------------------------------###
