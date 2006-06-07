@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 462 - ($is_tt ? 55 : 0);
+use Test::More tests => 465 - ($is_tt ? 55 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -738,3 +738,9 @@ process_ok("[% PERL %] print \$stash->set('a.b.c', 7) [% END %][% a.b.c %]" => '
 
 process_ok("[% BLOCK foo %][% PROCESS bar %][% END %][% BLOCK bar %][% PROCESS foo %][% END %][% PROCESS foo %]" => '') if ! $is_tt;
 
+###----------------------------------------------------------------###
+### META
+
+process_ok("[% template.name %]" => 'input text');
+process_ok("[% META foo = 'bar' %][% template.foo %]" => 'bar');
+process_ok("[% META foo = 'bar' %][% component.foo %]" => 'bar');
