@@ -9,12 +9,12 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template'; #real    0m1.243s #user    0m0.695s #sys     0m0.018s
-    #$module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
+    $module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => 474 - ($is_tt ? 64 : 0);
+use Test::More tests => 478 - ($is_tt ? 68 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -182,7 +182,9 @@ process_ok("[% __foo %]2" => '2', {__foo => 1});
 process_ok("[% _foo = 1 %][% _foo %]2" => '2');
 process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
 
-process_ok("[% qw/Foo Bar Baz/.0 %]" => 'Foo');
+process_ok("[% qw/Foo Bar Baz/.0 %]" => 'Foo') if ! $is_tt;
+process_ok('[% [0..10].-1 %]' => '10') if ! $is_tt;
+process_ok('[% [0..10].${ 2.3 } %]' => '2') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### variable SETting
@@ -251,7 +253,7 @@ process_ok("[% foo.bar = 2 %][% foo.bar %]" => '2');
 process_ok('[% a = "a" %][% (b = a) %][% a %][% b %]' => 'aaa');
 process_ok('[% a = "a" %][% (c = (b = a)) %][% a %][% b %][% c %]' => 'aaaa');
 
-process_ok("[% a = qw{Foo Bar Baz} ; a.2 %]" => 'Baz');
+process_ok("[% a = qw{Foo Bar Baz} ; a.2 %]" => 'Baz') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### Reserved words
@@ -292,12 +294,12 @@ ok($t == 3, "CALL method actually called var");
 
 ###----------------------------------------------------------------###
 ### self-modifier
-process_ok("[% a = 1; (a += 2) %]"  => 3);
-process_ok("[% a = 1; (a -= 2) %]"  => -1);
-process_ok("[% a = 4; (a /= 2) %]"  => 2);
-process_ok("[% a = 1; (a *= 2) %]"  => 2);
-process_ok("[% a = 3; (a **= 2) %]" => 9);
-process_ok("[% a = 1; (a %= 2) %]"  => 1);
+process_ok("[% a = 1; (a += 2) %]"  => 3)  if ! $is_tt;
+process_ok("[% a = 1; (a -= 2) %]"  => -1) if ! $is_tt;
+process_ok("[% a = 4; (a /= 2) %]"  => 2)  if ! $is_tt;
+process_ok("[% a = 1; (a *= 2) %]"  => 2)  if ! $is_tt;
+process_ok("[% a = 3; (a **= 2) %]" => 9)  if ! $is_tt;
+process_ok("[% a = 1; (a %= 2) %]"  => 1)  if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### virtual methods / filters
@@ -310,6 +312,7 @@ process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
 process_ok("[% -123.2.length %]" => -5) if ! $is_tt; # the - doesn't bind as tight as the dot methods
 process_ok("[% (-123.2).length %]" => 6) if ! $is_tt;
 process_ok("[% a = 23; a.0 %]" => 23) if ! $is_tt; # '0' is a scalar_op
+process_ok('[% 0.rand %]' => qr/^0\.\d+$/) if ! $is_tt;
 
 process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
 process_ok("[% n.repeat(0) %]" => '',   {n => 1});
@@ -501,6 +504,8 @@ process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% NEXT %][% END %][% f %
 process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% LAST %][% END %][% f %][% END %]" => '');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% NEXT %][% END %][% END %]" => '123');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% LAST %][% END %][% END %]" => '1');
+
+process_ok('[% a = ["Red", "Blue"] ; FOR [0..3] ; a.${ loop.index % a.size } ; END %]' => 'RedBlueRedBlue') if ! $is_tt;
 
 ### TT is not consistent in what is localized - well it is documented
 ### if you set a variable in the FOREACH tag, then nothing in the loop gets localized
