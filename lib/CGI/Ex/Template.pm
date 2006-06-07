@@ -1380,7 +1380,8 @@ sub set_variable {
                 return if $lvalueish;
                 next;
             }
-            die $@ if ref $@ || $@ !~ /Can\'t locate object method/;
+            my $class = ref $ref;
+            die $@ if ref $@ || $@ !~ /Can\'t locate object method "\Q$name\E" via package "\Q$class\E"/;
             # fall on down to "normal" accessors
         }
 
