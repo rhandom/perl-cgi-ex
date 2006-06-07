@@ -70,6 +70,7 @@ BEGIN {
         lower    => sub { lc $_[0] },
         match    => \&vmethod_match,
         null     => sub { '' },
+        rand     => sub { local $^W; rand shift },
         remove   => sub { vmethod_replace(shift, shift, '', 1) },
         repeat   => \&vmethod_repeat,
         replace  => \&vmethod_replace,
@@ -918,8 +919,11 @@ sub parse_variable {
             my $name = $1;
             my $var = $self->parse_variable(\$name);
             push @var, $var;
-        } elsif ($copy =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox) {
+
+        ### allow for names
+        } elsif ($copy =~ s{ ^ (-? \w+) \s* $QR_COMMENTS }{}ox) {
             push @var, $1;
+
         } else {
             $self->throw('parse', "Not sure how to continue parsing on \"$copy\" ($$str_ref)");
         }
@@ -1293,7 +1297,7 @@ sub get_variable {
 
             ### array access
             } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-                if ($name =~ /^\d+$/) {
+                if ($name =~ m{ ^ -? \d+ (\.\d+)? $}x) {
                     $ref = ($name > $#$ref) ? undef : $ref->[$name];
                 } else {
                     $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
@@ -1434,7 +1438,7 @@ sub set_variable {
 
         ### array access
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ /^\d+$/) {
+            if ($name =~ m{ ^ -? \d+ (\.\d+)? $}x) {
                 if ($#$var <= $i) {
                     return $ref->[$name] = $val;
                 } else {
@@ -1556,7 +1560,7 @@ sub ref_variable {
 
         ### array access
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ /^\d+$/) {
+            if ($name =~ m{ ^ -? \d+ (\.\d+)? $}x) {
                 if ($#$var <= $i) {
                     return \ $ref->[$name];
                 } else {
