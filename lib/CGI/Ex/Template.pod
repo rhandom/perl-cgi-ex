@@ -294,6 +294,26 @@ Andy Wardley calls this side-by-side effect notation.
 
     [% a = [[1..3], [5..7]] %][% i FOREACH i = j FOREACH j = a %] # = 123567
 
+=item Semi-colons on directives in the same tag are optional. (TT3)
+
+    [% SET a = 1
+       GET a
+     %]
+
+    [% FOREACH i = [1 .. 10]
+         i
+       END %]
+
+Note: a semi-colon is still required in front of any block directive
+that can be used as a post-operative directive.
+
+    [% 1 IF 0
+       2 %]   # prints 2
+
+    [% 1; IF 0
+       2
+       END %] # prints 1
+
 =item CATCH blocks can be empty.
 
 TT2 requires them to contain something.
