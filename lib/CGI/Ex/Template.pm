@@ -610,7 +610,7 @@ sub parse_tree {
             } elsif ($func eq 'META') {
                 my $args = $self->parse_args(\$tag);
                 my $hash;
-                if (($hash = $self->vivify_args($args)->[-1])
+                if (($hash = $self->get_variable($args->[-1]))
                     && UNIVERSAL::isa($hash, 'HASH')) {
                     unshift @meta, %$hash; # first defined win
                 }
@@ -1147,7 +1147,7 @@ sub get_variable {
 
         ### check at each point if the rurned thing was a code
         if (UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
+            my @results = $ref->($args ? map { $self->get_variable($_) } @$args : ());
             if (defined $results[0]) {
                 $ref = ($#results > 0) ? \@results : $results[0];
             } elsif (defined $results[1]) {
@@ -1185,10 +1185,10 @@ sub get_variable {
         ### allow for scalar and filter access (this happens for every non virtual method call)
         if (! ref $ref) {
             if ($SCALAR_OPS->{$name}) {                        # normal scalar op
-                $ref = $SCALAR_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                $ref = $SCALAR_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
 
             } elsif ($LIST_OPS->{$name}) {                     # auto-promote to list and use list op
-                $ref = $LIST_OPS->{$name}->([$ref], $args ? @{ $self->vivify_args($args) } : ());
+                $ref = $LIST_OPS->{$name}->([$ref], $args ? map { $self->get_variable($_) } @$args : ());
 
             } elsif (my $filter = $self->{'FILTERS'}->{$name}    # filter configured in Template args
                      || $FILTER_OPS->{$name}                     # predefined filters in CET
@@ -1208,7 +1208,7 @@ sub get_variable {
                     eval {
                         my $sub = $filter->[0];
                         if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
-                            ($sub, my $err) = $sub->($self->context, $args ? @{ $self->vivify_args($args) } : ());
+                            ($sub, my $err) = $sub->($self->context, $args ? map { $self->get_variable($_) } @$args : ());
                             if (! $sub && $err) {
                                 $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                                 die $err;
@@ -1241,7 +1241,7 @@ sub get_variable {
 
             ### method calls on objects
             if ($was_dot_call && UNIVERSAL::can($ref, 'can')) {
-                my @args = $args ? @{ $self->vivify_args($args) } : ();
+                my @args = $args ? map { $self->get_variable($_) } @$args : ();
                 my @results = eval { $ref->$name(@args) };
                 if ($@) {
                     my $class = ref $ref;
@@ -1263,7 +1263,7 @@ sub get_variable {
                 if ($was_dot_call && exists($ref->{$name}) ) {
                     $ref = $ref->{$name};
                 } elsif ($HASH_OPS->{$name}) {
-                    $ref = $HASH_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                    $ref = $HASH_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
                 } elsif ($ARGS->{'is_namespace_during_compile'}) {
                     return $var; # abort - can't fold namespace variable
                 } else {
@@ -1275,7 +1275,7 @@ sub get_variable {
                 if ($name =~ /^\d+$/) {
                     $ref = ($name > $#$ref) ? undef : $ref->[$name];
                 } else {
-                    $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? @{ $self->vivify_args($args) } : ());
+                    $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
                 }
             }
         }
@@ -1363,7 +1363,7 @@ sub set_variable {
         ### method calls on objects
         if (UNIVERSAL::can($ref, 'can')) {
             my $lvalueish;
-            my @args = $args ? @{ $self->vivify_args($args) } : ();
+            my @args = $args ? map { $self->get_variable($_) } @$args : ();
             if ($i >= $#$var) {
                 $lvalueish = 1;
                 push @args, $val;
@@ -1415,7 +1415,7 @@ sub set_variable {
 
         ### check at each point if the returned thing was a code
         if (defined($ref) && UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? @{ $self->vivify_args($args) } : ());
+            my @results = $ref->($args ? map { $self->get_variable($_) } @$args : ());
             if (defined $results[0]) {
                 $ref = ($#results > 0) ? \@results : $results[0];
             } elsif (defined $results[1]) {
@@ -1428,12 +1428,6 @@ sub set_variable {
     }
 
     return $ref;
-}
-
-sub vivify_args {
-    my $self = shift;
-    my $vars = shift;
-    return [map {$self->get_variable($_)} @$vars];
 }
 
 ###----------------------------------------------------------------###
@@ -2149,7 +2143,7 @@ sub play_THROW {
     my ($self, $ref, $node) = @_;
     my ($name, $args) = @$ref;
     $name = $self->get_variable($name);
-    my @args = $args ? @{ $self->vivify_args($args) } : ();
+    my @args = $args ? map { $self->get_variable($_) } @$args : ();
     $self->throw($name, \@args, $node);
 }
 
@@ -2276,7 +2270,7 @@ sub play_USE {
     if ($self->{'PLUGIN_FACTORY'}->{$module} || eval {require $require}) {
         my $shape   = $package->load;
         my $context = $self->context;
-        my @args    = $args ? @{ $self->vivify_args($args) } : ();
+        my @args    = $args ? map { $self->get_variable($_) } @$args : ();
         $obj = $shape->new($context, @args);
     } elsif (lc($module) eq 'iterator') { # use our iterator if none found (TT's works just fine)
         $obj = $PACKAGE_ITERATOR->new($args ? $self->get_variable($args->[0]) : []);
@@ -2287,14 +2281,14 @@ sub play_USE {
             eval {require $require} || next;
             my $shape   = $package->load;
             my $context = $self->context;
-            my @args    = $args ? @{ $self->vivify_args($args) } : ();
+            my @args    = $args ? map { $self->get_variable($_) } @$args : ();
             $obj = $shape->new($context, @args);
         }
     } elsif ($self->{'LOAD_PERL'}) {
         my $require = "$module.pm";
         $require =~ s|::|/|g;
         if (eval {require $require}) {
-            my @args = $args ? @{ $self->vivify_args($args) } : ();
+            my @args = $args ? map { $self->get_variable($_) } @$args : ();
             $obj = $module->new(@args);
         }
     }

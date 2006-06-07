@@ -2403,7 +2403,7 @@ hash that contains the parsed tree.
 Allow for the multitudinous ways that TT parses arguments.  This allows
 for positional as well as named arguments.  Named arguments can be separated with a "=" or "=>",
 and positional arguments should be separated by " " or ",".  This only returns an array
-of parsed variables.  Use vivify_args to translate to the actual values.
+of parsed variables.   To get the actual values, you must call get_variable on each value.
 
 =item C<parse_tree>
 
@@ -2438,11 +2438,6 @@ the DEBUG => 'undef', configuration option which will throw an error on undefine
 Called when a variable is undefined during a GET directive.  This is useful to
 see if a value that is about to get inserted into the text is undefined.  undefined_any is a little
 too general for most cases.  Also, you may pass a coderef via the UNDEFINED_GET configuration variable.
-
-=item C<vivify_args>
-
-Turns an arrayref of arg identities parsed by parse_args and turns
-them into the actual values.
 
 =back
 
