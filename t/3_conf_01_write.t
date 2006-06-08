@@ -80,7 +80,7 @@ SKIP: {
 };
 
 SKIP: {
-    skip("Config::IniHash not found", 2) if ! eval { require Conifg::IniHash };
+    skip("Config::IniHash not found", 2) if ! eval { require Config::IniHash };
     ### ini likes hash O' hashes
     $hash->{'one'} = {};
     $hash->{'two'} = {};
