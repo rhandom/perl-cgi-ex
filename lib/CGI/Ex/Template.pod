@@ -1118,26 +1118,50 @@ provide a speed optimization in your template - just may help clarify things).
     [% a = Text.new("foo"); a.length %] => 3
 
 
+    [% a = [1 .. 30]; a.size %] => 30
 
-5A
-process_ok('[% a = Text.new("This is a string") %][% a.length %]' => 16) if ! $is_tt;
-process_ok('[% a = List.new("one", "two", "three") %][% a.size %]' => 3) if ! $is_tt;
-process_ok('[% a = Hash.new("one", "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
-process_ok('[% a = Hash.new(one = "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
-process_ok('[% a = Hash.new(one => "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+    [% a = [1 .. 30]; List.size(a) %] => 30
 
-process_ok('[% {a => 1, b => 2} | Hash.keys | List.join(", ") %]' => 'a, b');
+    [% a = List.new(1 .. 30); a.size %] => 30
 
 
+    [% a = {a => 1, b => 2}; a.size %] => 2
 
+    [% a = {a => 1, b => 2}; Hash.size(a) %] => 2
+
+    [% a = Hash.new({a => 1, b => 2}); a.size %] => 2
+
+    [% a = Hash.new(a => 1, b => 2); a.size %] => 2
+
+    [% a = Hash.new(a = 1, b = 2); a.size %] => 2
+
+    [% a = Hash.new('a', 1, 'b', 2); a.size %] => 2
+
+One limitation is that if you pass a key named "Text",
+"List", or "Hash" in your variable stash - the corresponding
+virtual object will be hidden.
+
+Additionally, you can use all of the Virtual object methods with
+the pipe operator.
+
+    [% {a => 1, b => 2}
+       | Hash.keys
+       | List.join(", ") %] => a, b
+
+Again, there aren't any speed optimizations to using the virtual
+objects in CET, but it can help clarify the intent in some cases.
+
+Note: these aren't really objects.  All of the "virtual objects" are
+references to the $SCALAR_OPS, $LIST_OPS, and $HASH_OPS hashes
+found in the $VOBJS hash of CGI::Ex::Template.
 
 =head1 DIRECTIVES
 
-This section contains the alphabetical list of DIRECTIVES available
-in the TT language.  DIRECTIVES are the "functions" and control
-structures that implement the Template Toolkit mini-language.  For
-further discussion and examples, please refer to the TT directives
-documentation.
+This section contains the alphabetical list of DIRECTIVES available in
+the TT language.  DIRECTIVES are the "functions" and control
+structures of the Template Toolkit mini-language.  For further
+discussion and examples beyond what is listed below, please refer to
+the TT directives documentation.
 
     [% IF 1 %]One[% END %]
     [% FOREACH a = [1 .. 3] %]
