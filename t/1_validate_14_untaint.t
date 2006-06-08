@@ -13,9 +13,15 @@ use FindBin qw($Bin);
 use lib ($Bin =~ /(.+)/ ? "$1/../lib" : ''); # add bin - but untaint it
 
 ### Set up taint checking
-sub is_tainted { local $^W = 0; ! eval { eval("#" . substr(join("", @_), 0, 0)); 1; 0 } }
+sub is_tainted { local $^W; eval { eval("#" . substr(join("", @_), 0, 0)); 1; } ? 0 : 1 }
 
 SKIP: {
+
+my $ok = 1;
+if (is_tainted($ok)) {
+    skip("is_tainted has false positives($@)", 14);
+}
+
 
 my $taint = join(",", $0, %ENV, @ARGV);
 if (! is_tainted($taint) && open(my $fh, "/dev/urandom")) {
@@ -28,10 +34,13 @@ if (! is_tainted($taint)) {
 
 ### make sure tainted hash values don't bleed into other values
 my $form = {};
+if (is_tainted($form)) {
+    skip("Tainted doesn't work", 14);
+}
 $form->{'foo'} = "123$taint";
 $form->{'bar'} = "456$taint";
 $form->{'baz'} = "789";
-if (!  is_tainted($form->{'foo'})) {
+if (! is_tainted($form->{'foo'})) {
     skip("Tainted hash key didn't work right", 14);
 } elsif (is_tainted($form->{'baz'})) {
     # untaint checking doesn't really work
