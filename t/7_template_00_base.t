@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 513 - ($is_tt ? 102 : 0);
+use Test::More tests => 514 - ($is_tt ? 103 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -373,6 +373,8 @@ process_ok('[% a = List.new("one", "two", "three") %][% a.size %]' => 3) if ! $i
 process_ok('[% a = Hash.new("one", "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 process_ok('[% a = Hash.new(one = "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 process_ok('[% a = Hash.new(one => "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+
+process_ok('[% {a => 1, b => 2} | Hash.keys | List.join(", ") %]' => 'a, b');
 
 ###----------------------------------------------------------------###
 ### chomping
