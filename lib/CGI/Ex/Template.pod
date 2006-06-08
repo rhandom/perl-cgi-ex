@@ -201,7 +201,7 @@ Note: items that are planned to work in TT3 are marked with (TT3).
 
     [% a = [1..10, 21..30] %]
 
-=item Constructor types can call virtual methods (TT3)
+=item Constructor types can call virtual methods. (TT3)
 
     [% a = [1..10].reverse %]
 
@@ -233,30 +233,30 @@ not just variables.
 
     [% [0..10].${ 2.3 } %] # = 3
 
-=item Reserved names are less reserved (TT3)
+=item Reserved names are less reserved. (TT3)
 
     [% GET GET %] # gets the variable named "GET"
 
     [% GET $GET %] # gets the variable who's name is stored in "GET"
 
-=item Filters and SCALAR_OPS are interchangeable (TT3).
+=item Filters and SCALAR_OPS are interchangeable. (TT3)
 
     [% a | length %]
 
     [% b . lower %]
 
 =item Pipe "|" can be used anywhere dot "." can be and means to call
-the virtual method (TT3).
+the virtual method. (TT3)
 
     [% a = {size => "foo"} %][% a.size %] # = foo
 
     [% a = {size => "foo"} %][% a|size %] # = 1 (size of hash)
 
-=item Pipe "|" and "." can be mixed (TT3).
+=item Pipe "|" and "." can be mixed. (TT3)
 
     [% "aa" | repeat(2) . length %] # = 4
 
-=item Virtual Object Namespaces (TT3).
+=item Virtual Object Namespaces. (TT3)
 
 The Text, List, and Hash types give direct access
 to virtual methods.
@@ -271,7 +271,13 @@ to virtual methods.
        | Hash.keys
        | List.join(", ") %] # = a, b
 
-=item Whitespace is less meaningful (TT3).
+=item Added "as" scalar, list, and hash virtual methods.
+
+    [% list.as("%s", ", ") %]
+
+    [% hash.as("%s => %s", "\n") %]
+
+=item Whitespace is less meaningful. (TT3)
 
     [% 2-1 %] # = 1 (fails in TT2)
 
@@ -279,12 +285,12 @@ to virtual methods.
 
     [% 2 ** 3 %] [% 2 pow 3 %] # = 8 8
 
-=item Added self modifiers (+=, -=, *=, /=, %=, **=, ~=) (TT3).
+=item Added self modifiers (+=, -=, *=, /=, %=, **=, ~=). (TT3)
 
     [% a = 2;  a *= 3  ; a %] # = 6
     [% a = 2; (a *= 3) ; a %] # = 66
 
-=item Added pre and post increment and decrement (++ --) (TT3).
+=item Added pre and post increment and decrement (++ --). (TT3)
 
     [% ++a ; ++a %] # = 12
     [% a-- ; a-- %] # = 0-1
@@ -294,6 +300,18 @@ to virtual methods.
     [% a = qw(a b c); a.1 %] # = b
 
     [% qw/a b c/.2 %] # = c
+
+=item Allow for scientific notation. (TT3)
+
+    [% a = 1.2e-20 %]
+
+    [% 123.as('%.3e') %] # = 1.230e+02
+
+=item Allow for hexidecimal input. (TT3)
+
+    [% a = 0xff0000 %][% a %] # = 16711680
+
+    [% a = 0xff2 / 0xd; a.as('%x') %] # = 13a
 
 =item FOREACH variables can be nested.
 
@@ -609,6 +627,17 @@ to call virtual methods on literal values.
     [% pi = 3.14159 %]   Sets the value of the variable.
     [% 3.13159.length %] Prints 7 (the string length of the number)
 
+Scientific notation is supported.
+
+    [% 314159e-5 + 0 %]      Prints 3.14159.
+
+    [% .0000001.as('%.1e') %]  Prints 1.0e-07
+
+Hexidecimal input is also supported.
+
+    [% 0xff + 0 %]    Prints 255
+
+    [% 48875.as('%x') %]  Prints beeb
 
 =item Single quoted strings.
 
@@ -1074,6 +1103,31 @@ Default pattern is "%s\t%s" and the default join string is a newline.
 =back
 
 =head1 VIRTUAL OBJECTS
+
+TT3 has a concept of Text, List, and Hash virtual objects which provide
+direct access to the scalar, list, and hash virtual methods.  In the TT3
+engine this will allow for more concise generated code.  Because CET does
+not generated perl code to be executed later, CET provides for these virtual
+objects but does so as more of a namespace (using the methods does not
+provide a speed optimization in your template - just may help clarify things).
+
+    [% a = "foo"; a.length %] => 3
+
+    [% a = "foo"; Text.length(a) %] => 3
+
+    [% a = Text.new("foo"); a.length %] => 3
+
+
+
+5A
+process_ok('[% a = Text.new("This is a string") %][% a.length %]' => 16) if ! $is_tt;
+process_ok('[% a = List.new("one", "two", "three") %][% a.size %]' => 3) if ! $is_tt;
+process_ok('[% a = Hash.new("one", "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+process_ok('[% a = Hash.new(one = "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+process_ok('[% a = Hash.new(one => "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+
+process_ok('[% {a => 1, b => 2} | Hash.keys | List.join(", ") %]' => 'a, b');
+
 
 
 
