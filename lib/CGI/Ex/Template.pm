@@ -819,8 +819,14 @@ sub parse_variable {
     my $is_literal;
     my $is_namespace;
 
+    ### allow hex
+    if ($copy =~ s{ ^ 0x ( [a-fA-F0-9]+ ) \s* $QR_COMMENTS }{}ox) {
+        my $number = eval { hex $1 } || 0;
+        push @var, \ $number;
+        $is_literal = 1;
+
     ### allow for numbers
-    if ($copy =~ s{ ^ ( $QR_NUM ) \s* $QR_COMMENTS }{}ox) {
+    } elsif ($copy =~ s{ ^ ( $QR_NUM ) \s* $QR_COMMENTS }{}ox) {
         my $number = $1;
         push @var, \ $number;
         $is_literal = 1;
