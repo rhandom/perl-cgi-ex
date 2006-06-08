@@ -70,7 +70,7 @@ In general the following statements are true:
     If you use Template::Stash::XS with a cached in memory template,
     then CET is about as fast.
 
-    Using TT with a compiled-in-memory template is only 33
+    Using TT with a compiled-in-memory template is only 33%
     faster than CET with a new object compiling each time.
 
 It is pretty hard to beat the speed of XS stash with compiled in
@@ -255,6 +255,21 @@ the virtual method (TT3).
 =item Pipe "|" and "." can be mixed (TT3).
 
     [% "aa" | repeat(2) . length %] # = 4
+
+=item Virtual Object Namespaces (TT3).
+
+The Text, List, and Hash types give direct access
+to virtual methods.
+
+    [% a = "foobar" %][% Text.length(a) %] # = 6
+
+    [% a = [1 .. 10] %][% List.size(a) %] # = 10
+
+    [% a = {a=>"A", b=>"B"} ; Hash.size(a) %] = 2
+
+    [% foo = {a => 1, b => 2}
+       | Hash.keys
+       | List.join(", ") %] # = a, b
 
 =item Whitespace is less meaningful (TT3).
 
@@ -681,13 +696,16 @@ the "|" means to always call the virtual method or filter rather than
 looking in the hashref for a key by that name, or trying to call that
 method on the object.  This is similar to how TT3 will function.
 
+Virtual methods are also made available via Virtual Objects which
+are discussed in a later section.
+
 =head2 SCALAR VIRTUAL METHODS AND FILTERS
 
 The following is the list of builtin virtual methods and filters
 that can be called on scalar data types.  In CET and TT3, filters and
-virtual methods are more closely related.  In general anywhere a
-virtual method can be used a filter can be used also - and vice versa
-- all scalar virtual methods can be used as filters.
+virtual methods are more closely related than in TT2.  In general anywhere a
+virtual method can be used a filter can be used also - and likewise all scalar
+virtual methods can be used as filters.
 
 In addition to the filters listed below, CET will automatically load
 Template::Filters and use them if Template::Toolkit is installed.
@@ -696,11 +714,20 @@ In addition to the scalar virtual methods, any scalar will be
 automatically converted to a single item list if a list virtual method
 is called on it.
 
+Scalar virtual methods are also available through the "Text" virtual
+object (except for true filters such as eval and redirect).
+
 =over 4
 
 =item '0'
 
     [% item = 'foo' %][% item.0 %] Returns self.  Allows for scalars to mask as arrays.
+
+=item as
+
+    [% item.as('%d') %]
+
+Similar to format.  Returns a string formatted with the passed pattern.  Default pattern is %s.
 
 =item chunk
 
@@ -722,9 +749,13 @@ is called on it.
 
 =item eval
 
-    [% item.eval %] Process the string as though it was a template.  This will start the parsing
-    engine and will use the same configuration as the current process.  CET is several times
-    faster at doing this than TT is and is considered acceptable.
+    [% item.eval %]
+
+Process the string as though it was a template.  This will start the parsing
+engine and will use the same configuration as the current process.  CET is several times
+faster at doing this than TT is and is considered acceptable.
+
+This is a filter and is not available via the Text virtual object.
 
 =item evaltt
 
@@ -755,6 +786,10 @@ is called on it.
 
     [% item.length %] Return the length of the string.
 
+=item list
+
+    [% item.list %] Returns a list with a single value of the item.
+
 =item lower
 
     [% item.lower %] Return a lower-casified string.
@@ -782,8 +817,12 @@ Note: This filter is not available as of TT2.15.
 
 =item redirect
 
-    [% item.redirect("output_file.html") %] - Writes the contents out to the specified file.  The filename
-    must be relative to the OUTPUT_PATH configuration variable and the OUTPUT_PATH variable must be set.
+    [% item.redirect("output_file.html") %]
+
+Writes the contents out to the specified file.  The filename
+must be relative to the OUTPUT_PATH configuration variable and the OUTPUT_PATH variable must be set.
+
+This is a filter and is not available via the Text virtual object.
 
 =item repeat
 
@@ -845,11 +884,22 @@ Note: This filter is not available as of TT2.15.
 
 =head2 LIST VIRTUAL METHODS
 
-=over 4
-
 The following methods can be called on an arrayref type data structures (scalar
 types will automatically promote to a single element list and call these methods
 if needed):
+
+Additionally, list virtual methods can be accessed via the List
+Virtual Object.
+
+=over 4
+
+=item as
+
+    [% mylist.as('%s', ', ') %]
+
+Passed a pattern and an string to join on.  Returns a string of the values of the list
+formatted with the passed pattern and joined with the passed string.
+Default pattern is %s and the default join string is a space.
 
 =item first
 
@@ -946,7 +996,18 @@ Note: This filter is not available as of TT2.15.
 
 The following methods can be called on hash type data structures:
 
+Additionally, list virtual methods can be accessed via the Hash
+Virtual Object.
+
 =over 4
+
+=item as
+
+    [% myhash.as('%s => %s', "\n") %]
+
+Passed a pattern and an string to join on.  Returns a string of the key/value pairs
+of the hash formatted with the passed pattern and joined with the passed string.
+Default pattern is "%s\t%s" and the default join string is a newline.
 
 =item defined
 
@@ -972,6 +1033,14 @@ The following methods can be called on hash type data structures:
 =item import
 
     [% myhash.import(hash2) %]  Overlays the keys of hash2 over the keys of myhash.
+
+=item item
+
+    [% myhash.item(key) %] Returns the hashes value for that key.
+
+=item items
+
+    [% myhash.items %] Returns a list of the key and values (flattened hash)
 
 =item keys
 
@@ -1003,6 +1072,10 @@ The following methods can be called on hash type data structures:
     [% myhash.values.join(', ') %] Returns an arrayref of the values of the hash.
 
 =back
+
+=head1 VIRTUAL OBJECTS
+
+
 
 =head1 DIRECTIVES
 
