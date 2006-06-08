@@ -2173,6 +2173,7 @@ sub play_SET {
         }
 
         if ($OP_DISPATCH->{$op}) {
+            local $^W;
             $val = $OP_DISPATCH->{$op}->($self->get_variable($set), $val);
         }
 
