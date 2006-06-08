@@ -10,7 +10,7 @@ use strict;
 use constant trace => $ENV{'CET_TRACE'} || 0; # enable for low level tracing
 use vars qw($VERSION
             $TAGS
-            $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS
+            $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS $VOBJS
             $DIRECTIVES $QR_DIRECTIVE
 
             $OPERATORS
@@ -46,7 +46,7 @@ BEGIN {
     $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
     $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
 
-    $TAGS ||= {
+    $TAGS = {
         default  => ['[%',   '%]'],  # default
         template => ['[%',   '%]'],  # default
         metatext => ['%%',   '%%'],  # Text::MetaText
@@ -57,7 +57,7 @@ BEGIN {
         html     => ['<!--', '-->'], # HTML comments
     };
 
-    $SCALAR_OPS ||= {
+    $SCALAR_OPS = {
         '0'      => sub { shift },
         as       => \&vmethod_as_scalar,
         chunk    => \&vmethod_chunk,
@@ -71,6 +71,7 @@ BEGIN {
         length   => sub { defined($_[0]) ? length($_[0]) : 0 },
         lower    => sub { lc $_[0] },
         match    => \&vmethod_match,
+        new      => sub { defined $_[0] ? $_[0] : '' },
         null     => sub { '' },
         rand     => sub { local $^W; rand shift },
         remove   => sub { vmethod_replace(shift, shift, '', 1) },
@@ -87,14 +88,14 @@ BEGIN {
         uri      => \&vmethod_uri,
     };
 
-    $FILTER_OPS ||= { # generally - non-dynamic filters belong in scalar ops
+    $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
         eval     => [\&filter_eval, 1],
         evaltt   => [\&filter_eval, 1],
         file     => [\&filter_redirect, 1],
         redirect => [\&filter_redirect, 1],
     };
 
-    $LIST_OPS ||= {
+    $LIST_OPS = {
         as      => \&vmethod_as_list,
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
         grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
@@ -104,6 +105,7 @@ BEGIN {
         list    => sub { $_[0] },
         max     => sub { $#{ $_[0] } },
         merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
+        new     => sub { local $^W; return [@_] },
         nsort   => \&vmethod_nsort,
         pop     => sub { pop @{ $_[0] } },
         push    => sub { my $ref = shift; push @$ref, @_; return '' },
@@ -118,7 +120,7 @@ BEGIN {
         unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
     };
 
-    $HASH_OPS ||= {
+    $HASH_OPS = {
         as      => \&vmethod_as_hash,
         defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
         delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
@@ -128,11 +130,18 @@ BEGIN {
         import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
         keys    => sub { [keys %{ $_[0] }] },
         list    => sub { [$_[0]] },
-        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
+        new     => sub { local $^W; return (@_ == 1 && ref $_[-1] eq 'HASH') ? $_[-1] : {@_} },
         nsort   => sub { my $ref = shift; [sort {$ref->{$a}    <=> $ref->{$b}   } keys %$ref] },
+        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
         size    => sub { scalar keys %{ $_[0] } },
         sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
         values  => sub { [values %{ $_[0] }] },
+    };
+
+    $VOBJS = {
+        Text => $SCALAR_OPS,
+        List => $LIST_OPS,
+        Hash => $HASH_OPS,
     };
 
     $DIRECTIVES = {
@@ -1157,28 +1166,30 @@ sub get_variable {
     my $i    = 0;
 
     ### determine the top level of this particular variable access
-    my $ref  = $var->[$i++];
+    my $ref;
+    my $name = $var->[$i++];
     my $args = $var->[$i++];
-    warn "get_variable: begin \"$ref\"\n" if trace;
-    if (ref $ref) {
-        if (ref($ref) eq 'SCALAR') { # a scalar literal
-            $ref = $$ref;
-        } elsif (ref($ref) eq 'REF') { # operator
-            return $self->play_operator($$ref) if ${ $ref }->[0] eq '..';
-            $ref = $self->play_operator($$ref);
+    warn "get_variable: begin \"$name\"\n" if trace;
+    if (ref $name) {
+        if (ref $name eq 'SCALAR') { # a scalar literal
+            $ref = $$name;
+        } elsif (ref $name eq 'REF') { # operator
+            return $self->play_operator($$name) if ${ $name }->[0] eq '..';
+            $ref = $self->play_operator($$name);
         } else { # a named variable access (ie via $name.foo)
-            $ref = $self->get_variable($ref);
-            if (defined $ref) {
-                return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
-                $ref = $self->{'_vars'}->{$ref};
+            $name = $self->get_variable($name);
+            if (defined $name) {
+                return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
+                $ref = $self->{'_vars'}->{$name};
             }
         }
-    } elsif (defined $ref) {
+    } elsif (defined $name) {
         if ($ARGS->{'is_namespace_during_compile'}) {
-            $ref = $self->{'NAMESPACE'}->{$ref};
+            $ref = $self->{'NAMESPACE'}->{$name};
         } else {
-            return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
-            $ref = $self->{'_vars'}->{$ref};
+            return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
+            $ref = $self->{'_vars'}->{$name};
+            $ref = $VOBJS->{$name} if ! defined $ref;
         }
     }
 
@@ -1202,8 +1213,8 @@ sub get_variable {
         ### descend one chained level
         last if $i >= $#$var;
         my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
-        my $name         = $var->[$i++];
-        my $args         = $var->[$i++];
+        $name            = $var->[$i++];
+        $args            = $var->[$i++];
         warn "get_variable: nested \"$name\"\n" if trace;
 
         ### allow for named portions of a variable name (foo.$name.bar)
@@ -1314,9 +1325,11 @@ sub get_variable {
             ### array access
             } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
                 if ($name =~ m{ ^ -? \d+ (\.\d+)? $}x) {
-                    $ref = ($name > $#$ref) ? undef : $ref->[$name];
+                    $ref = $ref->[$name];
+                } elsif ($LIST_OPS->{$name}) {
+                    $ref = $LIST_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
                 } else {
-                    $ref = (! $LIST_OPS->{$name}) ? undef : $LIST_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
+                    $ref = undef;
                 }
             }
         }

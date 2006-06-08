@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 505 - ($is_tt ? 94 : 0);
+use Test::More tests => 513 - ($is_tt ? 102 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -360,6 +360,19 @@ process_ok('[% [1..3].as("%s", ", ") %]' => '1, 2, 3') if ! $is_tt;
 process_ok('[% {a => "B", c => "D"}.as %]' => "a\tB\nc\tD") if ! $is_tt;
 process_ok('[% {a => "B", c => "D"}.as("%s:%s") %]' => "a:B\nc:D") if ! $is_tt;
 process_ok('[% {a => "B", c => "D"}.as("%s:%s", "; ") %]' => "a:B; c:D") if ! $is_tt;
+
+###----------------------------------------------------------------###
+### virtual objects
+
+process_ok('[% a = "foobar" %][% Text.length(a) %]' => 6) if ! $is_tt;
+process_ok('[% a = [1 .. 10] %][% List.size(a) %]' => 10) if ! $is_tt;
+process_ok('[% a = {a=>"A", b=>"B"} ; Hash.size(a) %]' => 2) if ! $is_tt;
+
+process_ok('[% a = Text.new("This is a string") %][% a.length %]' => 16) if ! $is_tt;
+process_ok('[% a = List.new("one", "two", "three") %][% a.size %]' => 3) if ! $is_tt;
+process_ok('[% a = Hash.new("one", "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+process_ok('[% a = Hash.new(one = "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+process_ok('[% a = Hash.new(one => "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### chomping
