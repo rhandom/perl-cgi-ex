@@ -807,6 +807,10 @@ This is a filter and is not available via the Text virtual object.
 
     [% item.html %] Performs a very basic html encoding (swaps out &, <, > and " for the html entities)
 
+=item int
+
+    [% item.int %] Return the integer portion of the value (0 if none).
+
 =item lcfirst
 
     [% item.lcfirst %] Capitalize the leading letter.
