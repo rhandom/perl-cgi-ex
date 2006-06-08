@@ -69,6 +69,7 @@ BEGIN {
         html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
         lcfirst  => sub { lcfirst $_[0] },
         length   => sub { defined($_[0]) ? length($_[0]) : 0 },
+        list     => sub { [$_[0]] },
         lower    => sub { lc $_[0] },
         match    => \&vmethod_match,
         new      => sub { defined $_[0] ? $_[0] : '' },
@@ -99,7 +100,7 @@ BEGIN {
         as      => \&vmethod_as_list,
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
         grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
-        hash    => sub { my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
+        hash    => sub { local $^W; my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
         join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
         last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
         list    => sub { $_[0] },
@@ -143,9 +144,14 @@ BEGIN {
         List => $LIST_OPS,
         Hash => $HASH_OPS,
     };
+    foreach (values %$VOBJS) {
+        $_->{'Text'} = $_->{'as'};
+        $_->{'Hash'} = $_->{'hash'};
+        $_->{'List'} = $_->{'list'};
+    }
 
     $DIRECTIVES = {
-        #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
+        #name       parse_sub        play_sub         block    postdir  continue  move_to_front
         BLOCK   => [\&parse_BLOCK,   \&play_BLOCK,    1,       0,       0,        1],
         BREAK   => [sub {},          \&play_control],
         CALL    => [\&parse_CALL,    \&play_CALL],
@@ -262,9 +268,9 @@ BEGIN {
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_AQ_NOTDOT = "(?! \\s* $QR_COMMENTS \\.)";
     $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=[;+]) )'; # the + comes into play on filenames
-    $QR_PRIVATE   ||= qr/^_/;
+    $QR_PRIVATE   = qr/^_/;
 
-    $WHILE_MAX    ||= 1000;
+    $WHILE_MAX    = 1000;
     $EXTRA_COMPILE_EXT = '.sto';
 };
 
