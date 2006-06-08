@@ -27,6 +27,7 @@ use vars qw($VERSION
 
             $QR_COMMENTS
             $QR_FILENAME
+            $QR_NUM
             $QR_AQ_NOTDOT
             $QR_AQ_SPACE
             $QR_PRIVATE
@@ -268,6 +269,7 @@ BEGIN {
 
     $QR_COMMENTS  = '(?-s: \# .* \s*)*';
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
+    $QR_NUM       = '(?:\d*\.\d+ | \d+) (?: [eE][+-]\d+ )?';
     $QR_AQ_NOTDOT = "(?! \\s* $QR_COMMENTS \\.)";
     $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=[;+]) )'; # the + comes into play on filenames
     $QR_PRIVATE   = qr/^_/;
@@ -818,7 +820,7 @@ sub parse_variable {
     my $is_namespace;
 
     ### allow for numbers
-    if ($copy =~ s{ ^ ( (?:\d*\.\d+ | \d+) ) \s* $QR_COMMENTS }{}ox) {
+    if ($copy =~ s{ ^ ( $QR_NUM ) \s* $QR_COMMENTS }{}ox) {
         my $number = $1;
         push @var, \ $number;
         $is_literal = 1;
@@ -1332,7 +1334,7 @@ sub get_variable {
 
             ### array access
             } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-                if ($name =~ m{ ^ -? \d+ (\.\d+)? $}x) {
+                if ($name =~ m{ ^ -? $QR_NUM $ }ox) {
                     $ref = $ref->[$name];
                 } elsif ($LIST_OPS->{$name}) {
                     $ref = $LIST_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
@@ -1468,7 +1470,7 @@ sub set_variable {
 
         ### array access
         } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
-            if ($name =~ m{ ^ -? \d+ (\.\d+)? $}x) {
+            if ($name =~ m{ ^ -? $QR_NUM $ }ox) {
                 if ($#$var <= $i) {
                     return $ref->[$name] = $val;
                 } else {
@@ -2195,8 +2197,8 @@ sub play_SWITCH {
             next if ! defined $val && defined $test;
             next if defined $val && ! defined $test;
             if ($val ne $test) { # check string-wise first - then numerical
-                next if $val  !~ /^ -? (?: \d*\.\d+ | \d+) $/x;
-                next if $test !~ /^ -? (?: \d*\.\d+ | \d+) $/x;
+                next if $val  !~ m{ ^ -? $QR_NUM $ }ox;
+                next if $test !~ m{ ^ -? $QR_NUM $ }ox;
                 next if $val != $test;
             }
 
