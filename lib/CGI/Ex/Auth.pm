@@ -146,7 +146,7 @@ sub get_valid_auth {
     eval { die defined($data) ? $data : "Requesting credentials" };
 
     ### allow for a sleep to help prevent brute force
-    sleep($self->failed_sleep) if defined($data) && $data->error ne 'Login expired';
+    sleep($self->failed_sleep) if defined($data) && $data->error ne 'Login expired' && $self->failed_sleep;
 
     return;
 }
@@ -230,7 +230,7 @@ sub use_blowfish     { shift->{'use_blowfish'}     ||= ''             }
 sub use_plaintext    { my $s = shift; $s->use_crypt || ($s->{'use_plaintext'} ||= 0) }
 sub use_base64       { my $s = shift; $s->{'use_base64'}  = 1      if ! defined $s->{'use_base64'};  $s->{'use_base64'}  }
 sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined $s->{'expires_min'}; $s->{'expires_min'} }
-sub failed_sleep     { shift->{'failed_sleep'}     ||= 3              }
+sub failed_sleep     { shift->{'failed_sleep'}     ||= 0              }
 
 sub logout_redirect {
     my $self = shift;
@@ -995,7 +995,7 @@ A value of -1 means no expiration.
 =item C<failed_sleep>
 
 Number of seconds to sleep if the passed tokens are invalid.  Does not apply
-if validation failed because of expired tokens.  Default value is 3.
+if validation failed because of expired tokens.  Default value is 0.
 Setting to 0 disables any sleeping.
 
 =item C<form_name>

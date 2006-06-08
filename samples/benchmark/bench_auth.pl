@@ -45,6 +45,7 @@ use CGI::Ex::Dump qw(debug);
     sub script_name      { $0 }
     sub no_cookie_verify { 1 }
     sub secure_hash_keys { ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbb', 'ccc'] }
+    sub failed_sleep     { 0 }
 }
 
 {
