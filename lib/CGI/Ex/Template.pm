@@ -65,6 +65,7 @@ BEGIN {
         collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
         defined  => sub { 1 },
         indent   => \&vmethod_indent,
+        int      => sub { local $^W; int $_[0] },
         'format' => \&vmethod_format,
         hash     => sub { {value => $_[0]} },
         html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
