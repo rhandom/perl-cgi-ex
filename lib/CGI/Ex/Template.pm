@@ -129,6 +129,8 @@ BEGIN {
         exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
         hash    => sub { $_[0] },
         import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
+        item    => sub { my ($h, $k) = @_; return '' if ! defined $k || $k =~ $QR_PRIVATE; $h->{$k} },
+        items   => sub { [ %{ $_[0] } ] },
         keys    => sub { [keys %{ $_[0] }] },
         list    => sub { [$_[0]] },
         new     => sub { local $^W; return (@_ == 1 && ref $_[-1] eq 'HASH') ? $_[-1] : {@_} },
