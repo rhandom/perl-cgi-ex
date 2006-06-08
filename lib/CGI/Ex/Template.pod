@@ -175,17 +175,18 @@ to Template::Stash::define_vmethod.
 
 =head1 TODO
 
-    Add WRAPPER config item
+    Add WRAPPER configuration item (the WRAPPER directive is supported).
 
     Add ERROR config item
 
 =head1 HOW IS CGI::Ex::Template DIFFERENT
 
-CET uses the same template syntax and configuration items
-as TT2, but the internals of CET were written from scratch.  In
-addition to this, the following is a list of some of the ways that
-the configuration and syntax of CET are different from that of TT.
-Note: items that are planned to work in TT3 are marked with (TT3).
+CET uses the same base template syntax and configuration items as TT2,
+but the internals of CET were written from scratch.  Additionally much
+of the planned TT3 syntax is supported.  The following is a list of
+some of the ways that the configuration and syntax of CET are
+different from that of TT2.  Note: items that are planned to work in
+TT3 are marked with (TT3).
 
 =over 4
 
@@ -256,7 +257,7 @@ the virtual method. (TT3)
 
     [% "aa" | repeat(2) . length %] # = 4
 
-=item Virtual Object Namespaces. (TT3)
+=item Added Virtual Object Namespaces. (TT3)
 
 The Text, List, and Hash types give direct access
 to virtual methods.
