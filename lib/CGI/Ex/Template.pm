@@ -39,7 +39,7 @@ use vars qw($VERSION
             );
 
 BEGIN {
-    $VERSION = '2.02';
+    $VERSION = '2.03';
 
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
@@ -204,10 +204,10 @@ BEGIN {
     ### setup the operator parsing
     $OPERATORS = [
         # type      precedence symbols              action (undef means play_operator will handle)
-        ['prefix',  98,        ['++'],              undef                                       ],
-        ['prefix',  98,        ['--'],              undef                                       ],
         ['postfix', 99,        ['++'],              undef                                       ],
         ['postfix', 99,        ['--'],              undef                                       ],
+        ['prefix',  98,        ['++'],              undef                                       ],
+        ['prefix',  98,        ['--'],              undef                                       ],
         ['right',   96,        ['**', 'pow'],       sub {     $_[0] ** $_[1]                  } ],
         ['prefix',  93,        ['!'],               sub {   ! $_[0]                           } ],
         ['prefix',  93,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
