@@ -306,7 +306,7 @@ process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
 process_ok("[% -123.2.length %]" => -5) if ! $is_tt; # the - doesn't bind as tight as the dot methods
 process_ok("[% (-123.2).length %]" => 6) if ! $is_tt;
 process_ok("[% a = 23; a.0 %]" => 23) if ! $is_tt; # '0' is a scalar_op
-process_ok('[% 1.rand %]' => qr/^0\.\d+$/) if ! $is_tt;
+process_ok('[% 1.rand %]' => qr/^0\.\d+(?:e-?\d+)?$/) if ! $is_tt;
 
 process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
 process_ok("[% n.repeat(0) %]" => '',   {n => 1});
