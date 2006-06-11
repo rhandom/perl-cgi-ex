@@ -229,7 +229,7 @@ BEGIN {
         ['none',    75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]                  } ],
         ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]                  } ],
         ['left',    70,        ['&&'],              undef                                       ],
-        ['left',    65,        ['||'],              undef                                       ],
+        ['right',   65,        ['||'],              undef                                       ],
         ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]                  } ],
         ['ternary', 55,        ['?', ':'],          undef                                       ],
         ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]                  } ],
@@ -242,7 +242,7 @@ BEGIN {
         ['assign',  52,        ['='],               undef                                       ],
         ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]                           } ],
         ['left',    45,        ['and', 'AND'],      undef                                       ],
-        ['left',    40,        ['or', 'OR'],        undef                                       ],
+        ['right',   40,        ['or', 'OR'],        undef                                       ],
         ['',         0,        ['hash'],            sub { return {@_};                        } ],
         ['',         0,        ['array'],           sub { return [@_]                         } ],
     ];
