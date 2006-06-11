@@ -811,9 +811,9 @@ sub parse_variable {
 
     ### test for leading prefix operators
     my $has_prefix;
-    if ($copy =~ s{ ^ ($QR_OP_PREFIX) \s* $QR_COMMENTS }{}ox) {
+    while ($copy =~ s{ ^ ($QR_OP_PREFIX) \s* $QR_COMMENTS }{}ox) {
         return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
-        $has_prefix = $1;
+        push @{ $has_prefix }, $1;
     }
 
     my @var;
@@ -997,11 +997,15 @@ sub parse_variable {
             }
 
             local $self->{'_operator_precedence'} = 1;
-            my $op   = $1;
-            my $var2 = $OP_POSTFIX->{$op} ? 1 : $self->parse_variable(\$copy); # cheat - give a "second value" to postfix ops
+            my $op = $1;
+
+            ### allow for postfix - doesn't check precedence - someday we might change - but not today (only affects post ++ and --)
+            if ($OP_POSTFIX->{$op}) {
+                $var = [\ [$op, $var, 1], 0]; # cheat - give a "second value" to postfix ops
+                next;
 
             ### allow for prefix operator precedence
-            if ($has_prefix && $OP->{$op}->[1] < $OP_PREFIX->{$has_prefix}->[1]) {
+            } elsif ($has_prefix && $OP->{$op}->[1] < $OP_PREFIX->{$has_prefix->[-1]}->[1]) {
                 if ($tree) {
                     if ($#$tree == 1) { # only one operator - keep simple things fast
                         $var = [\ [$tree->[0], $var, $tree->[1]], 0];
@@ -1012,13 +1016,14 @@ sub parse_variable {
                     undef $tree;
                     undef $found;
                 }
-                $var = [ \ [ $has_prefix, $var ], 0 ];
-                undef $has_prefix;
+                $var = [ \ [ $has_prefix->[-1], $var ], 0 ];
+                if (! @$has_prefix) { undef $has_prefix } else { pop @$has_prefix }
             }
 
             ### add the operator to the tree
+            my $var2 =  $self->parse_variable(\$copy);
             push (@{ $tree ||= [] }, $op, $var2);
-            $found->{$op} = $OP->{$op}->[1];
+            $found->{$OP->{$op}->[1]}->{$op} = 1; # found->{precedence}->{op}
         }
 
         ### if we found operators - tree the nodes by operator precedence
@@ -1034,7 +1039,7 @@ sub parse_variable {
 
     ### allow for prefix on non-chained variables
     if ($has_prefix) {
-        $var = [ \ [ $has_prefix, $var ], 0 ];
+        $var = [ \ [ $_, $var ], 0 ] for reverse @$has_prefix;
     }
 
     $$str_ref = $copy; # commit the changes
@@ -1048,26 +1053,26 @@ sub apply_precedence {
     my @var;
     my $trees;
     ### look at the operators we found in the order we found them
-    for my $op (sort {$found->{$a} <=> $found->{$b}} keys %$found) {
-        local $found->{$op};
-        delete $found->{$op};
-        my @trees;
-        my @ternary;
+    for my $prec (sort keys %$found) {
+        my $ops = $found->{$prec};
+        local $found->{$prec};
+        delete $found->{$prec};
 
-        ### split the array on the current operator
-        for (my $i = 0; $i <= $#$tree; $i ++) {
-            my $is_ternary = $OP_TERNARY->{$op} && grep {$_ eq $tree->[$i]} @{ $OP->{$op}->[2] };
-            next if $tree->[$i] ne $op && ! $is_ternary;
-            push @trees, [splice @$tree, 0, $i, ()]; # everything up to the operator
-            push @ternary, $tree->[0] if $is_ternary;
-            shift @$tree; # pull off the operator
+        ### split the array on the current operators for this level
+        my @ops;
+        my @exprs;
+        for (my $i = 1; $i <= $#$tree; $i += 2) {
+            next if ! $ops->{ $tree->[$i] };
+            push @ops, $tree->[$i];
+            push @exprs, [splice @$tree, 0, $i, ()];
+            shift @$tree;
             $i = -1;
         }
-        next if ! @trees; # this iteration didn't have the current operator
-        push @trees, $tree if scalar @$tree; # elements after last operator
+        next if ! @exprs; # this iteration didn't have the current operator
+        push @exprs, $tree if scalar @$tree; # add on any remaining items
 
-        ### now - for this level split on remaining operators, or add the variable to the tree
-        for my $node (@trees) {
+        ### simplify sub expressions
+        for my $node (@exprs) {
             if (@$node == 1) {
                 $node = $node->[0]; # single item - its not a tree
             } elsif (@$node == 3) {
@@ -1077,30 +1082,48 @@ sub apply_precedence {
             }
         }
 
-        ### return infix and assign
-        if (! $OP_TERNARY->{$op}) {
-            my $val = $trees[-1];
-            $val = [ \ [ $op, $trees[$_], $val ], 0 ] for reverse (0 .. $#trees - 1); # reverse order - helps out ||
-            return $val;
-        }
+        ### assemble this current level
 
-        ### return simple ternary
-        if (@ternary == 2) {
-            return [ \ [ $op, @trees ], 0 ];
-        }
+        ### some rules:
+        # 1) items at the same precedence level must all be either right or left or ternary associative
+        # 2) ternary items cannot share precedence with anybody else.
+        # 3) there really shouldn't be another operator at the same level as a postfix
+        my $type = $OP->{$ops[0]}->[0];
 
-        ### reorder complex ternary - rare case
-        while ($#ternary >= 1) {
-            ### if we look starting from the back - the first lead ternary op will always be next to its matching op
-            for (my $i = $#ternary; $i >= 0; $i --) {
-                next if $OP->{$ternary[$i]}->[2]->[1] eq $ternary[$i];
-                my ($op, $op2) = splice @ternary, $i, 2, (); # remove the pair of operators
-                my $node = [ \ [$op, @trees[$i .. $i + 2] ], 0 ];
-                splice @trees, $i, 3, $node;
+        if ($type eq 'ternary') {
+            my $op = $OP->{$ops[0]}->[2]->[0]; # use the first op as what we are using
+
+            ### return simple ternary
+            if (@exprs == 3) {
+                $self->throw('parse', "Ternary operator mismatch") if $ops[0] ne $op;
+                $self->throw('parse', "Ternary operator mismatch") if ! $ops[1] || $ops[1] eq $op;
+                return [ \ [ $op, @exprs ], 0 ];
             }
-        }
-        return $trees[0]; # at this point the ternary has been reduced to a single operator
 
+
+            ### reorder complex ternary - rare case
+            while ($#ops >= 1) {
+                ### if we look starting from the back - the first lead ternary op will always be next to its matching op
+                for (my $i = $#ops; $i >= 0; $i --) {
+                    next if $OP->{$ops[$i]}->[2]->[1] eq $ops[$i];
+                    my ($op, $op2) = splice @ops, $i, 2, (); # remove the pair of operators
+                    my $node = [ \ [$op, @exprs[$i .. $i + 2] ], 0 ];
+                    splice @exprs, $i, 3, $node;
+                }
+            }
+            return $exprs[0]; # at this point the ternary has been reduced to a single operator
+
+        } elsif ($type eq 'right' || $type eq 'assign') {
+            my $val = $exprs[-1];
+            $val = [ \ [ $ops[$_ - 1], $exprs[$_], $val ], 0 ] for reverse (0 .. $#exprs - 1);
+            return $val;
+
+        } else {
+            my $val = $exprs[0];
+            $val = [ \ [ $ops[$_ - 1], $val, $exprs[$_] ], 0 ] for (1 .. $#exprs);
+            return $val;
+
+        }
     }
 
     $self->throw('parse', "Couldn't apply precedence");
