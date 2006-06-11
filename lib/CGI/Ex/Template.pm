@@ -649,7 +649,7 @@ sub parse_tree {
             } elsif ($func eq 'META') {
                 my $args = $self->parse_args(\$tag);
                 my $hash;
-                if (($hash = $self->get_variable($args->[-1]))
+                if (($hash = $self->get_expression($args->[-1]))
                     && UNIVERSAL::isa($hash, 'HASH')) {
                     unshift @meta, %$hash; # first defined win
                 }
@@ -668,7 +668,7 @@ sub parse_tree {
             }
 
         ### allow for bare variable getting and setting
-        } elsif (defined(my $var = $self->parse_variable(\$tag))) {
+        } elsif (defined(my $var = $self->parse_expression(\$tag))) {
             push @$pointer, $node;
             if ($tag =~ s{ ^ ($QR_OP_ASSIGN) >? \s* $QR_COMMENTS }{}ox) {
                 $node->[0] = 'SET';
@@ -787,7 +787,7 @@ sub execute_tree {
 
 ###----------------------------------------------------------------###
 
-sub parse_variable {
+sub parse_expression {
     my $self    = shift;
     my $str_ref = shift;
     my $ARGS    = shift || {};
@@ -803,7 +803,7 @@ sub parse_variable {
         } elsif ($$str_ref =~ s{ ^ \$ (\w+ (?:\.\w+)*) \b \s* $QR_COMMENTS }{}ox
                  || $$str_ref =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* $QR_COMMENTS }{}ox) {
             my $name = $1;
-            return $self->parse_variable(\$name);
+            return $self->parse_expression(\$name);
         }
     }
 
@@ -870,7 +870,7 @@ sub parse_variable {
                 next if $piece !~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                     && $piece !~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x;
                 my $name = $1;
-                $piece = $self->parse_variable(\$name);
+                $piece = $self->parse_expression(\$name);
             }
             @pieces = grep {defined && length} @pieces;
             if (@pieces == 1 && ! ref $pieces[0]) {
@@ -894,13 +894,13 @@ sub parse_variable {
     } elsif ($copy =~ s{ ^ \$ (\w+) \b \s* $QR_COMMENTS }{}ox
         || $copy =~ s{ ^ \$\{ \s* ([^\}]+) \} \s* $QR_COMMENTS }{}ox) {
         my $name = $1;
-        push @var, $self->parse_variable(\$name);
+        push @var, $self->parse_expression(\$name);
 
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset presedence
         my $arrayref = ['array'];
-        while (defined(my $var = $self->parse_variable(\$copy))) {
+        while (defined(my $var = $self->parse_expression(\$copy))) {
             push @$arrayref, $var;
             $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         }
@@ -912,9 +912,9 @@ sub parse_variable {
     } elsif ($copy =~ s{ ^ \{ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $hashref = ['hash'];
-        while (defined(my $key = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
+        while (defined(my $key = $self->parse_expression(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
             $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox;
-            my $val = $self->parse_variable(\$copy);
+            my $val = $self->parse_expression(\$copy);
             push @$hashref, $key, $val;
             $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         }
@@ -925,7 +925,7 @@ sub parse_variable {
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
-        my $var = $self->parse_variable(\$copy, {allow_parened_ops => 1});
+        my $var = $self->parse_expression(\$copy, {allow_parened_ops => 1});
         $copy =~ s{ ^ \) \s* $QR_COMMENTS }{}ox
             || $self->throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
         @var = @$var;
@@ -957,7 +957,7 @@ sub parse_variable {
         if ($copy =~ s{ ^ \$(\w+) \s* $QR_COMMENTS }{}ox
             || $copy =~ s{ ^ \$\{ \s* ([^\}]+)\} \s* $QR_COMMENTS }{}ox) {
             my $name = $1;
-            my $var = $self->parse_variable(\$name);
+            my $var = $self->parse_expression(\$name);
             push @var, $var;
 
         ### allow for names
@@ -983,7 +983,7 @@ sub parse_variable {
 
     ### flatten literals and constants as much as possible
     my $var = ($is_literal && $#var == 1) ? ${ $var[0] }
-            : $is_namespace               ? $self->get_variable(\@var, {is_namespace_during_compile => 1})
+            : $is_namespace               ? $self->get_expression(\@var, {is_namespace_during_compile => 1})
             :                               \@var;
 
     ### allow for all "operators"
@@ -1021,7 +1021,7 @@ sub parse_variable {
             }
 
             ### add the operator to the tree
-            my $var2 =  $self->parse_variable(\$copy);
+            my $var2 =  $self->parse_expression(\$copy);
             push (@{ $tree ||= [] }, $op, $var2);
             $found->{$OP->{$op}->[1]}->{$op} = 1; # found->{precedence}->{op}
         }
@@ -1140,14 +1140,14 @@ sub parse_args {
     my @named;
     while (length $$str_ref) {
         my $copy = $$str_ref;
-        if (defined(my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
+        if (defined(my $name = $self->parse_expression(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
             && $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox) {
             $self->throw('parse', 'Named arguments not allowed') if $ARGS->{'positional_only'};
-            my $val = $self->parse_variable(\$copy);
+            my $val = $self->parse_expression(\$copy);
             $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
             push @named, $name, $val;
             $$str_ref = $copy;
-        } elsif (defined(my $arg = $self->parse_variable($str_ref))) {
+        } elsif (defined(my $arg = $self->parse_expression($str_ref))) {
             push @args, $arg;
             $$str_ref =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         } else {
@@ -1184,7 +1184,7 @@ sub interpolate_node {
         } elsif ($piece =~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                  || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
             my $name = $1;
-            push @sub_tree, ['GET', $offset - length($piece), $offset, $self->parse_variable(\$name)];
+            push @sub_tree, ['GET', $offset - length($piece), $offset, $self->parse_expression(\$name)];
         } else {
             $self->throw('parse', "Parse error during interpolate node");
         }
@@ -1196,7 +1196,7 @@ sub interpolate_node {
 
 ###----------------------------------------------------------------###
 
-sub get_variable {
+sub get_expression {
     ### allow for the parse tree to store literals
     return $_[1] if ! ref $_[1];
 
@@ -1209,7 +1209,7 @@ sub get_variable {
     my $ref;
     my $name = $var->[$i++];
     my $args = $var->[$i++];
-    warn "get_variable: begin \"$name\"\n" if trace;
+    warn "get_expression: begin \"$name\"\n" if trace;
     if (ref $name) {
         if (ref $name eq 'SCALAR') { # a scalar literal
             $ref = $$name;
@@ -1217,7 +1217,7 @@ sub get_variable {
             return $self->play_operator($$name) if ${ $name }->[0] eq '..';
             $ref = $self->play_operator($$name);
         } else { # a named variable access (ie via $name.foo)
-            $name = $self->get_variable($name);
+            $name = $self->get_expression($name);
             if (defined $name) {
                 return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
                 $ref = $self->{'_vars'}->{$name};
@@ -1239,7 +1239,7 @@ sub get_variable {
 
         ### check at each point if the rurned thing was a code
         if (UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? map { $self->get_variable($_) } @$args : ());
+            my @results = $ref->($args ? map { $self->get_expression($_) } @$args : ());
             if (defined $results[0]) {
                 $ref = ($#results > 0) ? \@results : $results[0];
             } elsif (defined $results[1]) {
@@ -1255,12 +1255,12 @@ sub get_variable {
         my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
         $name            = $var->[$i++];
         $args            = $var->[$i++];
-        warn "get_variable: nested \"$name\"\n" if trace;
+        warn "get_expression: nested \"$name\"\n" if trace;
 
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
             if (ref($name) eq 'ARRAY') {
-                $name = $self->get_variable($name);
+                $name = $self->get_expression($name);
                 if (! defined($name) || $name =~ $QR_PRIVATE || $name =~ /^\./) {
                     $ref = undef;
                     last;
@@ -1277,10 +1277,10 @@ sub get_variable {
         ### allow for scalar and filter access (this happens for every non virtual method call)
         if (! ref $ref) {
             if ($SCALAR_OPS->{$name}) {                        # normal scalar op
-                $ref = $SCALAR_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
+                $ref = $SCALAR_OPS->{$name}->($ref, $args ? map { $self->get_expression($_) } @$args : ());
 
             } elsif ($LIST_OPS->{$name}) {                     # auto-promote to list and use list op
-                $ref = $LIST_OPS->{$name}->([$ref], $args ? map { $self->get_variable($_) } @$args : ());
+                $ref = $LIST_OPS->{$name}->([$ref], $args ? map { $self->get_expression($_) } @$args : ());
 
             } elsif (my $filter = $self->{'FILTERS'}->{$name}    # filter configured in Template args
                      || $FILTER_OPS->{$name}                     # predefined filters in CET
@@ -1300,7 +1300,7 @@ sub get_variable {
                     eval {
                         my $sub = $filter->[0];
                         if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
-                            ($sub, my $err) = $sub->($self->context, $args ? map { $self->get_variable($_) } @$args : ());
+                            ($sub, my $err) = $sub->($self->context, $args ? map { $self->get_expression($_) } @$args : ());
                             if (! $sub && $err) {
                                 $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
                                 die $err;
@@ -1333,7 +1333,7 @@ sub get_variable {
 
             ### method calls on objects
             if ($was_dot_call && UNIVERSAL::can($ref, 'can')) {
-                my @args = $args ? map { $self->get_variable($_) } @$args : ();
+                my @args = $args ? map { $self->get_expression($_) } @$args : ();
                 my @results = eval { $ref->$name(@args) };
                 if ($@) {
                     my $class = ref $ref;
@@ -1355,7 +1355,7 @@ sub get_variable {
                 if ($was_dot_call && exists($ref->{$name}) ) {
                     $ref = $ref->{$name};
                 } elsif ($HASH_OPS->{$name}) {
-                    $ref = $HASH_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
+                    $ref = $HASH_OPS->{$name}->($ref, $args ? map { $self->get_expression($_) } @$args : ());
                 } elsif ($ARGS->{'is_namespace_during_compile'}) {
                     return $var; # abort - can't fold namespace variable
                 } else {
@@ -1367,7 +1367,7 @@ sub get_variable {
                 if ($name =~ m{ ^ -? $QR_NUM $ }ox) {
                     $ref = $ref->[$name];
                 } elsif ($LIST_OPS->{$name}) {
-                    $ref = $LIST_OPS->{$name}->($ref, $args ? map { $self->get_variable($_) } @$args : ());
+                    $ref = $LIST_OPS->{$name}->($ref, $args ? map { $self->get_expression($_) } @$args : ());
                 } else {
                     $ref = undef;
                 }
@@ -1380,7 +1380,7 @@ sub get_variable {
     if (! defined $ref) {
         if ($self->{'_debug_undef'}) {
             my $chunk = $var->[$i - 2];
-            $chunk = $self->get_variable($chunk) if ref($chunk) eq 'ARRAY';
+            $chunk = $self->get_expression($chunk) if ref($chunk) eq 'ARRAY';
             die "$chunk is undefined\n";
         } else {
             $ref = $self->undefined_any($var);
@@ -1403,7 +1403,7 @@ sub set_variable {
     my $args = $var->[$i++];
     if (ref $ref) {
         if (ref($ref) eq 'ARRAY') { # named access (ie via $name.foo)
-            $ref = $self->get_variable($ref);
+            $ref = $self->get_expression($ref);
             if (defined $ref && $ref !~ $QR_PRIVATE) { # don't allow vars that begin with _
                 if ($#$var <= $i) {
                     return $self->{'_vars'}->{$ref} = $val;
@@ -1429,7 +1429,7 @@ sub set_variable {
 
         ### check at each point if the returned thing was a code
         if (UNIVERSAL::isa($ref, 'CODE')) {
-            my @results = $ref->($args ? map { $self->get_variable($_) } @$args : ());
+            my @results = $ref->($args ? map { $self->get_expression($_) } @$args : ());
             if (defined $results[0]) {
                 $ref = ($#results > 0) ? \@results : $results[0];
             } elsif (defined $results[1]) {
@@ -1448,7 +1448,7 @@ sub set_variable {
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
             if (ref($name) eq 'ARRAY') {
-                $name = $self->get_variable($name);
+                $name = $self->get_expression($name);
                 if (! defined($name) || $name =~ /^[_.]/) {
                     return;
                 }
@@ -1467,7 +1467,7 @@ sub set_variable {
         ### method calls on objects
         } elsif (UNIVERSAL::can($ref, 'can')) {
             my $lvalueish;
-            my @args = $args ? map { $self->get_variable($_) } @$args : ();
+            my @args = $args ? map { $self->get_expression($_) } @$args : ();
             if ($i >= $#$var) {
                 $lvalueish = 1;
                 push @args, $val;
@@ -1527,11 +1527,11 @@ sub play_operator {
     if ($OP_DISPATCH->{$tree->[0]}) {
         local $^W;
         if ($OP_ASSIGN->{$tree->[0]}) {
-            my $val = $OP_DISPATCH->{$tree->[0]}->( $self->get_variable($tree->[1]), $self->get_variable($tree->[2]) );
+            my $val = $OP_DISPATCH->{$tree->[0]}->( $self->get_expression($tree->[1]), $self->get_expression($tree->[2]) );
             $self->set_variable($tree->[1], $val);
             return $val;
         } else {
-            return $OP_DISPATCH->{$tree->[0]}->( map { $self->get_variable($tree->[$_]) } 1 .. $#$tree );
+            return $OP_DISPATCH->{$tree->[0]}->( map { $self->get_expression($tree->[$_]) } 1 .. $#$tree );
         }
     }
 
@@ -1539,30 +1539,30 @@ sub play_operator {
 
     ### do custom and short-circuitable operators
     if ($op eq '=') {
-        my $val = $self->get_variable($tree->[2]);
+        my $val = $self->get_expression($tree->[2]);
         $self->set_variable($tree->[1], $val);
         return $val;
 
    } elsif ($op eq '||' || $op eq 'or' || $op eq 'OR') {
-        return $self->get_variable($tree->[1]) || $self->get_variable($tree->[2]) || '';
+        return $self->get_expression($tree->[1]) || $self->get_expression($tree->[2]) || '';
 
     } elsif ($op eq '&&' || $op eq 'and' || $op eq 'AND') {
-        my $var = $self->get_variable($tree->[1]) && $self->get_variable($tree->[2]);
+        my $var = $self->get_expression($tree->[1]) && $self->get_expression($tree->[2]);
         return $var ? $var : 0;
 
     } elsif ($op eq '?') {
         local $^W;
-        return $self->get_variable($tree->[1]) ? $self->get_variable($tree->[2]) : $self->get_variable($tree->[3]);
+        return $self->get_expression($tree->[1]) ? $self->get_expression($tree->[2]) : $self->get_expression($tree->[3]);
 
     } elsif ($op eq '++') {
         local $^W;
-        my $val = 0 + $self->get_variable($tree->[1]);
+        my $val = 0 + $self->get_expression($tree->[1]);
         $self->set_variable($tree->[1], $val + 1);
         return $tree->[2] ? $val : $val + 1; # ->[2] is set to 1 during parsing of postfix ops
 
     } elsif ($op eq '--') {
         local $^W;
-        my $val = 0 + $self->get_variable($tree->[1]);
+        my $val = 0 + $self->get_expression($tree->[1]);
         $self->set_variable($tree->[1], $val - 1);
         return $tree->[2] ? $val : $val - 1; # ->[2] is set to 1 during parsing of postfix ops
     }
@@ -1608,12 +1608,12 @@ sub play_CALL { $DIRECTIVES->{'GET'}->[1]->(@_); return }
 sub parse_CASE {
     my ($self, $tag_ref) = @_;
     return if $$tag_ref =~ s{ ^ DEFAULT \s* }{}x;
-    return $self->parse_variable($tag_ref);
+    return $self->parse_expression($tag_ref);
 }
 
 sub parse_CATCH {
     my ($self, $tag_ref) = @_;
-    return $self->parse_variable($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
+    return $self->parse_expression($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
 }
 
 sub play_control {
@@ -1655,9 +1655,9 @@ sub play_DEFAULT {
     foreach (@$set) {
         my ($op, $set, $default) = @$_;
         next if ! defined $set;
-        my $val = $self->get_variable($set);
+        my $val = $self->get_expression($set);
         if (! $val) {
-            $default = defined($default) ? $self->get_variable($default) : '';
+            $default = defined($default) ? $self->get_expression($default) : '';
             $self->set_variable($set, $default);
         }
     }
@@ -1666,7 +1666,7 @@ sub play_DEFAULT {
 
 sub parse_DUMP {
     my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_variable($tag_ref);
+    my $ref = $self->parse_expression($tag_ref);
     return $ref;
 }
 
@@ -1677,7 +1677,7 @@ sub play_DUMP {
     my $out;
     my $var;
     if ($ident) {
-        $out = Data::Dumper::Dumper($self->get_variable($ident));
+        $out = Data::Dumper::Dumper($self->get_expression($ident));
         $var = $info->{'text'};
         $var =~ s/^[+\-~=]?\s*DUMP\s+//;
         $var =~ s/\s*[+\-~=]?$//;
@@ -1707,7 +1707,7 @@ sub parse_FILTER {
         $name = $1;
     }
 
-    my $filter = $self->parse_variable($tag_ref);
+    my $filter = $self->parse_expression($tag_ref);
     $filter = '' if ! defined $filter;
 
     return [$name, $filter];
@@ -1736,11 +1736,11 @@ sub play_FILTER {
 
 sub parse_FOREACH {
     my ($self, $tag_ref) = @_;
-    my $items = $self->parse_variable($tag_ref);
+    my $items = $self->parse_expression($tag_ref);
     my $var;
     if ($$tag_ref =~ s{ ^ (= | [Ii][Nn]\b) \s* }{}x) {
         $var = [@$items];
-        $items = $self->parse_variable($tag_ref);
+        $items = $self->parse_expression($tag_ref);
     }
     return [$var, $items];
 }
@@ -1751,7 +1751,7 @@ sub play_FOREACH {
     ### get the items - make sure it is an arrayref
     my ($var, $items) = @$ref;
 
-    $items = $self->get_variable($items);
+    $items = $self->get_expression($items);
     return '' if ! defined $items;
 
     if (ref($items) !~ /Iterator$/) {
@@ -1824,26 +1824,26 @@ sub play_FOREACH {
 
 sub parse_GET {
     my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_variable($tag_ref);
+    my $ref = $self->parse_expression($tag_ref);
     $self->throw('parse', "Missing variable name") if ! defined $ref;
     return $ref;
 }
 
 sub play_GET {
     my ($self, $ident, $node) = @_;
-    my $var = $self->get_variable($ident);
+    my $var = $self->get_expression($ident);
     return (! defined $var) ? $self->undefined_get($ident, $node) : $var;
 }
 
 sub parse_IF {
     my ($self, $tag_ref) = @_;
-    return $self->parse_variable($tag_ref);
+    return $self->parse_expression($tag_ref);
 }
 
 sub play_IF {
     my ($self, $var, $node, $out_ref) = @_;
 
-    my $val = $self->get_variable($var);
+    my $val = $self->get_expression($var);
     if ($val) {
         my $body_ref = $node->[4] ||= [];
         $self->execute_tree($body_ref, $out_ref);
@@ -1857,7 +1857,7 @@ sub play_IF {
             return;
         }
         my $var = $node->[3];
-        my $val = $self->get_variable($var);
+        my $val = $self->get_expression($var);
         if ($val) {
             my $body_ref = $node->[4] ||= [];
             $self->execute_tree($body_ref, $out_ref);
@@ -1892,7 +1892,7 @@ sub play_INSERT {
     my ($names, $args) = @$var;
 
     foreach my $name (@$names) {
-        my $filename = $self->get_variable($name);
+        my $filename = $self->get_expression($name);
         $$out_ref .= $self->_insert($filename);
     }
 
@@ -1903,7 +1903,7 @@ sub parse_MACRO {
     my ($self, $tag_ref, $node) = @_;
     my $copy = $$tag_ref;
 
-    my $name = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo});
+    my $name = $self->parse_expression(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo});
     $self->throw('parse', "Missing macro name") if ! defined $name;
     if (! ref $name) {
         $name = [ $name, 0 ];
@@ -2021,7 +2021,7 @@ sub play_PERL {
 sub parse_PROCESS {
     my ($self, $tag_ref) = @_;
     my $info = [[], []];
-    while (defined(my $filename = $self->parse_variable($tag_ref, {
+    while (defined(my $filename = $self->parse_expression($tag_ref, {
                        auto_quote => qr{ ^ ($QR_FILENAME | \w+ (?: :\w+)* ) $QR_AQ_SPACE }xo,
                    }))) {
         push @{$info->[0]}, $filename;
@@ -2032,13 +2032,13 @@ sub parse_PROCESS {
     while (length $$tag_ref) {
         last if $$tag_ref =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}; ### looks like a directive - we are done
 
-        my $var = $self->parse_variable($tag_ref);
+        my $var = $self->parse_expression($tag_ref);
         last if ! defined $var;
         if ($$tag_ref !~ s{ ^ = >? \s* }{}x) {
             $self->throw('parse.missing.equals', 'Missing equals while parsing args');
         }
 
-        my $val = $self->parse_variable($tag_ref);
+        my $val = $self->parse_expression($tag_ref);
         push @{$info->[1]}, [$var, $val];
         $$tag_ref =~ s{ ^ , \s* $QR_COMMENTS }{}ox if $val;
     }
@@ -2054,7 +2054,7 @@ sub play_PROCESS {
     ### set passed args
     foreach (@$args) {
         my ($key, $val) = @$_;
-        $val = $self->get_variable($val);
+        $val = $self->get_expression($val);
         if (ref($key) && @$key == 2 && $key->[0] eq 'import' && UNIVERSAL::isa($val, 'HASH')) { # import ?! - whatever
             foreach my $key (keys %$val) {
                 $self->set_variable([$key,0], $val->{$key});
@@ -2067,7 +2067,7 @@ sub play_PROCESS {
     ### iterate on any passed block or filename
     foreach my $ref (@$files) {
         next if ! defined $ref;
-        my $filename = $self->get_variable($ref);
+        my $filename = $self->get_expression($ref);
         my $out = ''; # have temp item to allow clear to correctly clear
 
         ### normal blocks or filenames
@@ -2154,12 +2154,12 @@ sub parse_SET {
             my $val = $node->[4] ||= []; # setup storage
             return [[$initial_op, $initial_var, $val]];
         } else { # get a normal variable
-            return [[$initial_op, $initial_var, $self->parse_variable($tag_ref)]];
+            return [[$initial_op, $initial_var, $self->parse_expression($tag_ref)]];
         }
     }
 
     while (length $$tag_ref) {
-        my $set = $self->parse_variable($tag_ref);
+        my $set = $self->parse_expression($tag_ref);
         last if ! defined $set;
 
         if ($$tag_ref =~ s{ ^ ($QR_OP_ASSIGN) >? \s* }{}x) {
@@ -2171,7 +2171,7 @@ sub parse_SET {
                 push @SET, [$op, $set, $val];
                 last;
             } else { # get a normal variable
-                push @SET, [$op, $set, $self->parse_variable($tag_ref)];
+                push @SET, [$op, $set, $self->parse_expression($tag_ref)];
             }
         } else {
             push @SET, ['=', $set, undef];
@@ -2192,12 +2192,12 @@ sub play_SET {
             $val = '';
             $self->execute_tree($sub_tree, \$val);
         } else { # normal var
-            $val = $self->get_variable($val);
+            $val = $self->get_expression($val);
         }
 
         if ($OP_DISPATCH->{$op}) {
             local $^W;
-            $val = $OP_DISPATCH->{$op}->($self->get_variable($set), $val);
+            $val = $OP_DISPATCH->{$op}->($self->get_expression($set), $val);
         }
 
         $self->set_variable($set, $val);
@@ -2210,7 +2210,7 @@ sub parse_SWITCH { $DIRECTIVES->{'GET'}->[0]->(@_) }
 sub play_SWITCH {
     my ($self, $var, $node, $out_ref) = @_;
 
-    my $val = $self->get_variable($var);
+    my $val = $self->get_expression($var);
     $val = '' if ! defined $val;
     ### $node->[4] is thrown away
 
@@ -2222,7 +2222,7 @@ sub play_SWITCH {
             next;
         }
 
-        my $val2 = $self->get_variable($var);
+        my $val2 = $self->get_expression($var);
         $val2 = [$val2] if ! UNIVERSAL::isa($val2, 'ARRAY');
         for my $test (@$val2) { # find matching values
             next if ! defined $val && defined $test;
@@ -2248,7 +2248,7 @@ sub play_SWITCH {
 
 sub parse_THROW {
     my ($self, $tag_ref, $node) = @_;
-    my $name = $self->parse_variable($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
+    my $name = $self->parse_expression($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
     $self->throw('parse.missing', "Missing name in THROW", $node) if ! $name;
     my $args = $self->parse_args($tag_ref);
     return [$name, $args];
@@ -2257,8 +2257,8 @@ sub parse_THROW {
 sub play_THROW {
     my ($self, $ref, $node) = @_;
     my ($name, $args) = @$ref;
-    $name = $self->get_variable($name);
-    my @args = $args ? map { $self->get_variable($_) } @$args : ();
+    $name = $self->get_expression($name);
+    my @args = $args ? map { $self->get_expression($_) } @$args : ();
     $self->throw($name, \@args, $node);
 }
 
@@ -2296,7 +2296,7 @@ sub play_TRY {
             next;
         }
         next if ! $err;
-        my $name = $self->get_variable($node->[3]);
+        my $name = $self->get_expression($node->[3]);
         $name = '' if ! defined $name || lc($name) eq 'default';
         if ($type =~ / ^ \Q$name\E \b /x
             && (! defined($last_found) || length($last_found) < length($name))) { # more specific wins
@@ -2340,14 +2340,14 @@ sub parse_USE {
 
     my $var;
     my $copy = $$tag_ref;
-    if (defined(my $_var = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
+    if (defined(my $_var = $self->parse_expression(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
         && $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox) {
         $var = $_var;
         $$tag_ref = $copy;
     }
 
     $copy = $$tag_ref;
-    my $module = $self->parse_variable(\$copy, {auto_quote => qr{ ^ (\w+ (?: (?:\.|::) \w+)*) $QR_AQ_NOTDOT }xo});
+    my $module = $self->parse_expression(\$copy, {auto_quote => qr{ ^ (\w+ (?: (?:\.|::) \w+)*) $QR_AQ_NOTDOT }xo});
     $self->throw('parse', "Missing plugin name while parsing $$tag_ref") if ! defined $module;
     $module =~ s/\./::/g;
 
@@ -2385,10 +2385,10 @@ sub play_USE {
     if ($self->{'PLUGIN_FACTORY'}->{$module} || eval {require $require}) {
         my $shape   = $package->load;
         my $context = $self->context;
-        my @args    = $args ? map { $self->get_variable($_) } @$args : ();
+        my @args    = $args ? map { $self->get_expression($_) } @$args : ();
         $obj = $shape->new($context, @args);
     } elsif (lc($module) eq 'iterator') { # use our iterator if none found (TT's works just fine)
-        $obj = $PACKAGE_ITERATOR->new($args ? $self->get_variable($args->[0]) : []);
+        $obj = $PACKAGE_ITERATOR->new($args ? $self->get_expression($args->[0]) : []);
     } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
         foreach my $package (@packages) {
             my $require = "$package.pm";
@@ -2396,14 +2396,14 @@ sub play_USE {
             eval {require $require} || next;
             my $shape   = $package->load;
             my $context = $self->context;
-            my @args    = $args ? map { $self->get_variable($_) } @$args : ();
+            my @args    = $args ? map { $self->get_expression($_) } @$args : ();
             $obj = $shape->new($context, @args);
         }
     } elsif ($self->{'LOAD_PERL'}) {
         my $require = "$module.pm";
         $require =~ s|::|/|g;
         if (eval {require $require}) {
-            my @args = $args ? map { $self->get_variable($_) } @$args : ();
+            my @args = $args ? map { $self->get_expression($_) } @$args : ();
             $obj = $module->new(@args);
         }
     }
@@ -2428,7 +2428,7 @@ sub play_WHILE {
     my $count = $WHILE_MAX;
     while (--$count > 0) {
 
-        $self->get_variable($var) || last;
+        $self->get_expression($var) || last;
 
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $out_ref) };
@@ -3025,7 +3025,7 @@ sub dump_parse {
     my $obj = UNIVERSAL::isa($_[0], __PACKAGE__) ? shift : __PACKAGE__->new;
     my $str = shift;
     require Data::Dumper;
-    return Data::Dumper::Dumper($obj->parse_variable(\$str));
+    return Data::Dumper::Dumper($obj->parse_expression(\$str));
 }
 
 ###----------------------------------------------------------------###
@@ -3234,16 +3234,16 @@ sub get {
     my ($self, $var) = @_;
     if (! ref $var) {
         if ($var =~ /^\w+$/) {  $var = [$var, 0] }
-        else {                  $var = $self->_template->parse_variable(\$var, {no_dots => 1}) }
+        else {                  $var = $self->_template->parse_expression(\$var, {no_dots => 1}) }
     }
-    return $self->_template->get_variable($var, {no_dots => 1});
+    return $self->_template->get_expression($var, {no_dots => 1});
 }
 
 sub set {
     my ($self, $var, $val) = @_;
     if (! ref $var) {
         if ($var =~ /^\w+$/) {  $var = [$var, 0] }
-        else {                  $var = $self->_template->parse_variable(\$var, {no_dots => 1}) }
+        else {                  $var = $self->_template->parse_expression(\$var, {no_dots => 1}) }
     }
     $self->_template->set_variable($var, $val, {no_dots => 1});
     return $val;
