@@ -7,7 +7,7 @@ cgi_ex_1.cgi - Show a basic example using some of the CGI::Ex tools
 =cut
 
 if (__FILE__ eq $0) {
-  handler();
+  main();
 }
 
 ###----------------------------------------------------------------###
@@ -19,7 +19,7 @@ use CGI::Ex::Dump qw(debug);
 
 ###----------------------------------------------------------------###
 
-sub handler {
+sub main {
   my $cgix = CGI::Ex->new;
   my $vob  = CGI::Ex::Validate->new;
   my $form = $cgix->get_form();
@@ -88,7 +88,7 @@ sub handler {
 
 sub validation_hash {
   return {
-    'group order' => ['username', 'password'],
+    'group order' => ['username', 'password', 'password_verify'],
     username => {
       required => 1,
       min_len  => 3,
