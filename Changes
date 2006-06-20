@@ -1,3 +1,8 @@
+2.04   2006-06-20
+        * Allow for items not in group order to get added to validation correctly in CGI::Ex::Validate.
+        * Add samples/index.cgi
+        * Fix smaples/cgi_ex_* to actually work.
+
 2.03   2006-06-10
         * Fix the associativity of operators in Template to match perl
         * Allow for multiple prefix operators.
