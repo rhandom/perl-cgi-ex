@@ -382,6 +382,8 @@ sub run_hook {
     my ($code, $found) = @{ $self->find_hook($hook, $step) };
     if (! $code) {
         croak "Could not find a method named ${step}_${hook} or ${hook}";
+    } elsif (! UNIVERSAL::isa($code, 'CODE')) {
+        croak "Value for $hook ($found) is not a code ref ($code)";
     }
 
     ### record history
