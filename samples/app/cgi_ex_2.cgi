@@ -6,83 +6,59 @@ cgi_ex_2.cgi - Rewrite of cgi_ex_1.cgi using CGI::Ex::App
 
 =cut
 
-if (__FILE__ eq $0) {
-  handler();
-}
-
-sub handler {
-  MyCGI->navigate;
-}
-
-###----------------------------------------------------------------###
-
-package MyCGI;
-
 use strict;
 use base qw(CGI::Ex::App);
 use CGI::Ex::Dump qw(debug);
 
-sub pre_loop {
-  my $self = shift;
-  my $path = shift;
-  if ($#$path == -1) {
-    push @$path, 'userinfo';
-  }
+if ($0 eq __FILE__) {
+    __PACKAGE__->navigate;
 }
 
-### this will work for both userinfo_hash_common and success_hash_common
+### show what hooks ran when we are done
+sub post_navigate { debug shift->dump_history }
+
+### this will work for both userinfo_hash_common and _success_hash_common
 sub hash_common {
-  my $self = shift;
-  return {
-    title   => 'My Application',
-    script  => $ENV{SCRIPT_NAME},
-    color   => ['#ccf', '#aaf'],
-    history => $self->history,
-  }
-}
-
-sub ready_validate {
-  my $self = shift;
-  return $self->form->{processing} ? 1 : 0;
+    return {
+        title => 'My Application',
+        color => ['#ccccff', '#aaaaff'],
+    };
 }
 
 ###----------------------------------------------------------------###
 
-sub userinfo_hash_validation {
-  return {
-    'group order' => ['username', 'password'],
-    username => {
-      required => 1,
-      min_len  => 3,
-      max_len  => 30,
-      match    => 'm/^\w+$/',
-      # could probably all be done with match => 'm/^\w{3,30}$/'
-    },
-    password => {
-      required => 1,
-      max_len  => 20,
-    },
-    password_verify => {
-      validate_if => 'password',
-      equals      => 'password',
-    },
-  };
+sub main_hash_validation {
+    return {
+        'group order' => ['username', 'password'],
+        username => {
+            required => 1,
+            min_len  => 3,
+            max_len  => 30,
+            match    => 'm/^\w+$/',
+            # could probably all be done with match => 'm/^\w{3,30}$/'
+        },
+        password => {
+            required => 1,
+            max_len  => 20,
+        },
+        password_verify => {
+            validate_if => 'password',
+            equals      => 'password',
+        },
+    };
 }
 
-sub userinfo_hash_swap {
-  my $self = shift;
-  my $hash = $self->form;
-  $hash->{form_name} = 'formfoo';
-  $hash->{js_val}    = $self->vob->generate_js($self->userinfo_hash_validation(),
-                                               $hash->{form_name},
-                                               "$ENV{SCRIPT_NAME}/js");
-  return $hash;
+sub main_finalize {
+    my $self = shift;
+    my $form = $self->form;
+    debug $form;
+    return 1;
 }
 
-###----------------------------------------------------------------###
+sub main_next_step { '_success' }
 
-sub userinfo_file_print {
-  return \ qq {
+sub main_file_print {
+    return \ qq {
     <html>
     <head>
       <title>[% title %]</title>
@@ -99,7 +75,7 @@ sub userinfo_file_print {
     <span style='color:red'>[% error_header %]</span>
     <br>
 
-    <form name="[% form_name %]">
+    <form name="[% form_name %]" action=>
     <input type=hidden name=processing value=1>
 
     <table>
@@ -130,11 +106,13 @@ sub userinfo_file_print {
     [% js_validation %]
     </body>
     </html>
-  };
+};
 }
 
-sub success_file_print {
-  return \ qq{
+###----------------------------------------------------------------###
+
+sub _success_file_print {
+    return \ qq{
     <html>
     <head><title>[% title %]</title></head>
     <body>
@@ -143,8 +121,24 @@ sub success_file_print {
     print "I can now continue on with the rest of my script!";
     </body>
     </html>
-  };
+};
+}
+
+###----------------------------------------------------------------###
+### These methods override the base functionality of CGI::Ex::App
+
+sub ready_validate { shift->form->{'processing'} ? 1 : 0 }
+
+sub set_ready_validate {
+    my $self = shift;
+    my ($step, $is_ready) = (@_ == 2) ? @_ : (undef, shift);
+    if ($is_ready) {
+        $self->form->{'processing'} = 1;
+    } else {
+        delete $self->form->{'processing'};
+    }
 }
 
 
-1;
+__END__
+
