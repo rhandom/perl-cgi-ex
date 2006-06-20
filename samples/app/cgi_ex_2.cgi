@@ -75,7 +75,7 @@ sub main_file_print {
     <span style='color:red'>[% error_header %]</span>
     <br>
 
-    <form name="[% form_name %]" action=>
+    <form name="[% form_name %]" action="[% script_name %]" method="POST">
     <input type=hidden name=processing value=1>
 
     <table>
