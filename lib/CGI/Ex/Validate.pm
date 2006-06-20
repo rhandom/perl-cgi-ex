@@ -126,6 +126,7 @@ sub validate {
       next if $found{$field};
       my $field_val = $group_val->{$field};
       die "Found a nonhashref value on field $field" if ! UNIVERSAL::isa($field_val, 'HASH');
+      $field_val->{'field'} = $field if ! defined $field_val->{'field'};
       push @$fields, $field_val;
     }
 
