@@ -35,9 +35,6 @@ sub main {
     }
 
 
-    debug $form;
-
-
     ### check for errors - if they have submitted information
     my $has_info = ($form->{'processing'}) ? 1 : 0;
     my $errob = $has_info ? $vob->validate($form, validation_hash()) : undef;
@@ -75,6 +72,7 @@ sub main {
         return;
     }
 
+    debug $form;
 
     ### show some sort of success if there were no errors
     $cgix->print_content_type;
