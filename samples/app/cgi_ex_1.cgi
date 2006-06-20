@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-cgi_ex_1.cgi - Show a basic example using some of the CGI::Ex tools
+cgi_ex_1.cgi - Show a basic example using some of the CGI::Ex tools (but not App based)
 
 =cut
 
