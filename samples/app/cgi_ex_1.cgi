@@ -7,7 +7,7 @@ cgi_ex_1.cgi - Show a basic example using some of the CGI::Ex tools (but not App
 =cut
 
 if (__FILE__ eq $0) {
-  main();
+    main();
 }
 
 ###----------------------------------------------------------------###
@@ -20,99 +20,99 @@ use CGI::Ex::Dump qw(debug);
 ###----------------------------------------------------------------###
 
 sub main {
-  my $cgix = CGI::Ex->new;
-  my $vob  = CGI::Ex::Validate->new;
-  my $form = $cgix->get_form();
+    my $cgix = CGI::Ex->new;
+    my $vob  = CGI::Ex::Validate->new;
+    my $form = $cgix->get_form();
 
-  ### allow for js validation libraries
-  ### path_info should contain something like /CGI/Ex/yaml_load.js
-  ### see the line with 'js_val' below
-  my $info = $ENV{PATH_INFO} || '';
-  if ($info =~ m|^(/\w+)+.js$|) {
-    $info =~ s|^/+||;
-    $cgix->print_js($info);
-    return;
-  }
-
-
-  debug $form;
-
-
-  ### check for errors - if they have submitted information
-  my $has_info = ($form->{processing}) ? 1 : 0;
-  my $errob = $has_info ? $vob->validate($form, validation_hash()) : undef;
-  my $form_name = 'formfoo';
-
-  ### failed validation - send out the template
-  if (! $has_info || $errob) {
-
-    ### get a template and swap defaults
-    my $swap = defaults_hash();
-
-    ### add errors to the swap (if any)
-    if ($errob) {
-      my $hash = $errob->as_hash();
-      $swap->{$_} = delete($hash->{$_}) foreach keys %$hash;
-      $swap->{'error_header'} = 'Please correct the form information below';
+    ### allow for js validation libraries
+    ### path_info should contain something like /CGI/Ex/yaml_load.js
+    ### see the line with 'js_val' below
+    my $info = $ENV{PATH_INFO} || '';
+    if ($info =~ m|^(/\w+)+.js$|) {
+        $info =~ s|^/+||;
+        $cgix->print_js($info);
+        return;
     }
 
-    ### get js validation ready
-    $swap->{'form_name'} = $form_name;
-    $swap->{'js_val'} = $vob->generate_js(validation_hash(), # filename or valhash
-                                          $form_name,         # name of form
-                                          $ENV{SCRIPT_NAME}); # browser path to cgi that calls print_js
 
-    ### swap in defaults, errors and js_validation
-    my $content = $cgix->swap_template(get_content_form(), $swap);
+    debug $form;
 
-    ### fill form fields
-    $cgix->fill(\$content, $form);
-    #debug $content;
 
-    ### print it out
-    $cgix->print_content_type();
+    ### check for errors - if they have submitted information
+    my $has_info = ($form->{'processing'}) ? 1 : 0;
+    my $errob = $has_info ? $vob->validate($form, validation_hash()) : undef;
+    my $form_name = 'formfoo';
+
+    ### failed validation - send out the template
+    if (! $has_info || $errob) {
+
+        ### get a template and swap defaults
+        my $swap = defaults_hash();
+
+        ### add errors to the swap (if any)
+        if ($errob) {
+            my $hash = $errob->as_hash();
+            $swap->{$_} = delete($hash->{$_}) foreach keys %$hash;
+            $swap->{'error_header'} = 'Please correct the form information below';
+        }
+
+        ### get js validation ready
+        $swap->{'form_name'} = $form_name;
+        $swap->{'js_val'} = $vob->generate_js(validation_hash(), # filename or valhash
+                                              $form_name,         # name of form
+                                              $ENV{'SCRIPT_NAME'}); # browser path to cgi that calls print_js
+
+        ### swap in defaults, errors and js_validation
+        my $content = $cgix->swap_template(get_content_form(), $swap);
+
+        ### fill form fields
+        $cgix->fill(\$content, $form);
+        #debug $content;
+
+        ### print it out
+        $cgix->print_content_type();
+        print $content;
+        return;
+    }
+
+
+    ### show some sort of success if there were no errors
+    $cgix->print_content_type;
+    my $content = $cgix->swap_template(get_content_success(), defaults_hash());
     print $content;
     return;
-  }
-
-
-  ### show some sort of success if there were no errors
-  $cgix->print_content_type;
-  my $content = $cgix->swap_template(get_content_success(), defaults_hash());
-  print $content;
-  return;
 
 }
 
 ###----------------------------------------------------------------###
 
 sub validation_hash {
-  return {
-    'group order' => ['username', 'password', 'password_verify'],
-    username => {
-      required => 1,
-      min_len  => 3,
-      max_len  => 30,
-      match    => 'm/^\w+$/',
-      # could probably all be done with match => 'm/^\w{3,30}$/'
-    },
-    password => {
-      required => 1,
-      max_len  => 20,
-    },
-    password_verify => {
-      validate_if => 'password',
-      equals      => 'password',
-    },
-  };
+    return {
+        'group order' => ['username', 'password', 'password_verify'],
+        username => {
+            required => 1,
+            min_len  => 3,
+            max_len  => 30,
+            match    => 'm/^\w+$/',
+            # could probably all be done with match => 'm/^\w{3,30}$/'
+        },
+        password => {
+            required => 1,
+            max_len  => 20,
+        },
+        password_verify => {
+            validate_if => 'password',
+            equals      => 'password',
+        },
+    };
 }
 
 sub defaults_hash {
-  return {
-    title  => 'My Application',
-    script => $ENV{SCRIPT_NAME},
-    color  => ['#ccf', '#aaf'],
-  }
+    return {
+        title       => 'My Application',
+        script_name => $ENV{'SCRIPT_NAME'},
+        color       => ['#ccccff', '#aaaaff'],
+    }
 }
 
 ###----------------------------------------------------------------###
@@ -135,7 +135,7 @@ sub get_content_form {
     <span style='color:red'>[% error_header %]</span>
     <br>
 
-    <form name="[% form_name %]">
+    <form name="[% form_name %]" action="[% script_name %]" method="POST">
     <input type=hidden name=processing value=1>
 
     <table>
@@ -182,5 +182,4 @@ sub get_content_success {
   };
 }
 
-
-1;
+__END__
