@@ -19,7 +19,7 @@ sub handler {
 package MyCGI;
 
 use strict;
-use base CGI::Ex::App;
+use base qw(CGI::Ex::App);
 use CGI::Ex::Dump qw(debug);
 
 sub pre_loop {
