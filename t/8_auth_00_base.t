@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 33;
+use Test::More tests => 35;
 
 use_ok('CGI::Ex::Auth');
 
@@ -33,7 +33,7 @@ use_ok('CGI::Ex::Auth');
     use vars qw($crypt);
     BEGIN { $crypt = crypt('123qwe', 'SS') };
     sub use_crypt { 1 }
-    sub get_pass_by_user { $crypt }
+    sub get_pass_by_user { {password => $crypt, foobar => 'baz'} }
 }
 
 my $token = Auth->new->generate_token({user => 'test', real_pass => '123qwe', use_base64 => 1});
@@ -96,6 +96,11 @@ ok($Auth::printed, "Printed was set");
 ok(! $Auth::set_cookie, "Set_cookie was not called");
 ok($Auth::deleted_cookie, "deleted_cookie was not called");
 
+
+my $auth = Aut2->get_valid_auth({form => {%$form_good3}});
+my $data = $auth->last_auth_data;
+ok($auth && $data, "Aut2 worked again");
+ok($data->{'foobar'} eq 'baz', 'And it contained the correct value');
 
 SKIP: {
     skip("Crypt::Blowfish not found", 4) if ! eval { require Crypt::Blowfish };
