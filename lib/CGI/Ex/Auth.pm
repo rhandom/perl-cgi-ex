@@ -385,12 +385,10 @@ sub verify_token {
         $data->error('Could not get pass');
     } elsif (ref $pass eq 'HASH') {
         my $extra = $pass;
-        $pass = defined($extra->{'real_pass'}) ? $extra->{'real_pass'} : defined($extra->{'password'})  ? $extra->{'password'} : undef;
-        if (! defined $pass) {
-            $data->error('Data returned by get_pass_by_user did not contain real_pass or password');
-        } else {
-            $data->{$_} = $extra->{$_} for grep {! exists $data->{$_}} keys %$extra;
-        }
+        $pass = exists($extra->{'real_pass'}) ? delete($extra->{'real_pass'})
+              : exists($extra->{'password'})  ? delete($extra->{'password'})
+              : do { $data->error('Data returned by get_pass_by_user did not contain real_pass or password'); undef };
+        $data->{$_} = $extra->{$_} for grep {! exists $data->{$_}} keys %$extra;
     }
     return $data if $data->error;
 
@@ -1037,7 +1035,7 @@ enabled, it should return the crypted password.  If use_plaintext and use_crypt
 are not enabled, it may return the md5 sum of the password.
 
    get_pass_by_user => sub {
-       my ($user, $auth_obj) = @_;
+       my ($auth_obj, $user) = @_;
        return $some_obj->get_pass({user => $user});
    }
 
@@ -1047,7 +1045,7 @@ must also contain a key named real_pass or password that contains the
 password.
 
    get_pass_by_user => sub {
-       my ($user, $auth_obj) = @_;
+       my ($auth_obj, $user) = @_;
        my ($pass, $user_id) = $some_obj->get_pass({user => $user});
        return {
            password => $pass,
