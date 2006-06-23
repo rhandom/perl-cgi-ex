@@ -383,6 +383,14 @@ sub verify_token {
     } elsif (! defined($pass = eval { $self->get_pass_by_user($data->{'user'}) })) {
         $data->add_data({details => $@});
         $data->error('Could not get pass');
+    } elsif (ref $pass eq 'HASH') {
+        my $extra = $pass;
+        $pass = defined($extra->{'real_pass'}) ? $extra->{'real_pass'} : defined($extra->{'password'})  ? $extra->{'password'} : undef;
+        if (! defined $pass) {
+            $data->error('Data returned by get_pass_by_user did not contain real_pass or password');
+        } else {
+            $data->{$_} = $extra->{$_} for grep {! exists $data->{$_}} keys %$extra;
+        }
     }
     return $data if $data->error;
 
@@ -1027,6 +1035,25 @@ Called by verify_token.  Given the cleaned, verified username, should return a
 valid password for the user.  It can always return plaintext.  If use_crypt is
 enabled, it should return the crypted password.  If use_plaintext and use_crypt
 are not enabled, it may return the md5 sum of the password.
+
+   get_pass_by_user => sub {
+       my ($user, $auth_obj) = @_;
+       return $some_obj->get_pass({user => $user});
+   }
+
+Alternately, get_pass_by_user may return a hashref of data items that
+will be added to the data object if the token is valid.  The hashref
+must also contain a key named real_pass or password that contains the
+password.
+
+   get_pass_by_user => sub {
+       my ($user, $auth_obj) = @_;
+       my ($pass, $user_id) = $some_obj->get_pass({user => $user});
+       return {
+           password => $pass,
+           user_id  => $user_id,
+       };
+   }
 
 =item C<cgix>
 
