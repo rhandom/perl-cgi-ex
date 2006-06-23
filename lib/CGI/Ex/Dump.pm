@@ -76,9 +76,13 @@ sub _what_is_this {
   ### dump it out
   my @dump = map {&$SUB($_)} @_;
   my @var  = ('$VAR') x ($#dump + 1);
-  if ($line =~ s/^ .*\b \Q$called\E ( \(?\s* | \s+ )//x
-      && $line =~ s/(?:\s+if\s+.+)? ;? \s*$//x) {
-    $line =~ s/ \s*\) $ //x if $1 && $1 =~ /\(/;
+  my $hold;
+  if ($line =~ s/^ .*\b \Q$called\E ( \s* \( \s* | \s+ )//x
+      && ($hold = $1)
+      && (   $line =~ s/ \s* \b if \b .* \n? $ //x
+          || $line =~ s/ \s* ; \s* $ //x
+          || $line =~ s/ \s+ $ //x)) {
+    $line =~ s/ \s*\) $ //x if $hold =~ /\(/;
     my @_var = map {/^[\"\']/ ? 'String' : $_} split (/\s*,\s*/, $line);
     @var = @_var if $#var == $#_var;
   }
