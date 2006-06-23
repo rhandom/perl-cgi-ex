@@ -315,8 +315,8 @@ sub login_hash_common {
         $self->key_time    => $self->server_time,
         $self->key_payload => $self->generate_payload({%$data, login_form => 1}),
         $self->key_expires_min => $self->expires_min,
-        text_username      => $self->text_username,
-        text_password      => $self->text_password,
+        text_user          => $self->text_user,
+        text_pass          => $self->text_pass,
         text_save          => $self->text_save,
     };
 }
@@ -631,11 +631,11 @@ sub login_form {
     <input type="hidden" name="[% key_expires_min %]" value="">
     <table class="login_table">
     <tr class="login_username">
-      <td>[% text_username %]</td>
+      <td>[% text_user %]</td>
       <td><input name="[% key_user %]" type="text" size="30" value=""></td>
     </tr>
     <tr class="login_password">
-      <td>[% text_password %]</td>
+      <td>[% text_pass %]</td>
       <td><input name="[% key_pass %]" type="password" size="30" value=""></td>
     </tr>
     <tr class="login_save">
@@ -654,9 +654,9 @@ sub login_form {
 };
 }
 
-sub text_username { my $self = shift; return defined($self->{'text_username'}) ? $self->{'text_username'} : 'Username:' }
-sub text_password { my $self = shift; return defined($self->{'text_password'}) ? $self->{'text_password'} : 'Password:' }
-sub text_save     { my $self = shift; return defined($self->{'text_save'})     ? $self->{'text_save'}     : 'Save Password ?' }
+sub text_user { my $self = shift; return defined($self->{'text_user'}) ? $self->{'text_user'} : 'Username:' }
+sub text_pass { my $self = shift; return defined($self->{'text_pass'}) ? $self->{'text_pass'} : 'Password:' }
+sub text_save { my $self = shift; return defined($self->{'text_save'}) ? $self->{'text_save'} : 'Save Password ?' }
 
 sub login_script {
   return q {
@@ -810,6 +810,9 @@ defined separately.
     secure_hash_keys
     template_args
     template_include_path
+    text_user
+    text_pass
+    text_save
     use_base64
     use_blowfish
     use_crypt
@@ -959,6 +962,9 @@ Passed to the template swapped during login_print.
     $self->key_time    # $self->server_time,     # the server's time
     $self->key_payload # $data->{'payload'}      # the payload (if any)
     $self->key_expires_min # $self->expires_min  # how many minutes crams are valid
+    text_user          # $self->text_user        # template text Username:
+    text_pass          # $self->text_pass        # template text Password:
+    text_save          # $self->text_save        # template text Save Password ?
 
 =item C<key_logout>
 
@@ -1113,8 +1119,18 @@ Contains javascript that will attach to the form from login_form.  This script
 is capable of taking the login_fields and creating an md5 cram which prevents
 the password from being passed plaintext.
 
+=item C<text_user, text_pass, text_save>
+
+The text items shown in the default login template.  The default values are:
+
+    text_user  "Username:"
+    text_pass  "Password:"
+    text_save  "Save Password ?"
+
+=back
+
 =head1 AUTHORS
 
-Paul Seamons <perlspam at seamons dot com>
+Paul Seamons <paul at seamons dot com>
 
 =cut
