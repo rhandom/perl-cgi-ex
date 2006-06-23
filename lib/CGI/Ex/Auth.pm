@@ -315,7 +315,9 @@ sub login_hash_common {
         $self->key_time    => $self->server_time,
         $self->key_payload => $self->generate_payload({%$data, login_form => 1}),
         $self->key_expires_min => $self->expires_min,
-
+        text_username      => $self->text_username,
+        text_password      => $self->text_password,
+        text_save          => $self->text_save,
     };
 }
 
@@ -629,16 +631,16 @@ sub login_form {
     <input type="hidden" name="[% key_expires_min %]" value="">
     <table class="login_table">
     <tr class="login_username">
-      <td>Username:</td>
+      <td>[% text_username %]</td>
       <td><input name="[% key_user %]" type="text" size="30" value=""></td>
     </tr>
     <tr class="login_password">
-      <td>Password:</td>
+      <td>[% text_password %]</td>
       <td><input name="[% key_pass %]" type="password" size="30" value=""></td>
     </tr>
     <tr class="login_save">
       <td colspan="2">
-        <input type="checkbox" name="[% key_save %]" value="1"> Save Password ?
+        <input type="checkbox" name="[% key_save %]" value="1"> [% text_save %]
       </td>
     </tr>
     <tr class="login_submit">
@@ -651,6 +653,10 @@ sub login_form {
     </div>
 };
 }
+
+sub text_username { my $self = shift; return defined($self->{'text_username'}) ? $self->{'text_username'} : 'Username:' }
+sub text_password { my $self = shift; return defined($self->{'text_password'}) ? $self->{'text_password'} : 'Password:' }
+sub text_save     { my $self = shift; return defined($self->{'text_save'})     ? $self->{'text_save'}     : 'Save Password ?' }
 
 sub login_script {
   return q {
