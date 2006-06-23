@@ -82,7 +82,7 @@ sub _what_is_this {
       && (   $line =~ s/ \s* \b if \b .* \n? $ //x
           || $line =~ s/ \s* ; \s* $ //x
           || $line =~ s/ \s+ $ //x)) {
-    $line =~ s/ \s*\) $ //x if $hold =~ /\(/;
+    $line =~ s/ \s*\) $ //x if $hold =~ /^\s*\(/;
     my @_var = map {/^[\"\']/ ? 'String' : $_} split (/\s*,\s*/, $line);
     @var = @_var if $#var == $#_var;
   }
