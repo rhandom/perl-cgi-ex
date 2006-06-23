@@ -337,7 +337,7 @@ sub verify_token {
         my $key;
         for my $armor ('none', 'base64', 'blowfish') { # try with and without base64 encoding
             my $copy = ($armor eq 'none')           ? $token
-                     : ($armor eq 'base64')         ? decode_base64($token)
+                     : ($armor eq 'base64')         ? eval { local $^W; decode_base64($token) }
                      : ($key = $self->use_blowfish) ? decrypt_blowfish($token, $key)
                      : next;
             if ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
@@ -388,7 +388,8 @@ sub verify_token {
         $pass = exists($extra->{'real_pass'}) ? delete($extra->{'real_pass'})
               : exists($extra->{'password'})  ? delete($extra->{'password'})
               : do { $data->error('Data returned by get_pass_by_user did not contain real_pass or password'); undef };
-        $data->{$_} = $extra->{$_} for grep {! exists $data->{$_}} keys %$extra;
+        $data->error('Invalid login') if ! defined $pass && ! $data->error;
+        $data->add_data($extra);
     }
     return $data if $data->error;
 
@@ -1042,7 +1043,8 @@ are not enabled, it may return the md5 sum of the password.
 Alternately, get_pass_by_user may return a hashref of data items that
 will be added to the data object if the token is valid.  The hashref
 must also contain a key named real_pass or password that contains the
-password.
+password.  Note that keys passed back in the hashref that are already
+in the data object will override those in the data object.
 
    get_pass_by_user => sub {
        my ($auth_obj, $user) = @_;
