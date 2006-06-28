@@ -627,7 +627,7 @@ sub preload_files {
 }
 
 sub in_cache {
-    my $file = shift;
+    my ($self, $file) = (@_ == 2) ? @_ : (undef, shift());
     return exists($CACHE{$file}) || 0;
 }
 
