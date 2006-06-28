@@ -26,7 +26,7 @@ use vars qw($VERSION
             $HTML_KEY
             @EXPORT_OK
             );
-@EXPORT_OK = qw(conf_read conf_write);
+@EXPORT_OK = qw(conf_read conf_write in_cache);
 
 $VERSION = '2.03';
 
@@ -626,6 +626,11 @@ sub preload_files {
     }
 }
 
+sub in_cache {
+    my $file = shift;
+    return exists($CACHE{$path}) || 0;
+}
+
 ###----------------------------------------------------------------###
 
 1;
@@ -787,6 +792,12 @@ the handler which matches the files extension, and cache them by filename
 in %CACHE.  Directories are spidered for file extensions which match those
 listed in %EXT_READERS.  This is useful for a server environment where CPU
 may be more precious than memory.
+
+=item C<in_cache>
+
+Allow for testing if a particular filename is registered in the %CACHE - typically
+from a preload_files call.  This is useful when building wrappers around the
+conf_read and conf_write method calls.
 
 =back
 
