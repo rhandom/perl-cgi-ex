@@ -583,47 +583,47 @@ sub write_handler_html {
 ###----------------------------------------------------------------###
 
 sub preload_files {
-  my $self  = shift;
-  my $paths = shift || $self->paths;
-  require File::Find;
+    my $self  = shift;
+    my $paths = shift || $self->paths;
 
-  ### what extensions do we look for
-  my %EXT;
-  if ($self->{handler}) {
-    if (UNIVERSAL::isa($self->{handler},'HASH')) {
-      %EXT = %{ $self->{handler} };
-    }
-  } else {
-    %EXT = %EXT_READERS;
-    if (! $self->{html_key} && ! $HTML_KEY) {
-      delete $EXT{$_} foreach qw(html htm);
-    }
-  }
-  return if ! keys %EXT;
-
-  ### look in the paths for the files
-  foreach my $path (ref($paths) ? @$paths : $paths) {
-    $path =~ s|//+|/|g;
-    $path =~ s|/$||;
-    next if exists $CACHE{$path};
-    if (-f $path) {
-      my $ext = ($path =~ /\.(\w+)$/) ? $1 : '';
-      next if ! $EXT{$ext};
-      $CACHE{$path} = $self->read($path);
-    } elsif (-d _) {
-      $CACHE{$path} = 1;
-      File::Find::find(sub {
-        return if exists $CACHE{$File::Find::name};
-        return if $File::Find::name =~ m|/CVS/|;
-        return if ! -f;
-        my $ext = (/\.(\w+)$/) ? $1 : '';
-        return if ! $EXT{$ext};
-        $CACHE{$File::Find::name} = $self->read($File::Find::name);
-      }, "$path/");
+    ### what extensions do we look for
+    my %EXT;
+    if ($self->{'handler'}) {
+        if (UNIVERSAL::isa($self->{'handler'},'HASH')) {
+            %EXT = %{ $self->{'handler'} };
+        }
     } else {
-      $CACHE{$path} = 0;
+        %EXT = %EXT_READERS;
+        if (! $self->{'html_key'} && ! $HTML_KEY) {
+            delete $EXT{$_} foreach qw(html htm);
+        }
     }
-  }
+    return if ! keys %EXT;
+
+    ### look in the paths for the files
+    foreach my $path (ref($paths) ? @$paths : $paths) {
+        $path =~ s|//+|/|g;
+        $path =~ s|/$||;
+        next if exists $CACHE{$path};
+        if (-f $path) {
+            my $ext = ($path =~ /\.(\w+)$/) ? $1 : '';
+            next if ! $EXT{$ext};
+            $CACHE{$path} = $self->read($path);
+        } elsif (-d _) {
+            $CACHE{$path} = 1;
+            require File::Find;
+            File::Find::find(sub {
+                return if exists $CACHE{$File::Find::name};
+                return if $File::Find::name =~ m|/CVS/|;
+                return if ! -f;
+                my $ext = (/\.(\w+)$/) ? $1 : '';
+                return if ! $EXT{$ext};
+                $CACHE{$File::Find::name} = $self->read($File::Find::name);
+            }, "$path/");
+        } else {
+            $CACHE{$path} = 0;
+        }
+    }
 }
 
 ###----------------------------------------------------------------###
