@@ -628,7 +628,7 @@ sub preload_files {
 
 sub in_cache {
     my $file = shift;
-    return exists($CACHE{$path}) || 0;
+    return exists($CACHE{$file}) || 0;
 }
 
 ###----------------------------------------------------------------###
