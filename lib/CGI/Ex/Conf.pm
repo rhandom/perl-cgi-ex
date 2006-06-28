@@ -634,43 +634,53 @@ __END__
 
 =head1 SYNOPSIS
 
-  my $cob = CGI::Ex::Conf->new;
+    use CGI::Ex::Conf qw(conf_read conf_write);
 
-  my $full_path_to_file = "/tmp/foo.val"; # supports ini, sto, val, pl, xml
-  my $hash = $cob->read($file);
+    my $hash = conf_read("/tmp/foo.yaml");
 
-  local $cob->{default_ext} = 'conf'; # default anyway
-
-
-  my @paths = qw(/tmp, /home/pauls);
-  local $cob->{paths} = \@paths;
-  my $hash = $cob->read('My::NameSpace');
-  # will look in /tmp/My/NameSpace.conf and /home/pauls/My/NameSpace.conf
-
-  my $hash = $cob->read('My::NameSpace', {paths => ['/tmp']});
-  # will look in /tmp/My/NameSpace.conf
+    conf_write("/tmp/foo.yaml", {key1 => $val1, key2 => $val2});
 
 
-  local $cob->{directive} = 'MERGE';
-  my $hash = $cob->read('FooSpace');
-  # OR #
-  my $hash = $cob->read('FooSpace', {directive => 'MERGE'});
-  # will return merged hashes from /tmp/FooSpace.conf and /home/pauls/FooSpace.conf
-  # immutable keys are preserved from originating files
+    ### OOP interface
+
+    my $cob = CGI::Ex::Conf->new;
+
+    my $full_path_to_file = "/tmp/foo.val"; # supports ini, sto, val, pl, xml
+    my $hash = $cob->read($file);
+
+    local $cob->{default_ext} = 'conf'; # default anyway
 
 
-  local $cob->{directive} = 'FIRST';
-  my $hash = $cob->read('FooSpace');
-  # will return values from first found file in the path.
+    my @paths = qw(/tmp, /home/pauls);
+    local $cob->{paths} = \@paths;
+    my $hash = $cob->read('My::NameSpace');
+    # will look in /tmp/My/NameSpace.conf and /home/pauls/My/NameSpace.conf
 
 
-  local $cob->{directive} = 'LAST'; # default behavior
-  my $hash = $cob->read('FooSpace');
-  # will return values from last found file in the path.
+    my $hash = $cob->read('My::NameSpace', {paths => ['/tmp']});
+    # will look in /tmp/My/NameSpace.conf
 
 
-  ### manipulate $hash
-  $cob->write('FooSpace'); # will write it out the changes
+    local $cob->{directive} = 'MERGE';
+    my $hash = $cob->read('FooSpace');
+    # OR #
+    my $hash = $cob->read('FooSpace', {directive => 'MERGE'});
+    # will return merged hashes from /tmp/FooSpace.conf and /home/pauls/FooSpace.conf
+    # immutable keys are preserved from originating files
+
+
+    local $cob->{directive} = 'FIRST';
+    my $hash = $cob->read('FooSpace');
+    # will return values from first found file in the path.
+
+
+    local $cob->{directive} = 'LAST'; # default behavior
+    my $hash = $cob->read('FooSpace');
+    # will return values from last found file in the path.
+
+
+    ### manipulate $hash
+    $cob->write('FooSpace'); # will write it out the changes
 
 =head1 DESCRIPTION
 
@@ -688,7 +698,7 @@ Oh - and it writes too.
 
 =over 4
 
-=item C<-E<gt>read_ref>
+=item C<read_ref>
 
 Takes a file and optional argument hashref.  Figures out the type
 of handler to use to read the file, reads it and returns the ref.
@@ -696,7 +706,7 @@ If you don't need the extended merge functionality, or key fallback,
 or immutable keys, or path lookup ability - then use this method.
 Otherwise - use ->read.
 
-=item C<-E<gt>read>
+=item C<read>
 
 First argument may be either a perl data structure, yaml string, a
 full filename, or a file "namespace".
@@ -754,13 +764,13 @@ The immutable defaults may be overriden using $IMMUTABLE_QR and $IMMUTABLE_KEY.
 
 Errors during read die.  If the file does not exist undef is returned.
 
-=item C<-E<gt>write_ref>
+=item C<write_ref>
 
 Takes a file and the reference to be written.  Figures out the type
 of handler to use to write the file and writes it. If you used the ->read_ref
 use this method.  Otherwise, use ->write.
 
-=item C<-E<gt>write>
+=item C<write>
 
 Allows for writing back out the information read in by ->read.  If multiple
 paths where used - the directive 'FIRST' will write the changes to the first
@@ -769,7 +779,7 @@ immutable keys, then those keys are removed before writing.
 
 Errors during write die.
 
-=item C<-E<gt>preload_files>
+=item C<preload_files>
 
 Arguments are file(s) and/or directory(s) to preload.  preload_files will
 loop through the arguments, find the files that exist, read them in using
@@ -777,6 +787,30 @@ the handler which matches the files extension, and cache them by filename
 in %CACHE.  Directories are spidered for file extensions which match those
 listed in %EXT_READERS.  This is useful for a server environment where CPU
 may be more precious than memory.
+
+=back
+
+=head1 FUNCTIONS
+
+=over4
+
+=item conf_read
+
+Takes a filename.  Returns the read contents of that filename.  The handler
+to use is based upon the extention on the file.
+
+    my $hash = conf_read('/tmp/foo.yaml');
+
+    my $hash = conf_read('/tmp/foo', {file_type => 'yaml'});
+
+Takes a filename and a data structure.  Writes the data to the filename.  The handler
+to use is based upon the extention on the file.
+
+    conf_write('/tmp/foo.yaml', \%hash);
+
+    conf_write('/tmp/foo', \%hash, {file_type => 'yaml'});
+
+=back
 
 =head1 FILETYPES
 
