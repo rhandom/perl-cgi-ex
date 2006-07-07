@@ -2195,7 +2195,7 @@ Collapse adjacent whitespace to a single space.  The "=" is used to indicate CHO
 
     Hello.
 
-    [%- "Hi." -%]
+    [%= "Hi." =%]
 
     Howdy.
 
@@ -2209,7 +2209,7 @@ Remove all adjacent whitespace.  The "~" is used to indicate CHOMP_GREEDY.
 
     Hello.
 
-    [%- "Hi." -%]
+    [%~ "Hi." ~%]
 
     Howdy.
 
@@ -2350,9 +2350,9 @@ Allow for passing in TT style filters.
 
     my $str = q{
         [% a = "Hello" %]
-        1([% a | filter1 %])
-        2([% a | filter2 %])
-        3([% a | filter3 %])
+        1 ([% a | filter1 %])
+        2 ([% a | filter2 %])
+        3 ([% a | filter3 %])
     };
 
     my $obj = CGI::Ex::Template->new(FILTERS => $filters);
@@ -2360,9 +2360,9 @@ Allow for passing in TT style filters.
 
 Would print:
 
-        (11111)
-        (22222)
-        (33333)
+        1 (11111)
+        2 (22222)
+        3 (33333)
 
 Filters passed in as an arrayref should contain a coderef and a value
 indicating if they are dynamic or static (true meaning dynamic).  The
