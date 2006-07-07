@@ -399,13 +399,8 @@ CET has its own built in recursive grammar system.
 
 =item There are no references.
 
-There was in initial beta tests, but it was decided to remove the little used feature.
-
-It makes it the same as
-
-    [% obj.method("foo") %]
-
-This is removed in CET.
+There were in initial beta tests, but it was decided to remove the little used feature which
+took a length of code to implement.
 
 =item The DEBUG directive is more limited.
 
@@ -416,7 +411,8 @@ are on rather than a general line range.
 
 =item There is no ANYCASE configuration item.
 
-There was in initial beta tests, but it was dropped in favor of consistent parsing syntax.
+There was in initial beta tests, but it was dropped in favor of consistent parsing syntax (and
+a minimal amount of speedup).
 
 =item There is no V1DOLLAR configuration item.
 
@@ -751,7 +747,8 @@ object (except for true filters such as eval and redirect).
 
 =item '0'
 
-    [% item = 'foo' %][% item.0 %] Returns self.  Allows for scalars to mask as arrays.
+    [% item = 'foo' %][% item.0 %] Returns self.  Allows for scalars to mask as arrays (scalars
+                                   already will, but this allows for more direct access).
 
 =item as
 
@@ -797,7 +794,8 @@ This is a filter and is not available via the Text virtual object.
 
 =item format
 
-    [% item.format('%d') %] Print the string out in the specified format.  Each line is
+    [% item.format('%d') %] Print the string out in the specified format.  It is similar to
+    the "as" virtual method, except that the item is split on newline and each line is
     processed separately.
 
 =item hash
@@ -847,7 +845,7 @@ Note: This filter is not available as of TT2.15.
 
 =item remove
 
-    [% item.remove("\s+") %] Same as remove - but is global and replaces with nothing.
+    [% item.remove("\s+") %] Same as replace - but is global and replaces with nothing.
 
 =item redirect
 
@@ -868,13 +866,13 @@ This is a filter and is not available via the Text virtual object.
 
     [% item.replace("\s+", "&nbsp;") %] Globally replace all space with &nbsp;
 
-    [% item.replace("foo", "bar", 0) Replace only the first instance of foo with bar.
+    [% item.replace("foo", "bar", 0) %] Replace only the first instance of foo with bar.
 
     [% item.replace("(\w+)", "($1)") %] Surround all words with parenthesis.
 
 =item search
 
-    [% item.search("(\w+)" %] Tests if the given pattern is in the string.
+    [% item.search("(\w+)") %] Tests if the given pattern is in the string.
 
 =item size
 
