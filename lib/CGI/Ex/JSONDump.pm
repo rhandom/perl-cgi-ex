@@ -94,7 +94,7 @@ sub _dump {
 
 sub _encode {
     my ($self, $str, $prefix) = @_;
-    return 'undefined' if ! defined $str;
+    return 'null' if ! defined $str;
 
     ### allow things that look like numbers to show up as numbers
     return $str if $str =~ /^ -? (?: \d{0,13} \. \d+ | \d{1,13}) $/x && $str !~ /0$/;
