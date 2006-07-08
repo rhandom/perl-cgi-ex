@@ -12,7 +12,8 @@ CGI::Ex::JSONDump - Simple data to JSON dump.
 ###----------------------------------------------------------------###
 
 use vars qw($VERSION
-            @EXPORT @EXPORT_OK);
+            @EXPORT @EXPORT_OK
+            %ESCAPE $QR_ESCAPE);
 use strict;
 use base qw(Exporter);
 
@@ -22,6 +23,40 @@ BEGIN {
     @EXPORT = qw(JSONDump);
     @EXPORT_OK = @EXPORT;
 
+    %ESCAPE = (
+        "\""   => '\"',
+        "\t"   => '\t',
+        "\r"   => '\r',
+        "\\"   => '\\\\',
+        "\x00" => '\u0030',
+        "\x01" => '\u0031',
+        "\x02" => '\u0032',
+        "\x03" => '\u0033',
+        "\x04" => '\u0034',
+        "\x05" => '\u0035',
+        "\x06" => '\u0036',
+        "\x07" => '\u0037',
+        "\x0B" => '\u0031',
+        "\x0E" => '\u0031',
+        "\x0F" => '\u0031',
+        "\x10" => '\u0031',
+        "\x11" => '\u0031',
+        "\x12" => '\u0031',
+        "\x13" => '\u0031',
+        "\x14" => '\u0032',
+        "\x15" => '\u0032',
+        "\x16" => '\u0032',
+        "\x17" => '\u0032',
+        "\x18" => '\u0032',
+        "\x19" => '\u0032',
+        "\x1A" => '\u0032',
+        "\x1B" => '\u0032',
+        "\x1C" => '\u0032',
+        "\x1D" => '\u0032',
+        "\x1E" => '\u0033',
+        "\x1F" => '\u0033',
+               );
+    $QR_ESCAPE = '['.join("", keys %ESCAPE).']';
 };
 
 sub JSONDump {
@@ -94,19 +129,26 @@ sub _dump {
 
 sub _encode {
     my ($self, $str, $prefix) = @_;
-    return 'null' if ! defined $str;
+    return 'null'  if ! defined $str;
+    return 'true'  if $str =~ /^[Tt][Rr][Uu][Ee]$/;
+    return 'false' if $str =~ /^[Ff][Aa][Ll][Ss][Ee]$/;
 
-    ### allow things that look like numbers to show up as numbers
+    ### allow things that look like numbers to show up as numbers (and those that aren't quite to not)
     return $str if $str =~ /^ -? (?: \d{0,13} \. \d+ | \d{1,13}) $/x && $str !~ /0$/;
 
-    $str =~ s/\\/\\\\/g;
-    $str =~ s/\"/\\\"/g;
-    $str =~ s{(</? (?: htm | scrip | bod | !-))}{$1"+"}gx; # escape <html> and </html> tags in the text
-    if ($self->{'str_nl'}) {
+    ### allow for really odd chars
+    utf8::decode($str) if $self->{'utf8'} && &utf8::decode;
+
+    $str =~ s/($QR_ESCAPE)/$ESCAPE{$1}/go;
+    $str =~ s{(</? (?: htm | scrip | !-))}{$1"+"}gx; # escape <html> and </html> tags in the text
+
+    ### add nice newlines (unless pretty is off)
+    if ($self->{'str_nl'} && length($str) > 80) {
         $str =~ s/\"\s*\+\"$// if $str =~ s/\n/\\n\"$self->{str_nl}${prefix}+\"/g;
     } else {
         $str =~ s/\n/\\n/g;
     }
+
     return '"' .$str. '"';
 }
 
