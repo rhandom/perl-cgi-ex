@@ -37,12 +37,7 @@ sub new {
     my $self  = bless {%$args}, $class;
 
     $self->{'handle_types'} ||= {};
-    $self->{'handle_keys'}  ||= {};
-    $self->{'skip_types'}   ||= {};
     $self->{'skip_keys'}    ||= {};
-
-    $self->{'skip_types'} = {map {$_ => 1} ref($self->{'skip_types'}) eq 'ARRAY' ? @{ $self->{'skip_types'} } : $self->{'skip_types'}}
-        if ref $self->{'skip_types'} ne 'HASH';
     $self->{'skip_keys'} = {map {$_ => 1} ref($self->{'skip_keys'}) eq 'ARRAY' ? @{ $self->{'skip_keys'} } : $self->{'skip_keys'}}
         if ref $self->{'skip_keys'} ne 'HASH';
 
