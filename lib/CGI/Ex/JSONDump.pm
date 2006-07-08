@@ -12,8 +12,7 @@ CGI::Ex::JSONDump - Simple data to JSON dump.
 ###----------------------------------------------------------------###
 
 use vars qw($VERSION
-            @EXPORT @EXPORT_OK
-            %ESCAPE $QR_ESCAPE);
+            @EXPORT @EXPORT_OK);
 use strict;
 use base qw(Exporter);
 
@@ -23,40 +22,6 @@ BEGIN {
     @EXPORT = qw(JSONDump);
     @EXPORT_OK = @EXPORT;
 
-    %ESCAPE = (
-        "\""   => '\"',
-        "\t"   => '\t',
-        "\r"   => '\r',
-        "\\"   => '\\\\',
-        "\x00" => '\u0030',
-        "\x01" => '\u0031',
-        "\x02" => '\u0032',
-        "\x03" => '\u0033',
-        "\x04" => '\u0034',
-        "\x05" => '\u0035',
-        "\x06" => '\u0036',
-        "\x07" => '\u0037',
-        "\x0B" => '\u0031',
-        "\x0E" => '\u0031',
-        "\x0F" => '\u0031',
-        "\x10" => '\u0031',
-        "\x11" => '\u0031',
-        "\x12" => '\u0031',
-        "\x13" => '\u0031',
-        "\x14" => '\u0032',
-        "\x15" => '\u0032',
-        "\x16" => '\u0032',
-        "\x17" => '\u0032',
-        "\x18" => '\u0032',
-        "\x19" => '\u0032',
-        "\x1A" => '\u0032',
-        "\x1B" => '\u0032',
-        "\x1C" => '\u0032',
-        "\x1D" => '\u0032',
-        "\x1E" => '\u0033',
-        "\x1F" => '\u0033',
-               );
-    $QR_ESCAPE = '['.join("", keys %ESCAPE).']';
 };
 
 sub JSONDump {
@@ -71,8 +36,7 @@ sub new {
     my $args  = shift || {};
     my $self  = bless {%$args}, $class;
 
-    $self->{'handle_types'} ||= {};
-    $self->{'skip_keys'}    ||= {};
+    $self->{'skip_keys'} ||= {};
     $self->{'skip_keys'} = {map {$_ => 1} ref($self->{'skip_keys'}) eq 'ARRAY' ? @{ $self->{'skip_keys'} } : $self->{'skip_keys'}}
         if ref $self->{'skip_keys'} ne 'HASH';
 
@@ -98,16 +62,13 @@ sub _dump {
     my ($self, $data, $prefix) = @_;
     my $ref = ref $data;
 
-    if ($self->{'handle_types'}->{$ref}) {
-        return $self->{'handle_types'}->{$ref}->($self, $data, "${prefix}$self->{indent}");
-
-    } elsif ($ref eq 'HASH') {
+    if ($ref eq 'HASH') {
         return "{$self->{hash_nl}${prefix}$self->{indent}"
             . join(",$self->{hash_nl}${prefix}$self->{indent}",
-                   map  { $self->_encode($_, "${prefix}$self->{indent}")
+                   map  { $self->js_escape($_, "${prefix}$self->{indent}")
                               . $self->{'hash_sep'}
                               . $self->_dump($data->{$_}, "${prefix}$self->{indent}") }
-                   grep { my $r = ref $data->{$_}; ! $r || $self->{'handle_types'}->{$r} || $r eq 'HASH' || $r eq 'ARRAY' }
+                   grep { my $r = ref $data->{$_}; ! $r || $self->{'handle_unknown_types'} || $r eq 'HASH' || $r eq 'ARRAY' }
                    grep { ! $self->{'skip_keys'}->{$_} }
                    ($self->{'no_sort'} ? (keys %$data) : (sort keys %$data)))
             . "$self->{hash_nl}${prefix}}";
@@ -120,27 +81,32 @@ sub _dump {
             . "$self->{array_nl}${prefix}]";
 
     } elsif ($ref) {
+        return $self->{'handle_unknown_types'}->($self, $data, $ref) if ref($self->{'handle_unknown_types'}) eq 'CODE';
         return '"'.$data.'"'; ### don't do anything
 
     } else {
-        return $self->_encode($data, "${prefix}$self->{indent}");
+        return $self->js_escape($data, "${prefix}$self->{indent}");
     }
 }
 
-sub _encode {
+sub js_escape {
     my ($self, $str, $prefix) = @_;
     return 'null'  if ! defined $str;
-    return 'true'  if $str =~ /^[Tt][Rr][Uu][Ee]$/;
-    return 'false' if $str =~ /^[Ff][Aa][Ll][Ss][Ee]$/;
 
     ### allow things that look like numbers to show up as numbers (and those that aren't quite to not)
-    return $str if $str =~ /^ -? (?: \d{0,13} \. \d+ | \d{1,13}) $/x && $str !~ /0$/;
+    return $str if $str =~ /^ -? (?: \d{0,13} \. \d* [1-9] | \d{1,13}) $/x;
+
+    $str =~ s/\\/\\\\/g;
+    $str =~ s/\"/\\\"/g;
+    $str =~ s/\r/\\\r/g;
+    $str =~ s/\t/\\\t/g;
 
     ### allow for really odd chars
+    $str =~ s/([\x00-\x07\x0b\x0e-\x1f])/'\\u00' . unpack('H2',$1)/eg; # from JSON::Converter
     utf8::decode($str) if $self->{'utf8'} && &utf8::decode;
 
-    $str =~ s/($QR_ESCAPE)/$ESCAPE{$1}/go;
-    $str =~ s{(</? (?: htm | scrip | !-))}{$1"+"}gx; # escape <html> and </html> tags in the text
+    ### escape <html> and </html> tags in the text
+    $str =~ s{(</? (?: htm | scrip | !-))}{$1"+"}gx;
 
     ### add nice newlines (unless pretty is off)
     if ($self->{'str_nl'} && length($str) > 80) {
@@ -156,9 +122,39 @@ sub _encode {
 
 __END__
 
+=head1 SYNOPSIS
+
+    use CGI::Ex::JSONDump;
+
+    my $js = JSONDump(\%complex_data, {pretty => 0});
+
+    ### OR
+
+    my $js = CGI::Ex::JSONDump->new({pretty => 0})->dump(\%complex_data);
+
 =head1 DESCRIPTION
 
 CGI::Ex::JSONDump is a very lightweight and fast data structure dumper.
+
+=head1 METHODS
+
+=over 4
+
+=item new
+
+=item dump
+
+=item js_escape
+
+=back
+
+=head1 FUNCTIONS
+
+=over 4
+
+=item JSONDump
+
+=back
 
 =head1 AUTHORS
 
