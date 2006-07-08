@@ -72,15 +72,14 @@ sub _dump {
         return $self->{'handle_types'}->{$ref}->($self, $data, "${prefix}$self->{indent}");
 
     } elsif ($ref eq 'HASH') {
-        my @keys = $self->{'no_sort'} ? (keys %$data) : (sort keys %$data);
         return "{$self->{hash_nl}${prefix}$self->{indent}"
             . join(",$self->{hash_nl}${prefix}$self->{indent}",
                    map  { $self->_encode($_, "${prefix}$self->{indent}")
                               . $self->{'hash_sep'}
                               . $self->_dump($data->{$_}, "${prefix}$self->{indent}") }
-                   grep { ! $self->{'skip_types'}->{ref $data->{$_}} }
+                   grep { my $r = ref $data->{$_}; ! $r || $self->{'handle_types'}->{$r} || $r eq 'HASH' || $r eq 'ARRAY' }
                    grep { ! $self->{'skip_keys'}->{$_} }
-                   @keys)
+                   ($self->{'no_sort'} ? (keys %$data) : (sort keys %$data)))
             . "$self->{hash_nl}${prefix}}";
 
     } elsif ($ref eq 'ARRAY') {
@@ -91,7 +90,7 @@ sub _dump {
             . "$self->{array_nl}${prefix}]";
 
     } elsif ($ref) {
-        ### don't do anything
+        return '"'.$data.'"'; ### don't do anything
 
     } else {
         return $self->_encode($data, "${prefix}$self->{indent}");
@@ -100,6 +99,7 @@ sub _dump {
 
 sub _encode {
     my ($self, $str, $prefix) = @_;
+    return 'undefined' if ! defined $str;
 
     ### allow things that look like numbers to show up as numbers
     return $str if $str =~ /^ -? (?: \d{0,13} \. \d+ | \d{1,13}) $/x && $str !~ /0$/;
