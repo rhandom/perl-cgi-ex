@@ -52,6 +52,9 @@ test_dump({a => 1}, "{\"a\":1}", {pretty => 0});
 test_dump([1, 2, 3], "[\n  1,\n  2,\n  3\n]", {pretty => 1});
 test_dump([1, 2, 3], "[1,2,3]", {pretty => 0});
 
+test_dump({a => [1,2]}, "{\"a\":[1,2]}", {pretty => 0});
+test_dump({a => [1,2]}, "{\n  \"a\" : [\n    1,\n    2\n  ]\n}", {pretty => 1});
+
 test_dump({a => sub {}}, "{}", {pretty => 0});
 test_dump({a => sub {}}, "{\"a\":\"CODE\"}", {handle_unknown_types => sub {my $self=shift;return $self->js_escape(ref shift)}, pretty => 0});
 
