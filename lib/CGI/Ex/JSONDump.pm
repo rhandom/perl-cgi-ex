@@ -2,7 +2,7 @@ package CGI::Ex::JSONDump;
 
 =head1 NAME
 
-CGI::Ex::JSONDump - Simple data to JSON dump.
+CGI::Ex::JSONDump - Comprehensive data to JSON dump.
 
 =cut
 
@@ -17,7 +17,7 @@ use strict;
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION  = '2.03';
+    $VERSION  = '2.04';
 
     @EXPORT = qw(JSONDump);
     @EXPORT_OK = @EXPORT;
