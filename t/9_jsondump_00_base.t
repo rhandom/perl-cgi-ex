@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 41;
+use Test::More tests => 42;
 
 use_ok('CGI::Ex::JSONDump');
 
@@ -18,6 +18,8 @@ ok(&JSONDump, "Got the sub");
 my $obj = CGI::Ex::JSONDump->new;
 
 ok(JSONDump({a => 1}) eq $obj->dump({a => 1}), "Function and OO Match");
+
+ok($obj->dump("foo") eq $obj->js_escape("foo"), "js_escape works");
 
 sub test_dump {
     my $data = shift;
