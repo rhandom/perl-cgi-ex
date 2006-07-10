@@ -1,3 +1,7 @@
+2.05   2006-07-10
+        * Allow for CGI::Ex to be compatible with Mandrake and Fedora mod_perl 2, as well as debian mod_perl2
+          and older mod_perl1.
+
 2.04   2006-07-10
         * Allow for items not in group order to get added to validation correctly in CGI::Ex::Validate.
         * Add samples/index.cgi
