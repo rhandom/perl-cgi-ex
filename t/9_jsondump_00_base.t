@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 35;
+use Test::More tests => 37;
 
 use_ok('CGI::Ex::JSONDump');
 
@@ -60,14 +60,16 @@ test_dump({2 => 1, _a => 1}, "{2:1,\"_a\":1}", {pretty=>0});
 test_dump({2 => 1, _a => 1}, "{2:1}", {pretty=>0, skip_key_qr => qr/^_/});
 
 test_dump({a => 1}, "{\n  \"a\" : 1\n}", {pretty => 1});
-test_dump({a => 1}, "{\n  \"a\" : 1\n}", {pretty => 1, hash_nl => "\n", hash_sep => " : "});
-test_dump({a => 1}, "{  \"a\" : 1}", {pretty => 1, hash_nl => "", hash_sep => " : "});
-test_dump({a => 1}, "{  \"a\":1}", {pretty => 1, hash_nl => "", hash_sep => ":"});
+test_dump({a => 1}, "{\n  \"a\" : 1\n}", {pretty => 1, hash_nl => "\n", hash_sep => " : ", indent => "  "});
+test_dump({a => 1}, "{\n\"a\" : 1\n}", {pretty => 1, hash_nl => "\n", hash_sep => " : ", indent => ""});
+test_dump({a => 1}, "{\"a\" : 1}", {pretty => 1, hash_nl => "", hash_sep => " : ", indent => ""});
+test_dump({a => 1}, "{\"a\":1}", {pretty => 1, hash_nl => "", hash_sep => ":", indent => ""});
 test_dump({a => 1}, "{\"a\":1}", {pretty => 0, hash_nl => "\n", hash_sep => " : "});
 
 test_dump(['a' => 1], "[\n  \"a\",\n  1\n]", {pretty => 1});
-test_dump(['a' => 1], "[\n  \"a\",\n  1\n]", {pretty => 1, array_nl => "\n"});
-test_dump(['a' => 1], "[  \"a\",  1]", {pretty => 1, array_nl => ""});
+test_dump(['a' => 1], "[\n  \"a\",\n  1\n]", {pretty => 1, array_nl => "\n", indent => "  "});
+test_dump(['a' => 1], "[\n\"a\",\n1\n]", {pretty => 1, array_nl => "\n", indent => ""});
+test_dump(['a' => 1], "[\"a\",1]", {pretty => 1, array_nl => "", indent => ""});
 test_dump(['a' => 1], "[\"a\",1]", {pretty => 0, array_nl => "\n"});
 
 
