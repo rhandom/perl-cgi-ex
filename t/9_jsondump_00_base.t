@@ -59,7 +59,7 @@ test_dump({a => 1}, "{}", {skip_keys => ['a']});
 test_dump({a => 1}, "{}", {skip_keys => {a=>1}});
 
 test_dump({2 => 1, _a => 1}, "{2:1,\"_a\":1}", {pretty=>0});
-test_dump({2 => 1, _a => 1}, "{2:1}", {pretty=>0, skip_key_qr => qr/^_/});
+test_dump({2 => 1, _a => 1}, "{2:1}", {pretty=>0, skip_keys_qr => qr/^_/});
 
 test_dump({a => 1}, "{\n  \"a\" : 1\n}", {pretty => 1});
 test_dump({a => 1}, "{\n  \"a\" : 1\n}", {pretty => 1, hash_nl => "\n", hash_sep => " : ", indent => "  "});
