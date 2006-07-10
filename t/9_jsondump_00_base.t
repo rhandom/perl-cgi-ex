@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 42;
+use Test::More tests => 47;
 
 use_ok('CGI::Ex::JSONDump');
 
@@ -83,9 +83,12 @@ test_dump('a', '"a"');
 test_dump("\n", '"\\n"');
 test_dump("\\", '"\\\\"');
 test_dump('<script>', '"<scrip"+"t>"');
+test_dump('<script>', "'<scrip'+'t>'", {single_quote => 1});
 test_dump('<html>', '"<htm"+"l>"');
 test_dump('<!--', '"<!-"+"-"');
 test_dump('"', '"\\""');
+test_dump('a', "'a'", {single_quote => 1});
+test_dump('"', "'\"'", {single_quote => 1});
 
 my $code = sub {};
 my $str  = "\"$code\"";
@@ -98,3 +101,6 @@ test_dump({a => sub { "ab" }}, '{"a":"ab"}', {pretty=>0,play_coderefs => 1});
 
 test_dump("Foo\n".("Bar"x30), "\"Foo\\n\"\n  +\"".("Bar"x30)."\"", {pretty => 1});
 test_dump("Foo\n".("Bar"x30), "\"Foo\\n\"\n\n  +\"".("Bar"x30)."\"", {pretty => 1, str_nl => "\n\n"});
+
+test_dump("Foo\n".("Bar"x30), "'Foo\\n'\n  +'".("Bar"x30)."'", {pretty => 1, single_quote => 1});
+test_dump("Foo\n".("Bar"x30), "'Foo\\n'\n\n  +'".("Bar"x30)."'", {pretty => 1, str_nl => "\n\n", single_quote => 1});
