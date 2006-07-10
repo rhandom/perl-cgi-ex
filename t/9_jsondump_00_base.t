@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 1;
+use Test::More tests => 20;
 
 use_ok('CGI::Ex::JSONDump');
 
@@ -46,3 +46,20 @@ sub test_dump {
 
 test_dump({a => 1}, "{\n  \"a\" : 1\n}", {pretty => 1});
 test_dump({a => 1}, "{\"a\":1}", {pretty => 0});
+
+test_dump([1, 2, 3], "[\n  1,\n  2,\n  3\n]", {pretty => 1});
+test_dump([1, 2, 3], "[1,2,3]", {pretty => 0});
+
+test_dump({a => sub {}}, "{}", {pretty => 0});
+test_dump({a => sub {}}, "{\"a\":\"CODE\"}", {handle_unknown_types => sub {my $self=shift;return $self->js_escape(ref shift)}, pretty => 0});
+
+test_dump(1, "1");
+test_dump('1.0', '"1.0"');
+test_dump('123456789012345', '"123456789012345"');
+test_dump('a', '"a"');
+test_dump("\n", '"\\n"');
+test_dump("\\", '"\\\\"');
+test_dump('<script>', '"<scrip"+"t>"');
+test_dump('<html>', '"<htm"+"l>"');
+test_dump('<!--', '"<!-"+"-"');
+test_dump('"', '"\\""');
