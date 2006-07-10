@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 37;
+use Test::More tests => 38;
 
 use_ok('CGI::Ex::JSONDump');
 
@@ -84,6 +84,11 @@ test_dump('<script>', '"<scrip"+"t>"');
 test_dump('<html>', '"<htm"+"l>"');
 test_dump('<!--', '"<!-"+"-"');
 test_dump('"', '"\\""');
+
+my $code = sub {};
+my $str  = "\"$code\"";
+test_dump($code, $str);
+test_dump($code, "\"CODE\"", {handle_unknown_types => sub { my($self, $data)=@_; return '"'.ref($data).'"'}});
 
 test_dump("Foo\n".("Bar"x30), "\"Foo\\n\"\n  +\"".("Bar"x30)."\"", {pretty => 1});
 test_dump("Foo\n".("Bar"x30), "\"Foo\\n\"\n\n  +\"".("Bar"x30)."\"", {pretty => 1, str_nl => "\n\n"});
