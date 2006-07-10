@@ -10,6 +10,7 @@ my $swap = {
 };
 
 my $txt  = "[% one %][% two %][% three %][% hash.keys.join %] [% code(one).length %] [% hash.\$a_var %]\n";
+#$txt = hello2000();
 
 ###----------------------------------------------------------------###
 
@@ -37,3 +38,26 @@ sleep 15; # go and check the 'ps fauwx|grep perl'
 
 
 ###----------------------------------------------------------------###
+
+sub hello2000 {
+    my $hello2000 = "<html><head><title>[% title %]</title></head><body>
+[% array = [ \"Hello\", \"World\", \"2000\", \"Hello\", \"World\", \"2000\" ] %]
+[% sorted = array.sort %]
+[% multi = [ sorted, sorted, sorted, sorted, sorted ] %]
+<table>
+[% FOREACH row = multi %]
+  <tr bgcolor=\"[% loop.count % 2 ? 'gray' : 'white' %]\">
+  [% FOREACH col = row %]
+    <td align=\"center\"><font size=\"+1\">[% col %]</font></td>
+  [% END %]
+  </tr>
+[% END %]
+</table>
+[% param = integer %]
+[% FOREACH i = [ 1 .. 10 ] %]
+  [% var = i + param %]"
+  .("\n  [%var%] Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World <br/>"x20)."
+[% END %]
+</body></html>
+";
+}
