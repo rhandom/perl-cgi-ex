@@ -63,17 +63,20 @@ sub _dump {
     my $ref = ref $data;
 
     if ($ref eq 'HASH') {
+        my @keys = (grep { my $r = ref $data->{$_}; ! $r || $self->{'handle_unknown_types'} || $r eq 'HASH' || $r eq 'ARRAY' }
+                    grep { ! $self->{'skip_keys'}->{$_} }
+                    ($self->{'no_sort'} ? (keys %$data) : (sort keys %$data)));
+        return "{}" if ! @keys;
         return "{$self->{hash_nl}${prefix}$self->{indent}"
             . join(",$self->{hash_nl}${prefix}$self->{indent}",
                    map  { $self->js_escape($_, "${prefix}$self->{indent}")
                               . $self->{'hash_sep'}
                               . $self->_dump($data->{$_}, "${prefix}$self->{indent}") }
-                   grep { my $r = ref $data->{$_}; ! $r || $self->{'handle_unknown_types'} || $r eq 'HASH' || $r eq 'ARRAY' }
-                   grep { ! $self->{'skip_keys'}->{$_} }
-                   ($self->{'no_sort'} ? (keys %$data) : (sort keys %$data)))
+                   @keys)
             . "$self->{hash_nl}${prefix}}";
 
     } elsif ($ref eq 'ARRAY') {
+        return "[]" if ! @$data;
         return "[$self->{array_nl}${prefix}$self->{indent}"
             . join(",$self->{array_nl}${prefix}$self->{indent}",
                    map { $self->_dump($_, "${prefix}$self->{indent}") }
