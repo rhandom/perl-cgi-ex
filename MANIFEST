@@ -8,6 +8,7 @@ lib/CGI/Ex/Conf.pm
 lib/CGI/Ex/Die.pm
 lib/CGI/Ex/Dump.pm
 lib/CGI/Ex/Fill.pm
+lib/CGI/Ex/JSONDump.pm
 lib/CGI/Ex/md5.js
 lib/CGI/Ex/sha1.js
 lib/CGI/Ex/Template.pm
@@ -20,18 +21,19 @@ MANIFEST
 MANIFEST.SKIP
 META.yml
 README
+samples/app/cgi_ex_1.cgi
+samples/app/cgi_ex_2.cgi
 samples/benchmark/bench_auth.pl
 samples/benchmark/bench_cgix_hfif.pl
 samples/benchmark/bench_conf_readers.pl
 samples/benchmark/bench_conf_writers.pl
+samples/benchmark/bench_jsondump.pl
 samples/benchmark/bench_method_calling.pl
 samples/benchmark/bench_optree.pl
 samples/benchmark/bench_template.pl
 samples/benchmark/bench_template_tag_parser.pl
 samples/benchmark/bench_validation.pl
 samples/benchmark/bench_various_templaters.pl
-samples/cgi_ex_1.cgi
-samples/cgi_ex_2.cgi
 samples/conf_path_1/apples.pl
 samples/conf_path_1/oranges.pl
 samples/conf_path_3/apples.pl
@@ -93,3 +95,4 @@ t/6_die_00_base.t
 t/7_template_00_base.t
 t/7_template_01_includes.t
 t/8_auth_00_base.t
+t/9_jsondump_00_base.t

@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 47;
+use Test::More tests => 49;
 
 use_ok('CGI::Ex::JSONDump');
 
