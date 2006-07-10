@@ -2,7 +2,7 @@ package CGI::Ex::JSONDump;
 
 =head1 NAME
 
-CGI::Ex::JSONDump - Comprehensive data to JSON dump.
+CGI::Ex::JSONDump - Simple data to JSON dump.
 
 =cut
 
