@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.04';
+    $VERSION               = '2.05';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -35,6 +35,34 @@ BEGIN {
                     set_cookie
                     location_bounce
                     );
+
+    ### cache mod_perl version (light if or if not mod_perl)
+    my $v = (! $ENV{'MOD_PERL'}) ? 0
+        # mod_perl/1.27 or mod_perl/1.99_16 or mod_perl/2.0.1
+        # if MOD_PERL is set - don't die if regex fails - just assume 1.0
+        : ($ENV{'MOD_PERL'} =~ m{ ^ mod_perl / (\d+\.[\d_]+) (?: \.\d+)? $ }x) ? $1
+        : '1.0_0';
+    sub _mod_perl_version () { $v }
+    sub _is_mod_perl_1    () { $v <  1.98 && $v > 0 }
+    sub _is_mod_perl_2    () { $v >= 1.98 }
+
+    ### cache apache request getter (light if or if not mod_perl)
+    my $sub;
+    if (_is_mod_perl_1) { # old mod_perl
+        require Apache;
+        $sub = sub { Apache->request };
+    } elsif (_is_mod_perl_2) {
+        if (eval { require Apache2::RequestRec }) { # debian style
+            require Apache2::RequestUtil;
+            $sub = sub { Apache2::RequestUtil->request };
+        } else { # fedora and mandrake style
+            require Apache::RequestUtil;
+            $sub = sub { Apache->request };
+        }
+    } else {
+        $sub = sub {};
+    }
+    sub apache_request_sub () { $sub }
 }
 
 ###----------------------------------------------------------------###
@@ -197,37 +225,14 @@ sub apache_request {
     my $self = shift || die 'Usage: $cgix_obj->apache_request';
     $self->{'apache_request'} = shift if $#_ != -1;
 
-    if (! $self->{'apache_request'}) {
-        if ($self->is_mod_perl_1) {
-            require Apache;
-            $self->{'apache_request'} = Apache->request;
-        } elsif ($self->is_mod_perl_2) {
-            require Apache2::RequestRec;
-            require Apache2::RequestUtil;
-            $self->{'apache_request'} = Apache2::RequestUtil->request;
-        }
-    }
-
-    return $self->{'apache_request'};
+    return $self->{'apache_request'} ||= apache_request_sub()->();
 }
 
 ### Get the version of mod_perl running (0 if not mod_perl)
 #   my $version = $cgix->mod_perl_version;
-sub mod_perl_version {
-    my $self = shift || die 'Usage: $cgix_obj->mod_perl_version';
-
-    if (! defined $self->{'mod_perl_version'}) {
-        return 0 if ! $ENV{'MOD_PERL'};
-        # mod_perl/1.27 or mod_perl/1.99_16 or mod_perl/2.0.1
-        # if MOD_PERL is set - don't die if regex fails - just assume 1.0
-        $self->{'mod_perl_version'} = ($ENV{'MOD_PERL'} =~ m{ ^ mod_perl / (\d+\.[\d_]+) (?: \.\d+)? $ }x)
-            ? $1 : '1.0_0';
-    }
-    return $self->{'mod_perl_version'};
-}
-
-sub is_mod_perl_1 { my $m = shift->mod_perl_version; return $m <  1.98 && $m > 0 }
-sub is_mod_perl_2 { my $m = shift->mod_perl_version; return $m >= 1.98 }
+sub mod_perl_version { _mod_perl_version }
+sub is_mod_perl_1    { _is_mod_perl_1    }
+sub is_mod_perl_2    { _is_mod_perl_2    }
 
 ### Allow for a setter
 #   $cgix->set_apache_request($r)
