@@ -44,6 +44,7 @@ samples/devel/dprof_validation.d
 samples/generate_js.pl
 samples/html1.htm
 samples/html2.htm
+samples/index.cgi
 samples/js_validate_1.html
 samples/js_validate_2.html
 samples/js_validate_3.html

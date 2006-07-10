@@ -1,13 +1,27 @@
 #!/usr/bin/perl -w
 
-# Benchmark: timing 1000 iterations of cgix_func, cgix_meth, hfif...
-#  cgix_func:  1 wallclock secs ( 1.41 usr +  0.01 sys =  1.42 CPU) @ 704.23/s (n=1000)
-#  cgix_meth:  2 wallclock secs ( 1.47 usr +  0.00 sys =  1.47 CPU) @ 680.27/s (n=1000)
-#  hfif:  8 wallclock secs ( 8.34 usr +  0.04 sys =  8.38 CPU) @ 119.33/s (n=1000)
-#            Rate      hfif cgix_meth cgix_func
-# hfif      119/s        --      -82%      -83%
-# cgix_meth 680/s      470%        --       -3%
-# cgix_func 704/s      490%        4%        --
+# Benchmark: running cejd, json, zejd for at least 2 CPU seconds...
+#       cejd:  4 wallclock secs ( 2.18 usr +  0.00 sys =  2.18 CPU) @ 7045.87/s (n=15360)
+#       json:  3 wallclock secs ( 2.16 usr +  0.00 sys =  2.16 CPU) @ 6634.26/s (n=14330)
+#       zejd:  3 wallclock secs ( 2.16 usr +  0.00 sys =  2.16 CPU) @ 6634.26/s (n=14330)
+#        Rate zejd json cejd
+# zejd 6634/s   --   0%  -6%
+# json 6634/s   0%   --  -6%
+# cejd 7046/s   6%   6%   --
+#
+# Benchmark: running cejd, json for at least 2 CPU seconds...
+#       cejd:  3 wallclock secs ( 2.04 usr +  0.00 sys =  2.04 CPU) @ 5690.20/s (n=11608)
+#       json:  2 wallclock secs ( 2.06 usr +  0.00 sys =  2.06 CPU) @ 5291.75/s (n=10901)
+#        Rate json cejd
+# json 5292/s   --  -7%
+# cejd 5690/s   8%   --
+#
+# Benchmark: running cejd, json for at least 2 CPU seconds...
+#       cejd:  4 wallclock secs ( 2.21 usr +  0.00 sys =  2.21 CPU) @ 24320.81/s (n=53749)
+#       json:  3 wallclock secs ( 2.14 usr +  0.00 sys =  2.14 CPU) @ 10048.13/s (n=21503)
+#         Rate json cejd
+# json 10048/s   -- -59%
+# cejd 24321/s 142%   --
 
 use strict;
 
