@@ -4,7 +4,6 @@
         * Fix samples/app/cgi_ex_* to actually work.
         * Added CGI::Ex::JSONDump
         * Change Validate to use JSONDump instaed of JSON
-        * Various perldoc and other bug fixes.
 
 2.03   2006-06-10
         * Fix the associativity of operators in Template to match perl
