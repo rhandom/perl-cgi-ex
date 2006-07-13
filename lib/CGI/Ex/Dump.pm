@@ -13,7 +13,7 @@ CGI::Ex::Dump - A debug utility
 
 use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION
             $CALL_LEVEL
-            $ON $SUB $QR1 $QR2 $full_filename);
+            $ON $SUB $QR1 $QR2 $full_filename $DEPARSE);
 use strict;
 use Exporter;
 
@@ -25,22 +25,22 @@ $VERSION   = '2.04';
 ### is on or off
 sub on  { $ON = 1 };
 sub off { $ON = 0; }
-&on();
 
-sub set_deparse {
-  $Data::Dumper::Deparse = eval {require B::Deparse};
-}
+sub set_deparse { $DEPARSE = 1 }
 
 ###----------------------------------------------------------------###
 
 BEGIN {
-  ### setup the Data::Dumper usage
-  $Data::Dumper::Sortkeys  = 1    if ! defined $Data::Dumper::Sortkeys; # not avail pre 5.8
-  $Data::Dumper::Useqq     = 1    if ! defined $Data::Dumper::Useqq;
-  $Data::Dumper::Quotekeys = 0    if ! defined $Data::Dumper::Quotekeys;
-  $Data::Dumper::Pad       = '  ' if ! defined $Data::Dumper::Pad;
-  #$Data::Dumper::Deparse   = 1    if ! defined $Data::Dumper::Deparse; # very useful
+  on();
+
   $SUB = sub {
+    ### setup the Data::Dumper usage
+    local $Data::Dumper::Deparse   = $DEPARSE && eval {require B::Deparse};
+    local $Data::Dumper::Pad       = '  ';
+    local $Data::Dumper::Sortkeys  = 1;
+    local $Data::Dumper::Useqq     = 1;
+    local $Data::Dumper::Quotekeys = 0;
+
     require Data::Dumper;
     return Data::Dumper->Dumpperl(\@_);
   };
