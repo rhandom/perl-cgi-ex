@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.04';
+$VERSION = '2.05';
 
 ###----------------------------------------------------------------###
 
@@ -728,18 +728,38 @@ __END__
 
 =head1 SYNOPSIS
 
-  ### authorize the user
-  my $auth = $self->get_valid_auth({
-    get_pass_by_user => \&get_pass_by_user,
-  });
+    use CGI::Ex::Auth;
+
+    ### authorize the user
+    my $auth = CGI::Ex::Auth->get_valid_auth({
+        get_pass_by_user => \&get_pass_by_user,
+    });
 
 
-  sub get_pass_by_user {
-    my $auth = shift;
-    my $user = shift;
-    my $pass = some_way_of_getting_password($user);
-    return $pass;
-  }
+    sub get_pass_by_user {
+        my $auth = shift;
+        my $user = shift;
+        my $pass = some_way_of_getting_password($user);
+        return $pass;
+    }
+
+    ### OR - if you are using a OO based CGI or Application
+
+    sub require_authentication {
+        my $self = shift;
+
+        return $self->{'auth'} = CGI::Ex::Auth->get_valid_auth({
+            get_pass_by_user => sub {
+                my ($auth, $user) = @_;
+                return $self->get_pass($user);
+            },
+        });
+    }
+
+    sub get_pass {
+        my ($self, $user) = @_;
+        return $self->loopup_and_cache_pass($user);
+    }
 
 =head1 DESCRIPTION
 
@@ -1049,7 +1069,8 @@ are not enabled, it may return the md5 sum of the password.
 
    get_pass_by_user => sub {
        my ($auth_obj, $user) = @_;
-       return $some_obj->get_pass({user => $user});
+       my $pass = $some_obj->get_pass({user => $user});
+       return $pass;
    }
 
 Alternately, get_pass_by_user may return a hashref of data items that
