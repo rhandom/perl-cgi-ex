@@ -2,7 +2,7 @@ package CGI::Ex::JSONDump;
 
 =head1 NAME
 
-CGI::Ex::JSONDump - Simple data to JSON dump.
+CGI::Ex::JSONDump - Comprehensive data to JSON dump.
 
 =cut
 
@@ -17,7 +17,7 @@ use strict;
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION  = '2.04';
+    $VERSION  = '2.05';
 
     @EXPORT = qw(JSONDump);
     @EXPORT_OK = @EXPORT;
@@ -238,7 +238,7 @@ include whitespace to make them more readable.
 with single quotes.  Otherwise values are quoted with double quotes.
 
      JSONDump("a", {single_quote => 0});
-     JSONDump('a', {single_quote => 0});
+     JSONDump("a", {single_quote => 1});
 
      Would print
 
