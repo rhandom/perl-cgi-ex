@@ -249,7 +249,7 @@ with single quotes.  Otherwise values are quoted with double quotes.
 
 0 or 1.  Default 1 (true)
 
-If true, then key/value pairs of hashrefs will be sorted will be output in sorted order.
+If true, then key/value pairs of hashrefs will be output in sorted order.
 
 =item play_coderefs
 
@@ -294,9 +294,10 @@ with unknown types will not be included in the javascript output.
 
 =item skip_keys
 
-Should contain an arrayref of keys or a hashref whose keys are the keys to skip.  Default
-is unset.  Any keys of hashrefs that are in the skip_keys item will not be included in
-the javascript output.
+Should contain an arrayref of keys or a hashref whose keys are the
+keys to skip.  Default is unset.  Any keys of hashrefs (including
+nested hashrefs) that are in the skip_keys item will not be included
+in the javascript output.
 
     JSONDump({a => 1, b => 1}, {skip_keys => ['a'], pretty => 0});
 
@@ -306,8 +307,9 @@ the javascript output.
 
 =item skip_keys_qr
 
-Similar to skip_keys but should contain a regex.  Any keys of hashrefs that match the
-skip_keys_qr regex will not be included in the javascript output.
+Similar to skip_keys but should contain a regex.  Any keys of hashrefs
+(including nested hashrefs) that match the skip_keys_qr regex will not
+be included in the javascript output.
 
     JSONDump({a => 1, _b => 1}, {skip_keys_qr => qr/^_/, pretty => 0});
 
@@ -346,7 +348,7 @@ greater than 80 characters.  Default is "\n".
       +"with plenty of embedded newlines\n"
       +"and is greater than 80 characters.\n"
 
-If the string is less than 80 characters, or if str_nl is set to '', then the escaped
+If the string is less than 80 characters, or if str_nl is set to "", then the escaped
 string will be contained on a single line.
 
 =back
