@@ -1,9 +1,10 @@
-2.05   2006-07-10
+2.05   2006-07-19
         * Allow for CGI::Ex to be compatible with Mandrake and Fedora mod_perl 2, as well as debian mod_perl2
           and older mod_perl1.
         * Allow for CGI::Ex::Dump to localize the Data::Dumper options to not stomp on anybody elses toes.
         * Update various perldoc bugs
         * Fix JSONDump of \t and \r
+        * Change .as to .fmt to coincide with Perl6 (.as is still there - just not documented)
 
 2.04   2006-07-10
         * Allow for items not in group order to get added to validation correctly in CGI::Ex::Validate.
