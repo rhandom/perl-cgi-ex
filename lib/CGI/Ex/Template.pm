@@ -66,6 +66,7 @@ BEGIN {
         defined  => sub { 1 },
         indent   => \&vmethod_indent,
         int      => sub { local $^W; int $_[0] },
+        fmt      => \&vmethod_as_scalar,
         'format' => \&vmethod_format,
         hash     => sub { {value => $_[0]} },
         html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
@@ -101,6 +102,7 @@ BEGIN {
     $LIST_OPS = {
         as      => \&vmethod_as_list,
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
+        fmt     => \&vmethod_as_list,
         grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
         hash    => sub { local $^W; my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
         join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
@@ -129,6 +131,7 @@ BEGIN {
         delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
         each    => sub { [%{ $_[0] }] },
         exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
+        fmt     => \&vmethod_as_hash,
         hash    => sub { $_[0] },
         import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
         item    => sub { my ($h, $k) = @_; return '' if ! defined $k || $k =~ $QR_PRIVATE; $h->{$k} },
