@@ -108,8 +108,8 @@ sub js_escape {
     my $quote = $self->{'single_quote'} ? "'" : '"';
 
     $str =~ s/\\/\\\\/g;
-    $str =~ s/\r/\\\r/g;
-    $str =~ s/\t/\\\t/g;
+    $str =~ s/\r/\\r/g;
+    $str =~ s/\t/\\t/g;
     $self->{'single_quote'} ? $str =~ s/\'/\\\'/g : $str =~ s/\"/\\\"/g;
 
     ### allow for really odd chars
