@@ -28,7 +28,7 @@ use vars qw($VERSION
             );
 @EXPORT_OK = qw(conf_read conf_write in_cache);
 
-$VERSION = '2.04';
+$VERSION = '2.05';
 
 $DEFAULT_EXT = 'conf';
 
@@ -865,6 +865,10 @@ Should be a windows style ini file.  See L<Config::IniHash>
 =item C<xml>
 
 Should be an xml file.  It will be read in by XMLin.  See L<XML::Simple>.
+
+=item C<json>
+
+Should be a json file.  It will be read using the JSON library.  See L<JSON>.
 
 =item C<html> and C<htm>
 
