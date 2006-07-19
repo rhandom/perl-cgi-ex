@@ -272,11 +272,11 @@ to virtual methods.
        | Hash.keys
        | List.join(", ") %] # = a, b
 
-=item Added "as" scalar, list, and hash virtual methods.
+=item Added "fmt" scalar, list, and hash virtual methods.
 
-    [% list.as("%s", ", ") %]
+    [% list.fmt("%s", ", ") %]
 
-    [% hash.as("%s => %s", "\n") %]
+    [% hash.fmt("%s => %s", "\n") %]
 
 =item Whitespace is less meaningful. (TT3)
 
@@ -306,13 +306,13 @@ to virtual methods.
 
     [% a = 1.2e-20 %]
 
-    [% 123.as('%.3e') %] # = 1.230e+02
+    [% 123.fmt('%.3e') %] # = 1.230e+02
 
 =item Allow for hexidecimal input. (TT3)
 
     [% a = 0xff0000 %][% a %] # = 16711680
 
-    [% a = 0xff2 / 0xd; a.as('%x') %] # = 13a
+    [% a = 0xff2 / 0xd; a.fmt('%x') %] # = 13a
 
 =item FOREACH variables can be nested.
 
@@ -628,13 +628,13 @@ Scientific notation is supported.
 
     [% 314159e-5 + 0 %]      Prints 3.14159.
 
-    [% .0000001.as('%.1e') %]  Prints 1.0e-07
+    [% .0000001.fmt('%.1e') %]  Prints 1.0e-07
 
 Hexidecimal input is also supported.
 
     [% 0xff + 0 %]    Prints 255
 
-    [% 48875.as('%x') %]  Prints beeb
+    [% 48875.fmt('%x') %]  Prints beeb
 
 =item Single quoted strings.
 
@@ -750,12 +750,6 @@ object (except for true filters such as eval and redirect).
     [% item = 'foo' %][% item.0 %] Returns self.  Allows for scalars to mask as arrays (scalars
                                    already will, but this allows for more direct access).
 
-=item as
-
-    [% item.as('%d') %]
-
-Similar to format.  Returns a string formatted with the passed pattern.  Default pattern is %s.
-
 =item chunk
 
     [% item.chunk(60).join("\n") %] Split string up into a list of chunks of text 60 chars wide.
@@ -791,6 +785,12 @@ This is a filter and is not available via the Text virtual object.
 =item file
 
     Same as the redirect filter.
+
+=item fmt
+
+    [% item.fmt('%d') %]
+
+Similar to format.  Returns a string formatted with the passed pattern.  Default pattern is %s.
 
 =item format
 
@@ -925,9 +925,9 @@ Virtual Object.
 
 =over 4
 
-=item as
+=item fmt
 
-    [% mylist.as('%s', ', ') %]
+    [% mylist.fmt('%s', ', ') %]
 
 Passed a pattern and an string to join on.  Returns a string of the values of the list
 formatted with the passed pattern and joined with the passed string.
@@ -1033,9 +1033,9 @@ Virtual Object.
 
 =over 4
 
-=item as
+=item fmt
 
-    [% myhash.as('%s => %s', "\n") %]
+    [% myhash.fmt('%s => %s', "\n") %]
 
 Passed a pattern and an string to join on.  Returns a string of the key/value pairs
 of the hash formatted with the passed pattern and joined with the passed string.
