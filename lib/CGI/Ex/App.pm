@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.05';
+    $VERSION = '2.06';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
 }
@@ -767,7 +767,8 @@ sub swap_template {
     my ($self, $step, $file, $swap) = @_;
 
     my $args = $self->run_hook('template_args', $step);
-    my $copy = $self->weak_copy;
+    my $copy = $self;
+    $copy = eval {require Scalar::Util} ? Scalar::Util::weaken($copy) : $self;
     $args->{'INCLUDE_PATH'} ||= sub { $copy->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"" };
 
     require CGI::Ex::Template;
@@ -952,7 +953,8 @@ sub hash_base {
 
     return $self->{'hash_base'} ||= do {
         ### create a weak copy of self to use in closures
-        my $copy = $self->weak_copy;
+        my $copy = $self;
+        $copy = eval {require Scalar::Util} ? Scalar::Util::weaken($copy) : $self;
         my $hash = {
             script_name     => $ENV{'SCRIPT_NAME'} || $0,
             path_info       => $ENV{'PATH_INFO'}   || '',
@@ -968,18 +970,6 @@ sub hash_form   { shift->form }
 sub hash_fill   { shift->{'hash_fill'}   ||= {} }
 sub hash_swap   { shift->{'hash_swap'}   ||= {} }
 sub hash_errors { shift->{'hash_errors'} ||= {} }
-
-sub weak_copy {
-    my $self = shift;
-    my $copy;
-    if (eval {require Scalar::Util} && defined &Scalar::Util::weaken) {
-        $copy = $self;
-        Scalar::Util::weaken($copy);
-    } else {
-        $copy = bless {%$self}, ref($self); # hackish way to avoid circular refs on older perls (pre 5.8)
-    }
-    return $copy;
-}
 
 ###----------------------------------------------------------------###
 ### routines to support the base hooks
