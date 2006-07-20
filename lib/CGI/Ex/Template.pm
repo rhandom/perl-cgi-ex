@@ -367,6 +367,7 @@ sub load_parsed_tree {
                  || ($self->{'_documents'}->{$file}->{'modtime'}
                      == (stat $self->{'_documents'}->{$file}->{'_filename'})[9]))) {
         $doc = $self->{'_documents'}->{$file};
+        $doc->{'_cache_time'} = time;
         return $doc;
 
     ### looks like a block name of some sort
