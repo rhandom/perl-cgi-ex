@@ -768,7 +768,7 @@ sub swap_template {
 
     my $args = $self->run_hook('template_args', $step);
     my $copy = $self;
-    $copy = eval {require Scalar::Util} ? Scalar::Util::weaken($copy) : $self;
+    eval {require Scalar::Util; Scalar::Util::weaken($copy)};
     $args->{'INCLUDE_PATH'} ||= sub { $copy->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"" };
 
     require CGI::Ex::Template;
@@ -954,7 +954,7 @@ sub hash_base {
     return $self->{'hash_base'} ||= do {
         ### create a weak copy of self to use in closures
         my $copy = $self;
-        $copy = eval {require Scalar::Util} ? Scalar::Util::weaken($copy) : $self;
+        eval {require Scalar::Util; Scalar::Util::weaken($copy)};
         my $hash = {
             script_name     => $ENV{'SCRIPT_NAME'} || $0,
             path_info       => $ENV{'PATH_INFO'}   || '',
