@@ -2851,11 +2851,6 @@ by the pseudo context object and may disappear at some point.
 
 Methods by these names implement virtual methods that are more than one line.
 
-=item C<weak_copy>
-
-Used to create a weak reference to self to avoid circular references. (this
-is needed by macros)
-
 =back
 
 
