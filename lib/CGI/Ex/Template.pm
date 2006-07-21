@@ -280,6 +280,8 @@ BEGIN {
 
     $WHILE_MAX    = 1000;
     $EXTRA_COMPILE_EXT = '.sto';
+
+    eval {require Scalar::Util};
 };
 
 ###----------------------------------------------------------------###
@@ -1936,7 +1938,8 @@ sub play_MACRO {
         $sub_tree = $sub_tree->[0]->[4];
     }
 
-    my $self_copy = $self->weak_copy;
+    my $self_copy = $self;
+    eval {require Scalar::Util; Scalar::Util::weaken($self_copy)};
 
     ### install a closure in the stash that will handle the macro
     $self->set_variable($name, sub {
@@ -2776,20 +2779,6 @@ sub list_plugins {
 
         \@plugins; # return of the do
     };
-}
-
-### get a copy of self without circular refs for use in closures
-sub weak_copy {
-    my $self = shift;
-    my $self_copy;
-    if (eval { require Scalar::Util }
-        && defined &Scalar::Util::weaken) {
-        $self_copy = $self;
-        Scalar::Util::weaken($self_copy);
-    } else {
-        $self_copy = bless {%$self}, ref($self); # hackish way to avoid circular refs on old perls (pre 5.8)
-    }
-    return $self_copy;
 }
 
 sub debug_node {
