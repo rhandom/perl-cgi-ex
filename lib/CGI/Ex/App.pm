@@ -13,6 +13,7 @@ BEGIN {
     $VERSION = '2.06';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
+    eval {require Scalar::Util};
 }
 
 sub croak {
