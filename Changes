@@ -1,6 +1,7 @@
 2.06   2006-07-20
         * Allow for JSONDump to swap --> to --"+">
         * Fix memory issue in App with closures
+        * Remove weak_copy routine from Template (memory issue)
 
 2.05   2006-07-19
         * Allow for CGI::Ex to be compatible with Mandrake and Fedora mod_perl 2, as well as debian mod_perl2
