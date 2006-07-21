@@ -1,4 +1,4 @@
-2.06   2006-07-20
+2.06   2006-07-21
         * Allow for JSONDump to swap --> to --"+">
         * Fix memory issue in App with closures
         * Remove weak_copy routine from Template (memory issue)
