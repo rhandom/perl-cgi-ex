@@ -336,7 +336,7 @@ The whitespace to add after each arrayref entry if pretty is true.  Default is "
 =item str_nl
 
 The whitespace to add in between newline separated strings if pretty is true or the output line is
-greater than 80 characters.  Default is "\n".
+greater than 80 characters.  Default is "\n" (if pretty is true).
 
     JSONDump("This is a long string\n"
              ."with plenty of embedded newlines\n"
@@ -357,7 +357,7 @@ greater than 80 characters.  Default is "\n".
     "This is a long string\nwith plenty of embedded newlines\nand is greater than 80 characters.\n"
 
 If the string is less than 80 characters, or if str_nl is set to "", then the escaped
-string will be contained on a single line.
+string will be contained on a single line.  Setting pretty to 0 effectively sets str_nl equal to "".
 
 =back
 
