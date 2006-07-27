@@ -296,7 +296,7 @@ with unknown types will not be included in the javascript output.
 
 Should contain an arrayref of keys or a hashref whose keys are the
 keys to skip.  Default is unset.  Any keys of hashrefs (including
-nested hashrefs) that are in the skip_keys item will not be included
+nested hashrefs) that are listed in the skip_keys item will not be included
 in the javascript output.
 
     JSONDump({a => 1, b => 1}, {skip_keys => ['a'], pretty => 0});
@@ -319,7 +319,7 @@ be included in the javascript output.
 
 =item indent
 
-The level to indent each nested data structure level if pretty is true.  Default is "  ".
+The level to indent each nested data structure level if pretty is true.  Default is "  " (two spaces).
 
 =item hash_nl
 
