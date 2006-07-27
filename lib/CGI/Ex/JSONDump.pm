@@ -340,13 +340,21 @@ greater than 80 characters.  Default is "\n".
 
     JSONDump("This is a long string\n"
              ."with plenty of embedded newlines\n"
-             ."and is greater than 80 characters.\n", {pretty => 1, str_nl => "\n"});
+             ."and is greater than 80 characters.\n", {pretty => 1});
 
     Would print
 
     "This is a long string\n"
       +"with plenty of embedded newlines\n"
       +"and is greater than 80 characters.\n"
+
+    JSONDump("This is a long string\n"
+             ."with plenty of embedded newlines\n"
+             ."and is greater than 80 characters.\n", {pretty => 1, str_nl => ""});
+
+    Would print
+
+    "This is a long string\nwith plenty of embedded newlines\nand is greater than 80 characters.\n"
 
 If the string is less than 80 characters, or if str_nl is set to "", then the escaped
 string will be contained on a single line.
