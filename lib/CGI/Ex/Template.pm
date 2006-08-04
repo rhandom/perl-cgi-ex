@@ -276,7 +276,7 @@ BEGIN {
     $QR_NUM       = '(?:\d*\.\d+ | \d+) (?: [eE][+-]\d+ )?';
     $QR_AQ_NOTDOT = "(?! \\s* $QR_COMMENTS \\.)";
     $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=[;+]) )'; # the + comes into play on filenames
-    $QR_PRIVATE   = qr/^_/;
+    $QR_PRIVATE   = qr/^[_.]/;
 
     $WHILE_MAX    = 1000;
     $EXTRA_COMPILE_EXT = '.sto';
