@@ -185,7 +185,7 @@ sub fill {
     ### First pass
     ### swap <input > form elements if they have a name
     $$ref =~ s{
-        (<input \s (?: ([\"\'])(?:|.*?[^\\])\2 | [^>] )* >) # nested html ok
+        (<input \s (?: ([\"\'])(?:|.*?[^\\])\2 | [^>] )+ >) # nested html ok
         }{
             ### get the type and name - intentionally exlude names with nested "'
             my $tag   = $1;
@@ -249,7 +249,7 @@ sub fill {
         my $opts = substr($$ref, $start[$i], $close[$i] - $start[$i]);
         $opts =~ s{
             (<select \s                                 # opening
-             (?: "" | '' | ([\"\']).*?[^\\]\2 | [^>] )* # nested html ok
+             (?: "" | '' | ([\"\']).*?[^\\]\2 | [^>] )+ # nested html ok
              >)                                         # end of tag
             }{}sxi || next;
         next if ! $opts;
@@ -303,7 +303,7 @@ sub fill {
         my $oldval = substr($$ref, $start[$i] + $offset, $close[$i] - $start[$i]);
         $oldval =~ s{
             (<textarea \s                               # opening
-             (?: "" | '' | ([\"\']).*?[^\\]\2 | [^>] )* # nested html ok
+             (?: "" | '' | ([\"\']).*?[^\\]\2 | [^>] )+ # nested html ok
              >)                                         # end of tag
             }{}sxi || next;
         my $tag  = $1;
