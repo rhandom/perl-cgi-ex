@@ -674,6 +674,29 @@ sub stash {
     return $self->{'stash'} ||= {};
 }
 
+sub clear_app {
+    my $self = shift;
+
+    delete @{ $self }{qw(
+        cgix
+        vob
+        form
+        cookies
+        stash
+        path
+        path_i
+        history
+        __morph_lineage_start_index
+        __morph_lineage
+        hash_errors
+        hash_fill
+        hash_swap
+        hash_common
+    )};
+
+    return $self;
+}
+
 ###----------------------------------------------------------------###
 ### default hook implementations
 
