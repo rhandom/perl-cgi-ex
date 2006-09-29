@@ -103,7 +103,7 @@ sub js_escape {
     return 'null'  if ! defined $str;
 
     ### allow things that look like numbers to show up as numbers (and those that aren't quite to not)
-    return $str if $str =~ /^ -? (?: \d{0,13} \. \d* [1-9] | \d{1,13}) $/x;
+    return $str if $str =~ /^ -? (?: [1-9]{0,13} \. \d* [1-9] | [1-9]{1,13}) $/x;
 
     my $quote = $self->{'single_quote'} ? "'" : '"';
 
