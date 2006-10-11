@@ -1678,6 +1678,7 @@ sub parse_DUMP {
 sub play_DUMP {
     my ($self, $ident, $node) = @_;
     require Data::Dumper;
+    local $Data::Dumper::Sortkeys  = 1;
     my $info = $self->node_info($node);
     my $out;
     my $var;
