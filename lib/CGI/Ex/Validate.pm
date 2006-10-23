@@ -305,7 +305,7 @@ sub validate_buddy {
     }
     if ($field_val->{'trim_control_chars'}) {
       $value =~ y/\t/ /;
-      $value =~ y/\x00-\x31//d;
+      $value =~ y/\x00-\x1F//d;
       $modified = 1;
     }
     if ($field_val->{'to_upper_case'}) { # uppercase
