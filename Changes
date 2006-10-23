@@ -1,3 +1,6 @@
+        * Add sort keys to DUMP directive
+        * Add trim_control_chars as a validate directive
+
 2.06   2006-07-21
         * Allow for JSONDump to swap --> to --"+">
         * Fix memory issue in App with closures
