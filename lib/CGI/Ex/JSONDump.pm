@@ -228,7 +228,7 @@ include whitespace to make them more readable.
      {
        "a" : [
          1,
-         2,
+         2
        ]
      }
 
