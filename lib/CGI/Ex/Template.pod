@@ -499,7 +499,7 @@ If the value of a variable is an object, methods can be called using the "." ope
 
     [% cet %]
 
-    [% cet.dump_parse('1 + 2').replace('\s+', ' ') %]
+    [% cet.dump_parse_expr('1 + 2').replace('\s+', ' ') %]
 
 Would print something like:
 
@@ -1816,7 +1816,7 @@ file).
 
     # The LOAD_PERL directive should be set to 1
     [% USE cet = CGI::Ex::Template %]
-    [%~ cet.dump_parse('2 * 3').replace('\s+', ' ') %]
+    [%~ cet.dump_parse_expr('2 * 3').replace('\s+', ' ') %]
 
 Would print:
 
@@ -2676,12 +2676,12 @@ Some notes on the parsing.
 
 The following perl can be typed at the command line to view the parsed variable tree:
 
-    perl -e 'use CGI::Ex::Template; print CGI::Ex::Template::dump_parse("foo.bar + 2")."\n"'
+    perl -e 'use CGI::Ex::Template; print CGI::Ex::Template::dump_parse_expr("foo.bar + 2")."\n"'
 
 Also the following can be included in a template to view the output in a template:
 
     [% USE cet = CGI::Ex::Template %]
-    [%~ cet.dump_parse('foo.bar + 2').replace('\s+', ' ') %]
+    [%~ cet.dump_parse_expr('foo.bar + 2').replace('\s+', ' ') %]
 
 
 =head1 SEMI PUBLIC METHODS
@@ -2692,6 +2692,10 @@ may be re-implemented by subclasses of CET.
 =over 4
 
 =item C<dump_parse>
+
+This method allows for returning a Data::Dumper dump of a parsed template.  It is mainly used for testing.
+
+=item C<dump_parse_expr>
 
 This method allows for returning a Data::Dumper dump of a parsed variable.  It is mainly used for testing.
 
