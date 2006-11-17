@@ -39,7 +39,7 @@ use vars qw($VERSION
             );
 
 BEGIN {
-    $VERSION = '2.06';
+    $VERSION = '2.07';
 
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
@@ -3015,6 +3015,13 @@ sub filter_redirect {
 ###----------------------------------------------------------------###
 
 sub dump_parse {
+    my $obj = UNIVERSAL::isa($_[0], __PACKAGE__) ? shift : __PACKAGE__->new;
+    my $str = shift;
+    require Data::Dumper;
+    return Data::Dumper::Dumper($obj->parse_tree(\$str));
+}
+
+sub dump_parse_expr {
     my $obj = UNIVERSAL::isa($_[0], __PACKAGE__) ? shift : __PACKAGE__->new;
     my $str = shift;
     require Data::Dumper;
