@@ -795,7 +795,7 @@ Similar to format.  Returns a string formatted with the passed pattern.  Default
 =item format
 
     [% item.format('%d') %] Print the string out in the specified format.  It is similar to
-    the "as" virtual method, except that the item is split on newline and each line is
+    the "fmt" virtual method, except that the item is split on newline and each line is
     processed separately.
 
 =item hash
@@ -2095,7 +2095,7 @@ to the operation of the left hand side and right (clear as mud).
 In order to not conflict with SET, FOREACH and other operations, this
 operator is only available in parenthesis.
 
-   [% a = 2 %][%  a += 3  %] --- [% a %]    => --- 5   # is was handled by SET
+   [% a = 2 %][%  a += 3  %] --- [% a %]    => --- 5   # is handled by SET
    [% a = 2 %][% (a += 3) %] --- [% a %]    => 5 --- 5
 
 =item C<=>
@@ -2104,7 +2104,7 @@ Assignment - right associative.  Sets the left-hand side to the value of the rig
 to not conflict with SET, FOREACH and other operations, this operator is only
 available in parenthesis.  Returns the value of the righthand side.
 
-   [%  a = 1  %] --- [% a %]    => --- 1   # is was handled by SET
+   [%  a = 1  %] --- [% a %]    => --- 1   # is handled by SET
    [% (a = 1) %] --- [% a %]    => 1 --- 1
 
 =item C<not  NOT>
