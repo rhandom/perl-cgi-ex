@@ -7,7 +7,7 @@ CGI::Ex::Conf - Conf Reader/Writer for many different data format types
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2006 - Paul Seamons                                     #
+#  Copyright 2007 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -25,10 +25,11 @@ use vars qw($VERSION
             %CACHE
             $HTML_KEY
             @EXPORT_OK
+            $NO_WARN_ON_FAIL
             );
 @EXPORT_OK = qw(conf_read conf_write in_cache);
 
-$VERSION = '2.06';
+$VERSION = '2.07';
 
 $DEFAULT_EXT = 'conf';
 
@@ -134,7 +135,7 @@ sub conf_read {
   ### don't die if the file is not found - do die otherwise
   if (! -e $file) {
       eval { die "Conf file $file not found" };
-      warn "Conf file $file not found" if ! $args->{'no_warn_on_fail'};
+      warn "Conf file $file not found" if ! $args->{'no_warn_on_fail'} && ! $NO_WARN_ON_FAIL;
       return;
   }
 
