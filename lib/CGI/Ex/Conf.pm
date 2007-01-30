@@ -804,7 +804,7 @@ conf_read and conf_write method calls.
 
 =head1 FUNCTIONS
 
-=over4
+=over 4
 
 =item conf_read
 
