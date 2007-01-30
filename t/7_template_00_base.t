@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 514 - ($is_tt ? 103 : 0);
+use Test::More tests => 515 - ($is_tt ? 103 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -374,7 +374,7 @@ process_ok('[% a = Hash.new("one", "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 process_ok('[% a = Hash.new(one = "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 process_ok('[% a = Hash.new(one => "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 
-process_ok('[% {a => 1, b => 2} | Hash.keys | List.join(", ") %]' => 'a, b');
+process_ok('[% {a => 1, b => 2} | Hash.keys | List.join(", ") %]' => 'a, b') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### chomping
@@ -728,6 +728,9 @@ process_ok("[% USE d.d = Foo(bar = 'baz') %]one[% d.d.bar %]" => '', {tt_config 
 
 process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => '',     {tt_config => [@config_p, PLUGINS => {a=>'Foo'}, ]});
 process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => 'one7', {tt_config => [@config_p, PLUGINS => {a=>'Foo2'},]});
+
+@config_p = (PLUGIN_BASE => ['NonExistant', 'MyTestPlugin'], LOAD_PERL => 1);
+process_ok("[% USE Foo %]one" => 'one', {tt_config => \@config_p});
 
 ###----------------------------------------------------------------###
 ### macro
