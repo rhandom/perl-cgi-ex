@@ -7,7 +7,7 @@ CGI::Ex::Auth - Handle logins nicely.
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2006 - Paul Seamons                                     #
+#  Copyright 2007 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.06';
+$VERSION = '2.07';
 
 ###----------------------------------------------------------------###
 

@@ -2,7 +2,7 @@ package CGI::Ex::App;
 
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/App.pod
-#  Copyright 2006 - Paul Seamons                                     #
+#  Copyright 2007 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.06';
+    $VERSION = '2.07';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
     eval {require Scalar::Util};
