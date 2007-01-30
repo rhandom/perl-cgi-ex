@@ -1,7 +1,13 @@
 2.07   2007-01-30
+        * Add clear_app method which flushes items pertaining to navigation.
         * Allow for CGI::Ex::Template PLUGIN_BASE to be a scalar OR an arrayref.
         * Add sort keys to DUMP directive
         * Add trim_control_chars as a validate directive
+        * Allow for . in the QR_PRIVATE of Template
+        * Add dump_parse_expr to CGI::Ex::Template
+        * Fix JSONDump to handle more number cases
+        * Fix JSONDump to output more IE friendly JS
+        * Allow fill to work only with form elements with attributes
 
 2.06   2006-07-21
         * Allow for JSONDump to swap --> to --"+">

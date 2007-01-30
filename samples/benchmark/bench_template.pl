@@ -44,8 +44,9 @@ my @config1 = (STASH => $s, ABSOLUTE => 1, CONSTANTS => {simple => 'var'}, EVAL_
 #push @config1, (INTERPOLATE => 1);
 my @config2 = (@config1, COMPILE_EXT => '.ttc');
 
-#use CGI::Ex::Template209;
-#my $tt1 = CGI::Ex::Template209->new(@config1);
+#use CGI::Ex::Template::XS;
+#my $tt1 = CGI::Ex::Template::XS->new(@config1);
+#my $tt2 = CGI::Ex::Template::XS->new(@config2);
 my $tt1 = Template->new(@config1);
 my $tt2 = Template->new(@config2);
 
