@@ -825,7 +825,7 @@ sub pre_step   { 0 } # success indicates we handled step (don't continue step or
 sub skip       { 0 } # success indicates to skip the step (and continue loop)
 sub prepare    { 1 } # failure means show step
 sub finalize   { 1 } # failure means show step
-sub post_print { 0 } # success indicates we handled step (don't continue loop)
+sub post_print { 0 }
 sub post_step  { 0 } # success indicates we handled step (don't continue step or loop)
 
 sub name_step {
