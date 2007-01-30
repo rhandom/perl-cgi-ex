@@ -7,7 +7,7 @@ CGI::Ex::Validate - another form validator - but it does javascript in parallel
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2006 - Paul Seamons                                     #
+#  Copyright 2007 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.06';
+$VERSION = '2.07';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
