@@ -2,7 +2,7 @@ package CGI::Ex::Template;
 
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/Template.pod
-#  Copyright 2006 - Paul Seamons                                     #
+#  Copyright 2007 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
