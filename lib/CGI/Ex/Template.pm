@@ -2380,38 +2380,41 @@ sub play_USE {
     pop @var; # remove the trailing '.'
 
     ### look for a plugin_base
-    my $base = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
-    my $package = $self->{'PLUGINS'}->{$module} ? $self->{'PLUGINS'}->{$module}
-       : $self->{'PLUGIN_FACTORY'}->{$module} ? $self->{'PLUGIN_FACTORY'}->{$module}
-       : "${base}::${module}";
-    my $require = "$package.pm";
-    $require =~ s|::|/|g;
-
-    ### try and load the module - fall back to bare module if allowed
+    my $BASE = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
     my $obj;
-    if ($self->{'PLUGIN_FACTORY'}->{$module} || eval {require $require}) {
-        my $shape   = $package->load;
-        my $context = $self->context;
-        my @args    = $args ? map { $self->play_expr($_) } @$args : ();
-        $obj = $shape->new($context, @args);
-    } elsif (lc($module) eq 'iterator') { # use our iterator if none found (TT's works just fine)
-        $obj = $PACKAGE_ITERATOR->new($args ? $self->play_expr($args->[0]) : []);
-    } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
-        foreach my $package (@packages) {
-            my $require = "$package.pm";
-            $require =~ s|::|/|g;
-            eval {require $require} || next;
+
+    foreach my $base (ref($BASE) eq 'ARRAY' ? @$BASE : $BASE) {
+        my $package = $self->{'PLUGINS'}->{$module} ? $self->{'PLUGINS'}->{$module}
+        : $self->{'PLUGIN_FACTORY'}->{$module} ? $self->{'PLUGIN_FACTORY'}->{$module}
+        : "${base}::${module}";
+        my $require = "$package.pm";
+        $require =~ s|::|/|g;
+
+        ### try and load the module - fall back to bare module if allowed
+        if ($self->{'PLUGIN_FACTORY'}->{$module} || eval {require $require}) {
             my $shape   = $package->load;
             my $context = $self->context;
             my @args    = $args ? map { $self->play_expr($_) } @$args : ();
             $obj = $shape->new($context, @args);
-        }
-    } elsif ($self->{'LOAD_PERL'}) {
-        my $require = "$module.pm";
-        $require =~ s|::|/|g;
-        if (eval {require $require}) {
-            my @args = $args ? map { $self->play_expr($_) } @$args : ();
-            $obj = $module->new(@args);
+        } elsif (lc($module) eq 'iterator') { # use our iterator if none found (TT's works just fine)
+            $obj = $PACKAGE_ITERATOR->new($args ? $self->play_expr($args->[0]) : []);
+        } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
+            foreach my $package (@packages) {
+                my $require = "$package.pm";
+                $require =~ s|::|/|g;
+                eval {require $require} || next;
+                my $shape   = $package->load;
+                my $context = $self->context;
+                my @args    = $args ? map { $self->play_expr($_) } @$args : ();
+                $obj = $shape->new($context, @args);
+            }
+        } elsif ($self->{'LOAD_PERL'}) {
+            my $require = "$module.pm";
+            $require =~ s|::|/|g;
+            if (eval {require $require}) {
+                my @args = $args ? map { $self->play_expr($_) } @$args : ();
+                $obj = $module->new(@args);
+            }
         }
     }
     if (! defined $obj) {

@@ -2440,7 +2440,8 @@ See the USE directive for more information.
 
 Default value is Template::Plugin.  The base module namespace
 that template plugins will be looked for.  See the USE directive
-for more information.
+for more information.  May be either a single namespace, or an arrayref
+of namespaces.
 
 =item POST_CHOMP
 
