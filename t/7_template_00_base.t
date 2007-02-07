@@ -9,7 +9,7 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template'; #real    0m1.243s #user    0m0.695s #sys     0m0.018s
-    $module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
+    #$module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
     $is_tt = $module eq 'Template';
 };
 
