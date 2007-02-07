@@ -2852,26 +2852,30 @@ sub define_vmethod {
 }
 
 sub vmethod_as_scalar {
-    my ($str, $pat) = @_;
-    $pat = '%s' if ! defined $pat;
+    my $str = shift; $str = ''   if ! defined $str;
+    my $pat = shift; $pat = '%s' if ! defined $pat;
     local $^W;
-    return sprintf $pat, $str;
+    return @_ ? sprintf($pat, $_[0], $str)
+              : sprintf($pat, $str);
 }
 
 sub vmethod_as_list {
-    my ($ref, $pat, $sep) = @_;
-    $pat = '%s' if ! defined $pat;
-    $sep = ' '  if ! defined $sep;
+    my $ref = shift || return '';
+    my $pat = shift; $pat = '%s' if ! defined $pat;
+    my $sep = shift; $sep = ' '  if ! defined $sep;
     local $^W;
-    return join($sep, map {sprintf $pat, $_} @$ref);
+    return @_ ? join($sep, map {sprintf $pat, $_[0], $_} @$ref)
+              : join($sep, map {sprintf $pat, $_} @$ref);
 }
 
 sub vmethod_as_hash {
-    my ($ref, $pat, $sep) = @_;
-    $pat = "%s\t%s" if ! defined $pat;
-    $sep = "\n"  if ! defined $sep;
+    my $ref = shift || return '';
+    my $pat = shift; $pat = "%s\t%s" if ! defined $pat;
+    my $sep = shift; $sep = "\n"     if ! defined $sep;
     local $^W;
-    return join($sep, map {sprintf $pat, $_, $ref->{$_}} sort keys %$ref);
+    return ! @_    ? join($sep, map {sprintf $pat, $_, $ref->{$_}} sort keys %$ref)
+         : @_ == 1 ? join($sep, map {sprintf $pat, $_[0], $_, $ref->{$_}} sort keys %$ref) # don't get to pick - it applies to the key
+         :           join($sep, map {sprintf $pat, $_[0], $_, $_[1], $ref->{$_}} sort keys %$ref);
 }
 
 sub vmethod_chunk {
@@ -2899,7 +2903,11 @@ sub vmethod_indent {
 sub vmethod_format {
     my $str = shift; $str = ''   if ! defined $str;
     my $pat = shift; $pat = '%s' if ! defined $pat;
-    return join "\n", map{ sprintf $pat, $_ } split(/\n/, $str);
+    if (@_) {
+        return join "\n", map{ sprintf $pat, $_[0], $_ } split(/\n/, $str);
+    } else {
+        return join "\n", map{ sprintf $pat, $_ } split(/\n/, $str);
+    }
 }
 
 sub vmethod_match {
