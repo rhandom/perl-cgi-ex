@@ -789,14 +789,20 @@ This is a filter and is not available via the Text virtual object.
 =item fmt
 
     [% item.fmt('%d') %]
+    [% item.fmt('%6s') %]
+    [% item.fmt('%*s', 6) %]
 
 Similar to format.  Returns a string formatted with the passed pattern.  Default pattern is %s.
 
 =item format
 
-    [% item.format('%d') %] Print the string out in the specified format.  It is similar to
-    the "fmt" virtual method, except that the item is split on newline and each line is
-    processed separately.
+    [% item.format('%d') %]
+    [% item.format('%6s') %]
+    [% item.format('%*s', 6) %]
+
+Print the string out in the specified format.  It is similar to
+the "fmt" virtual method, except that the item is split on newline and each line is
+processed separately.
 
 =item hash
 
@@ -928,6 +934,8 @@ Virtual Object.
 =item fmt
 
     [% mylist.fmt('%s', ', ') %]
+    [% mylist.fmt('%6s', ', ') %]
+    [% mylist.fmt('%*s', ', ', 6) %]
 
 Passed a pattern and an string to join on.  Returns a string of the values of the list
 formatted with the passed pattern and joined with the passed string.
@@ -1036,6 +1044,8 @@ Virtual Object.
 =item fmt
 
     [% myhash.fmt('%s => %s', "\n") %]
+    [% myhash.fmt('%4s => %5s', "\n") %]
+    [% myhash.fmt('%*s => %*s', "\n", 4, 5) %]
 
 Passed a pattern and an string to join on.  Returns a string of the key/value pairs
 of the hash formatted with the passed pattern and joined with the passed string.
