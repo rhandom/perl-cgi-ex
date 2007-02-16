@@ -1,5 +1,6 @@
 2.08
         * Allow for digits passed to %*s patterns in format, and fmt
+        * Fix bug in validate.js to allow for non-existant fields
 
 2.07   2007-01-30
         * Add clear_app method which flushes items pertaining to navigation.
