@@ -340,6 +340,7 @@ sub validate_buddy {
         }
       }else{
         foreach my $value (@$values) {
+          next if ! defined $value;
           $value =~ s{(?$opt:$pat)}{
             my @match = (undef, $1, $2, $3, $4, $5, $6); # limit on the number of matches
             my $copy = $swap;
