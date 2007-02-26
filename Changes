@@ -1,6 +1,7 @@
 2.08
-        * Allow for digits passed to %*s patterns in format, and fmt
-        * Fix bug in validate.js to allow for non-existant fields
+        * Allow for digits passed to %*s patterns in format, and fmt or CGI::Ex::Template
+        * Fix bug in validate.js to allow for non-existant fields (with replace)
+        * Warn clean in Validate.pm for non-existant field (with replace)
 
 2.07   2007-01-30
         * Add clear_app method which flushes items pertaining to navigation.
