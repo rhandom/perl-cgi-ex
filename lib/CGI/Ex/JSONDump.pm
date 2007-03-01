@@ -103,7 +103,7 @@ sub js_escape {
     return 'null'  if ! defined $str;
 
     ### allow things that look like numbers to show up as numbers (and those that aren't quite to not)
-    return $str if $str =~ /^ -? (?: [0-9]{0,13} \. \d* [1-9] | [1-9][0-9]{0,12}) $/x;
+    return $str if $str =~ /^ -? (?: [1-9][0-9]{0,12} | 0) (?: \. \d* [1-9])? $/x;
 
     my $quote = $self->{'single_quote'} ? "'" : '"';
 
@@ -117,7 +117,8 @@ sub js_escape {
     utf8::decode($str) if $self->{'utf8'} && &utf8::decode;
 
     ### escape <html> and </html> tags in the text
-    $str =~ s{(</? (?: htm | scrip | !-) | --(?=>) )}{$1$quote+$quote}gx;
+    $str =~ s{(</? (?: htm | scrip | !-) | --(?=>) )}{$1$quote+$quote}gx
+        if ! $self->{'no_tag_splitting'};
 
     ### add nice newlines (unless pretty is off)
     if ($self->{'str_nl'} && length($str) > 80) {
@@ -358,6 +359,31 @@ greater than 80 characters.  Default is "\n" (if pretty is true).
 
 If the string is less than 80 characters, or if str_nl is set to "", then the escaped
 string will be contained on a single line.  Setting pretty to 0 effectively sets str_nl equal to "".
+
+=item no_tag_splitting
+
+Default off.  If JSON is embedded in an HTML document and the JSON contains C<< <html> >>,
+C<< </html> >>, C<< <script> >>, C<< </script> >>, C<< <!-- >>, or , C<< --> >> tags, they are
+split apart with a quote, a +, and a quote.  This allows the embedded tags to not affect
+the currently playing JavaScript.
+
+However, if the JSON that is output is intended for deserialization by another non-javascript-engine
+JSON parser, this splitting behavior may cause errors when the JSON is imported.  To avoid the splitting
+behavior in these cases you can use the no_tag_splitting flag to turn off the behavior.
+
+    JSONDump("<html><!-- comment --><script></script></html>");
+
+    Would print
+
+    "<htm"+"l><!-"+"- comment --"+"><scrip"+"t></scrip"+"t></htm"+"l>"
+
+    With the flag
+
+    JSONDump("<html><!-- comment --><script></script></html>", {no_tag_splitting => 1});
+
+    Would print
+
+    "<html><!-- comment --><script></script></html>"
 
 =back
 
