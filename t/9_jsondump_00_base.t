@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 52;
+use Test::More tests => 57;
 
 use_ok('CGI::Ex::JSONDump');
 
@@ -80,14 +80,19 @@ test_dump(['a' => 1], "[\"a\",1]", {pretty => 0, array_nl => "\n"});
 
 
 test_dump(1, "1");
+test_dump(0, "0");
 test_dump('1.0', '"1.0"');
 test_dump('123456789012345', '"123456789012345"');
+test_dump('0.1', '0.1');
+test_dump('.1', '".1"');
+test_dump('00.1', '"00.1"');
 test_dump('a', '"a"');
 test_dump("\n", '"\\n"');
 test_dump("\\", '"\\\\"');
 test_dump('<script>', '"<scrip"+"t>"');
 test_dump('<script>', "'<scrip'+'t>'", {single_quote => 1});
 test_dump('<html>', '"<htm"+"l>"');
+test_dump('<html>', '"<html>"', {no_tag_splitting => 1});
 test_dump('<!--', '"<!-"+"-"');
 test_dump('-->', '"--"+">"');
 test_dump('---', '"---"');
