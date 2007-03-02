@@ -2,6 +2,22 @@
 
 CGI::Ex::App - Anti-framework application framework.
 
+=head1 SYNOPSIS
+
+    #!/usr/bin/perl -w
+
+    use strict;
+    use base qw(CGI::Ex::App);
+
+    __PACKAGE__->navigate;
+    exit;
+
+    sub main_file_print {
+        return \ "Hello World";
+    }
+
+There is a longer "SYNOPSIS" after the process flow discussion.
+
 =head1 DESCRIPTION
 
 Fill in the blanks and get a ready made web application.  This module
@@ -23,21 +39,9 @@ writing bare metal code, this could still be for you.  If you don't want
 to write any code, this module will help - but you still need to
 provide your key actions and html.
 
-=head1 SYNOPSIS
-
-    #!/usr/bin/perl -w
-
-    use strict;
-    use base qw(CGI::Ex::App);
-
-    __PACKAGE__->navigate;
-    exit;
-
-    sub main_file_print {
-        return \ "Hello World";
-    }
-
-There is a longer "SYNOPSIS" after the process flow discussion.
+One of the great benefits of CGI::Ex::App vs. Catalyst or Rails style
+frameworks is that the model of CGI::Ex::App can be much more abstract
+as models often are.
 
 =head1 DEFAULT PROCESS FLOW
 
@@ -282,12 +286,12 @@ that the following method is installed in your script.
 
     URI:  /cgi-bin/my_cgi/my_step/one%20two?bar=three%20four
     STEP: my_step
-    FORM: {anything_else => "one%20two", bar => "three four"}
+    FORM: {anything_else => "one two", bar => "three four"}
     WHY:  The third path_info_map regex matched.  Note that the
-          %20 in bar was unescaped but the %20 in anything_else
-          was not.  It is up to the application to URL decode
-          such parameters as CGI::Ex::App doesn't decode parameters
-          mapped from PATH_INFO.
+          %20 in bar was unescaped by CGI::param, but the %20
+          in anything_else was unescaped by Apache.  If you are
+          not using Apache, this behavior may vary.  CGI::Ex::App
+          doesn't decode parameters mapped from PATH_INFO.
 
 See the path method for more information about finding the initial step
 of the path.
@@ -298,6 +302,9 @@ how GET and POST parameters are parsed.
 
 See the path_info_map_base method, and path_info_map hook for more information
 on how the path_info maps function.
+
+A Dumper($self->dump_history) is very useful for determing what hooks have
+taken place.
 
 =head1 SYNOPSIS (A LONG "SYNOPSIS")
 
