@@ -187,6 +187,118 @@ and you will instantly get all of the common process flow for free.
 
 =head1 MAPPING URI TO STEP
 
+The default out of the box configuration will map URIs to steps as follows:
+
+    # Assuming /cgi-bin/my_cgi is the program being run
+
+    URI:  /cgi-bin/my_cgi
+    STEP: main
+    FORM: {}
+    WHY:  No other information is passed.  The path method is
+          called which eventually calls ->default_step which
+          defaults to "main"
+
+    URI:  /cgi-bin/my_cgi?foo=bar
+    STEP: main
+    FORM: {foo => "bar"}
+    WHY:  Same as previous example except that QUERY_STRING
+          information was passed and placed in form.
+
+    URI:  /cgi-bin/my_cgi?step=my_step
+    STEP: my_step
+    FORM: {step => "my_step"}
+    WHY:  The path method is called which looks in $self->form
+          for the key ->step_key (which defaults to "step").
+
+    URI:  /cgi-bin/my_cgi?step=my_step&foo=bar
+    STEP: my_step
+    FORM: {foo => "bar", step => "my_step"}
+    WHY:  Same as before but has other parameters were passed.
+
+    URI:  /cgi-bin/my_cgi/my_step
+    STEP: my_step
+    FORM: {step => "my_step"}
+    WHY:  The path method is called which called path_info_map_base
+          which matched $ENV{'PATH_INFO'} using the default regex
+          of qr{^/(\w+)$} and place the result in
+          $self->form->{$self->step_key}.  Path then looks in
+          $self->form->{$self->step_key} for the initial step. See
+          the path_info_map_base method for more information.
+
+    URI:  /cgi-bin/my_cgi/my_step?foo=bar
+    STEP: my_step
+    FORM: {foo => "bar", step => "my_step"}
+    WHY:  Same as before but other parameters were passed.
+
+    URI:  /cgi-bin/my_cgi/my_step?step=other_step
+    STEP: other_step
+    FORM: {step => "other_step"}
+    WHY:  The same procedure took place, but when the PATH_INFO
+          string was matched, the form key "step" already existed
+          and was not replaced by the value from PATH_INFO.
+
+The remaining examples in this section are based on the assumption
+that the following method is installed in your script.
+
+    sub my_step_path_info_map {
+        return [
+            [qr{^/\w+/(\w+)/(\d+)$}, 'foo', 'id'],
+            [qr{^/\w+/(\w+)$}, 'foo'],
+            [qr{^/\w+/(.+)$}, 'anything_else'],
+        ];
+    }
+
+    URI:  /cgi-bin/my_cgi/my_step/bar
+    STEP: my_step
+    FORM: {foo => "bar"}
+    WHY:  The step was matched as in previous examples using
+          path_info_map_base.  However, the form key "foo"
+          was set to "bar" because the second regex returned
+          by the path_info_map hook matched the PATH_INFO string
+          and the corresponding matched value was placed into
+          the form using the keys specified following the regex.
+
+    URI:  /cgi-bin/my_cgi/my_step/bar/1234
+    STEP: my_step
+    FORM: {foo => "bar", id => "1234"}
+    WHY:  Same as the previous example, except that the first
+          regex matched the string.  The first regex had two
+          match groups and two form keys specified.  Note that
+          it is important to order your match regexes in the
+          order that will match the most data.  The third regex
+          would also match this PATH_INFO.
+
+    URI:  /cgi-bin/my_cgi/my_step/some/other/type/of/data
+    STEP: my_step
+    FORM: {anything_else => 'some/other/type/of/data'}
+    WHY:  Same as the previous example, except that the third
+          regex matched.
+
+    URI:  /cgi-bin/my_cgi/my_step/bar?bling=blang
+    STEP: my_step
+    FORM: {foo => "bar", bling => "blang"}
+    WHY:  Same as the first step, but additional QUERY_STRING
+          information was passed.
+
+    URI:  /cgi-bin/my_cgi/my_step/one%20two?bar=three%20four
+    STEP: my_step
+    FORM: {anything_else => "one%20two", bar => "three four"}
+    WHY:  The third path_info_map regex matched.  Note that the
+          %20 in bar was unescaped but the %20 in anything_else
+          was not.  It is up to the application to URL decode
+          such parameters as CGI::Ex::App doesn't decode parameters
+          mapped from PATH_INFO.
+
+See the path method for more information about finding the initial step
+of the path.
+
+The form method calls CGI::Ex::form which uses CGI::param to retrieve
+GET and POST parameters.  See the form method for more information on
+how GET and POST parameters are parsed.
+
+See the path_info_map_base method, and path_info_map hook for more information
+on how the path_info maps function.
+
 =head1 SYNOPSIS (A LONG "SYNOPSIS")
 
 This example script would most likely be in the form of a cgi, accessible via
