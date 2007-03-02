@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.07';
+    $VERSION               = '2.08';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
