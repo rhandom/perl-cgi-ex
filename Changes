@@ -1,7 +1,13 @@
-2.08
+2.08   2007-03-02
         * Allow for digits passed to %*s patterns in format, and fmt or CGI::Ex::Template
         * Fix bug in validate.js to allow for non-existant fields (with replace)
         * Warn clean in Validate.pm for non-existant field (with replace)
+        * Fix bug in validate.js with trim_control_chars - was broken entirely
+        * Add no_tag_splitting flag to JSONDump
+        * Allow for more types of numbers to be quoted in JSONDump
+        * Add path_info_map_base method to CGI::Ex::App
+        * Add path_info_map hook to CGI::Ex::App
+        * Updated and added much documentation to CGI::Ex::App
 
 2.07   2007-01-30
         * Add clear_app method which flushes items pertaining to navigation.
