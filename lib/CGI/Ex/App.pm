@@ -125,7 +125,7 @@ sub nav_loop {
         ### allow for mapping path_info pieces to form elements
         if (my $info = $ENV{'PATH_INFO'}) {
             my $maps = $self->run_hook('path_info_map', $step) || [];
-            croak "Usage: sub path_info_map { [[qr{/path_info/(\w+)}, 'keyname']] }"
+            croak 'Usage: sub path_info_map { [[qr{/path_info/(\w+)}, "keyname"]] }'
                 if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
             foreach my $map (@$maps) {
                 my @match = $info =~ $map->[0];
@@ -198,7 +198,7 @@ sub path {
         ### add initial items to the form hash from path_info
         if (my $info = $ENV{'PATH_INFO'}) {
             my $maps = $self->path_info_map_base || [];
-            croak "Usage: sub path_info_map_base { [[qr{/path_info/(\w+)}, 'keyname']] }"
+            croak 'Usage: sub path_info_map_base { [[qr{/path_info/(\w+)}, "keyname"]] }'
                 if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
             foreach my $map (@$maps) {
                 my @match = $info =~ $map->[0];
