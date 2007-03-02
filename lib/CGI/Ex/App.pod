@@ -306,6 +306,123 @@ on how the path_info maps function.
 A Dumper($self->dump_history) is very useful for determing what hooks have
 taken place.
 
+=head1 ADDING DATA VALIDATION TO A STEP
+
+CGI::Ex::App uses CGI::Ex::Validate for its data validation.  See CGI::Ex::Validate
+for more information about the many ways you can validate your data.
+
+The default hash_validation hook returns an empty hashref.  This means that passed
+in data is all valid and the script will automatically call the step's finalize method.
+
+The following shows how to some contrived validation to a step called "my_step".
+
+    sub my_step_hash_validation {
+        return {
+            username => {
+                required    => 1,
+                match       => 'm/^(\w+)$/',
+                match_error => 'The $field field may only contain word characters',
+                max_len     => 20,
+            },
+            password => {
+                required => 1,
+                max_len  => 15,
+            },
+            password_verify => {
+                validate_if => 'password',
+                equals      => 'password',
+            },
+            usertype => {
+                required => 1,
+                enum     => [qw(animal vegetable mineral)],
+            },
+        };
+    }
+
+The step will continue to display the html form until all of the fields pass
+validation.
+
+See the hash_validation hook and validate hook for more information about how
+this takes place.
+
+=head1 ADDING JAVASCRIPT DATA VALIDATION TO A STEP
+
+You must first provide a hash_validation hook as explained in the previous section.
+
+Once you have a hash_validation hook, you would place the following tags
+into your HTML template.
+
+    <form name="[% form_name %]" method="post">
+    ...
+    </form>
+    [% js_validation %]
+
+The "form_name" swap-in places a name on the form that the javascript returned by
+the js_validation swap-in will be able to find and check for validity.
+
+See the hash_validation, js_validation, and form_name hooks for more information.
+
+Also, CGI::Ex::validate.js allows for inline errors in addition to or in replacement
+of an alert message.  To use inline errors, you must provide an element in your
+HTML document where this inline message can be placed.  The common way to do it is as
+follows:
+
+    <input type="text" name="username"><br>
+    <span class="error" id="username_error">[% username_error %]</span>
+
+The span around the error allows for the error css class and it provides a location
+that the Javascript validation can populate with errors.  The [% username_error %] provides
+a location for errors generated on the server side to be swapped in.  If there was no error
+the [% username_error %] tag would default to "".
+
+=head1 ADDING ADDITIONAL TEMPLATE VARIABLES
+
+All variables returned by the hash_base, hash_common, hash_form, hash_swap, and
+hash_errors hooks are available for swapping in templates.
+
+The following shows how to add variables using the hash_swap hook on the step "main".
+
+    sub main_hash_swap {
+        return {
+            color   => 'red',
+            choices => [qw(one two three)],
+            "warn"  => sub { warn @_ },
+        };
+    }
+
+You could also return the fields from the hash_common hook and they would be available
+in both the template swapping as well as form filling.
+
+See the hash_base, hash_common, hash_form, hash_swap, hash_errors, swap_template, and
+template_args hooks for more information.
+
+The default template engine used is CGI::Ex::Template which is Template::Toolkit compatible.
+See the CGI::Ex::Template or Template::Toolkit documentation for the types of data
+that can be passed, and for the syntax that can be used.
+
+=head1 ADDING ADDITIONAL FORM FILL VARIABLES
+
+All variables returned by the hash_base, hash_common, hash_form, and hash_fill hooks
+are available for filling html fields in on templates.
+
+The following shows how to add variables using the hash_fill hook on the step "main".
+
+    sub main_hash_fill {
+        return {
+            color   => 'red',
+            choices => [qw(one two three)],
+        };
+    }
+
+You could also return the fields from the hash_common hook and they would be available
+in both the form filling as well as in the template swapping.
+
+See the hash_base, hash_common, hash_form, hash_swap, hash_errors, fill_template, and
+fill_args hooks for more information.
+
+The default form filler is CGI::Ex::Fill which is similar to HTML::FillInForm but
+has several benefits.  See the CGI::Ex::Fill module for the available options.
+
 =head1 SYNOPSIS (A LONG "SYNOPSIS")
 
 This example script would most likely be in the form of a cgi, accessible via
@@ -672,62 +789,6 @@ was successful - so this data can be defined but false.
 
 See the get_valid_auth method.
 
-=item path_info_map_base (method)
-
-Called during the default path method.  It is used to custom map portions
-of $ENV{'PATH_INFO'} to form values.  If should return an arrayref of
-arrayrefs where each child arrayref contains a regex qr with match parens
-as the first element of the array.  Subsequent elements of the array are
-the key names to store the corresponding matched value from the regex under.
-The outer arrayref is iterated until it one of child arrayrefs matches
-against $ENV{'PATH_INFO'}.  The matched values are only added to the form if
-there is not already a defined value for that key in the form.
-
-The default value returned by this method looks something like the following:
-
-   sub path_info_map_base {
-       return [[qr{^/(\w+)}, $self->step_key]];
-   }
-
-This example would map the following PATH_INFO string as follows:
-
-   /my_step
-
-   # $self->form->{'step'} now equals "my_step"
-
-The following is another example:
-
-   sub path_info_map_base {
-       return [
-           [qr{^/([^/]+)/(\w+)}, 'username', $self->step_key],
-           [qr{^/(\w+)}, $self->step_key],
-       ];
-   }
-
-   # the PATH_INFO /my_step
-   # still results in
-   # $self->form->{'step'} now equals "my_step"
-
-   # but with the PATH_INFO /my_user/my_step
-   # $self->form->{'step'} now equals "my_step"
-   # and $self->form->{'username'} equals "my_user"
-
-In most cases there is not a need to override the path_info_map_base
-method, but rather override the path_info_map hook for a particular step.
-When the step is being run, just before the run_step hook is called, the
-path_info_map hook is called.  The path_info_map hook is similar to
-the path_info_map_base method, but is used to allow step level manipulation
-of form based on elements in the $ENV{'PATH_INFO'}.
-
-   sub my_step_path_info_map {
-       return [[qr{^/my_step/(\w+)$}, 'username']];
-   }
-
-   # the PATH_INFO /my_step/my_user
-   # results in
-   # $self->form->{'step'} equal to "my_step" because of default path_info_map_base
-   # and $self->form->{'username'} equals "my_user" because of my_step_path_info_map
-
 =item cleanup_user (method)
 
 Installed as a hook during get_valid_auth.  Allows for cleaning
@@ -737,6 +798,28 @@ up the username.  See the get_valid_auth method.
          my ($self, $user) = @_;
          return lc $user;
      }
+
+=item clear_app (method)
+
+If the same CGI::Ex::App based object is used to run multiple
+navigate sessions, the clear_app method should be called which
+will attempt to clear as much session information as it can.
+The following items will be cleared:
+
+    cgix
+    vob
+    form
+    cookies
+    stash
+    path
+    path_i
+    history
+    __morph_lineage_start_index
+    __morph_lineage
+    hash_errors
+    hash_fill
+    hash_swap
+    hash_common
 
 =item current_step (method)
 
@@ -1424,6 +1507,64 @@ Used to map path_info parts to form variables.  Similar to the
 path_info_map_base method.  See the path_info_map_base method
 for a discussion of how to use this hook.
 
+=item path_info_map_base (method)
+
+Called during the default path method.  It is used to custom map portions
+of $ENV{'PATH_INFO'} to form values.  If should return an arrayref of
+arrayrefs where each child arrayref contains a regex qr with match parens
+as the first element of the array.  Subsequent elements of the array are
+the key names to store the corresponding matched value from the regex under.
+The outer arrayref is iterated until it one of child arrayrefs matches
+against $ENV{'PATH_INFO'}.  The matched values are only added to the form if
+there is not already a defined value for that key in the form.
+
+The default value returned by this method looks something like the following:
+
+   sub path_info_map_base {
+       return [[qr{^/(\w+)}, $self->step_key]];
+   }
+
+This example would map the following PATH_INFO string as follows:
+
+   /my_step
+
+   # $self->form->{'step'} now equals "my_step"
+
+The following is another example:
+
+   sub path_info_map_base {
+       return [
+           [qr{^/([^/]+)/(\w+)}, 'username', $self->step_key],
+           [qr{^/(\w+)}, $self->step_key],
+       ];
+   }
+
+   # the PATH_INFO /my_step
+   # still results in
+   # $self->form->{'step'} now equals "my_step"
+
+   # but with the PATH_INFO /my_user/my_step
+   # $self->form->{'step'} now equals "my_step"
+   # and $self->form->{'username'} equals "my_user"
+
+In most cases there is not a need to override the path_info_map_base
+method, but rather override the path_info_map hook for a particular step.
+When the step is being run, just before the run_step hook is called, the
+path_info_map hook is called.  The path_info_map hook is similar to
+the path_info_map_base method, but is used to allow step level manipulation
+of form based on elements in the $ENV{'PATH_INFO'}.
+
+   sub my_step_path_info_map {
+       return [[qr{^/my_step/(\w+)$}, 'username']];
+   }
+
+   # the PATH_INFO /my_step/my_user
+   # results in
+   # $self->form->{'step'} equal to "my_step" because of default path_info_map_base
+   # and $self->form->{'username'} equals "my_user" because of my_step_path_info_map
+
+The section on mapping URIs to steps has additional examples.
+
 =item post_loop (method)
 
 Ran after all of the steps in the loop have been processed (if
@@ -1769,6 +1910,66 @@ used to abort early before the get_pass_by_user hook is called.
      }
 
 =back
+
+=head1 HOW DO I SET COOKIES, REDIRECT, ETC
+
+Often in your program you will want to set cookies or bounce to a differnt URL.
+This can be done using either the builtin CGI::Ex object or the built in
+CGI object.  It is suggested that you only use the CGI::Ex methods as it will
+automatically send headers and method calls under cgi, mod_perl1, or mod_perl2.
+The following shows how to do basic items using the CGI::Ex object returned by
+the ->cgix method.
+
+=over 4
+
+=item printing content-type headers
+
+    ### CGI::Ex::App prints headers for you,
+    ### but if you are printing custom types, you can send your own
+    $self->cgix->print_content_type;
+    # SAME AS
+    # $self->cgix->print_content_type('text/html');
+
+=item setting a cookie
+
+    $self->cgix->set_cookie({
+        -name    => "my_key",
+        -value   => 'Some Value',
+        -expires => '1y',
+        -path    => '/',
+    });
+
+=item redirecting to another URL
+
+    $self->cgix->location_bounce("http://somewhereelse.com");
+    $self->exit_nav_loop; # normally should do this to long jump out of navigation
+
+=item making a QUERY_STRING
+
+    my $data  = {foo => "bar", one => "two or three"};
+    my $query = $self->cgix->make_form($data);
+    # $query now equals "foo=bar&one=two%20or%20three"
+
+=item getting form parameters
+
+    my $form = $self->form;
+
+In this example $form would now contain a hashref of all POST and GET parameters
+passed to the server.  The form method calls $self->cgix->get_form
+which in turn uses CGI->param to parse values.  Fields with multiple passed
+values will be in the form of an arrayref.
+
+=item getting cookies
+
+    my $cookies = $self->cookies;
+
+In this example $cookies would be a hashref of all passed in cookies.  The
+cookies method calls $self->cgix->get_cookies which in turn uses CGI->cookie
+to parse values.
+
+=back
+
+See the CGI::Ex and CGI documentation for more information.
 
 =head1 COMPARISON TO OTHER APPLICATION MODULES
 
