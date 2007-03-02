@@ -122,6 +122,19 @@ sub nav_loop {
         ### allow for becoming another package (allows for some steps in external files)
         $self->morph($step);
 
+        ### allow for mapping path_info pieces to form elements
+        if (my $info = $ENV{'PATH_INFO'}) {
+            my $maps = $self->run_hook('path_info_map', $step) || [];
+            croak "Usage: sub path_info_map { [[qr{/path_info/(\w+)}, 'keyname']] }"
+                if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
+            foreach my $map (@$maps) {
+                my @match = $info =~ $map->[0];
+                next if ! @match;
+                $self->form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $self->form->{$map->[$_]}} 1 .. $#$map;
+                last;
+            }
+        }
+
         ### run the guts of the step
         my $handled = $self->run_hook('run_step', $step);
 
@@ -181,24 +194,22 @@ sub path {
     my $self = shift;
     if (! $self->{'path'}) {
         my $path = $self->{'path'} = []; # empty path
-        my $form = $self->form;
-        my $info = $ENV{'PATH_INFO'};
 
-        ### add initial items to the form hash
-        if ($info) {
+        ### add initial items to the form hash from path_info
+        if (my $info = $ENV{'PATH_INFO'}) {
             my $maps = $self->base_path_info_map || [];
             croak "Usage: sub base_path_info_map { [[qr{/path_info/(\w+)}, 'keyname']] }"
                 if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
             foreach my $map (@$maps) {
                 my @match = $info =~ $map->[0];
                 next if ! @match;
-                $form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $form->{$map->[$_]}} 1 .. $#$map;
+                $self->form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $self->form->{$map->[$_]}} 1 .. $#$map;
                 last;
             }
         }
 
         ### make sure the step is valid
-        my $step = $form->{$self->step_key};
+        my $step = $self->form->{$self->step_key};
         if (defined $step) {
             if ($step =~ /^_/) {         # can't begin with _
                 $self->stash->{'forbidden_step'} = $step;
@@ -213,20 +224,6 @@ sub path {
                 push @$path, $step;
             }
         }
-
-        ### allow for step based path info
-        if ($info) {
-            my $maps = $self->run_hook('path_info_map', $step) || [];
-            croak "Usage: sub path_info_map { [[qr{/path_info/(\w+)}, 'keyname']] }"
-                if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
-            foreach my $map (@$maps) {
-                my @match = $info =~ $map->[0];
-                next if ! @match;
-                $form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $form->{$map->[$_]}} 1 .. $#$map;
-                last;
-            }
-        }
-
     }
 
     return $self->{'path'};
@@ -236,8 +233,6 @@ sub base_path_info_map {
     my $self = shift;
     return [[qr{/(\w+)}, $self->step_key]];
 }
-
-sub path_info_map { [] }
 
 sub set_path {
     my $self = shift;
@@ -733,6 +728,8 @@ sub clear_app {
 
 ###----------------------------------------------------------------###
 ### default hook implementations
+
+sub path_info_map { }
 
 sub run_step {
     my $self = shift;
