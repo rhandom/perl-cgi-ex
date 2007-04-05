@@ -102,14 +102,17 @@ BEGIN {
 
     $LIST_OPS = {
         as      => \&vmethod_as_list,
+        defined => sub { return 1 if @_ == 1; defined $_[0]->[ defined($_[1]) ? $_[1] : 0 ] },
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
         fmt     => \&vmethod_as_list,
         grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
-        hash    => sub { local $^W; my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
+        hash    => sub { local $^W; my $list = shift; return {@$list} if ! @_; my $i = shift || 0; return {map {$i++ => $_} @$list} },
+        import  => sub { my $ref = shift; push @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_; $ref },
+        item    => sub { $_[0]->[ $_[1] || 0 ] },
         join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
         last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
         list    => sub { $_[0] },
-        max     => sub { $#{ $_[0] } },
+        max     => sub { local $^W; $#{ $_[0] } },
         merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
         new     => sub { local $^W; return [@_] },
         nsort   => \&vmethod_nsort,
@@ -118,11 +121,11 @@ BEGIN {
         random  => sub { my $ref = shift; $ref->[ rand @$ref ] },
         reverse => sub { [ reverse @{ $_[0] } ] },
         shift   => sub { shift  @{ $_[0] } },
-        size    => sub { scalar @{ $_[0] } },
+        size    => sub { local $^W; scalar @{ $_[0] } },
         slice   => sub { my ($ref, $a, $b) = @_; $a ||= 0; $b = $#$ref if ! defined $b; return [@{$ref}[$a .. $b]] },
         sort    => \&vmethod_sort,
         splice  => \&vmethod_splice,
-        unique  => sub { my %u; return [ grep { ! $u{$_} ++ } @{ $_[0] } ] },
+        unique  => sub { my %u; return [ grep { ! $u{$_}++ } @{ $_[0] } ] },
         unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
     };
 
@@ -2981,8 +2984,10 @@ sub vmethod_splice {
     @replace = @{ $replace[0] } if @replace == 1 && ref $replace[0] eq 'ARRAY';
     if (defined $len) {
         return [splice @$ref, $i || 0, $len, @replace];
+    } elsif (defined $i) {
+        return [splice @$ref, $i];
     } else {
-        return [splice @$ref, $i || 0];
+        return [splice @$ref];
     }
 }
 
