@@ -8,13 +8,13 @@
 
 use vars qw($module $is_tt);
 BEGIN {
-    $module = 'CGI::Ex::Template'; #real    0m1.243s #user    0m0.695s #sys     0m0.018s
-    #$module = 'Template';         #real    0m2.329s #user    0m1.466s #sys     0m0.021s
+    $module = 'CGI::Ex::Template'; #real    0m1.113s #user    0m0.416s #sys     0m0.016s
+#    $module = 'Template';         #real    0m3.022s #user    0m1.168s #sys     0m0.024s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => 521 - ($is_tt ? 109 : 0);
+use Test::More tests => ! $is_tt ? 662 : 519;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -299,46 +299,45 @@ ok($t == 3, "CALL method actually called var");
 ### virtual method tests
 
 # scalar vmethods
-process_ok("[% n.0 %]" => '7', {n => 7});
-process_ok("[% n.as %]" => '7', {n => 7});
-process_ok("[% n.as('%02d') %]" => '07', {n => 7});
-process_ok("[% n.as('%0*d', 3) %]" => '007', {n => 7});
-process_ok("[% n.as('(%s)') %]" => "(a\nb)", {n => "a\nb"});
-process_ok("[% n.chunk(3).join('|') %]" => 'abc|def|g', {n => 'abcdefg'});
-process_ok("[% n.chunk(-3).join('|') %]" => 'a|bcd|efg', {n => 'abcdefg'});
-process_ok("[% n.collapse %]" => "a b", {n => '  a  b  '});
+process_ok("[% n.0 %]" => '7', {n => 7}) if ! $is_tt;
+process_ok("[% n.as %]" => '7', {n => 7}) if ! $is_tt;
+process_ok("[% n.as('%02d') %]" => '07', {n => 7}) if ! $is_tt;
+process_ok("[% n.as('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
+process_ok("[% n.as('(%s)') %]" => "(a\nb)", {n => "a\nb"}) if ! $is_tt;
+process_ok("[% n.chunk(3).join %]" => 'abc def g', {n => 'abcdefg'});
+process_ok("[% n.chunk(-3).join %]" => 'a bcd efg', {n => 'abcdefg'});
+process_ok("[% n|collapse %]" => "a b", {n => '  a  b  '}); # TT2 filter
 process_ok("[% n.defined %]" => "1", {n => ''});
 process_ok("[% n.defined %]" => "", {n => undef});
 process_ok("[% n.defined %]" => "1", {n => '1'});
-process_ok("[% n.indent %]" => "    a\n    b", {n => "a\nb"});
-process_ok("[% n.indent(2) %]" => "  a\n  b", {n => "a\nb"});
-process_ok("[% n.indent('wow ') %]" => "wow a\nwow b", {n => "a\nb"});
-process_ok("[% n.int %]" => "123", {n => "123.234"});
-process_ok("[% n.int %]" => "123", {n => "123gggg"});
-process_ok("[% n.int %]" => "0", {n => "ff123.234"});
-process_ok("[% n.fmt('%02d') %]" => '07', {n => 7});
-process_ok("[% n.fmt('%0*d', 3) %]" => '007', {n => 7});
-process_ok("[% n.fmt('(%s)') %]" => "(a\nb)", {n => "a\nb"});
-process_ok("[% n.format('%02d') %]" => '07', {n => 7});
-process_ok("[% n.format('%0*d', 3) %]" => '007', {n => 7});
-process_ok("[% n.format('(%s)') %]" => "(a)\n(b)", {n => "a\nb"});
-process_ok("[% n.hash.items.join('|') %]" => "a|b", {n => {a => "b"}});
-process_ok("[% n.html %]" => "&amp;", {n => '&'});
+process_ok("[% n|indent %]" => "    a\n    b", {n => "a\nb"}); # TT2 filter
+process_ok("[% n|indent(2) %]" => "  a\n  b", {n => "a\nb"}); # TT2 filter
+process_ok("[% n|indent('wow ') %]" => "wow a\nwow b", {n => "a\nb"}); # TT2 filter
+process_ok("[% n.int %]" => "123", {n => "123.234"}) if ! $is_tt;
+process_ok("[% n.int %]" => "123", {n => "123gggg"}) if ! $is_tt;
+process_ok("[% n.int %]" => "0", {n => "ff123.234"}) if ! $is_tt;
+process_ok("[% n.fmt('%02d') %]" => '07', {n => 7}) if ! $is_tt;
+process_ok("[% n.fmt('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
+process_ok("[% n.fmt('(%s)') %]" => "(a\nb)", {n => "a\nb"}) if ! $is_tt;
+process_ok("[% n|format('%02d') %]" => '07', {n => 7}); # TT2 filter
+process_ok("[% n.format('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
+process_ok("[% n|format('(%s)') %]" => "(a)\n(b)", {n => "a\nb"}); # TT2 filter
+process_ok("[% n.hash.items.1 %]" => "b", {n => {a => "b"}});
+process_ok("[% n|html %]" => "&amp;", {n => '&'}); # TT2 filter
 process_ok("[% n.item %]" => '7', {n => 7});
-process_ok("[% n.lcfirst %]" => 'fOO', {n => "FOO"});
+process_ok("[% n|lcfirst %]" => 'fOO', {n => "FOO"}); # TT2 filter
 process_ok("[% n.length %]" => 3, {n => "abc"});
-process_ok("[% n.list.join('|') %]" => 'abc', {n => "abc"});
-process_ok("[% n.lower %]" => 'abc', {n => "ABC"});
-process_ok("[% n.match('foo').join('|') %]" => '', {n => "bar"});
-process_ok("[% n.match('foo').join('|') %]" => '1', {n => "foo"});
-process_ok("[% n.match('foo',1).join('|') %]" => 'foo', {n => "foo"});
-process_ok("[% n.match('(foo)').join('|') %]" => 'foo', {n => "foo"});
-process_ok("[% n.match('(foo)').join('|') %]" => 'foo', {n => "foofoo"});
-process_ok("[% n.match('(foo)',1).join('|') %]" => 'foo|foo', {n => "foofoo"});
-process_ok("[% n.new %]" => 'abc', {n => "abc"});
+process_ok("[% n.list.0 %]" => 'abc', {n => "abc"});
+process_ok("[% n|lower %]" => 'abc', {n => "ABC"}); # TT2 filter
+process_ok("[% n.match('foo').join %]" => '', {n => "bar"});
+process_ok("[% n.match('foo').join %]" => '1', {n => "foo"});
+process_ok("[% n.match('foo',1).join %]" => 'foo', {n => "foo"});
+process_ok("[% n.match('(foo)').join %]" => 'foo', {n => "foo"});
+process_ok("[% n.match('(foo)').join %]" => 'foo', {n => "foofoo"});
+process_ok("[% n.match('(foo)',1).join %]" => 'foo foo', {n => "foofoo"});
 process_ok("[% n.null %]" => '', {n => "abc"});
-process_ok("[% n.rand %]" => qr{^\d+\.\d+}, {n => "2"});
-process_ok("[% n.rand %]" => qr{^\d+\.\d+}, {n => "ab"});
+process_ok("[% n.rand %]" => qr{^\d+\.\d+}, {n => "2"}) if ! $is_tt;
+process_ok("[% n.rand %]" => qr{^\d+\.\d+}, {n => "ab"}) if ! $is_tt;
 process_ok("[% n.remove('bc') %]" => "a", {n => "abc"});
 process_ok("[% n.remove('bc') %]" => "aa", {n => "abcabc"});
 process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
@@ -355,41 +354,110 @@ process_ok("[% n.size %]" => '1', {n => "foo"});
 process_ok("[% n.split.join('|') %]" => "abc", {n => "abc"});
 process_ok("[% n.split.join('|') %]" => "a|b|c", {n => "a b c"});
 process_ok("[% n.split.join('|') %]" => "a|b|c", {n => "a b c"});
-process_ok("[% n.split(u,2).join('|') %]" => "a|b c", {n => "a b c", u => undef});
+process_ok("[% n.split(u,2).join('|') %]" => "a|b c", {n => "a b c", u => undef}) if ! $is_tt;
+process_ok("[% n.split(u,2).join('|') %]" => "a| b c", {n => "a b c", u => undef}) if $is_tt;
 process_ok("[% n.split('/').join('|') %]" => "a|b|c", {n => "a/b/c"});
 process_ok("[% n.split('/', 2).join('|') %]" => "a|b/c", {n => "a/b/c"});
-process_ok("[% n.stderr %]" => "", {n => "# test stderr\n"});
-process_ok("[% n.trim %]" => "a  b", {n => '  a  b  '});
-process_ok("[% n.ucfirst %]" => 'Foo', {n => "foo"});
-process_ok("[% n.upper %]" => 'FOO', {n => "foo"});
-process_ok("[% n.uri %]" => 'a%20b', {n => "a b"});
+process_ok("[% n.stderr %]" => "", {n => "# testing stderr ... ok\n"});
+process_ok("[% n|trim %]" => "a  b", {n => '  a  b  '}); # TT2 filter
+process_ok("[% n|ucfirst %]" => 'Foo', {n => "foo"}); # TT2 filter
+process_ok("[% n|upper %]" => 'FOO', {n => "foo"}); # TT2 filter
+process_ok("[% n|uri %]" => 'a%20b', {n => "a b"}); # TT2 filter
 
 # list vmethods
-process_ok("[% a.as %]" => '2 3', {a => [2,3]});
-process_ok("[% a.as('%02d',' ') %]" => '02 03', {a => [2,3]});
-process_ok("[% a.as('%02d','|') %]" => '02|03', {a => [2,3]});
-process_ok("[% a.as('%0*d','|', 3) %]" => '002|003', {a => [2,3]});
+process_ok("[% a.as %]" => '2 3', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.as('%02d') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.as('%02d',' ') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.as('%02d','|') %]" => '02|03', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.as('%0*d','|', 3) %]" => '002|003', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.defined %]" => '1', {a => [2,3]});
 process_ok("[% a.defined(1) %]" => '1', {a => [2,3]});
 process_ok("[% a.defined(3) %]" => '', {a => [2,3]});
 process_ok("[% a.first %]" => '2', {a => [2..10]});
-process_ok("[% a.first(3).join('|') %]" => '2|3|4', {a => [2..10]});
-process_ok("[% a.fmt('%02d',' ') %]" => '02 03', {a => [2,3]});
-process_ok("[% a.fmt('%02d','|') %]" => '02|03', {a => [2,3]});
-process_ok("[% a.fmt('%0*d','|', 3) %]" => '002|003', {a => [2,3]});
-process_ok("[% a.grep.join('|') %]" => '2|3', {a => [2,3]});
-process_ok("[% a.grep(2).join('|') %]" => '2', {a => [2,3]});
-process_ok("[% a.hash.items.join('|') %]" => '2|3', {a => [2,3]});
-process_ok("[% a.hash(5).items.sort.join('|') %]" => '2|3|5|6', {a => [2,3]});
-process_ok("[% a.import(5).join('|') %]" => '2|3', {a => [2,3]});
-process_ok("[% a.import([5]).join('|') %]" => '2|3|5', {a => [2,3]});
-process_ok("[% a.import([5]).null %][% a.join('|') %]" => '2|3|5', {a => [2,3]});
+process_ok("[% a.first(3).join %]" => '2 3 4', {a => [2..10]});
+process_ok("[% a.fmt('%02d',' ') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.fmt('%02d','|') %]" => '02|03', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.fmt('%0*d','|', 3) %]" => '002|003', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.grep.join %]" => '2 3', {a => [2,3]});
+process_ok("[% a.grep(2).join %]" => '2', {a => [2,3]});
+process_ok("[% a.hash.items.join %]" => '2 3', {a => [2,3]});
+process_ok("[% a.hash(5).items.sort.join %]" => '2 3 5 6', {a => [2,3]});
+process_ok("[% a.import(5) %]|[% a.join %]" => '|2 3', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.import(5) %]|[% a.join %]" => qr{^ARRAY.+|2 3$ }x, {a => [2,3]}) if $is_tt;
+process_ok("[% a.import([5]) %]|[% a.join %]" => '|2 3 5', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.import([5]) %]|[% a.join %]" => qr{ARRAY.+|2 3 5$ }x, {a => [2,3]}) if $is_tt;
 process_ok("[% a.item %]" => '2', {a => [2,3]});
 process_ok("[% a.item(1) %]" => '3', {a => [2,3]});
 process_ok("[% a.join %]" => '2 3', {a => [2,3]});
 process_ok("[% a.join('|') %]" => '2|3', {a => [2,3]});
 process_ok("[% a.last %]" => '10', {a => [2..10]});
-process_ok("[% a.last(3).join('|') %]" => '8|9|10', {a => [2..10]});
+process_ok("[% a.last(3).join %]" => '8 9 10', {a => [2..10]});
+process_ok("[% a.list.join %]" => '2 3', {a => [2, 3]});
+process_ok("[% a.max %]" => '1', {a => [2, 3]});
+process_ok("[% a.merge(5).join %]" => '2 3', {a => [2,3]});
+process_ok("[% a.merge([5]).join %]" => '2 3 5', {a => [2,3]});
+process_ok("[% a.merge([5]).null %][% a.join %]" => '2 3', {a => [2,3]});
+process_ok("[% a.nsort.join %]" => '1 2 3', {a => [2, 3, 1]});
+process_ok("[% a.nsort('b').0.b %]" => '7', {a => [{b => 23}, {b => 7}]});
+process_ok("[% a.pop %][% a.join %]" => '32', {a => [2, 3]});
+process_ok("[% a.push(3) %][% a.join %]" => '2 3 3', {a => [2, 3]});
+process_ok("[% a.random %]" => qr{ ^\d$ }x, {a => [2, 3]}) if ! $is_tt;
+process_ok("[% a.reverse.join %]" => '3 2', {a => [2, 3]});
+process_ok("[% a.shift %][% a.join %]" => '23', {a => [2, 3]});
+process_ok("[% a.size %]" => '2', {a => [2, 3]});
+process_ok("[% a.slice.join %]" => '2 3 4 5', {a => [2..5]});
+process_ok("[% a.slice(2).join %]" => '4 5', {a => [2..5]});
+process_ok("[% a.slice(0,2).join %]" => '2 3 4', {a => [2..5]});
+process_ok("[% a.sort.join %]" => '1 2 3', {a => [2, 3, 1]});
+process_ok("[% a.sort('b').0.b %]" => 'wee', {a => [{b => "wow"}, {b => "wee"}]});
+process_ok("[% a.splice.join %]|[% a.join %]" => '2 3 4 5|', {a => [2..5]});
+process_ok("[% a.splice(2).join %]|[% a.join %]" => '4 5|2 3', {a => [2..5]});
+process_ok("[% a.splice(0,2).join %]|[% a.join %]" => '2 3|4 5', {a => [2..5]});
+process_ok("[% a.splice(0,2,'hrm').join %]|[% a.join %]" => '2 3|hrm 4 5', {a => [2..5]});
+process_ok("[% a.unique.join %]" => '2 3', {a => [2,3,3,3,2]});
+process_ok("[% a.unshift(3) %][% a.join %]" => '3 2 3', {a => [2, 3]});
+
+# hash vmethods
+process_ok("[% h.as %]" => "b\tB\nc\tC", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.as('%s => %s') %]" => "b => B\nc => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.as('%s => %s', '|') %]" => "b => B|c => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.as('%*s=>%s', '|', 3) %]" => "  b=>B|  c=>C", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.as('%*s=>%*s', '|', 3, 4) %]" => "  b=>   B|  c=>   C", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.defined %]" => "1", {h => {}});
+process_ok("[% h.defined('a') %]" => "1", {h => {a => 1}});
+process_ok("[% h.defined('b') %]" => "", {h => {a => 1}});
+process_ok("[% h.defined('a') %]" => "", {h => {a => undef}});
+process_ok("[% h.delete('a') %]|[% h.keys.0 %]" => "1|b", {h => {a => 1, b=> 2}}) if ! $is_tt;
+process_ok("[% h.delete('a') %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}}) if $is_tt;
+process_ok("[% h.delete('a', 'b').join %]|[% h.keys.0 %]" => "1 2|", {h => {a => 1, b=> 2}}) if ! $is_tt;
+process_ok("[% h.delete('a', 'b').join %]|[% h.keys.0 %]" => "|", {h => {a => 1, b=> 2}}) if $is_tt;
+process_ok("[% h.delete('a', 'c').join %]|[% h.keys.0 %]" => "1 |b", {h => {a => 1, b=> 2}}) if ! $is_tt;
+process_ok("[% h.delete('a', 'c').join %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}}) if $is_tt;
+process_ok("[% h.each.sort.join %]" => "1 2 a b", {h => {a => 1, b=> 2}});
+process_ok("[% h.exists('a') %]" => "1", {h => {a => 1}});
+process_ok("[% h.exists('b') %]" => "", {h => {a => 1}});
+process_ok("[% h.exists('a') %]" => "1", {h => {a => undef}});
+process_ok("[% h.fmt('%s => %s') %]" => "b => B\nc => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.fmt('%s => %s', '|') %]" => "b => B|c => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.fmt('%*s=>%s', '|', 3) %]" => "  b=>B|  c=>C", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.fmt('%*s=>%*s', '|', 3, 4) %]" => "  b=>   B|  c=>   C", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.hash.fmt %]" => "b\tB\nc\tC", {h => {b => "B", c => "C"}}) if ! $is_tt;
+process_ok("[% h.import('a') %]|[% h.items.sort.join %]" => "|b B c C", {h => {b => "B", c => "C"}});
+process_ok("[% h.import({'b' => 'boo'}) %]|[% h.items.sort.join %]" => "|b boo c C", {h => {b => "B", c => "C"}});
+process_ok("[% h.item('a') %]" => 'A', {h => {a => 'A'}});
+process_ok("[% h.item('_a') %]" => '', {h => {_a => 'A'}}) if ! $is_tt;
+process_ok("[% h.items.sort.join %]" => "1 2 a b", {h => {a => 1, b=> 2}});
+process_ok("[% h.keys.sort.join %]" => "a b", {h => {a => 1, b=> 2}});
+process_ok("[% h.list('each').sort.join %]" => "1 2 a b", {h => {a => 1, b=> 2}});
+process_ok("[% h.list('keys').sort.join %]" => "a b", {h => {a => 1, b=> 2}});
+process_ok("[% h.list('pairs').0.items.sort.join %]" => "1 a key value", {h => {a => 1, b=> 2}});
+process_ok("[% h.list('values').sort.join %]" => "1 2", {h => {a => 1, b=> 2}});
+process_ok("[% h.null %]" => "", {h => {}});
+process_ok("[% h.nsort.join %]" => "b a", {h => {a => 7, b => 2}});
+process_ok("[% h.pairs.0.items.sort.join %]" => "1 a key value", {h => {a => 1, b=> 2}});
+process_ok("[% h.size %]" => "2", {h => {a => 1, b=> 2}});
+process_ok("[% h.sort.join %]" => "b a", {h => {a => "BBB", b => "A"}});
+process_ok("[% h.values.sort.join %]" => "1 2", {h => {a => 1, b=> 2}});
 
 ###----------------------------------------------------------------###
 ### more virtual methods / filters
@@ -470,12 +538,6 @@ process_ok('[% a = Hash.new(one = "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 process_ok('[% a = Hash.new(one => "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 
 process_ok('[% {a => 1, b => 2} | Hash.keys | List.join(", ") %]' => 'a, b') if ! $is_tt;
-
-process_ok('[% h = {a => 7} %][% h.delete("a") %]' => "7");
-process_ok('[% h = {a => 7, b=>8} %][% h.delete("a", "b").join("|") %]' => "7|8") if ! $is_tt;
-process_ok('[% h = {a => 7}; h2 = {b=>8} %][% h.import(h2) %][% h.b %]' => "8");
-process_ok('[% h = {b => "B", a=>"A"} %][% h.sort.join("|") %]' => "a|b");
-process_ok('[% h = {b => "2", a=>"1"} %][% h.nsort.join("|") %]' => "a|b");
 
 ###----------------------------------------------------------------###
 ### chomping
