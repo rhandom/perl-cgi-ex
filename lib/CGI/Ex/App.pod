@@ -20,15 +20,17 @@ There is a longer "SYNOPSIS" after the process flow discussion.
 
 =head1 DESCRIPTION
 
-Fill in the blanks and get a ready made web application.  This module
-is somewhat similar in spirit to CGI::Application, CGI::Path, and
-CGI::Builder and any other "CGI framework."  As with the others,
-CGI::Ex::App tries to do as much of the mundane things, in a simple
-manner, without getting in the developer's way.  However, there are
-various design patterns for CGI applications that CGI::Ex::App handles
-for you that the other frameworks require you to bring in extra support.
-The entire CGI::Ex suite has been taylored to work seamlessly together.
-Your mileage in building applications may vary.
+Fill in the blanks and get a ready made web application.
+
+This module is somewhat similar in spirit to CGI::Application,
+CGI::Path, and CGI::Builder and any other "CGI framework."  As with
+the others, CGI::Ex::App tries to do as much of the mundane things, in
+a simple manner, without getting in the developer's way.  However,
+there are various design patterns for CGI applications that
+CGI::Ex::App handles for you that the other frameworks require you to
+bring in extra support.  The entire CGI::Ex suite has been taylored to
+work seamlessly together.  Your mileage in building applications may
+vary.
 
 If you build applications that submit user information, validate it,
 re-display it, fill in forms, or separate logic into separate modules,
@@ -40,8 +42,8 @@ to write any code, this module will help - but you still need to
 provide your key actions and html.
 
 One of the great benefits of CGI::Ex::App vs. Catalyst or Rails style
-frameworks is that the model of CGI::Ex::App can be much more abstract
-as models often are.
+frameworks is that the model of CGI::Ex::App can be much more abstract.
+And models often are abstract.
 
 =head1 DEFAULT PROCESS FLOW
 
@@ -184,7 +186,7 @@ Because of the hook based system, and because CGI::Ex::App uses
 sensible defaults, it is very easy to override a little or a lot which
 ends up giving the developer a lot of flexibility.
 
-Consequently, it should be possible to use CGI::Ex::App with the other
+Additionally, it should be possible to use CGI::Ex::App with the other
 frameworks such as CGI::Application or CGI::Prototype.  For these you
 could simple let each "runmode" call the run_step hook of CGI::Ex::App
 and you will instantly get all of the common process flow for free.
@@ -193,33 +195,33 @@ and you will instantly get all of the common process flow for free.
 
 The default out of the box configuration will map URIs to steps as follows:
 
-    # Assuming /cgi-bin/my_cgi is the program being run
+    # Assuming /cgi-bin/my_app is the program being run
 
-    URI:  /cgi-bin/my_cgi
+    URI:  /cgi-bin/my_app
     STEP: main
     FORM: {}
     WHY:  No other information is passed.  The path method is
           called which eventually calls ->default_step which
           defaults to "main"
 
-    URI:  /cgi-bin/my_cgi?foo=bar
+    URI:  /cgi-bin/my_app?foo=bar
     STEP: main
     FORM: {foo => "bar"}
     WHY:  Same as previous example except that QUERY_STRING
           information was passed and placed in form.
 
-    URI:  /cgi-bin/my_cgi?step=my_step
+    URI:  /cgi-bin/my_app?step=my_step
     STEP: my_step
     FORM: {step => "my_step"}
     WHY:  The path method is called which looks in $self->form
           for the key ->step_key (which defaults to "step").
 
-    URI:  /cgi-bin/my_cgi?step=my_step&foo=bar
+    URI:  /cgi-bin/my_app?step=my_step&foo=bar
     STEP: my_step
     FORM: {foo => "bar", step => "my_step"}
     WHY:  Same as before but has other parameters were passed.
 
-    URI:  /cgi-bin/my_cgi/my_step
+    URI:  /cgi-bin/my_app/my_step
     STEP: my_step
     FORM: {step => "my_step"}
     WHY:  The path method is called which called path_info_map_base
@@ -229,12 +231,12 @@ The default out of the box configuration will map URIs to steps as follows:
           $self->form->{$self->step_key} for the initial step. See
           the path_info_map_base method for more information.
 
-    URI:  /cgi-bin/my_cgi/my_step?foo=bar
+    URI:  /cgi-bin/my_app/my_step?foo=bar
     STEP: my_step
     FORM: {foo => "bar", step => "my_step"}
     WHY:  Same as before but other parameters were passed.
 
-    URI:  /cgi-bin/my_cgi/my_step?step=other_step
+    URI:  /cgi-bin/my_app/my_step?step=other_step
     STEP: other_step
     FORM: {step => "other_step"}
     WHY:  The same procedure took place, but when the PATH_INFO
@@ -252,7 +254,7 @@ that the following method is installed in your script.
         ];
     }
 
-    URI:  /cgi-bin/my_cgi/my_step/bar
+    URI:  /cgi-bin/my_app/my_step/bar
     STEP: my_step
     FORM: {foo => "bar"}
     WHY:  The step was matched as in previous examples using
@@ -262,7 +264,7 @@ that the following method is installed in your script.
           and the corresponding matched value was placed into
           the form using the keys specified following the regex.
 
-    URI:  /cgi-bin/my_cgi/my_step/bar/1234
+    URI:  /cgi-bin/my_app/my_step/bar/1234
     STEP: my_step
     FORM: {foo => "bar", id => "1234"}
     WHY:  Same as the previous example, except that the first
@@ -272,19 +274,19 @@ that the following method is installed in your script.
           order that will match the most data.  The third regex
           would also match this PATH_INFO.
 
-    URI:  /cgi-bin/my_cgi/my_step/some/other/type/of/data
+    URI:  /cgi-bin/my_app/my_step/some/other/type/of/data
     STEP: my_step
     FORM: {anything_else => 'some/other/type/of/data'}
     WHY:  Same as the previous example, except that the third
           regex matched.
 
-    URI:  /cgi-bin/my_cgi/my_step/bar?bling=blang
+    URI:  /cgi-bin/my_app/my_step/bar?bling=blang
     STEP: my_step
     FORM: {foo => "bar", bling => "blang"}
     WHY:  Same as the first step, but additional QUERY_STRING
           information was passed.
 
-    URI:  /cgi-bin/my_cgi/my_step/one%20two?bar=three%20four
+    URI:  /cgi-bin/my_app/my_step/one%20two?bar=three%20four
     STEP: my_step
     FORM: {anything_else => "one two", bar => "three four"}
     WHY:  The third path_info_map regex matched.  Note that the
@@ -303,8 +305,15 @@ how GET and POST parameters are parsed.
 See the path_info_map_base method, and path_info_map hook for more information
 on how the path_info maps function.
 
-A Dumper($self->dump_history) is very useful for determing what hooks have
-taken place.
+Using the following code is very useful for determing what hooks have
+taken place:
+
+   use CGI::Ex::Dump qw(debug);
+
+   sub post_navigate {
+       my $self = shift;
+       debug $self->dump_history, $self->form;
+   }
 
 =head1 ADDING DATA VALIDATION TO A STEP
 
@@ -422,6 +431,130 @@ fill_args hooks for more information.
 
 The default form filler is CGI::Ex::Fill which is similar to HTML::FillInForm but
 has several benefits.  See the CGI::Ex::Fill module for the available options.
+
+=head1 FINDING TEMPLATES AND VALIDATION FILES
+
+CGI::Ex::App tries to help your applications use a good template directory layout, but allows
+for you to override everything.
+
+External template files are used for storing your html templates and
+for storing your validation files (if you use externally stored
+validation files).
+
+The default file_print hook will look for content on your file system,
+but it can also be completely overridden to return a reference to a
+scalar containing the contents of your file.  Actually it can return
+anything that CGI::Ex::Template (Template::Toolkit compatible) will
+treat as input.  This templated html is displayed to the user during
+any step that enters the "print" phase.
+
+Similarly the default file_val hook will look for a validation file on
+the file system, but it too can return a reference to a scalar
+containing the contents of a validation file.  It may actually return
+anything that the CGI::Ex::Validate get_validation method is able to
+understand.  This validation is used by the default "info_complete"
+method for verifying if the submitted information passes its specific
+checks.  A more common way of inlining validation is to return a
+validation hash from a hash_validation hook override.
+
+If the default file_print and file_val hooks are used, the following methods
+are employed for finding templates and validation files on your filesystem (they
+are also documented more in the HOOKS AND METHODS section.
+
+=over 4
+
+=item base_dir_abs
+
+Absolute path or arrayref of paths to the base templates directory.  Default "".
+
+=item base_dir_rel
+
+Relative path inside of the base_dir_abs directory where content can be found.  Default "".
+
+=item name_module
+
+Directory inside of base_dir_rel where files for the current CGI (module) will be
+stored.  Default value is $ENV{SCRIPT_NAME} with path and extension removed.
+
+=item name_step
+
+Used with ext_print and ext_val for creating the filename that will be looked for
+inside of the name_module directory.  Default value is the current step.
+
+=item ext_print and ext_val
+
+Filename extensions added to name_step to create the filename looked for
+inside of the name_module directory.  Default is "html" for ext_print and "val"
+for ext_val.
+
+=back
+
+It may be easier to understand the usage of each of these methods by showing
+a contrived example.  The following is a hypothetical layout for your templates:
+
+    /home/user/templates/
+    /home/user/templates/chunks/
+    /home/user/templates/wrappers/
+    /home/user/templates/content/
+    /home/user/templates/content/my_app/
+    /home/user/templates/content/my_app/main.html
+    /home/user/templates/content/my_app/step1.html
+    /home/user/templates/content/my_app/step1.val
+    /home/user/templates/content/another_cgi/main.html
+
+In this example we would most likely set values as follows:
+
+    base_dir_abs  /home/user/templates
+    base_dir_rel  content
+    name_module   my_app
+
+The name_module method defaults to the name of the running program, but
+with the path and extension removed.  So if we were running
+/cgi-bin/my_app.pl, /cgi-bin/my_app, or /anypath/my_app, then
+name_module would default to "my_app" and we wouldn't have to
+hard code the value.  Often it is wise to set the value anyway so
+that we can change the name of the cgi script without effecting
+where template content should be stored.
+
+Continuing with the example and assuming that name of the step that
+the user has requested is "step1" then the following values would be
+returned:
+
+    base_dir_abs  /home/user/templates
+    base_dir_rel  content
+    name_module   my_app
+    name_step     step1
+    ext_print     html
+    ext_val       val
+
+    file_print    content/my_app/step1.html
+    file_val      /home/user/templates/content/my_app/step1.val
+
+The call to the template engine would look something like
+the following:
+
+    my $t = $self->template_obj({
+        INCLUDE_PATH => $self->base_dir_abs,
+    });
+
+    $t->process($self->file_print($step), \%vars);
+
+The template engine would then look for the relative file
+inside of the absolute paths (from base_dir_abs).
+
+The call to the validation engine would pass the absolute
+filename that is returned by file_val.
+
+The name_module and name_step methods can return filenames with
+additional directories included.  The previous example could
+also have been setup using the following values:
+
+    base_dir_abs  /home/user/templates
+    base_dir_rel
+    name_module   content/my_app
+
+In this case the same values would be returned for the file_print and file_val hooks
+as were returned in the previous setup.
 
 =head1 SYNOPSIS (A LONG "SYNOPSIS")
 
@@ -789,15 +922,55 @@ was successful - so this data can be defined but false.
 
 See the get_valid_auth method.
 
+=item base_dir_abs (method)
+
+Used as the absolute base directory to find template files and validation files.
+It may return a single value or an arrayref of values, or a coderef that
+returns an arrayref or coderef of values.  You may pass base_dir_abs
+as a parameter in the arguments passed to the "new" method.
+
+Default value is "".
+
+For example, to pass multiple paths, you would use something
+similar to the following:
+
+    sub base_dir_abs {
+        return ['/my/path/one', '/some/other/path'];
+    }
+
+The base_dir_abs value is used along with the base_dir_rel, name_module,
+name_step, ext_print and ext_values for determining the values
+returned by the default file_print and file_val hooks.  See those methods
+for further discussion.
+
+See the section on FINDING TEMPLATES for further discussion.
+
+=item base_dir_rel (method)
+
+Added as a relative base directory to content under the base_dir_abs directory.
+
+Default value is "".
+
+The base_dir_abs method is used as top level where template includes may
+pull from, while the base_dir_rel is directory relative to the base_dir_abs
+where the content files will be stored.
+
+A value for base_dir_rel may passed as a parameter in the arguments passed
+to the new method.
+
+See the base_dir_abs method for more discussion.
+
+See the section on FINDING TEMPLATES for further discussion.
+
 =item cleanup_user (method)
 
-Installed as a hook during get_valid_auth.  Allows for cleaning
+Used as a hook during get_valid_auth.  Allows for cleaning
 up the username.  See the get_valid_auth method.
 
-     sub cleanup_user {
-         my ($self, $user) = @_;
-         return lc $user;
-     }
+    sub cleanup_user {
+        my ($self, $user) = @_;
+        return lc $user;
+    }
 
 =item clear_app (method)
 
@@ -913,6 +1086,28 @@ hooks for the current and remaining steps.  It is used to allow the
 unmorphed before returning.  Also - the post_navigate method will
 still be called.
 
+=item ext_print (method)
+
+Added as suffix to "name_step" during the default file_print hook.
+
+Default value is 'html'.
+
+For example, if name_step returns "foo" and ext_print returns "html"
+then the file "foo.html" will be searched for.
+
+See the section on FINDING TEMPLATES for further discussion.
+
+=item ext_val (method)
+
+Added as suffix to "name_step" during the default file_val hook.
+
+Default value is 'val'.
+
+For example, if name_step returns "foo" and ext_val returns "val"
+then the file "foo.val" will be searched for.
+
+See the section on FINDING TEMPLATES for further discussion.
+
 =item first_step (method)
 
 Returns the first step of the path.  Note that first_step may not be the same
@@ -994,7 +1189,9 @@ the data for the application in a single location.
 Returns a filename containing the validation.  Performs the same
 as file_print, but uses ext_val to get the extension, and it adds
 base_dir_abs onto the returned value (file_print is relative to
-base_dir_abs, while file_val is fully qualified with base_dir_abs)
+base_dir_abs, while file_val is fully qualified with base_dir_abs).
+If base_dir_abs returns an arrayref of paths, then each path is
+checked for the existence of the file.
 
 The file should be readable by CGI::Ex::Validate::get_validation.
 
@@ -1418,11 +1615,15 @@ have its own directory for storing html for its steps.
 
 See the file_print method for more information.
 
+See the section on FINDING TEMPLATES for further discussion.
+
 =item name_step (hook)
 
 Return the step (appended to name_module) that should used when
 looking up the file in file_print and file_val lookups.  Defaults to
 the current step.
+
+See the section on FINDING TEMPLATES for further discussion.
 
 =item nav_loop (method)
 
@@ -1831,20 +2032,67 @@ through the current template engine (default engine is CGI::Ex::Template).
 
 Arguments are the template and the swap hashref.  The template can be either a
 scalar reference to the actual content, or the filename of the content.  If the
-filename is specified - it should be relative to base_dir_abs.
+filename is specified - it should be relative to base_dir_abs (which will be
+used to initialize INCLUDE_PATH by default).
+
+The default method will create a template object by calling the template_args hook
+and passing the returned hashref to the template_obj method.  The default template_obj method
+returns a CGI::Ex::Template object, but could easily be swapped to use a Template::Toolkit
+based object.  If a non-Template::Toolkit compatible object is to be used, then
+the swap_template hook can be overridden to use another templating engine.
+
+For example to use the HTML::Template engine you could override the swap_template
+method as follows:
+
+    use HTML::Template;
+
+    sub swap_template {
+        my ($self, $step, $file, $swap) = @_;
+
+        my $type = UNIVERSAL::isa($file, 'SCALAR') ? 'scalarref'
+                 : UNIVERSAL::isa($file, 'ARRAY')  ? 'arrayref'
+                 : ref($file)                      ? 'filehandle'
+                 :                                   'filename';
+
+        my $t = HTML::Template->new(source => $file,
+                                    type   => $type,
+                                    path   => $self->base_dir_abs,
+                                    die_on_bad_params => 0,
+                                    );
+
+        $t->param($swap);
+
+        return $t->output;
+    }
 
 =item template_args (hook)
 
 Returns a hashref of args that will be passed to the "new" method of CGI::Ex::Template.
-By default this hashref contains INCLUDE_PATH which is set equal to base_dir_abs.
-It can be augmented with any arguments that CGI::Ex::Template would understand.
+The method is normally called from the swap_template hook.  The swap_template hook
+will add a value for INCLUDE_PATH which is set equal to base_dir_abs, if the INCLUDE_PATH
+value is not already set.
 
-   sub template_args {
-       return {
-           INCLUDE_PATH => '/my/own/include/path',
-           WRAPPER => 'wrappers/main_wrapper.html',
-       };
-   }
+The returned hashref can contain any arguments that CGI::Ex::Template would understand.
+
+    sub template_args {
+        return {
+            PRE_CHOMP => 1,
+            WRAPPER   => 'wrappers/main_wrapper.html',
+        };
+    }
+
+=item template_obj (method)
+
+Called from swap_template.  It is passed the result of template_args that have
+had a default INCLUDE_PATH added.  The default implementation uses CGI::Ex::Template
+but can easily be changed to use Template::Toolkit by using code similar to the following:
+
+    use Template;
+
+    sub template_obj {
+        my ($self, $args) = @_;
+        return Template->new($args);
+    }
 
 =item unmorph (method)
 
@@ -2614,5 +2862,9 @@ the original versions.
 =head1 AUTHOR
 
 Paul Seamons <paul at seamons dot com>
+
+=head1 LICENSE
+
+This module may be distributed under the same terms as Perl itself.
 
 =cut
