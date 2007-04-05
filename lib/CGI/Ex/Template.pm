@@ -59,11 +59,11 @@ BEGIN {
     };
 
     $SCALAR_OPS = {
-        '0'      => sub { shift },
+        '0'      => sub { $_[0] },
         as       => \&vmethod_as_scalar,
         chunk    => \&vmethod_chunk,
         collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
-        defined  => sub { 1 },
+        defined  => sub { defined $_[0] ? 1 : '' },
         indent   => \&vmethod_indent,
         int      => sub { local $^W; int $_[0] },
         fmt      => \&vmethod_as_scalar,
@@ -105,7 +105,7 @@ BEGIN {
         defined => sub { return 1 if @_ == 1; defined $_[0]->[ defined($_[1]) ? $_[1] : 0 ] },
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
         fmt     => \&vmethod_as_list,
-        grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
+        grep    => sub { local $^W; my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
         hash    => sub { local $^W; my $list = shift; return {@$list} if ! @_; my $i = shift || 0; return {map {$i++ => $_} @$list} },
         import  => sub { my $ref = shift; push @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_; $ref },
         item    => sub { $_[0]->[ $_[1] || 0 ] },
@@ -115,6 +115,7 @@ BEGIN {
         max     => sub { local $^W; $#{ $_[0] } },
         merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
         new     => sub { local $^W; return [@_] },
+        null    => sub { '' },
         nsort   => \&vmethod_nsort,
         pop     => sub { pop @{ $_[0] } },
         push    => sub { my $ref = shift; push @$ref, @_; return '' },
@@ -143,6 +144,7 @@ BEGIN {
         keys    => sub { [keys %{ $_[0] }] },
         list    => \&vmethod_list_hash,
         new     => sub { local $^W; return (@_ == 1 && ref $_[-1] eq 'HASH') ? $_[-1] : {@_} },
+        null    => sub { '' },
         nsort   => sub { my $ref = shift; [sort {$ref->{$a}    <=> $ref->{$b}   } keys %$ref] },
         pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } sort keys %{ $_[0] } ] },
         size    => sub { scalar keys %{ $_[0] } },
