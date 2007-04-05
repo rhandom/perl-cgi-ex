@@ -296,7 +296,103 @@ process_ok("[% CALL foo %]" => '',   {foo => sub {$t++; 'hi'}});
 ok($t == 3, "CALL method actually called var");
 
 ###----------------------------------------------------------------###
-### virtual methods / filters
+### virtual method tests
+
+# scalar vmethods
+process_ok("[% n.0 %]" => '7', {n => 7});
+process_ok("[% n.as %]" => '7', {n => 7});
+process_ok("[% n.as('%02d') %]" => '07', {n => 7});
+process_ok("[% n.as('%0*d', 3) %]" => '007', {n => 7});
+process_ok("[% n.as('(%s)') %]" => "(a\nb)", {n => "a\nb"});
+process_ok("[% n.chunk(3).join('|') %]" => 'abc|def|g', {n => 'abcdefg'});
+process_ok("[% n.chunk(-3).join('|') %]" => 'a|bcd|efg', {n => 'abcdefg'});
+process_ok("[% n.collapse %]" => "a b", {n => '  a  b  '});
+process_ok("[% n.defined %]" => "1", {n => ''});
+process_ok("[% n.defined %]" => "", {n => undef});
+process_ok("[% n.defined %]" => "1", {n => '1'});
+process_ok("[% n.indent %]" => "    a\n    b", {n => "a\nb"});
+process_ok("[% n.indent(2) %]" => "  a\n  b", {n => "a\nb"});
+process_ok("[% n.indent('wow ') %]" => "wow a\nwow b", {n => "a\nb"});
+process_ok("[% n.int %]" => "123", {n => "123.234"});
+process_ok("[% n.int %]" => "123", {n => "123gggg"});
+process_ok("[% n.int %]" => "0", {n => "ff123.234"});
+process_ok("[% n.fmt('%02d') %]" => '07', {n => 7});
+process_ok("[% n.fmt('%0*d', 3) %]" => '007', {n => 7});
+process_ok("[% n.fmt('(%s)') %]" => "(a\nb)", {n => "a\nb"});
+process_ok("[% n.format('%02d') %]" => '07', {n => 7});
+process_ok("[% n.format('%0*d', 3) %]" => '007', {n => 7});
+process_ok("[% n.format('(%s)') %]" => "(a)\n(b)", {n => "a\nb"});
+process_ok("[% n.hash.items.join('|') %]" => "a|b", {n => {a => "b"}});
+process_ok("[% n.html %]" => "&amp;", {n => '&'});
+process_ok("[% n.item %]" => '7', {n => 7});
+process_ok("[% n.lcfirst %]" => 'fOO', {n => "FOO"});
+process_ok("[% n.length %]" => 3, {n => "abc"});
+process_ok("[% n.list.join('|') %]" => 'abc', {n => "abc"});
+process_ok("[% n.lower %]" => 'abc', {n => "ABC"});
+process_ok("[% n.match('foo').join('|') %]" => '', {n => "bar"});
+process_ok("[% n.match('foo').join('|') %]" => '1', {n => "foo"});
+process_ok("[% n.match('foo',1).join('|') %]" => 'foo', {n => "foo"});
+process_ok("[% n.match('(foo)').join('|') %]" => 'foo', {n => "foo"});
+process_ok("[% n.match('(foo)').join('|') %]" => 'foo', {n => "foofoo"});
+process_ok("[% n.match('(foo)',1).join('|') %]" => 'foo|foo', {n => "foofoo"});
+process_ok("[% n.new %]" => 'abc', {n => "abc"});
+process_ok("[% n.null %]" => '', {n => "abc"});
+process_ok("[% n.rand %]" => qr{^\d+\.\d+}, {n => "2"});
+process_ok("[% n.rand %]" => qr{^\d+\.\d+}, {n => "ab"});
+process_ok("[% n.remove('bc') %]" => "a", {n => "abc"});
+process_ok("[% n.remove('bc') %]" => "aa", {n => "abcabc"});
+process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
+process_ok("[% n.repeat(0) %]" => '',   {n => 1});
+process_ok("[% n.repeat(1) %]" => '1',  {n => 1});
+process_ok("[% n.repeat(2) %]" => '11', {n => 1});
+process_ok("[% n.repeat(2,'|') %]" => '1|1', {n => 1}) if ! $is_tt;
+process_ok("[% n.replace('foo', 'bar') %]" => 'barbar', {n => 'foofoo'});
+process_ok("[% n.replace('(foo)', 'bar\$1') %]" => 'barfoobarfoo', {n => 'foofoo'}) if ! $is_tt;
+process_ok("[% n.replace('foo', 'bar', 0) %]" => 'barfoo', {n => 'foofoo'}) if ! $is_tt;
+process_ok("[% n.search('foo') %]" => '', {n => "bar"});
+process_ok("[% n.search('foo') %]" => '1', {n => "foo"});
+process_ok("[% n.size %]" => '1', {n => "foo"});
+process_ok("[% n.split.join('|') %]" => "abc", {n => "abc"});
+process_ok("[% n.split.join('|') %]" => "a|b|c", {n => "a b c"});
+process_ok("[% n.split.join('|') %]" => "a|b|c", {n => "a b c"});
+process_ok("[% n.split(u,2).join('|') %]" => "a|b c", {n => "a b c", u => undef});
+process_ok("[% n.split('/').join('|') %]" => "a|b|c", {n => "a/b/c"});
+process_ok("[% n.split('/', 2).join('|') %]" => "a|b/c", {n => "a/b/c"});
+process_ok("[% n.stderr %]" => "", {n => "# test stderr\n"});
+process_ok("[% n.trim %]" => "a  b", {n => '  a  b  '});
+process_ok("[% n.ucfirst %]" => 'Foo', {n => "foo"});
+process_ok("[% n.upper %]" => 'FOO', {n => "foo"});
+process_ok("[% n.uri %]" => 'a%20b', {n => "a b"});
+
+# list vmethods
+process_ok("[% a.as %]" => '2 3', {a => [2,3]});
+process_ok("[% a.as('%02d',' ') %]" => '02 03', {a => [2,3]});
+process_ok("[% a.as('%02d','|') %]" => '02|03', {a => [2,3]});
+process_ok("[% a.as('%0*d','|', 3) %]" => '002|003', {a => [2,3]});
+process_ok("[% a.defined %]" => '1', {a => [2,3]});
+process_ok("[% a.defined(1) %]" => '1', {a => [2,3]});
+process_ok("[% a.defined(3) %]" => '', {a => [2,3]});
+process_ok("[% a.first %]" => '2', {a => [2..10]});
+process_ok("[% a.first(3).join('|') %]" => '2|3|4', {a => [2..10]});
+process_ok("[% a.fmt('%02d',' ') %]" => '02 03', {a => [2,3]});
+process_ok("[% a.fmt('%02d','|') %]" => '02|03', {a => [2,3]});
+process_ok("[% a.fmt('%0*d','|', 3) %]" => '002|003', {a => [2,3]});
+process_ok("[% a.grep.join('|') %]" => '2|3', {a => [2,3]});
+process_ok("[% a.grep(2).join('|') %]" => '2', {a => [2,3]});
+process_ok("[% a.hash.items.join('|') %]" => '2|3', {a => [2,3]});
+process_ok("[% a.hash(5).items.sort.join('|') %]" => '2|3|5|6', {a => [2,3]});
+process_ok("[% a.import(5).join('|') %]" => '2|3', {a => [2,3]});
+process_ok("[% a.import([5]).join('|') %]" => '2|3|5', {a => [2,3]});
+process_ok("[% a.import([5]).null %][% a.join('|') %]" => '2|3|5', {a => [2,3]});
+process_ok("[% a.item %]" => '2', {a => [2,3]});
+process_ok("[% a.item(1) %]" => '3', {a => [2,3]});
+process_ok("[% a.join %]" => '2 3', {a => [2,3]});
+process_ok("[% a.join('|') %]" => '2|3', {a => [2,3]});
+process_ok("[% a.last %]" => '10', {a => [2..10]});
+process_ok("[% a.last(3).join('|') %]" => '8|9|10', {a => [2..10]});
+
+###----------------------------------------------------------------###
+### more virtual methods / filters
 
 process_ok("[% [0 .. 10].reverse.1 %]" => 9) if ! $is_tt;
 process_ok("[% {a => 'A'}.a %]" => 'A') if ! $is_tt;
@@ -308,21 +404,12 @@ process_ok("[% (-123.2).length %]" => 6) if ! $is_tt;
 process_ok("[% a = 23; a.0 %]" => 23) if ! $is_tt; # '0' is a scalar_op
 process_ok('[% 1.rand %]' => qr/^0\.\d+(?:e-?\d+)?$/) if ! $is_tt;
 
-process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
-process_ok("[% n.repeat(0) %]" => '',   {n => 1});
-process_ok("[% n.repeat(1) %]" => '1',  {n => 1});
-process_ok("[% n.repeat(2) %]" => '11', {n => 1});
-process_ok("[% n.repeat(2,'|') %]" => '1|1', {n => 1}) if ! $is_tt;
-
 process_ok("[% n.size %]", => 'SIZE', {n => {size => 'SIZE', a => 'A'}});
 process_ok("[% n|size %]", => '2',    {n => {size => 'SIZE', a => 'A'}}) if ! $is_tt; # tt2 | is alias for FILTER
 
 process_ok('[% foo | eval %]' => 'baz', {foo => '[% bar %]', bar => 'baz'});
 process_ok('[% "1" | indent(2) %]' => '  1');
 
-process_ok("[% n.replace('foo', 'bar') %]" => 'barbar', {n => 'foofoo'});
-process_ok("[% n.replace('(foo)', 'bar\$1') %]" => 'barfoobarfoo', {n => 'foofoo'}) if ! $is_tt;
-process_ok("[% n.replace('foo', 'bar', 0) %]" => 'barfoo', {n => 'foofoo'}) if ! $is_tt;
 
 process_ok("[% n FILTER size %]", => '1', {n => {size => 'SIZE', a => 'A'}}) if ! $is_tt; # tt2 doesn't have size
 
@@ -383,6 +470,12 @@ process_ok('[% a = Hash.new(one = "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 process_ok('[% a = Hash.new(one => "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 
 process_ok('[% {a => 1, b => 2} | Hash.keys | List.join(", ") %]' => 'a, b') if ! $is_tt;
+
+process_ok('[% h = {a => 7} %][% h.delete("a") %]' => "7");
+process_ok('[% h = {a => 7, b=>8} %][% h.delete("a", "b").join("|") %]' => "7|8") if ! $is_tt;
+process_ok('[% h = {a => 7}; h2 = {b=>8} %][% h.import(h2) %][% h.b %]' => "8");
+process_ok('[% h = {b => "B", a=>"A"} %][% h.sort.join("|") %]' => "a|b");
+process_ok('[% h = {b => "2", a=>"1"} %][% h.nsort.join("|") %]' => "a|b");
 
 ###----------------------------------------------------------------###
 ### chomping
