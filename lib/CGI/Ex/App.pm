@@ -869,11 +869,6 @@ sub finalize   { 1 } # failure means show step
 sub post_print { 0 }
 sub post_step  { 0 } # success indicates we handled step (don't continue step or loop)
 
-sub name_step {
-    my ($self, $step) = @_;
-    return $step;
-}
-
 sub morph_package {
     my $self = shift;
     my $step = shift || '';
@@ -893,6 +888,11 @@ sub name_module {
         $script =~ m/ (\w+) (?:\.\w+)? $/x || die "Couldn't determine module name from \"name_module\" lookup ($step)";
         $1; # return of the do
     };
+}
+
+sub name_step {
+    my ($self, $step) = @_;
+    return $step;
 }
 
 sub file_print {
@@ -1101,16 +1101,16 @@ sub base_dir_abs {
     return $self->{'base_dir_abs'} || '';
 }
 
-sub ext_val {
-    my $self = shift;
-    $self->{'ext_val'} = shift if $#_ != -1;
-    return $self->{'ext_val'} || 'val';
-}
-
 sub ext_print {
     my $self = shift;
     $self->{'ext_print'} = shift if $#_ != -1;
     return $self->{'ext_print'} || 'html';
+}
+
+sub ext_val {
+    my $self = shift;
+    $self->{'ext_val'} = shift if $#_ != -1;
+    return $self->{'ext_val'} || 'val';
 }
 
 ### where to find the javascript files
