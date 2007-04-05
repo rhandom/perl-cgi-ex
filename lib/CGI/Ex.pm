@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.08';
+    $VERSION               = '2.09';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -440,7 +440,9 @@ sub send_status {
             $r->send_http_header;
             $r->print($mesg);
         } else {
-            # not sure of best way to send the message in MP2
+            $r->content_type('text/html');
+            $r->print($mesg);
+            $r->rflush;
         }
     } else {
         print "Status: $code\r\n";
