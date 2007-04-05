@@ -70,6 +70,7 @@ BEGIN {
         'format' => \&vmethod_format,
         hash     => sub { {value => $_[0]} },
         html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
+        item     => sub { $_[0] },
         lcfirst  => sub { lcfirst $_[0] },
         length   => sub { defined($_[0]) ? length($_[0]) : 0 },
         list     => sub { [$_[0]] },
@@ -81,11 +82,11 @@ BEGIN {
         remove   => sub { vmethod_replace(shift, shift, '', 1) },
         repeat   => \&vmethod_repeat,
         replace  => \&vmethod_replace,
-        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return scalar $str =~ /$pat/ },
+        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
         size     => sub { 1 },
         split    => \&vmethod_split,
         stderr   => sub { print STDERR $_[0]; '' },
-        substr   => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
+        substr   => \&vmethod_substr,
         trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
         ucfirst  => sub { ucfirst $_[0] },
         upper    => sub { uc $_[0] },
@@ -2914,7 +2915,7 @@ sub vmethod_match {
     my ($str, $pat, $global) = @_;
     return [] if ! defined $str || ! defined $pat;
     my @res = $global ? ($str =~ /$pat/g) : ($str =~ /$pat/);
-    return (@res >= 2) ? \@res : (@res == 1) ? $res[0] : '';
+    return @res ? \@res : '';
 }
 
 sub vmethod_nsort {
@@ -2928,7 +2929,7 @@ sub vmethod_nsort {
 
 sub vmethod_repeat {
     my ($str, $n, $join) = @_;
-    return if ! length $str;
+    return '' if ! defined $str || ! length $str;
     $n = 1 if ! defined($n) || ! length $n;
     $join = '' if ! defined $join;
     return join $join, ($str) x $n;
@@ -2979,9 +2980,19 @@ sub vmethod_splice {
 }
 
 sub vmethod_split {
-    my ($str, $pat, @args) = @_;
+    my ($str, $pat, $lim) = @_;
     $str = '' if ! defined $str;
-    return defined $pat ? [split $pat, $str, @args] : [split ' ', $str, @args];
+    if (defined $lim) { return defined $pat ? [split $pat, $str, $lim] : [split ' ', $str, $lim] }
+    else              { return defined $pat ? [split $pat, $str      ] : [split ' ', $str      ] }
+}
+
+sub vmethod_substr {
+    my ($str, $i, $len, $replace) = @_;
+    $i ||= 0;
+    return substr($str, $i)       if ! defined $len;
+    return substr($str, $i, $len) if ! defined $replace;
+    substr($str, $i, $len, $replace);
+    return $str;
 }
 
 sub vmethod_uri {
