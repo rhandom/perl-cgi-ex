@@ -1,3 +1,11 @@
+2.09   2007-04-05
+        * Add more documentation about file paths
+        * Allow for base_dir_abs to return a single value, or an arrayref of values, or
+          a coderef that returns a single value or arrayref.
+        * Allow CGI::Ex send_status to work on mod_perl2.
+        * Add tests to cover all virtual methods in CGI::Ex::Template.
+        * Bring all virtual methods into line with TT2.18
+
 2.08   2007-03-02
         * Allow for digits passed to %*s patterns in format, and fmt or CGI::Ex::Template
         * Fix bug in validate.js to allow for non-existant fields (with replace)
