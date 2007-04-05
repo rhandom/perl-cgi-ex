@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.08';
+    $VERSION = '2.09';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
     eval {require Scalar::Util};
@@ -824,18 +824,28 @@ sub swap_template {
     my $args = $self->run_hook('template_args', $step);
     my $copy = $self;
     eval {require Scalar::Util; Scalar::Util::weaken($copy)};
-    $args->{'INCLUDE_PATH'} ||= sub { $copy->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"" };
+    $args->{'INCLUDE_PATH'} ||= sub {
+        my $dir = $copy->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"";
+        $dir = $dir->() if UNIVERSAL::isa($dir, 'CODE');
+        return $dir;
+    };
 
-    require CGI::Ex::Template;
-    my $t = CGI::Ex::Template->new($args);
-
+    my $t   = $self->template_obj($args);
     my $out = '';
+
     $t->process($file, $swap, \$out) || die $t->error;
 
     return $out;
 }
 
 sub template_args { {} }
+
+sub template_obj {
+    my ($self, $args) = @_;
+
+    require CGI::Ex::Template;
+    my $t = CGI::Ex::Template->new($args);
+}
 
 sub fill_template {
     my ($self, $step, $outref, $fill) = @_;
@@ -903,15 +913,27 @@ sub file_val {
     my $self = shift;
     my $step = shift;
 
-    my $abs      = $self->base_dir_abs || return {};
+    ### determine the path to begin looking for files - allow for an arrayref
+    my $abs = $self->base_dir_abs || [];
+    $abs = $abs->() if UNIVERSAL::isa($abs, 'CODE');
+    $abs = [$abs] if ! UNIVERSAL::isa($abs, 'ARRAY');
+    return {} if @$abs == 0;
+
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
-    my $_step    = $self->run_hook('name_step', $step);
+    my $_step    = $self->run_hook('name_step', $step) || die "Missing name_step";
     $_step .= '.'. $self->ext_val if $_step !~ /\.\w+$/;
 
-    foreach ($abs, $base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
+    foreach (@$abs, $base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
 
-    return $abs . $base_dir . $module . $_step;
+    if (@$abs > 1) {
+        foreach my $_abs (@$abs) {
+            my $path = $_abs . $base_dir . $module . $_step;
+            return $path if -e $path;
+        }
+    }
+
+    return $abs->[0] . $base_dir . $module . $_step;
 }
 
 sub info_complete {
