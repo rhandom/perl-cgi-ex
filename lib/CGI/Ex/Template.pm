@@ -128,20 +128,20 @@ BEGIN {
 
     $HASH_OPS = {
         as      => \&vmethod_as_hash,
-        defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
-        delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
+        defined => sub { return 1 if @_ == 1; defined $_[0]->{ defined($_[1]) ? $_[1] : '' } },
+        delete  => sub { my $h = shift; my @v = delete @{ $h }{map {defined($_) ? $_ : ''} @_}; @_ == 1 ? $v[0] : \@v },
         each    => sub { [%{ $_[0] }] },
-        exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
+        exists  => sub { exists $_[0]->{ defined($_[1]) ? $_[1] : '' } },
         fmt     => \&vmethod_as_hash,
         hash    => sub { $_[0] },
-        import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
-        item    => sub { my ($h, $k) = @_; return '' if ! defined $k || $k =~ $QR_PRIVATE; $h->{$k} },
+        import  => sub { my ($a, $b) = @_; @{$a}{keys %$b} = values %$b if ref($b) eq 'HASH'; '' },
+        item    => sub { my ($h, $k) = @_; $k = '' if ! defined $k; $k =~ $QR_PRIVATE ? undef : $h->{$k} },
         items   => sub { [ %{ $_[0] } ] },
         keys    => sub { [keys %{ $_[0] }] },
-        list    => sub { [$_[0]] },
+        list    => \&vmethod_list_hash,
         new     => sub { local $^W; return (@_ == 1 && ref $_[-1] eq 'HASH') ? $_[-1] : {@_} },
         nsort   => sub { my $ref = shift; [sort {$ref->{$a}    <=> $ref->{$b}   } keys %$ref] },
-        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
+        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } sort keys %{ $_[0] } ] },
         size    => sub { scalar keys %{ $_[0] } },
         sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
         values  => sub { [values %{ $_[0] }] },
@@ -2910,6 +2910,13 @@ sub vmethod_format {
         return join "\n", map{ sprintf $pat, $_ } split(/\n/, $str);
     }
 }
+
+sub vmethod_list_hash {
+    my ($hash, $what) = @_;
+    $what = 'pairs' if ! $what || $what !~ /^(keys|values|each|pairs)$/;
+    return $HASH_OPS->{$what}->($hash);
+}
+
 
 sub vmethod_match {
     my ($str, $pat, $global) = @_;
