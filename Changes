@@ -1,3 +1,6 @@
+2.10   2007-04-05
+        * Allow for crypted passwords to work in Auth.
+
 2.09   2007-04-05
         * Add more documentation about file paths
         * Allow for base_dir_abs to return a single value, or an arrayref of values, or
