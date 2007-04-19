@@ -15,15 +15,20 @@ $file =~ s|[^/]+$|WrapEx.pm|;
 
 use Template;
 use Template::Stash;
+use Template::Stash::XS;
 use Text::Template;
+use HTML::Template;
+use HTML::Template::Expr;
 use CGI::Ex::Dump qw(debug);
 use CGI::Ex::Template;
 use POSIX qw(tmpnam);
 use File::Path qw(mkpath rmtree);
 
-my $dir = tmpnam;
+my $dir  = tmpnam;
+my $dir2 = "$dir.cache";
 mkpath($dir);
-END {rmtree $dir};
+mkpath($dir2);
+END {rmtree $dir; rmtree $dir2};
 my @dirs = ($dir);
 
 my $form = {
@@ -33,25 +38,20 @@ my $form = {
 
 ###----------------------------------------------------------------###
 
-my $stash_w = {
-  shell => {
-    header => "This is a header",
-    footer => "This is a footer",
-    start  => "<html>",
-    end    => "<end>",
-    foo    => $form->{'foo'},
-  },
-  a => {
-    stuff => [qw(one two three four)],
-  },
-};
-
 my $stash_t = {
   shell_header => "This is a header",
   shell_footer => "This is a footer",
   shell_start  => "<html>",
   shell_end    => "<end>",
   a_stuff      => [qw(one two three four)],
+};
+
+my $stash_ht = {
+  shell_header => "This is a header",
+  shell_footer => "This is a footer",
+  shell_start  => "<html>",
+  shell_end    => "<end>",
+  a_stuff      => [map {{name => $_}} qw(one two three four)],
 };
 
 $FOO::shell_header = $FOO::shell_footer = $FOO::shell_start = $FOO::shell_end = $FOO::a_stuff;
@@ -63,36 +63,9 @@ $FOO::a_stuff      = [qw(one two three four)];
 
 
 ###----------------------------------------------------------------###
+### TT style template
 
-my $content_w = q{[shell.header]
-[shell.start]
-
-[if shell.foo q{
-This is some text.
-}]
-
-[loop i a.stuff.length q{[a.stuff]}]
-[form.pass_in_something]
-
-[shell.end]
-[shell.footer]
-};
-
-my $content_t = q{[% shell_header %]
-[% shell_start %]
-
-[% IF foo %]
-This is some text.
-[% END %]
-
-[% FOREACH i IN a_stuff %][% i %][% END %]
-[% pass_in_something %]
-
-[% shell_end %]
-[% shell_footer %]
-};
-
-my $content_h = q{<TMPL_VAR NAME=shell_header>
+my $content_tt = q{[% shell_header %]
 [% shell_start %]
 
 [% IF foo %]
@@ -107,9 +80,34 @@ This is some text.
 };
 
 if (open (my $fh, ">$dir/foo.tt")) {
-    print $fh $content_t;
+    print $fh $content_tt;
     close $fh;
 }
+
+###----------------------------------------------------------------###
+### HTML::Template style
+
+my $content_ht = q{<TMPL_VAR NAME=shell_header>
+<TMPL_VAR NAME=shell_start>
+
+<TMPL_IF NAME=foo>
+This is some text.
+</TMPL_IF>
+
+<TMPL_LOOP NAME=a_stuff><TMPL_VAR NAME=name></TMPL_LOOP>
+<TMPL_VAR NAME=pass_in_something>
+
+<TMPL_VAR NAME=shell_end>
+<TMPL_VAR NAME=shell_footer>
+};
+
+if (open (my $fh, ">$dir/foo.ht")) {
+    print $fh $content_ht;
+    close $fh;
+}
+
+###----------------------------------------------------------------###
+### Text::Template style template
 
 my $content_p = q{{$shell_header}
 {$shell_start}
@@ -128,15 +126,17 @@ This is some text.
 {$shell_footer}
 };
 
-#my $wrap = WrapEx->new({
-#  dirs => \@dirs,
-#  W    => $stash_w,
-#  form => [$form],
-#});
+###----------------------------------------------------------------###
+### setup the objects
 
- my $tt = Template->new({
+my $tt = Template->new({
   INCLUDE_PATH => \@dirs,
-  STASH => Template::Stash->new($stash_t),
+  STASH        => Template::Stash->new($stash_t),
+});
+
+my $ttx = Template->new({
+  INCLUDE_PATH => \@dirs,
+  STASH        => Template::Stash::XS->new($stash_t),
 });
 
 my $ct = CGI::Ex::Template->new({
@@ -146,33 +146,49 @@ my $ct = CGI::Ex::Template->new({
 
 my $pt = Text::Template->new(TYPE => 'STRING', SOURCE => $content_p, HASH => $form);
 
-###----------------------------------------------------------------###
-### make sure everything is ok
+my $ht = HTML::Template->new(type => 'scalarref', source => \$content_ht);
+$ht->param($stash_ht);
+$ht->param($form);
 
-#my $out_wr = $content_w;
-#$wrap->wrap(\$out_wr);
+my $hte = HTML::Template::Expr->new(type => 'scalarref', source => \$content_ht);
+$hte->param($stash_ht);
+$hte->param($form);
+
+my $ht_c = HTML::Template->new(type => 'filename', source => "foo.ht", cache => 1, path => \@dirs);
+$ht_c->param($stash_ht);
+$ht_c->param($form);
+
+###----------------------------------------------------------------###
+### make sure everything is ok by trying it once
 
 my $out_tt = "";
-$tt->process(\$content_t, $form, \$out_tt);
+$tt->process(\$content_tt, $form, \$out_tt);
+
+my $out_ttx = "";
+$ttx->process(\$content_tt, $form, \$out_ttx);
 
 my $out_ct = "";
-$ct->process(\$content_t, $form, \$out_ct);
+$ct->process(\$content_tt, $form, \$out_ct);
 
 my $out_c2 = "";
 $ct->process('foo.tt', $form, \$out_c2);
 
 my $out_c3 = '';
-$ct->process_simple(\$content_t, {%$stash_t, %$form}, \$out_c3);
+$ct->process_simple(\$content_tt, {%$stash_t, %$form}, \$out_c3);
 
 my $out_pt = $pt->fill_in(PACKAGE => 'FOO', HASH => $form);
 
-if ($out_wr ne $out_tt) {
-    debug $out_wr, $out_tt;
-    die "Wrap didn't match tt";
-}
+my $out_ht  = $ht->output;
+my $out_hte = $hte->output;
+my $out_htc = $ht_c->output;
+
 if ($out_ct ne $out_tt) {
     debug $out_ct, $out_tt;
     die "CGI::Ex::Template didn't match tt";
+}
+if ($out_ttx ne $out_tt) {
+    debug $out_ttx, $out_tt;
+    die "Template::Stash::XS didn't match tt";
 }
 if ($out_c2 ne $out_tt) {
     debug $out_c2, $out_tt;
@@ -186,45 +202,148 @@ if ($out_pt ne $out_tt) {
     debug $out_pt, $out_tt;
    die "Text Template didn't match tt";
 }
+if ($out_ht ne $out_tt) {
+    debug $out_ht, $out_tt;
+   die "HTML::Template didn't match tt";
+}
+if ($out_hte ne $out_tt) {
+    debug $out_hte, $out_tt;
+   die "HTML::Template::Expr didn't match tt";
+}
+if ($out_htc ne $out_tt) {
+    debug $out_htc, $out_tt;
+   die "HTML::Template::Expr didn't match tt";
+}
 
 ###----------------------------------------------------------------###
 
-cmpthese timethese (-2, {
-#    wrap => sub {
-#        my $out = $content_w;
-#        $wrap->wrap(\$out);
-#    },
-    TemplateToolkit => sub {
+my $tests = {
+    TT_str => sub {
+        my $tt = Template->new({
+            INCLUDE_PATH => \@dirs,
+            STASH        => Template::Stash->new($stash_t),
+        });
         my $out = "";
-        $tt->process(\$content_t, $form, \$out);
+        $tt->process(\$content_tt, $form, \$out);
     },
-    CET => sub {
+    TT_mem => sub {
         my $out = "";
-        $ct->process(\$content_t, $form, \$out);
+        $tt->process('foo.tt', $form, \$out);
+    },
+    TT_compile => sub {
+        my $tt = Template->new({
+            INCLUDE_PATH => \@dirs,
+            STASH        => Template::Stash->new($stash_t),
+            COMPILE_DIR  => $dir2,
+        });
+        my $out = "";
+        $tt->process('foo.tt', $form, \$out);
+    },
+
+    TTX_str => sub {
+        my $tt = Template->new({
+            INCLUDE_PATH => \@dirs,
+            STASH        => Template::Stash::XS->new($stash_t),
+        });
+        my $out = "";
+        $tt->process(\$content_tt, $form, \$out);
+    },
+    TTX_mem => sub {
+        my $out = "";
+        $ttx->process('foo.tt', $form, \$out);
+    },
+    TTX_compile => sub {
+        my $tt = Template->new({
+            INCLUDE_PATH => \@dirs,
+            STASH        => Template::Stash::XS->new($stash_t),
+            COMPILE_DIR  => $dir2,
+        });
+        my $out = "";
+        $tt->process('foo.tt', $form, \$out);
+    },
+
+    CET_str => sub {
+        my $ct = CGI::Ex::Template->new({
+            INCLUDE_PATH => \@dirs,
+            VARIABLES    => $stash_t,
+        });
+        my $out = "";
+        $ct->process(\$content_tt, $form, \$out);
     },
     CET_mem => sub {
         my $out = "";
         $ct->process('foo.tt', $form, \$out);
     },
-    CET_process_s => sub {
-        my $out = '';
-        $ct->process_simple(\$content_t, {%$stash_t, %$form}, \$out);
-    },
-    CET_cache => sub {
+    CET_compile => sub {
         my $ct = CGI::Ex::Template->new({
             INCLUDE_PATH => \@dirs,
-            STASH => Template::Stash->new($stash_t),
-            CACHE_DIR => $dir,
+            VARIABLES    => $stash_t,
+            COMPILE_DIR  => $dir2,
         });
         my $out = '';
-        $ct->process('foo.tt', {%$stash_t, %$form}, \$out);
+        $ct->process('foo.tt', $form, \$out);
     },
+
     TextTemplate => sub {
+        my $pt = Text::Template->new(
+            TYPE   => 'STRING',
+            SOURCE => $content_p,
+            HASH   => $form);
         my $out = $pt->fill_in(PACKAGE => 'FOO', HASH => $form);
     },
-    TextTemplate2 => sub {
-        my $out = $pt->fill_in(PACKAGE => 'FOO', HASH => {%$stash_t, %$form});
+
+    HT_str => sub {
+        my $ht = HTML::Template->new(type => 'scalarref', source => \$content_ht);
+        $ht->param($stash_ht);
+        $ht->param($form);
+        my $out = $ht->output;
     },
-});
+    HT_mem => sub {
+        my $ht = HTML::Template->new(type => 'filename', source => "foo.ht", path => \@dirs, cache => 1);
+        $ht->param($stash_ht);
+        $ht->param($form);
+        my $out = $ht->output;
+    },
+    HT_compile => sub {
+        my $ht = HTML::Template->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2);
+        $ht->param($stash_ht);
+        $ht->param($form);
+        my $out = $ht->output;
+    },
+
+    HTE_str => sub {
+        my $ht = HTML::Template::Expr->new(type => 'scalarref', source => \$content_ht);
+        $ht->param($stash_ht);
+        $ht->param($form);
+        my $out = $ht->output;
+    },
+    HTE_mem => sub {
+        my $ht = HTML::Template::Expr->new(type => 'filename', source => "foo.ht", path => \@dirs, cache => 1);
+        $ht->param($stash_ht);
+        $ht->param($form);
+        my $out = $ht->output;
+    },
+};
+
+
+my %mem_tests = map {($_ => $tests->{$_})} qw(TT_mem TTX_mem CET_mem HT_mem HTE_mem);
+my %cpl_tests = map {($_ => $tests->{$_})} qw(TT_compile TTX_compile CET_compile HT_compile);
+my %str_tests = map {($_ => $tests->{$_})} qw(TT_str TTX_str CET_str HT_str HTE_str TextTemplate);
+
+print "------------------------------------------------------------------------\n";
+print "From a string or scalarref tests\n";
+cmpthese timethese (-2, \%str_tests);
+
+print "------------------------------------------------------------------------\n";
+print "Compiled and cached on the file system tests\n";
+cmpthese timethese (-2, \%cpl_tests);
+
+print "------------------------------------------------------------------------\n";
+print "Cached in memory tests\n";
+cmpthese timethese (-2, \%mem_tests);
+
+print "------------------------------------------------------------------------\n";
+print "All variants together\n";
+cmpthese timethese (-2, $tests);
 
 ###----------------------------------------------------------------###
