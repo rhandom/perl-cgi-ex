@@ -31,13 +31,10 @@ $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
 ###----------------------------------------------------------------###
 
 sub new {
-  my $class = shift || __PACKAGE__;
-  my $self  = (@_ && ref($_[0])) ? shift : {@_};
+  my $class = shift;
+  my $self  = ref($_[0]) ? shift : {@_};
 
-  ### allow for global defaults
-  foreach (keys %DEFAULT_OPTIONS) {
-    $self->{$_} = $DEFAULT_OPTIONS{$_} if ! exists $self->{$_};
-  }
+  $self = {%DEFAULT_OPTIONS, %$self} if scalar keys %DEFAULT_OPTIONS;
 
   return bless $self, $class;
 }
@@ -45,140 +42,140 @@ sub new {
 ###----------------------------------------------------------------###
 
 sub cgix {
-  my $self = shift;
-  return $self->{cgix} ||= do {
-    require CGI::Ex;
-    CGI::Ex->new;
-  };
+    my $self = shift;
+    return $self->{'cgix'} ||= do {
+        require CGI::Ex;
+        CGI::Ex->new;
+    };
 }
 
 ### the main validation routine
 sub validate {
-  my $self = (! ref($_[0])) ? shift->new                    # $class->validate
-              : UNIVERSAL::isa($_[0], __PACKAGE__) ? shift  # $self->validate
-              : __PACKAGE__->new;                           # &validate
-  my $form     = shift || die "Missing form hash";
-  my $val_hash = shift || die "Missing validation hash";
-  my $what_was_validated = shift; # allow for extra arrayref that stores what was validated
+    my $self = (! ref($_[0])) ? shift->new                    # $class->validate
+                : UNIVERSAL::isa($_[0], __PACKAGE__) ? shift  # $self->validate
+                : __PACKAGE__->new;                           # &validate
+    my $form     = shift || die "Missing form hash";
+    my $val_hash = shift || die "Missing validation hash";
+    my $what_was_validated = shift; # allow for extra arrayref that stores what was validated
 
-  ### turn the form into a form hash if doesn't look like one already
-  die "Invalid form hash or cgi object" if ! ref $form;
-  if (ref $form ne 'HASH') {
-    local $self->{cgi_object} = $form;
-    $form = $self->cgix->get_form($form);
-  }
+    ### turn the form into a form hash if doesn't look like one already
+    die "Invalid form hash or cgi object" if ! ref $form;
+    if (ref $form ne 'HASH') {
+        local $self->{cgi_object} = $form;
+        $form = $self->cgix->get_form($form);
+    }
 
-  ### make sure the validation is a hashref
-  ### get_validation handle odd types
-  if (ref $val_hash ne 'HASH') {
-    $val_hash = $self->get_validation($val_hash) if ref $val_hash ne 'SCALAR' || ! ref $val_hash;
-    die "Validation groups must be a hashref"    if ref $val_hash ne 'HASH';
-  }
+    ### make sure the validation is a hashref
+    ### get_validation handle odd types
+    if (ref $val_hash ne 'HASH') {
+        $val_hash = $self->get_validation($val_hash) if ref $val_hash ne 'SCALAR' || ! ref $val_hash;
+        die "Validation groups must be a hashref"    if ref $val_hash ne 'HASH';
+    }
 
-  ### parse keys that are group arguments - and those that are keys to validate
-  my %ARGS;
-  my @field_keys = grep { /^(?:group|general)\s+(\w+)/
-                            ? do {$ARGS{$1} = $val_hash->{$_} ; 0}
-                            : 1 }
-                   sort keys %$val_hash;
+    ### parse keys that are group arguments - and those that are keys to validate
+    my %ARGS;
+    my @field_keys = grep { /^(?:group|general)\s+(\w+)/
+                              ? do {$ARGS{$1} = $val_hash->{$_} ; 0}
+                              : 1 }
+                     sort keys %$val_hash;
 
-  ### only validate this group if it is supposed to be checked
-  return if $ARGS{'validate_if'} && ! $self->check_conditional($form, $ARGS{'validate_if'});
+    ### only validate this group if it is supposed to be checked
+    return if $ARGS{'validate_if'} && ! $self->check_conditional($form, $ARGS{'validate_if'});
 
-  ### Look first for items in 'group fields' or 'group order'
-  my $fields;
-  if ($fields = $ARGS{'fields'} || $ARGS{'order'}) {
-    my $type = $ARGS{'fields'} ? 'group fields' : 'group order';
-    die "Validation '$type' must be an arrayref when passed"
-      if ! UNIVERSAL::isa($fields, 'ARRAY');
-    my @temp;
-    foreach my $field (@$fields) {
-        die "Non-defined value in '$type'" if ! defined $field;
-        if (ref $field) {
-            die "Found nonhashref value in '$type'" if ref($field) ne 'HASH';
-            die "Element missing \"field\" key/value in '$type'" if ! defined $field->{'field'};
-            push @temp, $field;
-        } elsif ($field eq 'OR') {
-            push @temp, 'OR';
+    ### Look first for items in 'group fields' or 'group order'
+    my $fields;
+    if ($fields = $ARGS{'fields'} || $ARGS{'order'}) {
+        my $type = $ARGS{'fields'} ? 'group fields' : 'group order';
+        die "Validation '$type' must be an arrayref when passed"
+            if ! UNIVERSAL::isa($fields, 'ARRAY');
+        my @temp;
+        foreach my $field (@$fields) {
+            die "Non-defined value in '$type'" if ! defined $field;
+            if (ref $field) {
+                die "Found nonhashref value in '$type'" if ref($field) ne 'HASH';
+                die "Element missing \"field\" key/value in '$type'" if ! defined $field->{'field'};
+                push @temp, $field;
+            } elsif ($field eq 'OR') {
+                push @temp, 'OR';
+            } else {
+                die "No element found in '$type' for $field" if ! exists $val_hash->{$field};
+                die "Found nonhashref value in '$type'" if ref($val_hash->{$field}) ne 'HASH';
+                push @temp, { %{ $val_hash->{$field} }, field => $field }; # copy the values to add the key
+            }
+        }
+        $fields = \@temp;
+
+        ### limit the keys that need to be searched to those not in fields or order
+        my %found = map { $_->{'field'} => 1 } @temp;
+        @field_keys = grep { ! $found{$_} } @field_keys;
+    }
+
+    ### add any remaining field_vals from our original hash
+    ### this is necessary for items that weren't in group fields or group order
+    foreach my $field (@field_keys) {
+        die "Found nonhashref value for field $field" if ref($val_hash->{$field}) ne 'HASH';
+        if (defined $val_hash->{$field}->{'field'}) {
+            push @$fields, $val_hash->{$field}->{'field'};
         } else {
-            die "No element found in '$type' for $field" if ! exists $val_hash->{$field};
-            die "Found nonhashref value in '$type'" if ref($val_hash->{$field}) ne 'HASH';
-            push @temp, { %{ $val_hash->{$field} }, field => $field }; # copy the values to add the key
+            push @$fields, { %{$val_hash->{$field}}, field => $field };
         }
     }
-    $fields = \@temp;
 
-    ### limit the keys that need to be searched to those not in fields or order
-    my %found = map { $_->{'field'} => 1 } @temp;
-    @field_keys = grep { ! $found{$_} } @field_keys;
-  }
+    ### Finally we have our arrayref of hashrefs that each have their 'field' key
+    ### now lets do the validation
+    my $found  = 1;
+    my @errors;
+    my $hold_error; # hold the error for a moment - to allow for an "OR" operation
+    foreach (my $i = 0; $i < @$fields; $i++) {
+        my $ref = $fields->[$i];
+        if (! ref($ref) && $ref eq 'OR') {
+            $i++ if $found; # if found skip the OR altogether
+            $found = 1; # reset
+            next;
+        }
+        $found = 1;
+        die "Missing field key during normal validation" if ! $ref->{'field'};
+        local $ref->{'was_validated'} = 1;
+        my $err = $self->validate_buddy($form, $ref->{'field'}, $ref);
+        if (delete($ref->{'was_validated'}) && $what_was_validated) {
+            push @$what_was_validated, $ref;
+        }
 
-  ### add any remaining field_vals from our original hash
-  ### this is necessary for items that weren't in group fields or group order
-  foreach my $field (@field_keys) {
-      die "Found nonhashref value for field $field" if ref($val_hash->{$field}) ne 'HASH';
-      if (defined $val_hash->{$field}->{'field'}) {
-          push @$fields, $val_hash->{$field}->{'field'};
-      } else {
-          push @$fields, { %{$val_hash->{$field}}, field => $field };
-      }
-  }
-
-  ### Finally we have our arrayref of hashrefs that each have their 'field' key
-  ### now lets do the validation
-  my $found  = 1;
-  my @errors;
-  my $hold_error; # hold the error for a moment - to allow for an "OR" operation
-  foreach (my $i = 0; $i < @$fields; $i++) {
-    my $ref = $fields->[$i];
-    if (! ref($ref) && $ref eq 'OR') {
-      $i++ if $found; # if found skip the OR altogether
-      $found = 1; # reset
-      next;
+        ### test the error - if errors occur allow for OR - if OR fails use errors from first fail
+        if ($err) {
+            if ($i < $#$fields && ! ref($fields->[$i + 1]) && $fields->[$i + 1] eq 'OR') {
+                $hold_error = $err;
+            } else {
+                push @errors, $hold_error ? @$hold_error : @$err;
+                $hold_error = undef;
+            }
+        } else {
+            $hold_error = undef;
+        }
     }
-    $found = 1;
-    die "Missing field key during normal validation" if ! $ref->{'field'};
-    local $ref->{'was_validated'} = 1;
-    my $err = $self->validate_buddy($form, $ref->{'field'}, $ref);
-    if (delete($ref->{'was_validated'}) && $what_was_validated) {
-      push @$what_was_validated, $ref;
+    push(@errors, @$hold_error) if $hold_error; # allow for final OR to work
+
+
+    ### optionally check for unused keys in the form
+    if ($ARGS{no_extra_fields} || $self->{no_extra_fields}) {
+        my %keys = map { ($_->{'field'} => 1) } @$fields; # %{ $self->get_validation_keys($val_hash) };
+        foreach my $key (sort keys %$form) {
+            next if $keys{$key};
+            push @errors, [$key, 'no_extra_fields', {}, undef];
+        }
     }
 
-    ### test the error - if errors occur allow for OR - if OR fails use errors from first fail
-    if ($err) {
-      if ($i < $#$fields && ! ref($fields->[$i + 1]) && $fields->[$i + 1] eq 'OR') {
-        $hold_error = $err;
-      } else {
-        push @errors, $hold_error ? @$hold_error : @$err;
-        $hold_error = undef;
-      }
+    ### return what they want
+    if (@errors) {
+        my @copy = grep {/$QR_EXTRA/o} keys %$self;
+        @ARGS{@copy} = @{ $self }{@copy};
+        unshift @errors, $ARGS{'title'} if $ARGS{'title'};
+        my $err_obj = $self->new_error(\@errors, \%ARGS);
+        die    $err_obj if $ARGS{'raise_error'};
+        return $err_obj;
     } else {
-      $hold_error = undef;
+        return;
     }
-  }
-  push(@errors, @$hold_error) if $hold_error; # allow for final OR to work
-
-
-  ### optionally check for unused keys in the form
-  if ($ARGS{no_extra_fields} || $self->{no_extra_fields}) {
-    my %keys = $self->get_validation_keys($val_hash);
-    foreach my $key (sort keys %$form) {
-      next if $keys{$key};
-      push @errors, [$key, 'no_extra_fields', {}, undef];
-    }
-  }
-
-
-  ### return what they want
-  if (@errors) {
-    $ARGS{$_} = $self->{$_} for grep {/$QR_EXTRA/o} keys %$self;
-    unshift @errors, $ARGS{'title'} if $ARGS{'title'};
-    my $err_obj = $self->new_error(\@errors, \%ARGS);
-    die    $err_obj if $ARGS{'raise_error'};
-    return $err_obj;
-  } else {
-    return;
-  }
 }
 
 sub new_error {
@@ -188,10 +185,7 @@ sub new_error {
 
 ### allow for optional validation on groups and on individual items
 sub check_conditional {
-  my ($self, $form, $ifs, $N_level, $ifs_match) = @_;
-
-  $N_level ||= 0;
-  $N_level ++; # prevent too many recursive checks
+  my ($self, $form, $ifs, $ifs_match) = @_;
 
   ### can pass a single hash - or an array ref of hashes
   if (! $ifs) {
@@ -228,7 +222,7 @@ sub check_conditional {
     my $field = $ref->{'field'} || die "Missing field key during validate_if (possibly used a reference to a main hash *foo -> &foo)";
     $field =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
 
-    my $errs = $self->validate_buddy($form, $field, $ref, $N_level);
+    my $errs = $self->validate_buddy($form, $field, $ref);
     $found = 0 if $errs;
   }
   return $found;
@@ -238,10 +232,10 @@ sub check_conditional {
 ### this is where the main checking goes on
 sub validate_buddy {
   my $self = shift;
-  my ($form, $field, $field_val, $N_level, $ifs_match) = @_;
-  $N_level ||= 0;
-  $N_level ++; # prevent too many recursive checks
-  die "Max dependency level reached $N_level" if $N_level > 10;
+  my ($form, $field, $field_val, $ifs_match) = @_;
+
+  local $self->{'_recurse'} = ($self->{'_recurse'} || 0) + 1;
+  die "Max dependency level reached 10" if $self->{'_recurse'} > 10;
 
   my @errors = ();
   my $types  = [sort keys %$field_val];
@@ -260,7 +254,7 @@ sub validate_buddy {
     foreach my $_field (sort keys %$form) {
       next if ($not && $_field =~ m/(?$opt:$pat)/) || (! $not && $_field !~ m/(?$opt:$pat)/);
       my @match = (undef, $1, $2, $3, $4, $5); # limit to the matches
-      my $errs = $self->validate_buddy($form, $_field, $field_val, $N_level, \@match);
+      my $errs = $self->validate_buddy($form, $_field, $field_val, \@match);
       push @errors, @$errs if $errs;
     }
     return @errors ? \@errors : 0;
@@ -353,7 +347,7 @@ sub validate_buddy {
   foreach my $type (grep {/^validate_if_?\d*$/} @$types) {
     $n_vif ++;
     my $ifs = $field_val->{$type};
-    my $ret = $self->check_conditional($form, $ifs, $N_level, $ifs_match);
+    my $ret = $self->check_conditional($form, $ifs, $ifs_match);
     $needs_val ++ if $ret;
   }
   if (! $needs_val && $n_vif) {
@@ -367,7 +361,7 @@ sub validate_buddy {
   if (! $is_required) {
     foreach my $type (grep {/^required_if_?\d*$/} @$types) {
       my $ifs = $field_val->{$type};
-      next if ! $self->check_conditional($form, $ifs, $N_level, $ifs_match);
+      next if ! $self->check_conditional($form, $ifs, $ifs_match);
       $is_required = $type;
       last;
     }
@@ -693,10 +687,10 @@ sub check_type {
 ###----------------------------------------------------------------###
 
 sub get_validation {
-  my $self = shift;
-  my $val  = shift;
-  require CGI::Ex::Conf;
-  return CGI::Ex::Conf::conf_read($val, {html_key => 'validation', default_ext => $DEFAULT_EXT});
+    my $self = shift;
+    my $val  = shift;
+    require CGI::Ex::Conf;
+    return CGI::Ex::Conf::conf_read($val, {html_key => 'validation', default_ext => $DEFAULT_EXT});
 }
 
 ### returns all keys from all groups - even if group has validate_if
@@ -704,51 +698,64 @@ sub get_validation_keys {
   my $self     = shift;
   my $val_hash = shift;
   my $form     = shift; # with optional form - will only return keys in validated groups
-  my %keys     = ();
 
-  ### if a form was passed - make sure it is a hashref
+  ### turn the form into a form hash if doesn't look like one already
   if ($form) {
-    if (! ref($form)) {
-      die "Invalid form hash or cgi object";
-    } elsif(! UNIVERSAL::isa($form,'HASH')) {
-      require CGI::Ex;
-      $form = CGI::Ex->new->get_form($form);
+      die "Invalid form hash or cgi object" if ! ref $form;
+      if (ref $form ne 'HASH') {
+          local $self->{cgi_object} = $form;
+          $form = $self->cgix->get_form($form);
+      }
+  }
+
+  ### make sure the validation is a hashref
+  ### get_validation handle odd types
+  if (ref $val_hash ne 'HASH') {
+    $val_hash = $self->get_validation($val_hash) if ref $val_hash ne 'SCALAR' || ! ref $val_hash;
+    die "Validation groups must be a hashref"    if ref $val_hash ne 'HASH';
+  }
+
+  ### parse keys that are group arguments - and those that are keys to validate
+  my %ARGS;
+  my @field_keys = grep { /^(?:group|general)\s+(\w+)/
+                            ? do {$ARGS{$1} = $val_hash->{$_} ; 0}
+                            : 1 }
+                   sort keys %$val_hash;
+
+  ### only validate this group if it is supposed to be checked
+  return if $form && $ARGS{'validate_if'} && ! $self->check_conditional($form, $ARGS{'validate_if'});
+
+  ### Look first for items in 'group fields' or 'group order'
+  my %keys;
+  if (my $fields = $ARGS{'fields'} || $ARGS{'order'}) {
+    my $type = $ARGS{'fields'} ? 'group fields' : 'group order';
+    die "Validation '$type' must be an arrayref when passed"
+      if ! UNIVERSAL::isa($fields, 'ARRAY');
+    foreach my $field (@$fields) {
+        die "Non-defined value in '$type'" if ! defined $field;
+        if (ref $field) {
+            die "Found nonhashref value in '$type'" if ref($field) ne 'HASH';
+            die "Element missing \"field\" key/value in '$type'" if ! defined $field->{'field'};
+            $keys{$field->{'field'}} = $field->{'name'} || 1;
+        } elsif ($field eq 'OR') {
+        } else {
+            die "No element found in '$type' for $field" if ! exists $val_hash->{$field};
+            die "Found nonhashref value in '$type'" if ref($val_hash->{$field}) ne 'HASH';
+            $keys{$field} = $val_hash->{$field}->{'name'} || 1;
+        }
     }
   }
 
-  die "Group found that was not a hashref" if ! UNIVERSAL::isa($val_hash, 'HASH');
-
-  ### if form is passed, check to see if the group passed validation
-  if ($form) {
-    my $validate_if = $val_hash->{'group validate_if'};
-    next if $validate_if && ! $self->check_conditional($form, $validate_if);
-  }
-
-  if ($val_hash->{"group fields"}) {
-    die "Group fields must be an arrayref" if ! UNIVERSAL::isa($val_hash->{"group fields"}, 'ARRAY');
-    foreach my $field_val (@{ $val_hash->{"group fields"} }) {
-      next if ! ref($field_val) && $field_val eq 'OR';
-      die "Field_val must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');
-      my $key = $field_val->{'field'} || die "Missing field key in field_val hashref";
-      $keys{$key} = $field_val->{'name'} || 1;
-    }
-  } elsif ($val_hash->{"group order"}) {
-    die "Group order must be an arrayref" if ! UNIVERSAL::isa($val_hash->{"group order"}, 'ARRAY');
-    foreach my $key (@{ $val_hash->{"group order"} }) {
-      my $field_val = $val_hash->{$key};
-      next if ! $field_val && $key eq 'OR';
-      die "Field_val for $key must be a hashref" if ! UNIVERSAL::isa($field_val, 'HASH');
-      $key = $field_val->{'field'} if $field_val->{'field'};
-      $keys{$key} = $field_val->{'name'} || 1;
-    }
-  }
-
-  ### get all others
-  foreach my $key (keys %$val_hash) {
-    next if $key =~ /^(general|group)\s/;
-    my $field_val = $val_hash->{$key};
-    next if ! UNIVERSAL::isa($field_val, 'HASH');
-    $keys{$key} = $field_val->{'name'} || 1;
+  ### add any remaining field_vals from our original hash
+  ### this is necessary for items that weren't in group fields or group order
+  foreach my $field (@field_keys) {
+      next if $keys{$field};
+      die "Found nonhashref value for field $field" if ref($val_hash->{$field}) ne 'HASH';
+      if (defined $val_hash->{$field}->{'field'}) {
+          $keys{$val_hash->{$field}->{'field'}} = $val_hash->{$field}->{'name'} || 1;
+      } else {
+          $keys{$field} = $val_hash->{$field}->{'name'} || 1;
+      }
   }
 
   return \%keys;
