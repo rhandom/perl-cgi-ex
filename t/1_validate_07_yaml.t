@@ -7,11 +7,11 @@
 =cut
 
 use strict;
-use Test::More tests => 17;
+use Test::More tests => 5;
 
 SKIP: {
 
-skip("Missing YAML.pm", 17) if ! eval { require 'YAML.pm' };
+skip("Missing YAML.pm", 5) if ! eval { require 'YAML.pm' };
 
 use_ok('CGI::Ex::Validate');
 
@@ -41,105 +41,4 @@ $e = validate({user => 1, bar => 1, foo => 1}, $v);
 ok(! $e);
 
 
-### three groups, some with validate_if's - using arrayref
-$v = '
-- group validate_if: foo
-  bar:
-    required: 1
-- group validate_if: hem
-  haw: { required: 1 }
-- raspberry:
-    required: 1
-';
-
-$e = validate({}, $v);
-ok($e);
-
-$e = validate({
-  raspberry => 'tart',
-}, $v);
-ok(! $e);
-
-$e = validate({
-  foo => 1,
-  raspberry => 'tart',
-}, $v);
-ok($e);
-
-$e = validate({
-  foo => 1,
-  bar => 1,
-  raspberry => 'tart',
-}, $v);
-ok(! $e);
-
-$e = validate({
-  foo => 1,
-  bar => 1,
-  hem => 1,
-  raspberry => 'tart',
-}, $v);
-ok($e);
-
-$e = validate({
-  foo => 1,
-  bar => 1,
-  hem => 1,
-  haw => 1,
-  raspberry => 'tart',
-}, $v);
-ok(! $e);
-
-
-### three groups, some with validate_if's - using documents
-$v = '---
-group validate_if: foo
-bar:
-  required: 1
----
-group validate_if: hem
-haw: { required: 1 }
----
-raspberry:
-  required: 1
-';
-
-$e = validate({}, $v);
-ok($e);
-
-$e = validate({
-  raspberry => 'tart',
-}, $v);
-ok(! $e);
-
-$e = validate({
-  foo => 1,
-  raspberry => 'tart',
-}, $v);
-ok($e);
-
-$e = validate({
-  foo => 1,
-  bar => 1,
-  raspberry => 'tart',
-}, $v);
-ok(! $e);
-
-$e = validate({
-  foo => 1,
-  bar => 1,
-  hem => 1,
-  raspberry => 'tart',
-}, $v);
-ok($e);
-
-$e = validate({
-  foo => 1,
-  bar => 1,
-  hem => 1,
-  haw => 1,
-  raspberry => 'tart',
-}, $v);
-ok(! $e);
-
-} # end of SKIP
+};
