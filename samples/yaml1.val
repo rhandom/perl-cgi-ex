@@ -1,8 +1,0 @@
-user:
-  required: 1
-foo:
-  required_if: bar
-
-### you could also do
-# user: {required: 1}
-# foo:  {required: 1}
