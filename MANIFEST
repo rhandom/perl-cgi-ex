@@ -61,7 +61,6 @@ t/0_ex_00_base.t
 t/1_validate_00_base.t
 t/1_validate_03_cgi.t
 t/1_validate_05_types.t
-t/1_validate_06_groups.t
 t/1_validate_07_yaml.t
 t/1_validate_08_yaml_file.t
 t/1_validate_11_no_extra.t
