@@ -728,7 +728,7 @@ sub parse_tree {
             $node->[2] = $continue;
             $post_op   = $node;
 
-        ### unlink TT2 - look for another directive
+        ### unlike TT2 - look for another directive
         } elsif (length $tag) {
             #$self->throw('parse', "Found trailing info \"$tag\"", $node);
             $continue  = $j - length $tag;
@@ -847,7 +847,7 @@ sub parse_expr {
     } elsif ($copy =~ s{ ^ qw (\W) \s* }{}x) {
         my $quote = $1;
         $quote =~ y|([{<|)]}>|;
-        $copy =~ s{ ^ (.*) \Q$quote\E \s* $QR_COMMENTS }{}sx
+        $copy =~ s{ ^ (.*?) \Q$quote\E \s* $QR_COMMENTS }{}sx
             || $self->throw('parse.missing.array_close', "Missing close \"$quote\"", undef, length($$str_ref) - length($copy));
         my $str = $1;
         $str =~ s{ ^ \s+ | \s+ $ }{}x;
