@@ -18,14 +18,12 @@ sub validate { scalar CGI::Ex::Validate::validate(@_) }
 
 ###----------------------------------------------------------------###
 
-$v = [
-{
+$v = {
   foo => {
     max_len => 10,
     replace => 's/[^\d]//g',
   },
-},
-];
+};
 
 $e = validate({
   foo => '123-456-7890',
