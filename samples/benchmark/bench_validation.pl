@@ -96,31 +96,31 @@ sub check_form {
 cmpthese (-2,{
   cgi_ex    => sub { my $t = CGI::Ex::Validate->validate($form, $val_hash_ce) },
   data_val  => sub { my $t = Data::FormValidator->check($form, $val_hash_df) },
-  homegrown => sub { my $t = scalar keys %{ check_form($form) } },
+  homegrown => sub { my $t = check_form($form) },
 },'auto');
 
 cmpthese (-2,{
   cgi_ex    => sub { my $t = CGI::Ex::Validate->validate($form, $val_hash_ce)->as_hash },
   data_val  => sub { my $t = Data::FormValidator->check($form, $val_hash_df)->msgs },
-  homegrown => sub { my $t = check_form($form) },
+  homegrown => sub { my $t = scalar keys %{ check_form($form) } },
 },'auto');
 
 
 ### Home grown solution blows the others away - but lacks features
 #
 # Benchmark: running cgi_ex, data_val, homegrown for at least 2 CPU seconds...
-#     cgi_ex:  2 wallclock secs ( 2.12 usr +  0.00 sys =  2.12 CPU) @ 1430.66/s (n=3033)
-#   data_val:  2 wallclock secs ( 2.01 usr +  0.00 sys =  2.01 CPU) @ 2588.56/s (n=5203)
-#  homegrown:  2 wallclock secs ( 2.19 usr +  0.01 sys =  2.20 CPU) @ 54733.18/s (n=120413)
+#   cgi_ex:  2 wallclock secs ( 2.08 usr +  0.01 sys =  2.09 CPU) @ 2045.93/s (n=4276)
+#   data_val:  2 wallclock secs ( 2.15 usr +  0.00 sys =  2.15 CPU) @ 3496.28/s (n=7517)
+#   homegrown:  2 wallclock secs ( 2.09 usr +  0.01 sys =  2.10 CPU) @ 81919.52/s (n=172031)
 #              Rate    cgi_ex  data_val homegrown
-# cgi_ex     1431/s        --      -45%      -97%
-# data_val   2589/s       81%        --      -95%
-# homegrown 54733/s     3726%     2014%        --
+# cgi_ex     2046/s        --      -41%      -98%
+# data_val   3496/s       71%        --      -96%
+# homegrown 81920/s     3904%     2243%        --
 # Benchmark: running cgi_ex, data_val, homegrown for at least 2 CPU seconds...
-#     cgi_ex:  2 wallclock secs ( 2.10 usr +  0.00 sys =  2.10 CPU) @ 1218.57/s (n=2559)
-#   data_val:  2 wallclock secs ( 2.14 usr +  0.00 sys =  2.14 CPU) @ 2092.99/s (n=4479)
-#  homegrown:  2 wallclock secs ( 2.14 usr +  0.00 sys =  2.14 CPU) @ 56267.76/s (n=120413)
+#   cgi_ex:  2 wallclock secs ( 2.11 usr +  0.00 sys =  2.11 CPU) @ 1696.68/s (n=3580)
+#   data_val:  2 wallclock secs ( 2.04 usr +  0.00 sys =  2.04 CPU) @ 2845.10/s (n=5804)
+#   homegrown:  2 wallclock secs ( 2.01 usr +  0.00 sys =  2.01 CPU) @ 83674.13/s (n=168185)
 #              Rate    cgi_ex  data_val homegrown
-# cgi_ex     1219/s        --      -42%      -98%
-# data_val   2093/s       72%        --      -96%
-# homegrown 56268/s     4518%     2588%        --
+# cgi_ex     1697/s        --      -40%      -98%
+# data_val   2845/s       68%        --      -97%
+# homegrown 83674/s     4832%     2841%        --
