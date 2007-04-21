@@ -19,6 +19,7 @@ use Template::Stash::XS;
 use Text::Template;
 use HTML::Template;
 use HTML::Template::Expr;
+use HTML::Template::JIT;
 use CGI::Ex::Dump qw(debug);
 use CGI::Ex::Template;
 use POSIX qw(tmpnam);
@@ -158,6 +159,10 @@ my $ht_c = HTML::Template->new(type => 'filename', source => "foo.ht", cache => 
 $ht_c->param($stash_ht);
 $ht_c->param($form);
 
+my $ht_j = HTML::Template::JIT->new(filename => "foo.ht", path => \@dirs, jit_path => $dir2);
+$ht_j->param($stash_ht);
+$ht_j->param($form);
+
 ###----------------------------------------------------------------###
 ### make sure everything is ok by trying it once
 
@@ -181,6 +186,7 @@ my $out_pt = $pt->fill_in(PACKAGE => 'FOO', HASH => $form);
 my $out_ht  = $ht->output;
 my $out_hte = $hte->output;
 my $out_htc = $ht_c->output;
+my $out_htj = $ht_j->output;
 
 if ($out_ct ne $out_tt) {
     debug $out_ct, $out_tt;
@@ -213,6 +219,10 @@ if ($out_hte ne $out_tt) {
 if ($out_htc ne $out_tt) {
     debug $out_htc, $out_tt;
    die "HTML::Template::Expr didn't match tt";
+}
+if ($out_htj ne $out_tt) {
+    debug $out_htj, $out_tt;
+   die "HTML::Template::JIT didn't match tt";
 }
 
 ###----------------------------------------------------------------###
@@ -323,11 +333,18 @@ my $tests = {
         $ht->param($form);
         my $out = $ht->output;
     },
+
+    HTJ_compile => sub {
+        my $ht = HTML::Template::JIT->new(filename => "foo.ht", path => \@dirs, jit_path => $dir2);
+        $ht->param($stash_ht);
+        $ht->param($form);
+        my $out = $ht->output;
+    },
 };
 
 
 my %mem_tests = map {($_ => $tests->{$_})} qw(TT_mem TTX_mem CET_mem HT_mem HTE_mem);
-my %cpl_tests = map {($_ => $tests->{$_})} qw(TT_compile TTX_compile CET_compile HT_compile);
+my %cpl_tests = map {($_ => $tests->{$_})} qw(TT_compile TTX_compile CET_compile HT_compile HTJ_compile);
 my %str_tests = map {($_ => $tests->{$_})} qw(TT_str TTX_str CET_str HT_str HTE_str TextTemplate);
 
 print "------------------------------------------------------------------------\n";
