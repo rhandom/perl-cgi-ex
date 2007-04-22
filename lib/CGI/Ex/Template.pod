@@ -2129,13 +2129,13 @@ Left associative. Lower precedence version of the '&&' operator.
 
 Right associative. Lower precedence version of the '||' operator.
 
-=item C<hash>
+=item C<{}>
 
 This operator is not used in TT.  It is used internally
 by CGI::Ex::Template to delay the creation of a hash until the
 execution of the compiled template.
 
-=item C<array>
+=item C<[]>
 
 This operator is not used in TT.  It is used internally
 by CGI::Ex::Template to delay the creation of an array until the
@@ -2655,14 +2655,14 @@ The following table shows a variable or expression and the corresponding parsed 
     one.${two().three} [ 'one',  0, '.', ['two', [], '.', 'three', 0], 0]
     2.34               2.34
     "one"              "one"
-    "one"|length       [ \"one", 0, '|', 'length', 0 ]
+    "one"|length       [ \ [ '~', "one" ], 0, '|', 'length', 0 ]
     "one $a two"       [ \ [ '~', 'one ', ['a', 0], ' two' ], 0 ]
-    [0, 1, 2]          [ \ [ 'array', 0, 1, 2 ], 0 ]
-    [0, 1, 2].size     [ \ [ 'array', 0, 1, 2 ], 0, '.', 'size', 0 ]
-    ['a', a, $a ]      [ \ [ 'array', 'a', ['a', 0], [['a', 0], 0] ], 0]
-    {a  => 'b'}        [ \ [ 'hash',  'a', 'b' ], 0 ]
-    {a  => 'b'}.size   [ \ [ 'hash',  'a', 'b' ], 0, '.', 'size', 0 ]
-    {$a => b}          [ \ [ 'hash',  ['a', 0], ['b', 0] ], 0 ]
+    [0, 1, 2]          [ \ [ '[]', 0, 1, 2 ], 0 ]
+    [0, 1, 2].size     [ \ [ '[]', 0, 1, 2 ], 0, '.', 'size', 0 ]
+    ['a', a, $a ]      [ \ [ '[]', 'a', ['a', 0], [['a', 0], 0] ], 0]
+    {a  => 'b'}        [ \ [ '{}', 'a', 'b' ], 0 ]
+    {a  => 'b'}.size   [ \ [ '{}', 'a', 'b' ], 0, '.', 'size', 0 ]
+    {$a => b}          [ \ [ '{}', ['a', 0], ['b', 0] ], 0 ]
     1 + 2              [ \ [ '+', 1, 2 ], 0]
     a + b              [ \ [ '+', ['a', 0], ['b', 0] ], 0 ]
     a * (b + c)        [ \ [ '*', ['a', 0], [ \ ['+', ['b', 0], ['c', 0]], 0 ]], 0 ]
