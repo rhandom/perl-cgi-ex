@@ -252,8 +252,8 @@ BEGIN {
         ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]                           } ],
         ['left',    45,        ['and', 'AND'],      undef                                       ],
         ['right',   40,        ['or', 'OR'],        undef                                       ],
-        ['',         0,        ['hash'],            sub { return {@_};                        } ],
-        ['',         0,        ['array'],           sub { return [@_]                         } ],
+        ['',         0,        ['{}'],              sub { return {@_};                        } ],
+        ['',         0,        ['[]'],              sub { return [@_]                         } ],
     ];
     $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
     $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
@@ -851,7 +851,7 @@ sub parse_expr {
             || $self->throw('parse.missing.array_close', "Missing close \"$quote\"", undef, length($$str_ref) - length($copy));
         my $str = $1;
         $str =~ s{ ^ \s+ | \s+ $ }{}x;
-        my $arrayref = ['array', split /\s+/, $str];
+        my $arrayref = ['[]', split /\s+/, $str];
         push @var, \ $arrayref;
 
     ### looks like a normal variable start
@@ -910,7 +910,7 @@ sub parse_expr {
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset presedence
-        my $arrayref = ['array'];
+        my $arrayref = ['[]'];
         while (defined(my $var = $self->parse_expr(\$copy))) {
             push @$arrayref, $var;
             $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
@@ -922,7 +922,7 @@ sub parse_expr {
     ### looks like a hash constructor
     } elsif ($copy =~ s{ ^ \{ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
-        my $hashref = ['hash'];
+        my $hashref = ['{}'];
         while (defined(my $key = $self->parse_expr(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
             $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox;
             my $val = $self->parse_expr(\$copy);
@@ -993,9 +993,18 @@ sub parse_expr {
     }
 
     ### flatten literals and constants as much as possible
-    my $var = ($is_literal && $#var == 1) ? ${ $var[0] }
-            : $is_namespace               ? $self->play_expr(\@var, {is_namespace_during_compile => 1})
-            :                               \@var;
+    my $var;
+    if ($is_literal) {
+        $var = ${ $var[0] };
+        if ($#var != 1) {
+            $var[0] = \ ['~', $var];
+            $var = \@var;
+        }
+    } elsif ($is_namespace) {
+        $var = $self->play_expr(\@var, {is_namespace_during_compile => 1});
+    } else {
+        $var = \@var;
+    }
 
     ### allow for all "operators"
     if (! $self->{'_operator_precedence'}) {
@@ -1167,7 +1176,7 @@ sub parse_args {
     }
 
     ### allow for named arguments to be added also
-    push @args, [\ ['hash', @named], 0] if scalar @named;
+    push @args, [\ ['{}', @named], 0] if scalar @named;
 
     return \@args;
 }
