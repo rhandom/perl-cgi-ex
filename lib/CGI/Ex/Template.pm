@@ -263,7 +263,7 @@ BEGIN {
     $OP_TERNARY  = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'ternary'} @$OPERATORS}; # bool is ternary
     sub _op_qr { # no mixed \w\W operators
         my %used;
-        my $chrs = join '|', reverse sort map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W{2,}$/} @_;
+        my $chrs = join '|', reverse sort map {quotemeta $_} grep {++$used{$_} < 2} grep {! /\{\}|\[\]/} grep {/^\W{2,}$/} @_;
         my $chr  = join '',          sort map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
         my $word = join '|', reverse sort                    grep {++$used{$_} < 2} grep {/^\w+$/}    @_;
         $chr = "[$chr]" if $chr;
