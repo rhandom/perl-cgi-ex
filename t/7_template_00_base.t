@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 662 : 519;
+use Test::More tests => ! $is_tt ? 664 : 521;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -172,6 +172,8 @@ process_ok("[% \"hi \$foo\" %]"   => 'hi 7', {foo => 7});
 process_ok("[% \"hi \${foo}\" %]" => 'hi 7', {foo => 7});
 process_ok("[% 'hi \$foo' %]"   => 'hi $foo', {foo => 7});
 process_ok("[% 'hi \${foo}' %]" => 'hi ${foo}', {foo => 7});
+process_ok("[% 7 %]" => 7);
+process_ok("[% -7 %]" => -7);
 
 process_ok("[% \"hi \${foo.seven}\" %]"   => 'hi 7', {foo => $obj});
 process_ok("[% \"hi \${foo.echo(7)}\" %]" => 'hi 7', {foo => $obj});
@@ -249,7 +251,7 @@ process_ok("[% foo = 1 %][% foo %]" => '1');
 process_ok("[% foo = 1 ; bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo.bar = 2 %][% foo.bar %]" => '2');
 
-process_ok('[% a = "a" %][% (b = a) %][% a %][% b %]' => 'aaa');
+process_ok('[% a = "a" %]|[% (b = a) %]|[% a %]|[% b %]' => '|a|a|a');
 process_ok('[% a = "a" %][% (c = (b = a)) %][% a %][% b %][% c %]' => 'aaaa');
 
 process_ok("[% a = qw{Foo Bar Baz} ; a.2 %]" => 'Baz') if ! $is_tt;
