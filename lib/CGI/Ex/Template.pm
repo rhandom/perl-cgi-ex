@@ -1231,9 +1231,7 @@ sub play_expr {
     my $args = $var->[$i++];
     warn "play_expr: begin \"$name\"\n" if trace;
     if (ref $name) {
-        if (ref $name eq 'SCALAR') { # a scalar literal
-            $ref = $$name;
-        } elsif (ref $name eq 'REF') { # operator
+        if (ref $name eq 'REF') { # operator
             return $self->play_operator($$name) if ${ $name }->[0] eq '..';
             $ref = $self->play_operator($$name);
         } else { # a named variable access (ie via $name.foo)
@@ -1749,7 +1747,7 @@ sub play_FILTER {
     eval { $self->execute_tree($sub_tree, \$out) };
     die $@ if $@ && ref($@) !~ /Template::Exception$/;
 
-    my $var = [\$out, 0, '|', @$filter]; # make a temporary var out of it
+    my $var = [\['~', $out], 0, '|', @$filter]; # make a temporary var out of it
 
 
     return $DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
