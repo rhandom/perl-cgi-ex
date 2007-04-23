@@ -1544,9 +1544,13 @@ sub play_operator {
 
     if ($OP_DISPATCH->{$tree->[0]}) {
         local $^W;
-        my $val = $OP_DISPATCH->{$tree->[0]}->((@$tree == 3) ? ($self->play_expr($tree->[1]), $self->play_expr($tree->[2])) : ($self->play_expr($tree->[1])));
-        $self->set_variable($tree->[1], $val) if $OP_ASSIGN->{$tree->[0]};
-        return $val;
+        if ($OP_ASSIGN->{$tree->[0]}) {
+            my $val = $OP_DISPATCH->{$tree->[0]}->($self->play_expr($tree->[1]), $self->play_expr($tree->[2]));
+            $self->set_variable($tree->[1], $val);
+            return $val;
+        } else {
+            return $OP_DISPATCH->{$tree->[0]}->(@$tree == 2 ? $self->play_expr($tree->[1]) : ($self->play_expr($tree->[1]), $self->play_expr($tree->[2])));
+        }
     }
 
     my $op = $tree->[0];
@@ -1570,13 +1574,18 @@ sub play_operator {
 
     } elsif ($op eq '~' || $op eq '_') {
         local $^W;
-        return join "", map { $self->play_expr($tree->[$_]) } 1 .. $#$tree;
+        my $s = '';
+        $s .= $self->play_expr($tree->[$_]) for 1 .. $#$tree;
+        return $s;
 
     } elsif ($op eq '[]') {
-        return [(map { $self->play_expr($tree->[$_]) } 1 .. $#$tree)];
+        return [map {$self->play_expr($tree->[$_])} 1 .. $#$tree];
 
     } elsif ($op eq '{}') {
-        return {map { $self->play_expr($tree->[$_]) } 1 .. $#$tree};
+        local $^W;
+        my @e;
+        push @e, $self->play_expr($tree->[$_]) for 1 .. $#$tree;
+        return {@e};
 
     } elsif ($op eq '++') {
         local $^W;
