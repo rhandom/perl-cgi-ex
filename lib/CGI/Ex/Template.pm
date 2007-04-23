@@ -851,8 +851,7 @@ sub parse_expr {
             || $self->throw('parse.missing.array_close', "Missing close \"$quote\"", undef, length($$str_ref) - length($copy));
         my $str = $1;
         $str =~ s{ ^ \s+ | \s+ $ }{}x;
-        my $arrayref = ['[]', split /\s+/, $str];
-        push @var, \ $arrayref;
+        push @var, [undef, '[]', split /\s+/, $str];
 
     ### looks like a normal variable start
     } elsif ($copy =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox) {
@@ -891,7 +890,7 @@ sub parse_expr {
                 push @var, \ '';
                 $is_literal = 1;
             } else {
-                push @var, \ ['~', @pieces];
+                push @var, [undef, '~', @pieces];
             }
         }
         if ($ARGS->{'auto_quote'}){
@@ -910,19 +909,19 @@ sub parse_expr {
     ### looks like an array constructor
     } elsif ($copy =~ s{ ^ \[ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset presedence
-        my $arrayref = ['[]'];
+        my $arrayref = [undef, '[]'];
         while (defined(my $var = $self->parse_expr(\$copy))) {
             push @$arrayref, $var;
             $copy =~ s{ ^ , \s* $QR_COMMENTS }{}ox;
         }
         $copy =~ s{ ^ \] \s* $QR_COMMENTS }{}ox
             || $self->throw('parse.missing.square_bracket', "Missing close \]", undef, length($$str_ref) - length($copy));
-        push @var, \ $arrayref;
+        push @var, $arrayref;
 
     ### looks like a hash constructor
     } elsif ($copy =~ s{ ^ \{ \s* $QR_COMMENTS }{}ox) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
-        my $hashref = ['{}'];
+        my $hashref = [undef, '{}'];
         while (defined(my $key = $self->parse_expr(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))) {
             $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox;
             my $val = $self->parse_expr(\$copy);
@@ -931,7 +930,7 @@ sub parse_expr {
         }
         $copy =~ s{ ^ \} \s* $QR_COMMENTS }{}ox
             || $self->throw('parse.missing.curly_bracket', "Missing close \} ($copy)", undef, length($$str_ref) - length($copy));
-        push @var, \ $hashref;
+        push @var, $hashref;
 
     ### looks like a paren grouper
     } elsif ($copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox) {
@@ -941,6 +940,7 @@ sub parse_expr {
             || $self->throw('parse.missing.paren', "Missing close \)", undef, length($$str_ref) - length($copy));
         @var = @$var;
         pop(@var); # pull off the trailing args of the paren group
+        # TODO - we could forward lookahed for a period or pipe
 
     ### nothing to find - return failure
     } else {
@@ -997,7 +997,7 @@ sub parse_expr {
     if ($is_literal) {
         $var = ${ $var[0] };
         if ($#var != 1) {
-            $var[0] = \ ['~', $var];
+            $var[0] = [undef, '~', $var];
             $var = \@var;
         }
     } elsif ($is_namespace) {
@@ -1021,14 +1021,14 @@ sub parse_expr {
 
             ### allow for postfix - doesn't check precedence - someday we might change - but not today (only affects post ++ and --)
             if ($OP_POSTFIX->{$op}) {
-                $var = [\ [$op, $var, 1], 0]; # cheat - give a "second value" to postfix ops
+                $var = [[undef, $op, $var, 1], 0]; # cheat - give a "second value" to postfix ops
                 next;
 
             ### allow for prefix operator precedence
             } elsif ($has_prefix && $OP->{$op}->[1] < $OP_PREFIX->{$has_prefix->[-1]}->[1]) {
                 if ($tree) {
                     if ($#$tree == 1) { # only one operator - keep simple things fast
-                        $var = [\ [$tree->[0], $var, $tree->[1]], 0];
+                        $var = [[undef, $tree->[0], $var, $tree->[1]], 0];
                     } else {
                         unshift @$tree, $var;
                         $var = $self->apply_precedence($tree, $found);
@@ -1036,7 +1036,7 @@ sub parse_expr {
                     undef $tree;
                     undef $found;
                 }
-                $var = [ \ [ $has_prefix->[-1], $var ], 0 ];
+                $var = [[undef, $has_prefix->[-1], $var ], 0];
                 if (! @$has_prefix) { undef $has_prefix } else { pop @$has_prefix }
             }
 
@@ -1049,7 +1049,7 @@ sub parse_expr {
         ### if we found operators - tree the nodes by operator precedence
         if ($tree) {
             if (@$tree == 2) { # only one operator - keep simple things fast
-                $var = [\ [$tree->[0], $var, $tree->[1]], 0];
+                $var = [[undef, $tree->[0], $var, $tree->[1]], 0];
             } else {
                 unshift @$tree, $var;
                 $var = $self->apply_precedence($tree, $found);
@@ -1059,7 +1059,7 @@ sub parse_expr {
 
     ### allow for prefix on non-chained variables
     if ($has_prefix) {
-        $var = [ \ [ $_, $var ], 0 ] for reverse @$has_prefix;
+        $var = [[undef, $_, $var], 0] for reverse @$has_prefix;
     }
 
     $$str_ref = $copy; # commit the changes
@@ -1096,7 +1096,7 @@ sub apply_precedence {
             if (@$node == 1) {
                 $node = $node->[0]; # single item - its not a tree
             } elsif (@$node == 3) {
-                $node = [ \ [ $node->[1], $node->[0], $node->[2] ], 0 ]; # single operator - put it straight on
+                $node = [[undef, $node->[1], $node->[0], $node->[2]], 0]; # single operator - put it straight on
             } else {
                 $node = $self->apply_precedence($node, $found); # more complicated - recurse
             }
@@ -1117,7 +1117,7 @@ sub apply_precedence {
             if (@exprs == 3) {
                 $self->throw('parse', "Ternary operator mismatch") if $ops[0] ne $op;
                 $self->throw('parse', "Ternary operator mismatch") if ! $ops[1] || $ops[1] eq $op;
-                return [ \ [ $op, @exprs ], 0 ];
+                return [[undef, $op, @exprs], 0];
             }
 
 
@@ -1127,7 +1127,7 @@ sub apply_precedence {
                 for (my $i = $#ops; $i >= 0; $i --) {
                     next if $OP->{$ops[$i]}->[2]->[1] eq $ops[$i];
                     my ($op, $op2) = splice @ops, $i, 2, (); # remove the pair of operators
-                    my $node = [ \ [$op, @exprs[$i .. $i + 2] ], 0 ];
+                    my $node = [[undef, $op, @exprs[$i .. $i + 2]], 0];
                     splice @exprs, $i, 3, $node;
                 }
             }
@@ -1135,12 +1135,12 @@ sub apply_precedence {
 
         } elsif ($type eq 'right' || $type eq 'assign') {
             my $val = $exprs[-1];
-            $val = [ \ [ $ops[$_ - 1], $exprs[$_], $val ], 0 ] for reverse (0 .. $#exprs - 1);
+            $val = [[undef, $ops[$_ - 1], $exprs[$_], $val], 0] for reverse (0 .. $#exprs - 1);
             return $val;
 
         } else {
             my $val = $exprs[0];
-            $val = [ \ [ $ops[$_ - 1], $val, $exprs[$_] ], 0 ] for (1 .. $#exprs);
+            $val = [[undef, $ops[$_ - 1], $val, $exprs[$_]], 0] for (1 .. $#exprs);
             return $val;
 
         }
@@ -1176,7 +1176,7 @@ sub parse_args {
     }
 
     ### allow for named arguments to be added also
-    push @args, [\ ['{}', @named], 0] if scalar @named;
+    push @args, [[undef, '{}', @named], 0] if scalar @named;
 
     return \@args;
 }
@@ -1231,9 +1231,9 @@ sub play_expr {
     my $args = $var->[$i++];
     warn "play_expr: begin \"$name\"\n" if trace;
     if (ref $name) {
-        if (ref $name eq 'REF') { # operator
-            return @{ $self->play_operator($$name) } if wantarray && ${ $name }->[0] eq '..';
-            $ref = $self->play_operator($$name);
+        if (! defined $name->[0]) { # operator
+            return @{ $self->play_operator($name) } if wantarray && $name->[1] eq '..';
+            $ref = $self->play_operator($name);
         } else { # a named variable access (ie via $name.foo)
             $name = $self->play_expr($name);
             if (defined $name) {
@@ -1539,65 +1539,65 @@ sub set_variable {
 ###----------------------------------------------------------------###
 
 sub play_operator {
-    my $self = shift;
-    my $tree = shift;
+    my ($self, $tree) = @_;
+    ### $tree looks like [undef, '+', 4, 5]
 
-    if ($OP_DISPATCH->{$tree->[0]}) {
+    if ($OP_DISPATCH->{$tree->[1]}) {
         local $^W;
-        if ($OP_ASSIGN->{$tree->[0]}) {
-            my $val = $OP_DISPATCH->{$tree->[0]}->($self->play_expr($tree->[1]), $self->play_expr($tree->[2]));
-            $self->set_variable($tree->[1], $val);
+        if ($OP_ASSIGN->{$tree->[1]}) {
+            my $val = $OP_DISPATCH->{$tree->[1]}->($self->play_expr($tree->[2]), $self->play_expr($tree->[3]));
+            $self->set_variable($tree->[2], $val);
             return $val;
         } else {
-            return $OP_DISPATCH->{$tree->[0]}->(@$tree == 2 ? $self->play_expr($tree->[1]) : ($self->play_expr($tree->[1]), $self->play_expr($tree->[2])));
+            return $OP_DISPATCH->{$tree->[1]}->(@$tree == 3 ? $self->play_expr($tree->[2]) : ($self->play_expr($tree->[2]), $self->play_expr($tree->[3])));
         }
     }
 
-    my $op = $tree->[0];
+    my $op = $tree->[1];
 
     ### do custom and short-circuitable operators
     if ($op eq '=') {
-        my $val = $self->play_expr($tree->[2]);
-        $self->set_variable($tree->[1], $val);
+        my $val = $self->play_expr($tree->[3]);
+        $self->set_variable($tree->[2], $val);
         return $val;
 
    } elsif ($op eq '||' || $op eq 'or' || $op eq 'OR') {
-        return $self->play_expr($tree->[1]) || $self->play_expr($tree->[2]) || '';
+        return $self->play_expr($tree->[2]) || $self->play_expr($tree->[3]) || '';
 
     } elsif ($op eq '&&' || $op eq 'and' || $op eq 'AND') {
-        my $var = $self->play_expr($tree->[1]) && $self->play_expr($tree->[2]);
+        my $var = $self->play_expr($tree->[2]) && $self->play_expr($tree->[3]);
         return $var ? $var : 0;
 
     } elsif ($op eq '?') {
         local $^W;
-        return $self->play_expr($tree->[1]) ? $self->play_expr($tree->[2]) : $self->play_expr($tree->[3]);
+        return $self->play_expr($tree->[2]) ? $self->play_expr($tree->[3]) : $self->play_expr($tree->[4]);
 
     } elsif ($op eq '~' || $op eq '_') {
         local $^W;
         my $s = '';
-        $s .= $self->play_expr($tree->[$_]) for 1 .. $#$tree;
+        $s .= $self->play_expr($tree->[$_]) for 2 .. $#$tree;
         return $s;
 
     } elsif ($op eq '[]') {
-        return [map {$self->play_expr($tree->[$_])} 1 .. $#$tree];
+        return [map {$self->play_expr($tree->[$_])} 2 .. $#$tree];
 
     } elsif ($op eq '{}') {
         local $^W;
         my @e;
-        push @e, $self->play_expr($tree->[$_]) for 1 .. $#$tree;
+        push @e, $self->play_expr($tree->[$_]) for 2 .. $#$tree;
         return {@e};
 
     } elsif ($op eq '++') {
         local $^W;
-        my $val = 0 + $self->play_expr($tree->[1]);
-        $self->set_variable($tree->[1], $val + 1);
-        return $tree->[2] ? $val : $val + 1; # ->[2] is set to 1 during parsing of postfix ops
+        my $val = 0 + $self->play_expr($tree->[2]);
+        $self->set_variable($tree->[2], $val + 1);
+        return $tree->[3] ? $val : $val + 1; # ->[3] is set to 1 during parsing of postfix ops
 
     } elsif ($op eq '--') {
         local $^W;
-        my $val = 0 + $self->play_expr($tree->[1]);
-        $self->set_variable($tree->[1], $val - 1);
-        return $tree->[2] ? $val : $val - 1; # ->[2] is set to 1 during parsing of postfix ops
+        my $val = 0 + $self->play_expr($tree->[2]);
+        $self->set_variable($tree->[2], $val - 1);
+        return $tree->[3] ? $val : $val - 1; # ->[3] is set to 1 during parsing of postfix ops
     }
 
     $self->throw('operator', "Un-implemented operation $op");
@@ -1762,7 +1762,7 @@ sub play_FILTER {
     eval { $self->execute_tree($sub_tree, \$out) };
     die $@ if $@ && ref($@) !~ /Template::Exception$/;
 
-    my $var = [\['~', $out], 0, '|', @$filter]; # make a temporary var out of it
+    my $var = [[undef, '~', $out], 0, '|', @$filter]; # make a temporary var out of it
 
 
     return $DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
@@ -2365,7 +2365,7 @@ sub play_TRY {
 
 sub parse_UNLESS {
     my $ref = $DIRECTIVES->{'IF'}->[0]->(@_);
-    return [ \ [ '!', $ref ], 0 ];
+    return [[undef, '!', $ref], 0];
 }
 
 sub play_UNLESS { return $DIRECTIVES->{'IF'}->[1]->(@_) }
