@@ -239,7 +239,7 @@ BEGIN {
         ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]                  } ],
         ['left',    70,        ['&&'],              undef                                       ],
         ['right',   65,        ['||'],              undef                                       ],
-        ['none',    60,        ['..'],              sub {    [$_[0] .. $_[1]]                 } ],
+        ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]                  } ],
         ['ternary', 55,        ['?', ':'],          undef                                       ],
         ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]                  } ],
         ['assign',  53,        ['-='],              sub {     $_[0] -  $_[1]                  } ],
@@ -1232,7 +1232,7 @@ sub play_expr {
     warn "play_expr: begin \"$name\"\n" if trace;
     if (ref $name) {
         if (! defined $name->[0]) { # operator
-            return @{ $self->play_operator($name) } if wantarray && $name->[1] eq '..';
+            return $self->play_operator($name) if wantarray && $name->[1] eq '..';
             $ref = $self->play_operator($name);
         } else { # a named variable access (ie via $name.foo)
             $name = $self->play_expr($name);
