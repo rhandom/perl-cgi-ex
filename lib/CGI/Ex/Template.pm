@@ -226,7 +226,7 @@ BEGIN {
         ['left',    90,        ['%', 'mod', 'MOD'], sub {     $_[0] %  $_[1]                  } ],
         ['left',    85,        ['+'],               sub {     $_[0] +  $_[1]                  } ],
         ['left',    85,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        ['left',    85,        ['~', '_'],          sub { join "", @_                         } ],
+        ['left',    85,        ['~', '_'],          undef                                       ],
         ['none',    80,        ['<'],               sub {     $_[0] <  $_[1]                  } ],
         ['none',    80,        ['>'],               sub {     $_[0] >  $_[1]                  } ],
         ['none',    80,        ['<='],              sub {     $_[0] <= $_[1]                  } ],
@@ -239,21 +239,21 @@ BEGIN {
         ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]                  } ],
         ['left',    70,        ['&&'],              undef                                       ],
         ['right',   65,        ['||'],              undef                                       ],
-        ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]                  } ],
+        ['none',    60,        ['..'],              sub {    [$_[0] .. $_[1]]                 } ],
         ['ternary', 55,        ['?', ':'],          undef                                       ],
         ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]                  } ],
         ['assign',  53,        ['-='],              sub {     $_[0] -  $_[1]                  } ],
         ['assign',  53,        ['*='],              sub {     $_[0] *  $_[1]                  } ],
         ['assign',  53,        ['/='],              sub {     $_[0] /  $_[1]                  } ],
         ['assign',  53,        ['%='],              sub {     $_[0] %  $_[1]                  } ],
-        ['assign',  53,        ['**='],             sub {     $_[0]**  $_[1]                  } ],
+        ['assign',  53,        ['**='],             sub {     $_[0] ** $_[1]                  } ],
         ['assign',  53,        ['~=', '_='],        sub {     $_[0] .  $_[1]                  } ],
         ['assign',  52,        ['='],               undef                                       ],
         ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]                           } ],
         ['left',    45,        ['and', 'AND'],      undef                                       ],
         ['right',   40,        ['or', 'OR'],        undef                                       ],
-        ['',         0,        ['{}'],              sub { return {@_};                        } ],
-        ['',         0,        ['[]'],              sub { return [@_]                         } ],
+        ['',         0,        ['{}'],              undef                                       ],
+        ['',         0,        ['[]'],              undef                                       ],
     ];
     $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
     $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
@@ -1232,7 +1232,7 @@ sub play_expr {
     warn "play_expr: begin \"$name\"\n" if trace;
     if (ref $name) {
         if (ref $name eq 'REF') { # operator
-            return $self->play_operator($$name) if ${ $name }->[0] eq '..';
+            return @{ $self->play_operator($$name) } if wantarray && ${ $name }->[0] eq '..';
             $ref = $self->play_operator($$name);
         } else { # a named variable access (ie via $name.foo)
             $name = $self->play_expr($name);
@@ -1544,13 +1544,9 @@ sub play_operator {
 
     if ($OP_DISPATCH->{$tree->[0]}) {
         local $^W;
-        if ($OP_ASSIGN->{$tree->[0]}) {
-            my $val = $OP_DISPATCH->{$tree->[0]}->( $self->play_expr($tree->[1]), $self->play_expr($tree->[2]) );
-            $self->set_variable($tree->[1], $val);
-            return $val;
-        } else {
-            return $OP_DISPATCH->{$tree->[0]}->( map { $self->play_expr($tree->[$_]) } 1 .. $#$tree );
-        }
+        my $val = $OP_DISPATCH->{$tree->[0]}->((@$tree == 3) ? ($self->play_expr($tree->[1]), $self->play_expr($tree->[2])) : ($self->play_expr($tree->[1])));
+        $self->set_variable($tree->[1], $val) if $OP_ASSIGN->{$tree->[0]};
+        return $val;
     }
 
     my $op = $tree->[0];
@@ -1571,6 +1567,16 @@ sub play_operator {
     } elsif ($op eq '?') {
         local $^W;
         return $self->play_expr($tree->[1]) ? $self->play_expr($tree->[2]) : $self->play_expr($tree->[3]);
+
+    } elsif ($op eq '~' || $op eq '_') {
+        local $^W;
+        return join "", map { $self->play_expr($tree->[$_]) } 1 .. $#$tree;
+
+    } elsif ($op eq '[]') {
+        return [(map { $self->play_expr($tree->[$_]) } 1 .. $#$tree)];
+
+    } elsif ($op eq '{}') {
+        return {map { $self->play_expr($tree->[$_]) } 1 .. $#$tree};
 
     } elsif ($op eq '++') {
         local $^W;
