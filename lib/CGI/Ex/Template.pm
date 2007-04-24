@@ -1050,6 +1050,7 @@ sub parse_expr {
 
             ### add the operator to the tree
             my $var2 =  $self->parse_expr(\$copy);
+            $self->throw('parse', 'Missing variable after "'.$op.'" near "'.substr($copy, 0, 10).'"') if ! defined $var2;
             push (@{ $tree ||= [] }, $op, $var2);
             $found->{$OP->{$op}->[1]}->{$op} = 1; # found->{precedence}->{op}
         }
