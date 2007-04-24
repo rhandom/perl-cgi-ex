@@ -1,5 +1,10 @@
 2.10   2007-04-05
         * Allow for crypted passwords to work in Auth.
+        * Fix minor bug in Template qw() construct.
+        * Move to generice operator parse tree.  All constructs are now only arrayrefs.
+        * Allow for regex based TAGS.
+        * Allow for "unquoted" in TAGS.
+        * Catch parsing bug in "1 - + 2" in Template.
 
 2.09   2007-04-05
         * Add more documentation about file paths
