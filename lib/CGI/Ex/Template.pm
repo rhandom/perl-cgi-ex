@@ -39,7 +39,7 @@ use vars qw($VERSION
             );
 
 BEGIN {
-    $VERSION = '2.09';
+    $VERSION = '2.10';
 
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
@@ -285,7 +285,7 @@ BEGIN {
     $QR_PRIVATE   = qr/^[_.]/;
 
     $WHILE_MAX    = 1000;
-    $EXTRA_COMPILE_EXT = '.sto';
+    $EXTRA_COMPILE_EXT = '.sto2';
 
     eval {require Scalar::Util};
 };
@@ -509,10 +509,8 @@ sub parse_tree {
     }
 
     my $STYLE = $self->{'TAG_STYLE'} || 'default';
-    my $START = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
-    my $END   = $self->{'END_TAG'}   || $TAGS->{$STYLE}->[1];
-    my $len_s = length $START;
-    my $len_e = length $END;
+    my $START = quotemeta($self->{'START_TAG'} || $TAGS->{$STYLE}->[0]);
+    my $END   = quotemeta($self->{'END_TAG'}   || $TAGS->{$STYLE}->[1]);
 
     my @tree;             # the parsed tree
     my $pointer = \@tree; # pointer to current tree to handle nested blocks
@@ -531,6 +529,8 @@ sub parse_tree {
     my $func;
     my $node;
     my $tag;
+    local pos $$str_ref = 0;
+
     while (1) {
         ### continue looking for information in a semi-colon delimited tag
         if ($continue) {
@@ -539,10 +539,14 @@ sub parse_tree {
 
         ### look through the string using index
         } else {
-            $i = index($$str_ref, $START, $last);
-            last if $i == -1; # no start tag found - we are done
-            if ($last != $i) { # found a text portion - chomp it, interpolate it and store it
-                my $text  = substr($$str_ref, $last, $i - $last);
+            if ($$str_ref !~ m{ \G (.*?) $START }gcxs) {
+                last;
+            }
+            $i = pos $$str_ref;
+
+            ### found a text portion - chomp it, interpolate it and store it
+            if (length $1) {
+                my $text = $1;
                 my $_last = $last;
                 if ($post_chomp) {
                     if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
@@ -554,14 +558,16 @@ sub parse_tree {
                     $self->interpolate_node($pointer, $_last) if $self->{'INTERPOLATE'};
                 }
             }
-            $j = index($$str_ref, $END, $i + $len_s);
-            $last = $j + $len_e;
-            if ($j == -1) { # missing closing tag
-                $last = length($$str_ref);
+
+            if ($$str_ref !~ m{ \G (.*?) ($END) }gcxs) {
+                $last = length $$str_ref; # missing closing tag
                 last;
             }
-            $tag = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
-            $node = [undef, $i + $len_s, $j];
+            $last = pos $$str_ref;
+            $j = $last - length $2;
+            $tag  = $1;
+
+            $node = [undef, $i, $j];
 
             ### take care of whitespace and comments flags
             my $pre_chomp = $tag =~ s{ ^ ([+=~-]) }{}x ? $1 : $self->{'PRE_CHOMP'};
@@ -650,12 +656,12 @@ sub parse_tree {
             } elsif ($func eq 'TAGS') {
                 if ($tag =~ / ^ (\w+) /x && $TAGS->{$1}) {
                     $tag =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox;
-                    ($START, $END) = @{ $TAGS->{$1} };
+                    $START = quotemeta $TAGS->{$1}->[0];
+                    $END   = quotemeta $TAGS->{$1}->[1];
                 } elsif ($tag =~ s{ ^ (\S+) \s+ (\S+) \s* $QR_COMMENTS }{}ox) {
-                    ($START, $END) = ($1, $2);
+                    $START = quotemeta $1;
+                    $END   = quotemeta $2;
                 }
-                $len_s = length $START;
-                $len_e = length $END;
 
             } elsif ($func eq 'META') {
                 my $args = $self->parse_args(\$tag);
@@ -694,7 +700,7 @@ sub parse_tree {
             }
 
         } else { # error
-            my $all  = substr($$str_ref, $i + $len_s, $j - ($i + $len_s));
+            my $all  = substr($$str_ref, $i, $j - $i);
             $all =~ s/^\s+//;
             $all =~ s/\s+$//;
             $self->throw('parse', "Not sure how to handle tag \"$all\"", $node);
@@ -753,7 +759,7 @@ sub parse_tree {
     }
 
     ### pull off the last text portion - if any
-    if ($last != length($$str_ref)) {
+    if ($last != length $$str_ref) {
         my $text  = substr($$str_ref, $last, length($$str_ref) - $last);
         my $_last = $last;
         if ($post_chomp) {
