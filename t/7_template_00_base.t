@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 664 : 521;
+use Test::More tests => ! $is_tt ? 678 : 533;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -823,12 +823,29 @@ process_ok("[% foo = IF 1 %]Hi[% END %][% foo %]" => 'Hi');
 ###----------------------------------------------------------------###
 ### tags
 
-process_ok("[% TAGS html %]<!-- 1 + 2 -->" => '3');
-process_ok("[% TAGS <!-- --> %]<!-- 1 + 2 -->" => '3');
+process_ok("[% TAGS asp       %]<% 1 + 2 %>" => 3);
+process_ok("[% TAGS default   %][% 1 + 2 %]" => 3);
+process_ok("[% TAGS html      %]<!-- 1 + 2 -->" => '3');
+process_ok("[% TAGS mason     %]<% 1 + 2 >"  => 3);
+process_ok("[% TAGS metatext  %]%% 1 + 2 %%" => 3);
+process_ok("[% TAGS php       %]<? 1 + 2 ?>" => 3);
+process_ok("[% TAGS star      %][* 1 + 2 *]" => 3);
+process_ok("[% TAGS template1 %][% 1 + 2 %]" => 3);
+process_ok("[% TAGS template1 %]%% 1 + 2 %%" => 3);
+
 process_ok("[% TAGS html %] <!--- 1 + 2 -->" => '3');
 process_ok("[% TAGS html %]<!-- 1 + 2 --->" => '3') if ! $is_tt;
 process_ok("[% TAGS html %]<!-- 1 + 2 --->\n" => '3');
+process_ok("[% BLOCK foo %][% TAGS html %]<!-- 1 + 2 --><!-- END --><!-- PROCESS foo --> <!-- 1 + 2 -->" => '3 3');
 process_ok("[% BLOCK foo %][% TAGS html %]<!-- 1 + 2 -->[% END %][% PROCESS foo %] [% 1 + 2 %]" => '');
+
+process_ok("[% TAGS <!-- --> %]<!-- 1 + 2 -->" => '3');
+
+process_ok("[% TAGS [<] [>]          %][<] 1 + 2 [>]" => 3);
+process_ok("[% TAGS [<] [>] unquoted %]<   1 + 2 >"  => 3) if ! $is_tt;
+process_ok("[% TAGS ** **            %]**  1 + 2 **" => 3);
+process_ok("[% TAGS ** ** quoted     %]**  1 + 2 **" => 3);
+process_ok("[% TAGS ** ** unquoted   %]**  1 + 2 **" => "") if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### switch
