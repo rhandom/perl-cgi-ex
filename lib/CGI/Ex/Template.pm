@@ -48,14 +48,14 @@ BEGIN {
     $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
 
     $TAGS = {
-        default  => ['[%',   '%]'],  # default
-        template => ['[%',   '%]'],  # default
-        metatext => ['%%',   '%%'],  # Text::MetaText
-        star     => ['[*',   '*]'],  # TT alternate
-        php      => ['<?',   '?>'],  # PHP
-        asp      => ['<%',   '%>'],  # ASP
-        mason    => ['<%',   '>' ],  # HTML::Mason
-        html     => ['<!--', '-->'], # HTML comments
+        asp       => ['<%',     '%>'    ], # ASP
+        default   => ['\[%',    '%\]'   ], # default
+        html      => ['<!--',   '-->'   ], # HTML comments
+        mason     => ['<%',     '>'     ], # HTML::Mason
+        metatext  => ['%%',     '%%'    ], # Text::MetaText
+        php       => ['<\?',    '\?>'   ], # PHP
+        star      => ['\[\*',   '\*\]'  ], # TT alternate
+        template1 => ['[\[%]%', '%[%\]]'], # allow TT1 style
     };
 
     $SCALAR_OPS = {
@@ -509,8 +509,8 @@ sub parse_tree {
     }
 
     my $STYLE = $self->{'TAG_STYLE'} || 'default';
-    my $START = quotemeta($self->{'START_TAG'} || $TAGS->{$STYLE}->[0]);
-    my $END   = quotemeta($self->{'END_TAG'}   || $TAGS->{$STYLE}->[1]);
+    my $START = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
+    my $END   = $self->{'END_TAG'}   || $TAGS->{$STYLE}->[1];
 
     my @tree;             # the parsed tree
     my $pointer = \@tree; # pointer to current tree to handle nested blocks
@@ -656,11 +656,13 @@ sub parse_tree {
             } elsif ($func eq 'TAGS') {
                 if ($tag =~ / ^ (\w+) /x && $TAGS->{$1}) {
                     $tag =~ s{ ^ (\w+) \s* $QR_COMMENTS }{}ox;
-                    $START = quotemeta $TAGS->{$1}->[0];
-                    $END   = quotemeta $TAGS->{$1}->[1];
-                } elsif ($tag =~ s{ ^ (\S+) \s+ (\S+) \s* $QR_COMMENTS }{}ox) {
-                    $START = quotemeta $1;
-                    $END   = quotemeta $2;
+                    ($START, $END) = @{ $TAGS->{$1} };
+                } elsif ($tag =~ s{ ^ (\S+) \s+ (\S+) (?-i:\s+(un)quoted?)? \s* $QR_COMMENTS }{}ox) {
+                    ($START, $END, my $unquote) = ($1, $2, $3);
+                    for ($START, $END) {
+                        if ($unquote) { eval { "" =~ /$_/; 1 } || $self->throw('parse', "Invalid TAGS \"$_\": $@", $node) }
+                        else { $_ = quotemeta $_ }
+                    }
                 }
 
             } elsif ($func eq 'META') {
