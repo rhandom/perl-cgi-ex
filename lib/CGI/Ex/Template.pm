@@ -541,14 +541,19 @@ sub parse_tree {
 
         ### look through the string using index
         } else {
-            if ($$str_ref !~ m{ \G (.*?) $START }gcxs) {
-                last;
-            }
+            $$str_ref =~ m{ \G (.*?) $START }gcxs
+                || last;
             $i = pos $$str_ref;
 
             ### found a text portion - chomp it, interpolate it and store it
             if (length $1) {
                 my $text = $1;
+
+                if ($text =~ m{ ($END) }xs) {
+                    my $char = $last + $-[1] + 1;
+                    $self->throw('parse', "Found unmatched closing tag \"$1\" at char $char", ['TEXT', $last, $i]);
+                }
+
                 my $_last = $last;
                 if ($post_chomp) {
                     if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
@@ -561,14 +566,30 @@ sub parse_tree {
                 }
             }
 
-            if ($$str_ref !~ m{ \G (.*?) ($END) }gcxs) {
-                $last = length $$str_ref; # missing closing tag
-                last;
-            }
-            $last = pos $$str_ref;
-            $j = $last - length $2;
-            $tag  = $1;
+            ### now look for the closing tag
+            $$str_ref =~ m{ \G (.*?) ($END) }gcxs
+                || $self->throw('parse', "Found unmatched open tag starting at char ".($i+1), ['UNKNOWN', $i, length $$str_ref]);
 
+            ### [ [ ] ]
+            ### [ [ [ ] [ ] ] ]
+            ### check for nested TAGS
+            my $end = $2;
+            $tag = $1;
+            if ($tag =~ m{ $START }xs) {
+                my $tmp = $tag;
+                my $cnt = 0;
+                while (my @open = $tmp =~ m{ ($START) }xsg) {
+                    $cnt = $cnt + @open - 1;
+                    last if $cnt == -1;
+                    $$str_ref =~ m{ \G (.*?) $END }gcxs
+                        || $self->throw('parse', "Found unmatched nested open tag starting at char ".($i+1), ['UNKNOWN', $i, length $$str_ref]);
+                    $tmp = $1;
+                    $tag .= $end . $1;
+                }
+            }
+
+            $last = pos $$str_ref;
+            $j = $last - length $end;
             $node = [undef, $i, $j];
 
             ### take care of whitespace and comments flags
@@ -765,6 +786,12 @@ sub parse_tree {
     ### pull off the last text portion - if any
     if ($last != length $$str_ref) {
         my $text  = substr($$str_ref, $last, length($$str_ref) - $last);
+
+        if ($text =~ m{ ($END) }xs) {
+            my $char = $last + $-[1] + 1;
+            $self->throw('parse', "Found unmatched closing tag \"$1\" at char $char", ['TEXT', $last, $i]);
+        }
+
         my $_last = $last;
         if ($post_chomp) {
             if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
