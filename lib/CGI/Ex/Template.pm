@@ -33,6 +33,7 @@ use vars qw($VERSION
             $QR_PRIVATE
 
             $PACKAGE_EXCEPTION $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
+            $MAX_EVAL_RECURSE
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
@@ -46,6 +47,7 @@ BEGIN {
     $PACKAGE_CONTEXT     = 'CGI::Ex::Template::_Context';
     $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
     $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
+    $MAX_EVAL_RECURSE    = 50;
 
     $TAGS = {
         asp       => ['<%',     '%>'    ], # ASP
@@ -3076,6 +3078,13 @@ sub vmethod_uri {
 
 sub filter_eval {
     my $context = shift;
+
+    ### prevent recursion
+    my $t = $context->_template;
+    local $t->{'_eval_recurse'} = $t->{'_eval_recurse'} || 0;
+    $context->throw('eval_recurse', "Max eval recursion $MAX_EVAL_RECURSE reached")
+        if ++$t->{'eval_recurse'} > $MAX_EVAL_RECURSE;
+
     return sub {
         my $text = shift;
         return $context->process(\$text);
