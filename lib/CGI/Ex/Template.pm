@@ -501,6 +501,8 @@ sub load_parsed_tree {
     return $doc;
 }
 
+###----------------------------------------------------------------###
+
 sub parse_tree {
     my $self    = shift;
     my $str_ref = shift;
@@ -777,34 +779,6 @@ sub parse_tree {
 
     return \@tree;
 }
-
-sub execute_tree {
-    my ($self, $tree, $out_ref) = @_;
-
-    # node contains (0: DIRECTIVE,
-    #                1: start_index,
-    #                2: end_index,
-    #                3: parsed tag details,
-    #                4: sub tree for block types
-    #                5: continuation sub trees for sub continuation block types (elsif, else, etc)
-    #                6: flag to capture next directive
-    for my $node (@$tree) {
-        ### text nodes are just the bare text
-        if (! ref $node) {
-            warn "NODE: TEXT\n" if trace;
-            $$out_ref .= $node if defined $node;
-            next;
-        }
-
-        warn "NODE: $node->[0] (char $node->[1])\n" if trace;
-        $$out_ref .= $self->debug_node($node) if $self->{'_debug_dirs'} && ! $self->{'_debug_off'};
-
-        my $val = $DIRECTIVES->{$node->[0]}->[1]->($self, $node->[3], $node, $out_ref);
-        $$out_ref .= $val if defined $val;
-    }
-}
-
-###----------------------------------------------------------------###
 
 sub parse_expr {
     my $self    = shift;
@@ -1224,6 +1198,32 @@ sub interpolate_node {
 }
 
 ###----------------------------------------------------------------###
+
+sub execute_tree {
+    my ($self, $tree, $out_ref) = @_;
+
+    # node contains (0: DIRECTIVE,
+    #                1: start_index,
+    #                2: end_index,
+    #                3: parsed tag details,
+    #                4: sub tree for block types
+    #                5: continuation sub trees for sub continuation block types (elsif, else, etc)
+    #                6: flag to capture next directive
+    for my $node (@$tree) {
+        ### text nodes are just the bare text
+        if (! ref $node) {
+            warn "NODE: TEXT\n" if trace;
+            $$out_ref .= $node if defined $node;
+            next;
+        }
+
+        warn "NODE: $node->[0] (char $node->[1])\n" if trace;
+        $$out_ref .= $self->debug_node($node) if $self->{'_debug_dirs'} && ! $self->{'_debug_off'};
+
+        my $val = $DIRECTIVES->{$node->[0]}->[1]->($self, $node->[3], $node, $out_ref);
+        $$out_ref .= $val if defined $val;
+    }
+}
 
 sub play_expr {
     ### allow for the parse tree to store literals
