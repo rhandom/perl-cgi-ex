@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 678 : 534;
+use Test::More tests => ! $is_tt ? 680 : 535;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -980,6 +980,12 @@ process_ok("[% BLOCK foo %]hi\n[% END %][% PROCESS foo %]" => "hi", {tt_config =
 process_ok("[% BLOCK foo %]hi[% nl %][% END %][% PROCESS foo %]" => "hi", {nl => "\n", tt_config => [TRIM => 1]});
 process_ok("[% BLOCK foo %][% nl %]hi[% END %][% PROCESS foo %]" => "hi", {nl => "\n", tt_config => [TRIM => 1]});
 process_ok("A[% TRY %]\nhi\n[% END %]" => "A\nhi", {tt_config => [TRIM => 1]});
+
+###----------------------------------------------------------------###
+### configuration
+
+process_ok('[% a = 7 %]$a' => 7, {tt_config => ['INTERPOLATE' => 1]});
+process_ok('[% a = 7 %]$a' => 7, {tt_config => ['interpolate' => 1]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### perl
