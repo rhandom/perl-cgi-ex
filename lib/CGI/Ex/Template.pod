@@ -1994,6 +1994,21 @@ A simple fix is to do any of the following:
 This shouldn't be too much hardship and offers the great return of disambiguating
 virtual method access.
 
+=item C<\>
+
+Unary.  The reference operator.  Not well publicized in TT.  Stores a reference
+to a variable for use later.  Can also be used to "alias" long names.
+
+    [% f = 7 ; foo = \f ; f = 8 ; foo %] => 8
+
+    [% foo = \f.g.h.i.j.k; f.g.h.i.j.k = 7; foo %] => 7
+
+    [% f = "abcd"; foo = \f.replace("ab", "-AB-") ; foo %] => -AB-cd
+
+    [% f = "abcd"; foo = \f.replace("bc") ; foo("-BC-") %] => a-BC-d
+
+    [% f = "abcd"; foo = \f.replace ; foo("cd", "-CD-") %] => ab-CD-
+
 =item C<++ -->
 
 Pre and post increment and decrement.  My be used as either a prefix
