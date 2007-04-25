@@ -1283,6 +1283,7 @@ sub play_expr {
             $name = $self->play_expr($name);
             if (defined $name) {
                 return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
+                return \$self->{'_vars'}->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $self->{'_vars'}->{$name};
                 $ref = $self->{'_vars'}->{$name};
             }
         }
@@ -1291,6 +1292,7 @@ sub play_expr {
             $ref = $self->{'NAMESPACE'}->{$name};
         } else {
             return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
+            return \$self->{'_vars'}->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $self->{'_vars'}->{$name};
             $ref = $self->{'_vars'}->{$name};
             $ref = $VOBJS->{$name} if ! defined $ref;
         }
@@ -1418,7 +1420,7 @@ sub play_expr {
             ### hash member access
             if (UNIVERSAL::isa($ref, 'HASH')) {
                 if ($was_dot_call && exists($ref->{$name}) ) {
-                    return \ $ref->{$name} if $i >= $#$var && $ARGS->{'return_ref'};
+                    return \ $ref->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $ref->{$name};
                     $ref = $ref->{$name};
                 } elsif ($HASH_OPS->{$name}) {
                     $ref = $HASH_OPS->{$name}->($ref, $args ? map { $self->play_expr($_) } @$args : ());
@@ -1431,7 +1433,7 @@ sub play_expr {
             ### array access
             } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
                 if ($name =~ m{ ^ -? $QR_NUM $ }ox) {
-                    return \ $ref->[$name] if $i >= $#$var && $ARGS->{'return_ref'};
+                    return \ $ref->[$name] if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $ref->[$name];
                     $ref = $ref->[$name];
                 } elsif ($LIST_OPS->{$name}) {
                     $ref = $LIST_OPS->{$name}->($ref, $args ? map { $self->play_expr($_) } @$args : ());
@@ -1454,7 +1456,6 @@ sub play_expr {
         }
     }
 
-    return \$ref if $ARGS->{'return_ref'};
     return $ref;
 }
 
