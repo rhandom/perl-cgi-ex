@@ -215,10 +215,11 @@ BEGIN {
     ### setup the operator parsing
     $OPERATORS = [
         # type      precedence symbols              action (undef means play_operator will handle)
-        ['postfix', 99,        ['++'],              undef                                       ],
-        ['postfix', 99,        ['--'],              undef                                       ],
-        ['prefix',  98,        ['++'],              undef                                       ],
-        ['prefix',  98,        ['--'],              undef                                       ],
+        ['prefix',  99,        ['\\'],              undef                                       ],
+        ['postfix', 98,        ['++'],              undef                                       ],
+        ['postfix', 98,        ['--'],              undef                                       ],
+        ['prefix',  97,        ['++'],              undef                                       ],
+        ['prefix',  97,        ['--'],              undef                                       ],
         ['right',   96,        ['**', 'pow'],       sub {     $_[0] ** $_[1]                  } ],
         ['prefix',  93,        ['!'],               sub {   ! $_[0]                           } ],
         ['prefix',  93,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
@@ -1301,6 +1302,7 @@ sub play_expr {
 
         ### check at each point if the rurned thing was a code
         if (UNIVERSAL::isa($ref, 'CODE')) {
+            return $ref if $i >= $#$var && $ARGS->{'return_ref'};
             my @results = $ref->($args ? map { $self->play_expr($_) } @$args : ());
             if (defined $results[0]) {
                 $ref = ($#results > 0) ? \@results : $results[0];
@@ -1395,6 +1397,7 @@ sub play_expr {
 
             ### method calls on objects
             if ($was_dot_call && UNIVERSAL::can($ref, 'can')) {
+                return $ref if $i >= $#$var && $ARGS->{'return_ref'};
                 my @args = $args ? map { $self->play_expr($_) } @$args : ();
                 my @results = eval { $ref->$name(@args) };
                 if ($@) {
@@ -1415,6 +1418,7 @@ sub play_expr {
             ### hash member access
             if (UNIVERSAL::isa($ref, 'HASH')) {
                 if ($was_dot_call && exists($ref->{$name}) ) {
+                    return \ $ref->{$name} if $i >= $#$var && $ARGS->{'return_ref'};
                     $ref = $ref->{$name};
                 } elsif ($HASH_OPS->{$name}) {
                     $ref = $HASH_OPS->{$name}->($ref, $args ? map { $self->play_expr($_) } @$args : ());
@@ -1427,6 +1431,7 @@ sub play_expr {
             ### array access
             } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
                 if ($name =~ m{ ^ -? $QR_NUM $ }ox) {
+                    return \ $ref->[$name] if $i >= $#$var && $ARGS->{'return_ref'};
                     $ref = $ref->[$name];
                 } elsif ($LIST_OPS->{$name}) {
                     $ref = $LIST_OPS->{$name}->($ref, $args ? map { $self->play_expr($_) } @$args : ());
@@ -1449,6 +1454,7 @@ sub play_expr {
         }
     }
 
+    return \$ref if $ARGS->{'return_ref'};
     return $ref;
 }
 
@@ -1642,6 +1648,24 @@ sub play_operator {
         my $val = 0 + $self->play_expr($tree->[2]);
         $self->set_variable($tree->[2], $val - 1);
         return $tree->[3] ? $val : $val - 1; # ->[3] is set to 1 during parsing of postfix ops
+
+    } elsif ($op eq '\\') {
+        my $var = $tree->[2];
+        return $var if ! ref $var; # return literals immediately
+
+        my $ref = $self->play_expr($var, {return_ref => 1});
+        return $ref if ! ref $ref;
+        return sub { sub { $$ref } } if ref $ref eq 'SCALAR';
+
+        my $self_copy = $self;
+        eval {require Scalar::Util; Scalar::Util::weaken($self_copy)};
+
+        my $last = ['temp deref key', $var->[-1] ? [@{ $var->[-1] }] : 0];
+        return sub { sub { # return a double sub so that the current play_expr will return a coderef
+            local $self_copy->{'_vars'}->{'temp deref key'} = $ref;
+            $last->[-1] = (ref $last->[-1] ? [@{ $last->[-1] }, @_] : [@_]) if @_;
+            return $self->play_expr($last);
+        } };
     }
 
     $self->throw('operator', "Un-implemented operation $op");
