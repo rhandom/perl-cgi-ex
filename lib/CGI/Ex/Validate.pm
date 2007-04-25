@@ -137,7 +137,7 @@ sub validate {
         die "Missing field key during normal validation" if ! $ref->{'field'};
         local $ref->{'was_validated'} = 1;
         my $err = $self->validate_buddy($form, $ref->{'field'}, $ref);
-        if (delete($ref->{'was_validated'}) && $what_was_validated) {
+        if ($ref->{'was_validated'} && $what_was_validated) {
             push @$what_was_validated, $ref;
         }
 
@@ -838,12 +838,10 @@ use strict;
 use overload '""' => \&as_string;
 
 sub new {
-  my $class  = shift || __PACKAGE__;
-  my $errors = shift;
-  my $extra  = shift || {};
-  die "Missing or invalid arrayref" if ! UNIVERSAL::isa($errors, 'ARRAY');
-  die "Missing or invalid hashref"  if ! UNIVERSAL::isa($extra,  'HASH');
-  return bless {errors => $errors, extra => $extra}, $class;
+    my ($class, $errors, $extra) = @_;
+    die "Missing or invalid errors arrayref" if ref $errors ne 'ARRAY';
+    die "Missing or invalid extra  hashref"  if ref $extra  ne 'HASH';
+    return bless {errors => $errors, extra => $extra}, $class;
 }
 
 sub as_string {
@@ -1204,13 +1202,14 @@ The values of the hash are the names of the fields.
 =item C<validate>
 
 Arguments are a form hashref or cgi object, a validation hashref or
-filename, and an optional what_was_validated arrayref.  If a CGI
-object is passed, CGI::Ex::get_form will be called on that object to
-turn it into a hashref.  If a filename is given for the validation,
-get_validation will be called on that filename.  If the
-what_was_validated_arrayref is passed - it will be populated (pushed)
-with the field hashes that were actually validated (anything that was
-skipped because of validate_if will not be in the array).
+filename, and an optional what_was_validated arrayref (discussed
+further later on).  If a CGI object is passed, CGI::Ex::get_form will
+be called on that object to turn it into a hashref.  If a filename is
+given for the validation, get_validation will be called on that
+filename.  If the what_was_validated_arrayref is passed - it will be
+populated (pushed) with the field hashes that were actually validated
+(anything that was skipped because of validate_if will not be in the
+array).
 
 If the form passes validation, validate will return undef.  If it
 fails validation, it will return a CGI::Ex::Validate::Error object.
@@ -1221,13 +1220,13 @@ with a CGI::Ex::validate::Error object as the value.
 
     # OR #
 
-    $self->{raise_error} = 1; # raise error can also be listed in the
-    val_hash eval { $self->validate($form, $val_hash) }; if ($@) { my
-    $err_obj = $@; }
+    $self->{raise_error} = 1; # can also be listed in the val_hash
+    eval { $self->validate($form, $val_hash) };
+    if ($@) { my $err_obj = $@; }
 
 =item C<generate_js>
 
-Requires JSON or YAML to work properly (see L<JSON> or L<YAML>).
+Requires TODO JSON or YAML to work properly (see L<JSON> or L<YAML>).
 
 Takes a validation hash, a form name, and an optional javascript uri
 path and returns Javascript that can be embedded on a page and will
