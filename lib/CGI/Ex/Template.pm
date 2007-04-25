@@ -1651,11 +1651,10 @@ sub play_operator {
 
     } elsif ($op eq '\\') {
         my $var = $tree->[2];
-        return $var if ! ref $var; # return literals immediately
 
         my $ref = $self->play_expr($var, {return_ref => 1});
         return $ref if ! ref $ref;
-        return sub { sub { $$ref } } if ref $ref eq 'SCALAR';
+        return sub { sub { $$ref } } if ref $ref eq 'SCALAR' || ref $ref eq 'REF';
 
         my $self_copy = $self;
         eval {require Scalar::Util; Scalar::Util::weaken($self_copy)};
