@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 680 : 535;
+use Test::More tests => ! $is_tt ? 696 : 551;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1006,3 +1006,29 @@ process_ok("[% BLOCK foo %][% PROCESS bar %][% END %][% BLOCK bar %][% PROCESS f
 process_ok("[% template.name %]" => 'input text');
 process_ok("[% META foo = 'bar' %][% template.foo %]" => 'bar');
 process_ok("[% META foo = 'bar' %][% component.foo %]" => 'bar');
+
+###----------------------------------------------------------------###
+### refs
+
+process_ok("[% a=3; b=\\a; b; a %]" => 33);
+process_ok("[% a=3; b=\\a; a=7; b; a %]" => 77);
+
+process_ok("[% a=[]; a.1=7; b=\\a.1; b; a.1 %]" => '77');
+process_ok("[% a=[]; a.1=7; b=\\a.20; a.20=7; b; a.20 %]" => '77');
+
+process_ok("[% \\a %]" => qr/^CODE/, {a => sub { return "a sub [@_]" } });
+process_ok("[% b=\\a; b %]" => 'a sub []', {a => sub { return "a sub [@_]" } });
+process_ok("[% b=\\a(1); b %]" => 'a sub [1]', {a => sub { return "a sub [@_]" } });
+process_ok("[% b=\\a; b(2) %]" => 'a sub [2]', {a => sub { return "a sub [@_]" } });
+process_ok("[% b=\\a(1); b(2) %]" => 'a sub [1 2]', {a => sub { return "a sub [@_]" } });
+process_ok("[% f=\\j.k; j.k=7; f %]" => '7', {j => {k => 3}});
+
+process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; foo %]' => 'A');
+process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; a = "b" ; foo %]' => 'A');
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; a = "cd"; foo %]' => '-AB-cd');
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; a = "cd"; foo %]' => '*cd');
+
+### tt does odd things with partially vivifying methods
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; foo %]' => '-AB-cd');
+process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*cd');
+
