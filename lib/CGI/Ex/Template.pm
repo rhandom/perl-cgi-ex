@@ -1427,6 +1427,7 @@ sub play_expr {
                 } elsif ($ARGS->{'is_namespace_during_compile'}) {
                     return $var; # abort - can't fold namespace variable
                 } else {
+                    return \ $ref->{$name} if $i >= $#$var && $ARGS->{'return_ref'};
                     $ref = undef;
                 }
 
