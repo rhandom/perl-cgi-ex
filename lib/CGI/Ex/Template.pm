@@ -1471,18 +1471,18 @@ sub set_variable {
     my $ref  = $var->[$i++];
     my $args = $var->[$i++];
     if (ref $ref) {
-        if (ref($ref) eq 'ARRAY') { # named access (ie via $name.foo)
-            $ref = $self->play_expr($ref);
-            if (defined $ref && $ref !~ $QR_PRIVATE) { # don't allow vars that begin with _
-                if ($#$var <= $i) {
-                    return $self->{'_vars'}->{$ref} = $val;
-                } else {
-                    $ref = $self->{'_vars'}->{$ref} ||= {};
-                }
+        ### non-named types can't be set
+        return if ref($ref) ne 'ARRAY' || ! defined $ref->[0];
+
+        # named access (ie via $name.foo)
+        $ref = $self->play_expr($ref);
+        if (defined $ref && $ref !~ $QR_PRIVATE) { # don't allow vars that begin with _
+            if ($#$var <= $i) {
+                return $self->{'_vars'}->{$ref} = $val;
             } else {
-                return;
+                $ref = $self->{'_vars'}->{$ref} ||= {};
             }
-        } else { # all other types can't be set
+        } else {
             return;
         }
     } elsif (defined $ref) {
