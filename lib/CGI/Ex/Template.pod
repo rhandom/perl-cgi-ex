@@ -396,12 +396,6 @@ CET has its own built in recursive grammar system.
 
 =item There is no VIEW directive.
 
-
-=item There are no references.
-
-There were in initial beta tests, but it was decided to remove the little used feature which
-took a length of code to implement.
-
 =item The DEBUG directive is more limited.
 
 It only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
