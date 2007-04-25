@@ -1652,13 +1652,26 @@ two tags themselves must be supplied.
 
 The named tags are (duplicated from TT):
 
-    template => ['[%',   '%]'],  # default
-    metatext => ['%%',   '%%'],  # Text::MetaText
-    star     => ['[*',   '*]'],  # TT alternate
-    php      => ['<?',   '?>'],  # PHP
-    asp      => ['<%',   '%>'],  # ASP
-    mason    => ['<%',   '>' ],  # HTML::Mason
-    html     => ['<!--', '-->'], # HTML comments
+    asp       => ['<%',     '%>'    ], # ASP
+    default   => ['\[%',    '%\]'   ], # default
+    html      => ['<!--',   '-->'   ], # HTML comments
+    mason     => ['<%',     '>'     ], # HTML::Mason
+    metatext  => ['%%',     '%%'    ], # Text::MetaText
+    php       => ['<\?',    '\?>'   ], # PHP
+    star      => ['\[\*',   '\*\]'  ], # TT alternate
+    template1 => ['[\[%]%', '%[%\]]'], # allow TT1 style
+
+If custom tags are supplied, by default they are escaped using
+quotemeta.  If a third argument is given and is equal to "unquoted",
+then no quoting takes place on the new tags.
+
+    [% TAGS [<] [>] %]          matches "[<] tag [>]"
+
+    [% TAGS [<] [>] unquoted %] matches "< tag >"
+
+    [% TAGS ** ** %]            matches "** tag **"
+
+    [% TAGS ** ** unquoted %]   Throws an exception.
 
 =item C<THROW>
 
