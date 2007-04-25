@@ -297,6 +297,12 @@ BEGIN {
 sub new {
   my $class = shift;
   my $args  = ref($_[0]) ? { %{ shift() } } : {@_};
+
+  ### allow for lowercase args
+  if (my @keys = grep {/^[a-z][a-z_]+$/} keys %$args) {
+      @{ $args }{ map { uc $_ } @keys } = delete @{ $args }{ @keys };
+  }
+
   my $self  = bless $args, $class;
 
   ### "enable" debugging - we only support DEBUG_DIRS and DEBUG_UNDEF
