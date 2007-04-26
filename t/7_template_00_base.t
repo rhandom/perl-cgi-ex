@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 698 : 553;
+use Test::More tests => ! $is_tt ? 704 : 553;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1035,6 +1035,17 @@ process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-"
 
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; foo %]' => '-AB-cd');
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*cd');
+
+###----------------------------------------------------------------###
+print "### embedded tags ####################################################\n";
+
+process_ok('[% "[%" %]' => '[%') if ! $is_tt;
+process_ok('[% "%]" %]' => '%]') if ! $is_tt;
+process_ok('[% a = "[%  %]" %][% a %]' => '[%  %]') if ! $is_tt;
+process_ok('[% "[% 1 + 2 %]" | eval %]' => '3') if ! $is_tt;
+
+process_ok('[% qw([%  1  +  2  %]).join %]' => '[% 1 + 2 %]') if ! $is_tt;
+process_ok('[% qw([%  1  +  2  %]).join.eval %]' => '3') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
