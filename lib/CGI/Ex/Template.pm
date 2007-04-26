@@ -1,5 +1,6 @@
 package CGI::Ex::Template;
 
+use CGI::Ex::Dump qw(debug);
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/Template.pod
 #  Copyright 2007 - Paul Seamons                                     #
@@ -776,7 +777,7 @@ sub parse_tree {
     }
 
     ### pull off the last text portion - if any
-    if (pos($$str_ref) != length($$str_ref)-1) {
+    if (pos($$str_ref) != length($$str_ref)) {
         my $text  = substr $$str_ref, pos($$str_ref);
 
         if ($text =~ m{ ($END) }xs) {
@@ -804,6 +805,8 @@ sub parse_expr {
     my $str_ref = shift;
     my $ARGS    = shift || {};
 
+    print __LINE__."\n" if $ARGS->{'from_here'};;
+
     ### allow for custom auto_quoting (such as hash constructors)
     if ($ARGS->{'auto_quote'}) {
         if ($$str_ref =~ m{ \G $ARGS->{'auto_quote'} \s* $QR_COMMENTS }gcx) {
@@ -824,9 +827,13 @@ sub parse_expr {
 
     ### test for leading prefix operators
     my $has_prefix;
-    while ($$str_ref =~ m{ \G ($QR_OP_PREFIX) \s* $QR_COMMENTS }gcxo) {
-        return if $ARGS->{'auto_quote'}; # auto_quoted thing was too complicated
+    while ($$str_ref =~ m{ \G ($QR_OP_PREFIX) }gcxo) {
+        if ($ARGS->{'auto_quote'}) { # auto_quoted thing was too complicated
+            pos($$str_ref) -= length $1;
+            return;
+        }
         push @{ $has_prefix }, $1;
+        $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
     }
 
     my @var;
@@ -943,6 +950,7 @@ sub parse_expr {
     } elsif ($$str_ref =~ m{ \G \( \s* $QR_COMMENTS }gcxo) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $var = $self->parse_expr($str_ref, {allow_parened_ops => 1});
+
         $$str_ref =~ m{ \G \) \s* $QR_COMMENTS }gcxo
             || $self->throw('parse.missing.paren', "Missing close \)", undef, pos($$str_ref));
         @var = @$var;
@@ -1022,13 +1030,12 @@ sub parse_expr {
     if (! $self->{'_operator_precedence'}) {
         my $tree;
         my $found;
-        use re 'eval';
-        while ($$str_ref =~ m{
-                  \G ($QR_OP) # look for operators
-                  (?(?{ $OP_ASSIGN->{$^N} && ! $ARGS->{'allow_parened_ops'} })(?!)|(?=)) # only allow assignment in parens
-                  \s* $QR_COMMENTS }gcxo) {
+        while ($$str_ref =~ m{ \G (?= ($QR_OP)) }gcxo) {
+            last if $OP_ASSIGN->{$1} && ! $ARGS->{'allow_parened_ops'}; # only allow assignment in parens
             local $self->{'_operator_precedence'} = 1;
             my $op = $1;
+            pos($$str_ref) += length $op;
+            $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
 
             ### allow for postfix - doesn't check precedence - someday we might change - but not today (only affects post ++ and --)
             if ($OP_POSTFIX->{$op}) {
@@ -1052,7 +1059,7 @@ sub parse_expr {
             }
 
             ### add the operator to the tree
-            my $var2 =  $self->parse_expr($str_ref);
+            my $var2 =  $self->parse_expr($str_ref, {from_here => 1});
             $self->throw('parse', 'Missing variable after "'.$op.'"', undef, pos($$str_ref)) if ! defined $var2;
             push (@{ $tree ||= [] }, $op, $var2);
             $found->{$OP->{$op}->[1]}->{$op} = 1; # found->{precedence}->{op}
@@ -3189,6 +3196,9 @@ sub as_string {
     my $msg  = $self->type .' error - '. $self->info;
     if (my $node = $self->node) {
 #        $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
+    }
+    if ($self->type =~ /^parse/) {
+        $msg .= " (At char ".$self->offset.")";
     }
     return $msg;
 }
