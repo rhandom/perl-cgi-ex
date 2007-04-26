@@ -1047,7 +1047,7 @@ sub parse_expr {
         my $tree;
         my $found;
         while (1) {
-            last if $$str_ref =~ m{ (?= \G [+=~-]? $self->{'_end_tag'}) }gcx;
+            last if $self->{'_end_tag'} && $$str_ref =~ m{ (?= \G [+=~-]? $self->{'_end_tag'}) }gcx;
             last if $$str_ref !~ m{ (?= \G ($QR_OP)) }gcxo;
             last if $OP_ASSIGN->{$1} && ! $ARGS->{'allow_parened_ops'}; # only allow assignment in parens
             local $self->{'_operator_precedence'} = 1;
