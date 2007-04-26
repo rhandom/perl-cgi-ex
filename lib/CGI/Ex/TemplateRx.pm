@@ -538,6 +538,7 @@ sub parse_tree {
     my $capture;          # flag to start capture
     my $func;
     my $node;
+    my $mark;
     local pos $$str_ref = 0;
 
     while (1) {
@@ -594,10 +595,11 @@ sub parse_tree {
         }
 
         ### look for DIRECTIVES
-        if ($$str_ref =~ m{ (?= \G $QR_DIRECTIVE) }gcxo   # find a word
-            && $DIRECTIVES->{$1}) {                       # is it a directive
+        if ($$str_ref =~ m{ \G $QR_DIRECTIVE }gcxo   # find a word
+            && ($DIRECTIVES->{$1}
+                || ((pos($$str_ref) -= length $1) && 0))
+            ) {                       # is it a directive
             $node->[0] = $func = $1;
-            pos($$str_ref) += length $1;
             $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcx;
 
             ### store out this current node level
@@ -709,6 +711,14 @@ sub parse_tree {
                 }
             }
 
+        #} elsif (1) {
+        #    $node->[0] = 'GET';
+        #    $node->[2] = $node->[1] + 5;
+        #    $node->[3] = ['one',0];
+        #    $$str_ref =~ m{ $END }gcx;
+        #    push @$pointer, $node;
+        #    next;
+
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_expr($str_ref))) {
             push @$pointer, $node;
@@ -773,14 +783,20 @@ sub parse_tree {
         } elsif ($$str_ref =~ m{ \G ; \s* $QR_COMMENTS }gcxo) {
             $post_op   = undef;
 
-        ### looking at a post operator ([% u FOREACH u IN [1..3] %])
-        } elsif ($$str_ref =~ m{ (?= \G $QR_DIRECTIVE) }gcxo  # find a word without advancing position
-                 && $DIRECTIVES->{$1}                         # and its a directive
-                 && $DIRECTIVES->{$1}->[3]) {                 # that can be post operative
-            $post_op   = $node; # store flag so next loop puts items in this node
-
         } else {
-            $post_op  = undef;
+            ### looking at a post operator ([% u FOREACH u IN [1..3] %])
+            $mark = pos $$str_ref;
+            if ($$str_ref =~ m{ \G $QR_DIRECTIVE }gcxo   # find a word without advancing position
+                && (($DIRECTIVES->{$1}                   # and its a directive
+                    && $DIRECTIVES->{$1}->[3])           # that can be post operative
+                    || ((pos($$str_ref) = $mark) && 0))  # otherwise rollback
+                ) {
+                $post_op   = $node; # store flag so next loop puts items in this node
+                pos($$str_ref) = $mark;
+
+            } else {
+                $post_op  = undef;
+            }
         }
     }
 
@@ -843,6 +859,7 @@ sub parse_expr {
             return $var;
         }
     }
+
 
     ### test for leading prefix operators
     my $has_prefix;
@@ -1047,12 +1064,20 @@ sub parse_expr {
         my $tree;
         my $found;
         while (1) {
-            last if $self->{'_end_tag'} && $$str_ref =~ m{ (?= \G [+=~-]? $self->{'_end_tag'}) }gcx;
-            last if $$str_ref !~ m{ (?= \G ($QR_OP)) }gcxo;
-            last if $OP_ASSIGN->{$1} && ! $ARGS->{'allow_parened_ops'}; # only allow assignment in parens
+            my $mark = pos $$str_ref;
+            if ($self->{'_end_tag'} && $$str_ref =~ m{ \G [+=~-]? $self->{'_end_tag'} }gcx) {
+                pos($$str_ref) = $mark;
+                last;
+            } elsif ($$str_ref !~ m{ \G ($QR_OP) }gcxo) {
+                pos($$str_ref) = $mark;
+                last;
+            }
+            if ($OP_ASSIGN->{$1} && ! $ARGS->{'allow_parened_ops'}) { # only allow assignment in parens
+                pos($$str_ref) = $mark;
+                last;
+            }
             local $self->{'_operator_precedence'} = 1;
             my $op = $1;
-            pos($$str_ref) += length $op;
             $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
 
             ### allow for postfix - doesn't check precedence - someday we might change - but not today (only affects post ++ and --)
@@ -1194,11 +1219,18 @@ sub parse_args {
     my @args;
     my @named;
     while (1) {
+        my $mark = pos $$str_ref;
         if (! $ARGS->{'is_parened'}) {
-            last if $$str_ref =~ m{ (?= \G $QR_DIRECTIVE (?: ;|$|\s)) }gcx && $DIRECTIVES->{$1}; ### looks like a directive - we are done
+            if ($$str_ref =~ m{ \G $QR_DIRECTIVE (?:;|$|\s) }gcx # find a word
+                && $DIRECTIVES->{$1}                                # looks like a directive - we are done
+                ) {
+                pos($$str_ref) = $mark;
+                last;
+            } else {
+                pos($$str_ref) = $mark;
+            }
         }
 
-        my $mark = pos $$str_ref;
         if (defined(my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"}))
             && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # see if we also match assignment
                 || ((pos $$str_ref = $mark) && 0))               # if not - we need to rollback
@@ -2155,8 +2187,15 @@ sub parse_PROCESS {
 
     ### we can almost use parse_args - except we allow for nested key names (foo.bar) here
     while (1) {
-        last if $$str_ref =~ m{ (?= \G $QR_DIRECTIVE (?: ;|$|\s)) }gcx && $DIRECTIVES->{$1}; ### looks like a directive - we are done
-        last if $$str_ref =~ m{ (?= \G [+=~-]? $self->{'_end_tag'}) }gcx;
+        my $mark = pos $$str_ref;
+        if ($$str_ref =~ m{ \G $QR_DIRECTIVE (?: ;|$|\s) }gcx) {
+            pos($$str_ref) = $mark;
+            last if $DIRECTIVES->{$1};                         # looks like a directive - we are done
+        }
+        if ($$str_ref =~ m{ \G [+=~-]? $self->{'_end_tag'} }gcx) {
+            pos($$str_ref) = $mark;
+            last;
+        }
 
         my $var = $self->parse_expr($str_ref);
 
@@ -2274,10 +2313,12 @@ sub parse_SET {
     my $func;
 
     if ($initial_op) {
-        if ($$str_ref =~ m{ (?= \G $QR_DIRECTIVE) }gcx  # find a word
-            && $DIRECTIVES->{$1}) {                     # is it a directive - if so set up capturing
-            $node->[6] = 1;                             # set a flag to keep parsing
-            my $val = $node->[4] ||= [];                # setup storage
+        if ($$str_ref =~ m{ \G $QR_DIRECTIVE }gcx         # find a word
+            && ($DIRECTIVES->{$1}                         # make sure its a directive
+                || ((pos($$str_ref) -= length($1)) && 0)) # rollback
+            ) {                                           # if so set up capturing
+            $node->[6] = 1;                               # set a flag to keep parsing
+            my $val = $node->[4] ||= [];                  # setup storage
             return [[$initial_op, $initial_var, $val]];
         } else { # get a normal variable
             return [[$initial_op, $initial_var, $self->parse_expr($str_ref)]];
@@ -2290,10 +2331,12 @@ sub parse_SET {
 
         if ($$str_ref =~ m{ \G ($QR_OP_ASSIGN) >? \s* }gcx) {
             my $op = $1;
-            if ($$str_ref =~ m{ (?= \G $QR_DIRECTIVE) }gcx # find a word
-                && $DIRECTIVES->{$1}) {                    # is it a directive - if so set up capturing
-                $node->[6] = 1;                            # set a flag to keep parsing
-                my $val = $node->[4] ||= [];               # setup storage
+            if ($$str_ref =~ m{ \G $QR_DIRECTIVE }gcx         # find a word
+                && ($DIRECTIVES->{$1}                         # is it a directive
+                    || ((pos($$str_ref) -= length($1)) && 0)) # rollback
+                ) {                                           # if so set up capturing
+                $node->[6] = 1;                               # set a flag to keep parsing
+                my $val = $node->[4] ||= [];                  # setup storage
                 push @SET, [$op, $set, $val];
                 last;
             } else { # get a normal variable
