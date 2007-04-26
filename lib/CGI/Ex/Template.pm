@@ -530,11 +530,8 @@ sub parse_tree {
     local $self->{'_in_perl'};         # no interpolation in perl
     my @move_to_front;    # items that need to be declared first (usually BLOCKS)
     my @meta;             # place to store any found meta information (to go into METADEF)
-    my $i = 0;            # start index
-    my $j = 0;            # end index
-    my $last = 0;         # previous end index
     my $post_chomp = 0;   # previous post_chomp setting
-    my $continue;         # flag for multiple directives in the same tag
+    my $continue   = 0;   # flag for multiple directives in the same tag
     my $post_op;          # found a post-operative DIRECTIVE
     my $capture;          # flag to start capture
     my $func;
@@ -556,11 +553,11 @@ sub parse_tree {
                 my $text = $1;
 
                 if ($text =~ m{ ($END) }xs) {
-                    my $char = $last + $-[1] + 1;
-                    $self->throw('parse', "Found unmatched closing tag \"$1\" at char $char", ['TEXT', $last, pos($$str_ref)]);
+                    my $char = pos($$str_ref) + $-[1] + 1;
+                    $self->throw('parse', "Found unmatched closing tag \"$1\" at char $char", undef, $char);
                 }
 
-                my $_last = $last;
+                my $_last = pos $$str_ref;
                 if ($post_chomp) {
                     if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
                     elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
@@ -655,11 +652,11 @@ sub parse_tree {
                 if ($$str_ref =~ s{
                         \G (\w+)                      # find a word
                         (?(?{$TAGS->{$^N}})(?=)|(?!)) # determine if it is a reserved word without leaving
-                        \s* $QR_COMMENTS }gcxo) {     # optional comments
+                        \s* $QR_COMMENTS }{}gcxo) {     # optional comments
                     ($START, $END) = @{ $TAGS->{$1} };
                 } elsif ($$str_ref =~ s{
                         \G (\S+) \s+ (\S+)            # two non-space things
-                        (?-i:\s+(un)quoted?)?         # optional unquoted adjective
+                        (?:\s+(un)quoted?)?           # optional unquoted adjective
                         \s* $QR_COMMENTS }{}gcxo) {   # optional comments
                     ($START, $END, my $unquote) = ($1, $2, $3);
                     for ($START, $END) {
@@ -705,18 +702,17 @@ sub parse_tree {
             }
 
         ### now look for the closing tag
-        } elsif ($$str_ref =~ s{ \G ([+=~-]?) ($END) }gcxs) {
+        } elsif ($$str_ref =~ s{ \G ([+=~-]?) ($END) }{}gcxs) {
             my $end = $2;
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
 
-            $last = pos $$str_ref;
-            $node->[2] = $last - length $end;
-            $continue = undef;
+            $node->[2] = pos($$str_ref) - length($end);
+            $continue = 0;
             $post_op  = undef;
 
         } else { # error
-            my $all  = substr($$str_ref, $i, $j - $i);
+            my $all  = substr($$str_ref, $node->[1], pos($$str_ref) - $node->[1]);
             $all =~ s/^\s+//;
             $all =~ s/\s+$//;
             $self->throw('parse', "Not sure how to handle tag \"$all\"", $node);
@@ -769,11 +765,11 @@ sub parse_tree {
         my $text  = substr $$str_ref, pos($$str_ref);
 
         if ($text =~ m{ ($END) }xs) {
-            my $char = $last + $-[1] + 1;
-            $self->throw('parse', "Found unmatched closing tag \"$1\" at char $char", ['TEXT', $last, $i]);
+            my $char = pos($$str_ref) + $-[1] + 1;
+            $self->throw('parse', "Found unmatched closing tag \"$1\" at char $char", undef, pos($$str_ref));
         }
 
-        my $_last = $last;
+        my $_last = pos($$str_ref);
         if ($post_chomp) {
             if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
             elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
@@ -795,13 +791,14 @@ sub parse_expr {
 
     ### allow for custom auto_quoting (such as hash constructors)
     if ($ARGS->{'auto_quote'}) {
-        if ($$str_ref =~ s{ \G $ARGS->{'auto_quote'} \s* $QR_COMMENTS }gcx) {
+        if ($$str_ref =~ s{ \G $ARGS->{'auto_quote'} \s* $QR_COMMENTS }{}gcx) {
             return $1;
 
         ### allow for auto-quoted $foo or ${foo.bar} type constructs
         } elsif ($$str_ref =~ s{ \G \$ (\w+ (?:\.\w+)*) \b \s* $QR_COMMENTS }{}gcxo) {
             my $name = $1;
             return $self->parse_expr(\$name);
+
         } elsif ($$str_ref =~ s{ \G \$\{ \s* }{}gcx) {
             my $var = $self->parse_expr($str_ref);
             $$str_ref =~ s{ \G \s* \} \s* $QR_COMMENTS }{}gcxo
@@ -926,7 +923,7 @@ sub parse_expr {
             $$str_ref =~ s{ \G , \s* $QR_COMMENTS }{}gcxo;
         }
         $$str_ref =~ s{ \G \} \s* $QR_COMMENTS }{}gcxo
-            || $self->throw('parse.missing.curly_bracket', "Missing close \} ($copy)", undef, pos($$str_ref));
+            || $self->throw('parse.missing.curly_bracket', "Missing close \}", undef, pos($$str_ref));
         push @var, $hashref;
 
     ### looks like a paren grouper
@@ -962,7 +959,7 @@ sub parse_expr {
         push(@var, $1) if ! $ARGS->{'no_dots'};
 
         ### allow for interpolated variables in the middle - one.$foo.two
-        if ($$str_ref =~ s{ \G \$(\w+) \s* $QR_COMMENTS }{}gcxo
+        if ($$str_ref =~ s{ \G \$(\w+) \s* $QR_COMMENTS }{}gcxo) {
             my $name = $1;
             my $var = $self->parse_expr(\$name);
             push @var, $var;
@@ -978,7 +975,7 @@ sub parse_expr {
             push @var, $1;
 
         } else {
-            $self->throw('parse', "Not sure how to continue parsing on \"$copy\" ($$str_ref)");
+            $self->throw('parse', "Not sure how to continue parsing", undef, pos($$str_ref));
         }
 
         ### looks for args for the nested item
@@ -1656,12 +1653,12 @@ sub play_operator {
 ###----------------------------------------------------------------###
 
 sub parse_BLOCK {
-    my ($self, $tag_ref, $node) = @_;
+    my ($self, $str_ref, $node) = @_;
 
     my $block_name = '';
-    if ($$tag_ref =~ s{ ^ (\w+ (?: :\w+)*) \s* (?! [\.\|]) }{}x
-        || $$tag_ref =~ s{ ^ '(|.*?[^\\])' \s* (?! [\.\|]) }{}x
-        || $$tag_ref =~ s{ ^ "(|.*?[^\\])" \s* (?! [\.\|]) }{}x
+    if ($$str_ref =~ s{ \G (\w+ (?: :\w+)*) \s* (?! [\.\|]) }{}gcx
+        || $$str_ref =~ s{ \G '(|.*?[^\\])' \s* (?! [\.\|]) }{}gcx
+        || $$str_ref =~ s{ \G "(|.*?[^\\])" \s* (?! [\.\|]) }{}gcx
         ) {
         $block_name = $1;
         ### allow for nested blocks to have nested names
@@ -1689,14 +1686,14 @@ sub parse_CALL { $DIRECTIVES->{'GET'}->[0]->(@_) }
 sub play_CALL { $DIRECTIVES->{'GET'}->[1]->(@_); return }
 
 sub parse_CASE {
-    my ($self, $tag_ref) = @_;
-    return if $$tag_ref =~ s{ ^ DEFAULT \s* }{}x;
-    return $self->parse_expr($tag_ref);
+    my ($self, $str_ref) = @_;
+    return if $$str_ref =~ s{ \G DEFAULT \s* }{}gcx;
+    return $self->parse_expr($str_ref);
 }
 
 sub parse_CATCH {
-    my ($self, $tag_ref) = @_;
-    return $self->parse_expr($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
+    my ($self, $str_ref) = @_;
+    return $self->parse_expr($str_ref, {auto_quote => "(\\w+ (?: \\.\\w+)*) $QR_AQ_SPACE"});
 }
 
 sub play_control {
@@ -1710,11 +1707,13 @@ sub play_CLEAR {
 }
 
 sub parse_DEBUG {
-    my ($self, $tag_ref) = @_;
-    $$tag_ref =~ s{ ^ (on | off | format) \s* }{}xi || $self->throw('parse', "Unknown DEBUG option");
+    my ($self, $str_ref) = @_;
+    $$str_ref =~ s{ \G ([Oo][Nn] | [Oo][Ff][Ff] | [Ff][Oo][Rr][Mm][Aa][Tt]) \s* }{}gcx
+        || $self->throw('parse', "Unknown DEBUG option", undef, pos($$str_ref));
     my $ret = [lc($1)];
     if ($ret->[0] eq 'format') {
-        $$tag_ref =~ s{ ^ ([\"\']) (|.*?[^\\]) \1 \s* }{}xs || $self->throw('parse', "Missing format string");
+        $$str_ref =~ s{ \G ([\"\']) (|.*?[^\\]) \1 \s* }{}gcxs
+            || $self->throw('parse', "Missing format string", undef, pos($$str_ref));
         $ret->[1] = $2;
     }
     return $ret;
@@ -1748,8 +1747,8 @@ sub play_DEFAULT {
 }
 
 sub parse_DUMP {
-    my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_expr($tag_ref);
+    my ($self, $str_ref) = @_;
+    my $ref = $self->parse_expr($str_ref);
     return $ref;
 }
 
@@ -1785,13 +1784,13 @@ sub play_DUMP {
 }
 
 sub parse_FILTER {
-    my ($self, $tag_ref) = @_;
+    my ($self, $str_ref) = @_;
     my $name = '';
-    if ($$tag_ref =~ s{ ^ ([^\W\d]\w*) \s* = \s* }{}x) {
+    if ($$str_ref =~ s{ \G ([^\W\d]\w*) \s* = \s* }{}gcx) {
         $name = $1;
     }
 
-    my $filter = $self->parse_expr($tag_ref);
+    my $filter = $self->parse_expr($str_ref);
     $filter = '' if ! defined $filter;
 
     return [$name, $filter];
@@ -1819,12 +1818,12 @@ sub play_FILTER {
 }
 
 sub parse_FOREACH {
-    my ($self, $tag_ref) = @_;
-    my $items = $self->parse_expr($tag_ref);
+    my ($self, $str_ref) = @_;
+    my $items = $self->parse_expr($str_ref);
     my $var;
-    if ($$tag_ref =~ s{ ^ (= | [Ii][Nn]\b) \s* }{}x) {
+    if ($$str_ref =~ s{ \G (= | [Ii][Nn]\b) \s* }{}gcx) {
         $var = [@$items];
-        $items = $self->parse_expr($tag_ref);
+        $items = $self->parse_expr($str_ref);
     }
     return [$var, $items];
 }
@@ -1907,9 +1906,9 @@ sub play_FOREACH {
 }
 
 sub parse_GET {
-    my ($self, $tag_ref) = @_;
-    my $ref = $self->parse_expr($tag_ref);
-    $self->throw('parse', "Missing variable name") if ! defined $ref;
+    my ($self, $str_ref) = @_;
+    my $ref = $self->parse_expr($str_ref);
+    $self->throw('parse', "Missing variable name", undef, pos($$str_ref)) if ! defined $ref;
     return $ref;
 }
 
@@ -1920,8 +1919,8 @@ sub play_GET {
 }
 
 sub parse_IF {
-    my ($self, $tag_ref) = @_;
-    return $self->parse_expr($tag_ref);
+    my ($self, $str_ref) = @_;
+    return $self->parse_expr($str_ref);
 }
 
 sub play_IF {
@@ -1954,7 +1953,7 @@ sub play_IF {
 sub parse_INCLUDE { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_INCLUDE {
-    my ($self, $tag_ref, $node, $out_ref) = @_;
+    my ($self, $str_ref, $node, $out_ref) = @_;
 
     ### localize the swap
     my $swap = $self->{'_vars'};
@@ -1964,7 +1963,7 @@ sub play_INCLUDE {
     my $blocks = $self->{'BLOCKS'};
     local $self->{'BLOCKS'} = {%$blocks};
 
-    my $str = $DIRECTIVES->{'PROCESS'}->[1]->($self, $tag_ref, $node, $out_ref);
+    my $str = $DIRECTIVES->{'PROCESS'}->[1]->($self, $str_ref, $node, $out_ref);
 
     return $str;
 }
@@ -1984,23 +1983,21 @@ sub play_INSERT {
 }
 
 sub parse_MACRO {
-    my ($self, $tag_ref, $node) = @_;
-    my $copy = $$tag_ref;
+    my ($self, $str_ref, $node) = @_;
 
-    my $name = $self->parse_expr(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo});
-    $self->throw('parse', "Missing macro name") if ! defined $name;
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"});
+    $self->throw('parse', "Missing macro name", undef, pos($$str_ref)) if ! defined $name;
     if (! ref $name) {
         $name = [ $name, 0 ];
     }
 
     my $args;
-    if ($copy =~ s{ ^ \( \s* }{}x) {
-        $args = $self->parse_args(\$copy, {positional_only => 1});
-        $copy =~ s { ^ \) \s* }{}x || $self->throw('parse.missing', "Missing close ')'");
+    if ($$str_ref =~ s{ \G \( \s* }{}gcx) {
+        $args = $self->parse_args($str_ref, {positional_only => 1});
+        $$str_ref =~ s{ \G \) \s* }{}gcx || $self->throw('parse.missing', "Missing close ')'", undef, pos($$str_ref));
     }
 
     $node->[6] = 1;           # set a flag to keep parsing
-    $$tag_ref = $copy;
     return [$name, $args];
 }
 
@@ -2104,28 +2101,28 @@ sub play_PERL {
 }
 
 sub parse_PROCESS {
-    my ($self, $tag_ref) = @_;
+    my ($self, $str_ref) = @_;
     my $info = [[], []];
-    while (defined(my $filename = $self->parse_expr($tag_ref, {
-                       auto_quote => qr{ ^ ($QR_FILENAME | \w+ (?: :\w+)* ) $QR_AQ_SPACE }xo,
+    while (defined(my $filename = $self->parse_expr($str_ref, {
+                       auto_quote => "($QR_FILENAME | \\w+ (?: :\\w+)* ) $QR_AQ_SPACE",
                    }))) {
         push @{$info->[0]}, $filename;
-        last if $$tag_ref !~ s{ ^ \+ \s* }{}x;
+        last if $$str_ref !~ s{ \G \+ \s* $QR_COMMENTS }{}gcxo;
     }
 
     ### allow for post process variables
-    while (length $$tag_ref) {
-        last if $$tag_ref =~ / ^ (\w+) (?: ;|$|\s)/x && $DIRECTIVES->{$1}; ### looks like a directive - we are done
+    while (1) {
+        last if $$str_ref =~ m{ \G (?= $QR_DIRECTIVE (?: ;|$|\s)) }gcx && $DIRECTIVES->{$1}; ### looks like a directive - we are done
 
-        my $var = $self->parse_expr($tag_ref);
+        my $var = $self->parse_expr($str_ref);
         last if ! defined $var;
-        if ($$tag_ref !~ s{ ^ = >? \s* }{}x) {
-            $self->throw('parse.missing.equals', 'Missing equals while parsing args');
+        if ($$str_ref !~ s{ \G = >? \s* }{}gcx) {
+            $self->throw('parse.missing.equals', 'Missing equals while parsing args', undef, pos($$str_ref));
         }
 
-        my $val = $self->parse_expr($tag_ref);
+        my $val = $self->parse_expr($str_ref);
         push @{$info->[1]}, [$var, $val];
-        $$tag_ref =~ s{ ^ , \s* $QR_COMMENTS }{}ox if $val;
+        $$str_ref =~ s{ \G , \s* $QR_COMMENTS }{}gcxo if $val;
     }
 
     return $info;
@@ -2227,36 +2224,35 @@ sub play_RAWPERL {
 }
 
 sub parse_SET {
-    my ($self, $tag_ref, $node, $initial_op, $initial_var) = @_;
+    my ($self, $str_ref, $node, $initial_op, $initial_var) = @_;
     my @SET;
-    my $copy = $$tag_ref;
     my $func;
 
     if ($initial_op) {
-        if ($$tag_ref =~ $QR_DIRECTIVE   # find a word
-            && $DIRECTIVES->{$1}) {      # is it a directive - if so set up capturing
-            $node->[6] = 1;              # set a flag to keep parsing
-            my $val = $node->[4] ||= []; # setup storage
+        if ($$str_ref =~ m{ \G (?= $QR_DIRECTIVE) }gcx  # find a word
+            && $DIRECTIVES->{$1}) {                     # is it a directive - if so set up capturing
+            $node->[6] = 1;                             # set a flag to keep parsing
+            my $val = $node->[4] ||= [];                # setup storage
             return [[$initial_op, $initial_var, $val]];
         } else { # get a normal variable
-            return [[$initial_op, $initial_var, $self->parse_expr($tag_ref)]];
+            return [[$initial_op, $initial_var, $self->parse_expr($str_ref)]];
         }
     }
 
-    while (length $$tag_ref) {
-        my $set = $self->parse_expr($tag_ref);
+    while (1) {
+        my $set = $self->parse_expr($str_ref);
         last if ! defined $set;
 
-        if ($$tag_ref =~ s{ ^ ($QR_OP_ASSIGN) >? \s* }{}x) {
+        if ($$str_ref =~ s{ \G ($QR_OP_ASSIGN) >? \s* }{}gcx) {
             my $op = $1;
-            if ($$tag_ref =~ $QR_DIRECTIVE   # find a word
-                && $DIRECTIVES->{$1}) {      # is it a directive - if so set up capturing
-                $node->[6] = 1;              # set a flag to keep parsing
-                my $val = $node->[4] ||= []; # setup storage
+            if ($$str_ref =~ m{ \G (?= $QR_DIRECTIVE) }gcx # find a word
+                && $DIRECTIVES->{$1}) {                    # is it a directive - if so set up capturing
+                $node->[6] = 1;                            # set a flag to keep parsing
+                my $val = $node->[4] ||= [];               # setup storage
                 push @SET, [$op, $set, $val];
                 last;
             } else { # get a normal variable
-                push @SET, [$op, $set, $self->parse_expr($tag_ref)];
+                push @SET, [$op, $set, $self->parse_expr($str_ref)];
             }
         } else {
             push @SET, ['=', $set, undef];
@@ -2332,10 +2328,10 @@ sub play_SWITCH {
 }
 
 sub parse_THROW {
-    my ($self, $tag_ref, $node) = @_;
-    my $name = $self->parse_expr($tag_ref, {auto_quote => qr{ ^ (\w+ (?: \.\w+)*) $QR_AQ_SPACE }xo});
-    $self->throw('parse.missing', "Missing name in THROW", $node) if ! $name;
-    my $args = $self->parse_args($tag_ref);
+    my ($self, $str_ref, $node) = @_;
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+ (?: \\.\\w+)*) $QR_AQ_SPACE"});
+    $self->throw('parse.missing', "Missing name in THROW", $node, pos($$str_ref)) if ! $name;
+    my $args = $self->parse_args($str_ref);
     return [$name, $args];
 }
 
@@ -2421,30 +2417,29 @@ sub parse_UNLESS {
 sub play_UNLESS { return $DIRECTIVES->{'IF'}->[1]->(@_) }
 
 sub parse_USE {
-    my ($self, $tag_ref) = @_;
+    my ($self, $str_ref) = @_;
 
     my $var;
-    my $copy = $$tag_ref;
-    if (defined(my $_var = $self->parse_expr(\$copy, {auto_quote => qr{ ^ (\w+) $QR_AQ_NOTDOT }xo}))
-        && $copy =~ s{ ^ = >? \s* $QR_COMMENTS }{}ox) {
+    my $mark = pos $$str_ref;
+    if (defined(my $_var = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"}))
+        && ($$str_ref =~ s{ \G = >? \s* $QR_COMMENTS }{}gcxo # make sure there is assignment
+            || ((pos $$str_ref = $mark) && 0))               # otherwise we need to rollback
+        ) {
         $var = $_var;
-        $$tag_ref = $copy;
     }
 
-    $copy = $$tag_ref;
-    my $module = $self->parse_expr(\$copy, {auto_quote => qr{ ^ (\w+ (?: (?:\.|::) \w+)*) $QR_AQ_NOTDOT }xo});
-    $self->throw('parse', "Missing plugin name while parsing $$tag_ref") if ! defined $module;
+    my $module = $self->parse_expr($str_ref, {auto_quote => "(\\w+ (?: (?:\\.|::) \\w+)*) $QR_AQ_NOTDOT"});
+    $self->throw('parse', "Missing plugin name while parsing $$str_ref", undef, pos($$str_ref)) if ! defined $module;
     $module =~ s/\./::/g;
 
     my $args;
-    my $open = $copy =~ s{ ^ \( \s* $QR_COMMENTS }{}ox;
-    $args = $self->parse_args(\$copy);
+    my $open = $$str_ref =~ s{ \G \( \s* $QR_COMMENTS }{}gcxo;
+    $args = $self->parse_args($str_ref);
 
     if ($open) {
-        $copy =~ s { ^ \) \s* $QR_COMMENTS }{}ox || $self->throw('parse.missing', "Missing close ')'");
+        $$str_ref =~ s{ \G \) \s* $QR_COMMENTS }{}gcxo || $self->throw('parse.missing', "Missing close ')'", undef, pos($$str_ref));
     }
 
-    $$tag_ref = $copy;
     return [$var, $module, $args];
 }
 
