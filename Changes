@@ -1,7 +1,11 @@
 2.10   2007-04-05
         * Allow for crypted passwords to work in Auth.
         * Fix minor bug in Template qw() construct.
-        * Move to generice operator parse tree.  All constructs are now only arrayrefs.
+        * Move to generic operator parse tree.  All constructs are now only arrayrefs.
+          This should allow for easy porting to other languages.
+        * Allow for fully regex grammar based engine.
+        * Allow for nested tags [% "[% 2 %]"|eval %].
+        * Added back in references in Template - but fast and simple.
         * Allow for regex based TAGS.
         * Allow for "unquoted" in TAGS.
         * Catch parsing bug in "1 - + 2" in Template.
