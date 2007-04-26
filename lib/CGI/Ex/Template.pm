@@ -1220,15 +1220,12 @@ sub parse_args {
     my @named;
     while (1) {
         my $mark = pos $$str_ref;
-        if (! $ARGS->{'is_parened'}) {
-            if ($$str_ref =~ m{ \G $QR_DIRECTIVE (?:;|$|\s) }gcx # find a word
-                && $DIRECTIVES->{$1}                                # looks like a directive - we are done
-                ) {
-                pos($$str_ref) = $mark;
-                last;
-            } else {
-                pos($$str_ref) = $mark;
-            }
+        if (! $ARGS->{'is_parened'}
+            && $$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$self->{'_end_tag'}))) }gcxo
+            && ((pos($$str_ref) = $mark) || 1)                  # always revert
+            && $DIRECTIVES->{$1}                                # looks like a directive - we are done
+            ) {
+            last;
         }
 
         if (defined(my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"}))
@@ -2188,9 +2185,9 @@ sub parse_PROCESS {
     ### we can almost use parse_args - except we allow for nested key names (foo.bar) here
     while (1) {
         my $mark = pos $$str_ref;
-        if ($$str_ref =~ m{ \G $QR_DIRECTIVE (?: ;|$|\s) }gcx) {
+        if ($$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$self->{'_end_tag'}))) }gcxo) {
             pos($$str_ref) = $mark;
-            last if $DIRECTIVES->{$1};                         # looks like a directive - we are done
+            last if $DIRECTIVES->{$1}; # looks like a directive - we are done
         }
         if ($$str_ref =~ m{ \G [+=~-]? $self->{'_end_tag'} }gcx) {
             pos($$str_ref) = $mark;
