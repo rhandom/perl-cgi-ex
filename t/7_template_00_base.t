@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 696 : 551;
+use Test::More tests => ! $is_tt ? 698 : 553;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -30,13 +30,13 @@ sub process_ok { # process the value and say if it was ok
     my $vars = shift;
     my $obj  = shift || $module->new(@{ $vars->{tt_config} || [] }); # new object each time
     my $out  = '';
+    my $line = (caller)[2];
 
     Taint::Runtime::taint(\$str) if test_taint;
 
     $obj->process(\$str, $vars, \$out);
     my $ok = ref($test) ? $out =~ $test : $out eq $test;
-    ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
-    my $line = (caller)[2];
+    ok($ok, "Line $line   \"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
     warn "#   process_ok called at line $line.\n" if ! $ok;
     print $obj->error if ! $ok && $obj->can('error');
     print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
@@ -79,7 +79,7 @@ my $obj = Foo2->new;
 
 
 ###----------------------------------------------------------------###
-### variable GETting
+print "### GET ##############################################################\n";
 
 process_ok("[% foo %]" => "");
 process_ok("[% foo %]" => "7",       {foo => 7});
@@ -189,7 +189,7 @@ process_ok('[% [0..10].-1 %]' => '10') if ! $is_tt;
 process_ok('[% [0..10].${ 2.3 } %]' => '2') if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### variable SETting
+print "### SET ##############################################################\n";
 
 process_ok("[% SET foo bar %][% foo %]" => '');
 process_ok("[% SET foo = 1 %][% foo %]" => '1');
@@ -261,7 +261,7 @@ process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '232') 
 process_ok("[% a = 1 a = a + 2 a %]" => 3) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### Reserved words
+print "### reserved words ###################################################\n";
 
 my $vars = {
     GET => 'named_get',
@@ -285,7 +285,7 @@ process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo GET = 1 %]" => '');
 process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo IF GET %]" => 'hi', $vars) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### CALL and DEFAULT
+print "### CALL / DEFAULT ###################################################\n";
 
 process_ok("[% DEFAULT foo = 7 %][% foo %]" => 7);
 process_ok("[% SET foo = 5 %][% DEFAULT foo = 7 %][% foo %]" => 5);
@@ -298,9 +298,8 @@ process_ok("[% CALL foo %]" => '',   {foo => sub {$t++; 'hi'}});
 ok($t == 3, "CALL method actually called var");
 
 ###----------------------------------------------------------------###
-### virtual method tests
+print "### scalar vmethods ##################################################\n";
 
-# scalar vmethods
 process_ok("[% n.0 %]" => '7', {n => 7}) if ! $is_tt;
 process_ok("[% n.as %]" => '7', {n => 7}) if ! $is_tt;
 process_ok("[% n.as('%02d') %]" => '07', {n => 7}) if ! $is_tt;
@@ -360,13 +359,15 @@ process_ok("[% n.split(u,2).join('|') %]" => "a|b c", {n => "a b c", u => undef}
 process_ok("[% n.split(u,2).join('|') %]" => "a| b c", {n => "a b c", u => undef}) if $is_tt;
 process_ok("[% n.split('/').join('|') %]" => "a|b|c", {n => "a/b/c"});
 process_ok("[% n.split('/', 2).join('|') %]" => "a|b/c", {n => "a/b/c"});
-process_ok("[% n.stderr %]" => "", {n => "# testing stderr ... ok\n"});
+process_ok("[% n.stderr %]" => "", {n => "# testing stderr ... ok\r"});
 process_ok("[% n|trim %]" => "a  b", {n => '  a  b  '}); # TT2 filter
 process_ok("[% n|ucfirst %]" => 'Foo', {n => "foo"}); # TT2 filter
 process_ok("[% n|upper %]" => 'FOO', {n => "foo"}); # TT2 filter
 process_ok("[% n|uri %]" => 'a%20b', {n => "a b"}); # TT2 filter
 
-# list vmethods
+###----------------------------------------------------------------###
+print "### list vmethods ####################################################\n";
+
 process_ok("[% a.as %]" => '2 3', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.as('%02d') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.as('%02d',' ') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
@@ -419,7 +420,9 @@ process_ok("[% a.splice(0,2,'hrm').join %]|[% a.join %]" => '2 3|hrm 4 5', {a =>
 process_ok("[% a.unique.join %]" => '2 3', {a => [2,3,3,3,2]});
 process_ok("[% a.unshift(3) %][% a.join %]" => '3 2 3', {a => [2, 3]});
 
-# hash vmethods
+###----------------------------------------------------------------###
+print "### hash vmethods ####################################################\n";
+
 process_ok("[% h.as %]" => "b\tB\nc\tC", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.as('%s => %s') %]" => "b => B\nc => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.as('%s => %s', '|') %]" => "b => B|c => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
@@ -462,7 +465,7 @@ process_ok("[% h.sort.join %]" => "b a", {h => {a => "BBB", b => "A"}});
 process_ok("[% h.values.sort.join %]" => "1 2", {h => {a => 1, b=> 2}});
 
 ###----------------------------------------------------------------###
-### more virtual methods / filters
+print "### more virtual methods / filters ###################################\n";
 
 process_ok("[% [0 .. 10].reverse.1 %]" => 9) if ! $is_tt;
 process_ok("[% {a => 'A'}.a %]" => 'A') if ! $is_tt;
@@ -527,7 +530,7 @@ process_ok('[% [1,2].fmt("%-*s", "|", 6) %]' => '1     |2     ') if ! $is_tt;
 process_ok('[% {1=>2,3=>4}.fmt("%*s:%*s", "|", 3, 3) %]' => '  1:  2|  3:  4') if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### virtual objects
+print "### virtual objects ##################################################\n";
 
 process_ok('[% a = "foobar" %][% Text.length(a) %]' => 6) if ! $is_tt;
 process_ok('[% a = [1 .. 10] %][% List.size(a) %]' => 10) if ! $is_tt;
@@ -542,7 +545,7 @@ process_ok('[% a = Hash.new(one => "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
 process_ok('[% {a => 1, b => 2} | Hash.keys | List.join(", ") %]' => 'a, b') if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### chomping
+print "### chomping #########################################################\n";
 
 process_ok(" [% foo %]" => ' ');
 process_ok(" [%- foo %]" => '');
@@ -561,16 +564,15 @@ process_ok("[% foo -%]\n " => ' ');
 process_ok("[% foo -%]\n\n\n" => "\n\n");
 process_ok("[% foo -%] \n " => ' ');
 
-
 ###----------------------------------------------------------------###
-### concat
+print "### string operators #################################################\n";
 
 process_ok('[% a = "foo"; a _ "bar" %]' => 'foobar');
 process_ok('[% a = "foo"; a ~ "bar" %]' => 'foobar') if ! $is_tt;
 process_ok('[% a = "foo"; a ~= "bar"; a %]' => 'foobar') if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### math operations
+print "### math operators ###################################################\n";
 
 process_ok("[% 1 + 2 %]" => 3);
 process_ok("[% 1 + 2 + 3 %]" => 6);
@@ -619,7 +621,7 @@ process_ok('[% a++ FOR [1..3] %]' => '012') if ! $is_tt;
 process_ok('[% --a FOR [1..3] %]' => '-1-2-3') if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### boolean operations
+print "### boolean operators ################################################\n";
 
 process_ok("[% 5 && 6 %]" => 6);
 process_ok("[% 5 || 6 %]" => 5);
@@ -652,7 +654,7 @@ process_ok("[% t = 0 or 0 ? 0 : 0 or 2 ? 2 : 3 %][% t %]" => '2');
 process_ok("[% 0 ? 1 ? 1 + 2 * 3 : 1 + 2 * 4 : 1 + 2 * 5 %]" => '11');
 
 ###----------------------------------------------------------------###
-### blocks
+print "### BLOCK / PROCESS / INCLUDE#########################################\n";
 
 process_ok("[% PROCESS foo %]" => '');
 process_ok("[% BLOCK foo %]" => '');
@@ -672,7 +674,7 @@ process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo one = 'two'
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% INCLUDE foo one = 'two' %][% one %]" => 'hi two there');
 
 ###----------------------------------------------------------------###
-### if/unless/elsif/else
+print "### IF / UNLESS / ELSIF / ELSE #######################################\n";
 
 process_ok("[% IF 1 %]Yes[% END %]" => 'Yes');
 process_ok("[% IF 0 %]Yes[% END %]" => '');
@@ -689,7 +691,7 @@ process_ok("[% UNLESS 1 %]Yes[% ELSIF 0 %]No[% END %]" => '');
 process_ok("[% UNLESS 1 %]Yes[% ELSIF 0 %]No[% ELSE %]hmm[% END %]" => 'hmm');
 
 ###----------------------------------------------------------------###
-### comments
+print "### comments #########################################################\n";
 
 process_ok("[%# one %]" => '', {one => 'ONE'});
 process_ok("[%#\n one %]" => '', {one => 'ONE'});
@@ -701,7 +703,7 @@ process_ok("[%# BLOCK one %]two[% END %]" => '');
 process_ok("[%# BLOCK one %]two[% END %]three" => '');
 
 ###----------------------------------------------------------------###
-### foreach, next, last
+print "### FOREACH / NEXT / LAST ############################################\n";
 
 process_ok("[% FOREACH foo %]" => '');
 process_ok("[% FOREACH foo %][% END %]" => '');
@@ -744,7 +746,7 @@ process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => 
 process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '3331') if $is_tt;
 
 ###----------------------------------------------------------------###
-### while
+print "### WHILE ############################################################\n";
 
 process_ok("[% WHILE foo %]" => '');
 process_ok("[% WHILE foo %][% END %]" => '');
@@ -763,7 +765,7 @@ process_ok("[% f = 10 a = 2; WHILE (g=f); f = f - 1 ; f ; a=3; END ; a%]" => '98
 process_ok("[% f = 10 a = 2; WHILE (a=f); f = f - 1 ; f ; a=3; END ; a%]" => '98765432100');
 
 ###----------------------------------------------------------------###
-### stop, return, clear
+print "### STOP / RETURN / CLEAR ############################################\n";
 
 process_ok("[% STOP %]" => '');
 process_ok("One[% STOP %]Two" => 'One');
@@ -786,7 +788,7 @@ process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.last %][% CLEAR %][% END %
 process_ok("[% FOREACH f = [1..3] %][% IF loop.last %][% CLEAR %][% END %][% f %][% END %]" => '3');
 
 ###----------------------------------------------------------------###
-### multiple-directives
+print "### multiple statements in same tag ##################################\n";
 
 process_ok("[% GET foo; GET foo %]" => '11', {foo => 1});
 process_ok('[% FOREACH f = [1..3]; 1; END %]' => '111');
@@ -795,7 +797,7 @@ process_ok('[% FOREACH f = [1..3]; "$f"; END %]' => '123');
 process_ok('[% FOREACH f = [1..3]; f + 1; END %]' => '234');
 
 ###----------------------------------------------------------------###
-### post opererator
+print "### post opererative directives ######################################\n";
 
 process_ok("[% GET foo IF 1 %]" => '1', {foo => 1});
 process_ok("[% f FOREACH f = [1..3] %]" => '123');
@@ -814,14 +816,14 @@ process_ok("[% FOREACH f = [1..3] IF 0 %]([% f %])[% END %]" => '')             
 process_ok("[% BLOCK bar %][% foo %][% foo = foo - 1 %][% END %][% PROCESS bar WHILE foo %]" => '321', {foo => 3});
 
 ###----------------------------------------------------------------###
-### capturing
+print "### capturing ########################################################\n";
 
 process_ok("[% foo = BLOCK %]Hi[% END %][% foo %][% foo %]" => 'HiHi');
 process_ok("[% BLOCK foo %]Hi[% END %][% bar = PROCESS foo %]-[% bar %]" => '-Hi');
 process_ok("[% foo = IF 1 %]Hi[% END %][% foo %]" => 'Hi');
 
 ###----------------------------------------------------------------###
-### tags
+print "### TAGS #############################################################\n";
 
 process_ok("[% TAGS asp       %]<% 1 + 2 %>" => 3);
 process_ok("[% TAGS default   %][% 1 + 2 %]" => 3);
@@ -848,7 +850,7 @@ process_ok("[% TAGS ** ** quoted     %]**  1 + 2 **" => 3);
 process_ok("[% TAGS ** ** unquoted   %]**  1 + 2 **" => "") if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### switch
+print "### SWITCH / CASE ####################################################\n";
 
 process_ok("[% SWITCH 1 %][% END %]hi" => 'hi');
 process_ok("[% SWITCH 1 %][% CASE %]bar[% END %]hi" => 'barhi');
@@ -864,7 +866,7 @@ process_ok("[% SWITCH 1.0 %][% CASE [1..10] %]bar[% END %]hi" => 'barhi');
 process_ok("[% SWITCH '1.0' %][% CASE [1..10] %]bar[% END %]hi" => 'barhi') if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### try/throw/catch/final
+print "### TRY / THROW / CATCH / FINAL ######################################\n";
 
 process_ok("[% TRY %][% END %]hi" => 'hi');
 process_ok("[% TRY %]Foo[% END %]hi" => 'Foohi');
@@ -888,7 +890,7 @@ process_ok("[% TRY %][% THROW foo %][% CATCH %][% error.type %][% END %]" => 'un
 process_ok("[% TRY %][% THROW foo %][% CATCH %][% error.info %][% END %]" => 'foo');
 
 ###----------------------------------------------------------------###
-### named args
+print "### named args #######################################################\n";
 
 process_ok("[% foo(bar = 'one', baz = 'two') %]" => "baronebaztwo",
                {foo=>sub{my $n=$_[-1];join('',map{"$_$n->{$_}"} sort keys %$n)}});
@@ -896,7 +898,7 @@ process_ok("[%bar='ONE'%][% foo(\$bar = 'one') %]" => "ONEone",
                {foo=>sub{my $n=$_[-1];join('',map{"$_$n->{$_}"} sort keys %$n)}});
 
 ###----------------------------------------------------------------###
-### use
+print "### USE ##############################################################\n";
 
 my @config_p = (PLUGIN_BASE => 'MyTestPlugin', LOAD_PERL => 1);
 process_ok("[% USE son_of_gun_that_does_not_exist %]one" => '', {tt_config => \@config_p});
@@ -915,7 +917,7 @@ process_ok("[% USE a(bar = 'baz') %]one[% a.seven %]" => 'one7', {tt_config => [
 process_ok("[% USE Foo %]one" => 'one', {tt_config => \@config_p});
 
 ###----------------------------------------------------------------###
-### macro
+print "### MACRO ############################################################\n";
 
 process_ok("[% MACRO foo PROCESS bar %][% BLOCK bar %]Hi[% END %][% foo %]" => 'Hi');
 process_ok("[% MACRO foo BLOCK %]Hi[% END %][% foo %]" => 'Hi');
@@ -926,7 +928,7 @@ process_ok("[%n=1%][% MACRO foo BLOCK %]Hi[% n = 2%][% END %][% foo %][%n%]" => 
 process_ok("[% MACRO foo(n) FOREACH i=[1..n] %][% i %][% END %][% foo(3) %]" => '123');
 
 ###----------------------------------------------------------------###
-### debug;
+print "### DEBUG ############################################################\n";
 
 process_ok("\n\n[% one %]" => "\n\n\n## input text line 3 : [% one %] ##\nONE", {one=>'ONE', tt_config => ['DEBUG' => 8]});
 process_ok("[% one %]" => "\n## input text line 1 : [% one %] ##\nONE", {one=>'ONE', tt_config => ['DEBUG' => 8]});
@@ -940,7 +942,7 @@ process_ok("[% TRY %][% abc %][% CATCH %][% error %][% END %]" => "undef error -
 process_ok("[% TRY %][% abc.def %][% CATCH %][% error %][% END %]" => "undef error - def is undefined\n", {abc => {}, tt_config => ['DEBUG' => 2]});
 
 ###----------------------------------------------------------------###
-### constants
+print "### constants ########################################################\n";
 
 my @config_c = (
     CONSTANTS => {
@@ -965,7 +967,7 @@ process_ok("[% constants.foo.\$bam.\${constants.bing} %]" => '42', {tt_config =>
 process_ok("[% bam = 'somethingelse' %][% constants.foo.\$bam.\${constants.bing} %]" => '42', {tt_config => [@config_c]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### interpolate / anycase / trim
+print "### INTERPOLATE / ANYCASE / TRIM #####################################\n";
 
 process_ok("Foo \$one Bar" => 'Foo ONE Bar', {one => 'ONE', tt_config => ['INTERPOLATE' => 1]});
 process_ok("[% PERL %] my \$n=7; print \$n [% END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
@@ -982,13 +984,13 @@ process_ok("[% BLOCK foo %][% nl %]hi[% END %][% PROCESS foo %]" => "hi", {nl =>
 process_ok("A[% TRY %]\nhi\n[% END %]" => "A\nhi", {tt_config => [TRIM => 1]});
 
 ###----------------------------------------------------------------###
-### configuration
+print "### configuration ####################################################\n";
 
 process_ok('[% a = 7 %]$a' => 7, {tt_config => ['INTERPOLATE' => 1]});
 process_ok('[% a = 7 %]$a' => 7, {tt_config => ['interpolate' => 1]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### perl
+print "### PERL #############################################################\n";
 
 process_ok("[% TRY %][% PERL %][% END %][% CATCH ; error; END %]" => 'perl error - EVAL_PERL not set');
 process_ok("[% PERL %] print \"[% one %]\" [% END %]" => 'ONE', {one => 'ONE', tt_config => ['EVAL_PERL' => 1]});
@@ -996,22 +998,25 @@ process_ok("[% PERL %] print \$stash->get('one') [% END %]" => 'ONE', {one => 'O
 process_ok("[% PERL %] print \$stash->set('a.b.c', 7) [% END %][% a.b.c %]" => '77', {tt_config => ['EVAL_PERL' => 1]});
 
 ###----------------------------------------------------------------###
-### recursion prevention
+print "### recursion prevention #############################################\n";
 
 process_ok("[% BLOCK foo %][% PROCESS bar %][% END %][% BLOCK bar %][% PROCESS foo %][% END %][% PROCESS foo %]" => '') if ! $is_tt;
 
 ###----------------------------------------------------------------###
-### META
+print "### META #############################################################\n";
 
 process_ok("[% template.name %]" => 'input text');
 process_ok("[% META foo = 'bar' %][% template.foo %]" => 'bar');
 process_ok("[% META foo = 'bar' %][% component.foo %]" => 'bar');
 
 ###----------------------------------------------------------------###
-### refs
+print "### references #######################################################\n";
 
 process_ok("[% a=3; b=\\a; b; a %]" => 33);
 process_ok("[% a=3; b=\\a; a=7; b; a %]" => 77);
+
+process_ok("[% a={}; a.1=7; b=\\a.1; b; a.1 %]" => '77');
+process_ok("[% a={}; a.1=7; b=\\a.20; a.20=7; b; a.20 %]" => '77');
 
 process_ok("[% a=[]; a.1=7; b=\\a.1; b; a.1 %]" => '77');
 process_ok("[% a=[]; a.1=7; b=\\a.20; a.20=7; b; a.20 %]" => '77');
@@ -1028,7 +1033,8 @@ process_ok('[% a = "a" ; f = {a=>"A",b=>"B"} ; foo = \f.$a ; a = "b" ; foo %]' =
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; a = "cd"; foo %]' => '-AB-cd');
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; a = "cd"; foo %]' => '*cd');
 
-### tt does odd things with partially vivifying methods
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; foo %]' => '-AB-cd');
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*cd');
 
+###----------------------------------------------------------------###
+print "### DONE #############################################################\n";
