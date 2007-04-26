@@ -1,6 +1,5 @@
 package CGI::Ex::Template;
 
-use CGI::Ex::Dump qw(debug);
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/Template.pod
 #  Copyright 2007 - Paul Seamons                                     #
@@ -817,7 +816,6 @@ sub parse_tree {
 
         if ($text =~ m{ ($END) }xs) {
             my $char = pos($$str_ref) + $-[1] + 1;
-            debug \@tree, pos($$str_ref);
             $self->throw('parse', "Found unmatched closing tag \"$1\"", undef, $char);
         }
 
