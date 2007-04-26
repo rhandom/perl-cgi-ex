@@ -43,6 +43,12 @@ in sync at a language level.  There already has been, and it is expected that
 there will continue to be code sharing between the two projects.  (Acutally
 I will try and keep applicable fixes in sync with TT).
 
+CGI::Ex::Template uses a recursive regex based grammar (early versions
+before the 2.10 release did not).  This allows for the embedding of opening
+and closing tags inside other tags (as in [% a = "[% 1 + 2 %]" ;  a|eval %]).
+The individual methods such as parse_expr and play_expr may be used by external
+applications to add TT style variable parsing to other applications.
+
 Most of the standard Template::Toolkit documentation covering directives,
 variables, configuration, plugins, filters, syntax, and vmethods should
 apply to CET just fine (This pod tries to explain everything - but there is
@@ -56,10 +62,10 @@ samples/benchmark/bench_template.pl was used to obtain sample numbers.
 In general the following statements are true:
 
     If you load a new Template object each time and pass a filename, CET
-    is around 4 times faster.
+    is around 3.5 times faster.
 
     If you load a new Template object and pass a string ref, CET
-    is around 3.5 times faster.
+    is around 3 times faster.
 
     If you load a new Template object and use CACHE_EXT, CET
     is around 1.5 times faster.
@@ -68,16 +74,15 @@ In general the following statements are true:
     then CET is 50% faster.
 
     If you use Template::Stash::XS with a cached in memory template,
-    then CET is about as fast.
-
-    Using TT with a compiled-in-memory template is only 33%
-    faster than CET with a new object compiling each time.
+    then CET is about as fast.  But if you use CGI::Ex::Template::XS,
+    the CETX is faster still (about twice as fast as CET).
 
 It is pretty hard to beat the speed of XS stash with compiled in
 memory templates.  Many systems don't have access to those so
 CET may make more sense.  Hopefully as TT is revised, many of the CET
 speed advantages can be incorporated so that the core TT is just as
-fast or faster.
+fast or faster.  This was last updated at version 2.10 of CET and
+2.18 of TT.
 
 So should you use CGI::Ex::Template ?  Well, try it out.  It may
 give you no visible improvement.  Or it could.
@@ -642,6 +647,10 @@ Returns the string.  No variable interpolation happens.
 
 Note: virtual methods can only be used on literal strings in CET, not in TT.
 
+You may also embed the current tags in strings (CET only).
+
+    [% '[% 1 + 2 %]' | eval %]  Prints "3"
+
 =item Double quoted strings.
 
 Returns the string.  Variable interpolation happens.
@@ -654,6 +663,10 @@ Returns the string.  Variable interpolation happens.
     [% "foo".replace('foo','bar') %] Prints "bar".
 
 Note: virtual methods can only be used on literal strings in CET, not in TT.
+
+You may also embed the current tags in strings (CET only).
+
+    [% "[% 1 + 2 %]" | eval %]  Prints "3"
 
 =item Array Constructs.
 
