@@ -4,7 +4,8 @@ use strict;
 use Benchmark qw(timethese cmpthese countit timestr);
 use IO::Socket;
 
-my $str = "--[% one %][% two %]--\n";
+my $str;
+$str = "--[% one %][% two %]--\n";
 # Benchmark: running grammar, index, index2, match, split for at least 2 CPU seconds...
 #   grammar:  4 wallclock secs ( 2.04 usr +  0.00 sys =  2.04 CPU) @ 36585.78/s (n=74635)
 #   index:  4 wallclock secs ( 2.12 usr +  0.00 sys =  2.12 CPU) @ 81146.23/s (n=172030)
@@ -18,7 +19,7 @@ my $str = "--[% one %][% two %]--\n";
 # index2  71675/s     98%     96%     24%      --    -12%
 # index   81146/s    124%    122%     41%     13%      --
 
-#my $str = ((" "x1000)."[% one %]\n")x10;
+$str = ((" "x1000)."[% one %]\n")x10;
 # Benchmark: running grammar, index, index2, match, split for at least 2 CPU seconds...
 #   grammar:  3 wallclock secs ( 2.10 usr +  0.00 sys =  2.10 CPU) @ 689.52/s (n=1448)
 #   index:  3 wallclock secs ( 2.10 usr +  0.00 sys =  2.10 CPU) @ 10239.52/s (n=21503)
@@ -32,7 +33,7 @@ my $str = "--[% one %][% two %]--\n";
 # index2  10095/s   1364%    101%     50%      --     -1%
 # index   10240/s   1385%    104%     52%      1%      --
 
-#my $str = ((" "x10)."[% one %]\n")x1000;
+#$str = ((" "x10)."[% one %]\n")x1000;
 # Benchmark: running grammar, index, index2, match, split for at least 2 CPU seconds...
 #   grammar:  3 wallclock secs ( 2.10 usr +  0.01 sys =  2.11 CPU) @ 81.52/s (n=172)
 #   index:  4 wallclock secs ( 2.11 usr +  0.01 sys =  2.12 CPU) @ 207.55/s (n=440)
@@ -133,32 +134,78 @@ sub parse_grammar {
     my $START = quotemeta '[%';
     my $END   = quotemeta '%]';
 
-    my $in_tag;
     local pos($_[0]) = 0;
     while (1) {
         ### find the start tag
-        if (! $in_tag) {
-            if ($_[0] =~ /\G (.*?) $START /gcxs) {
-                $new .= $1;
-                $in_tag = 1;
-                next;
-            } else {
-                $new .= substr $_[0], pos($_[0]);
-                last;
-            }
-        }
+        last if $_[0] !~ /\G (.*?) $START /gcxs;
+        $new .= $1;
 
-        ### end
-        if ($_[0] =~ /\G $END /gcx) {
-            $in_tag = 0;
+        if ($_[0] !~ /\G (.*?) $END /gcxs) {
+            die "Unmatched $START tag";
         }
-
-        if ($_[0] =~ /\G (\s*\w+\s*) /gcx) {
-            my $tag = $1;
-            $new .= "($tag)";
-        }
+        $new .= "($1)";
     }
-    return $new;
+    return pos($_[0]) ? $new . substr($_[0], pos $_[0]) : $_[0];
+}
+
+### a regex grammar type matcher
+sub parse_grammar2 {
+    my $new = '';
+    my $START = quotemeta '[%';
+    my $END   = quotemeta '%]';
+
+    local pos $_[0] = 0;
+    my $last = 0;
+    while (1) {
+        ### find the start tag
+        last if $_[0] !~ / ($START) /gcxs;
+        my $i = pos $_[0];
+        $new .= substr $_[0], $last, $i - length($1) - $last;
+
+        if ($_[0] !~ / ($END) /gcxs) {
+            die "Unmatched $START tag";
+        }
+        $last = pos $_[0];
+        my $j = $last - length $1;
+        $new .= "(".substr($_[0], $i, $j - $i).")";
+    }
+    return pos($_[0]) ? $new . substr($_[0], pos $_[0]) : $_[0];
+}
+
+### use a regular expression to go through the string bruteforce
+sub parse_pos_array {
+    my $new = '';
+    my $START = '[%';
+    my $END   = '%]';
+
+    local pos($_[0]) = 0;
+    my @start1;
+    my @start2;
+    while ($_[0] =~ /(\Q$START\E)/g) { push @start1, $-[1]; push @start2, $+[1] }
+
+    local pos($_[0]) = 0;
+    my @end1;
+    my @end2;
+    while ($_[0] =~ /(\Q$END\E)/g) { push @end1, $-[1]; push @end2, $+[1] }
+
+    my $last = 0;
+    while (1) {
+        last if ! @start1;
+        my $i  = shift @start1;
+        my $i2 = shift @start2;
+
+        $new .= substr($_[0], $last, $i - $last);
+
+        die "Unclosed tag" if ! @end1;
+        my $j  = shift @end1;
+        my $j2 = shift @end2;
+
+        my $tag = substr($_[0], $i2, $j - $i2);
+        $new.= "($tag)";
+
+        $last = $j2;
+    }
+    return $last ? $new . substr($_[0], $last) : $_[0];
 }
 
 ###----------------------------------------------------------------###
@@ -171,17 +218,24 @@ sub parse_grammar {
 #print parse_grammar($str);
 #print "---\n";
 #print parse_index($str);
-die "parse_split   didn't match" if parse_split($str)   ne parse_match($str);
-die "parse_grammar didn't match" if parse_grammar($str) ne parse_match($str);
-die "parse_index   didn't match" if parse_index($str)   ne parse_match($str);
-die "parse_index2  didn't match" if parse_index2($str)  ne parse_match($str);
+#print "---\n";
+#print parse_pos_array($str);
+#exit;
+die "parse_split     didn't match" if parse_split($str)     ne parse_match($str);
+die "parse_grammar   didn't match" if parse_grammar($str)   ne parse_match($str);
+die "parse_grammar2  didn't match" if parse_grammar2($str)  ne parse_match($str);
+die "parse_index     didn't match" if parse_index($str)     ne parse_match($str);
+die "parse_index2    didn't match" if parse_index2($str)    ne parse_match($str);
+die "parse_pos_array didn't match" if parse_pos_array($str) ne parse_match($str);
 #exit;
 
 ### and run them
 cmpthese timethese (-2, {
-    index   => sub { parse_index($str) },
-    index2  => sub { parse_index2($str) },
-    match   => sub { parse_match($str) },
-    split   => sub { parse_split($str) },
-    grammar => sub { parse_grammar($str) },
+    index     => sub { parse_index($str) },
+    index2    => sub { parse_index2($str) },
+    match     => sub { parse_match($str) },
+    split     => sub { parse_split($str) },
+    grammar   => sub { parse_grammar($str) },
+    grammar2  => sub { parse_grammar2($str) },
+    pos_array => sub { parse_pos_array($str) },
 });
