@@ -1,5 +1,8 @@
 package CGI::Ex::Template;
 
+#STAT_TTL
+#url filter
+
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/Template.pod
 #  Copyright 2007 - Paul Seamons                                     #
@@ -1836,7 +1839,7 @@ sub play_DUMP {
     my $info = $self->node_info($node);
     my $out;
     my $var;
-    if ($ident) {
+    if (defined $ident) {
         $out = Data::Dumper::Dumper($self->play_expr($ident));
         $var = $info->{'text'};
         $var =~ s/^[+\-~=]?\s*DUMP\s+//;
@@ -1855,6 +1858,7 @@ sub play_DUMP {
         $out = "<b>DUMP: File \"$info->{file}\" line $info->{line}</b>$out";
     } else {
         $out =~ s/\$VAR1/$var/;
+        $out = "DUMP: File \"$info->{file}\" line $info->{line}\n    $out";
     }
 
     return $out;
