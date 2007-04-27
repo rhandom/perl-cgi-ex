@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 734 : 575;
+use Test::More tests => ! $is_tt ? 737 : 577;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -961,13 +961,18 @@ my @config_c = (
         bam  => 'bar',
     },
 );
-process_ok("[% constants.harry %]" => 'do_this_once', {tt_config => \@config_c});
+process_ok("[% constants.harry %]" => 'do_this_once', {constants => {harry => 'foo'}, tt_config => \@config_c});
 process_ok("[% constants.harry.length %]" => '12', {tt_config => \@config_c});
 process_ok("[% SET constants.something = 1 %][% constants.something %]one" => '1one', {tt_config => \@config_c});
 process_ok("[% SET constants.harry = 1 %][% constants.harry %]one" => 'do_this_onceone', {tt_config => \@config_c});
 process_ok("[% constants.foo.\${constants.bang} %]" => '57', {tt_config => [@config_c]});
 process_ok("[% constants.foo.\$bam.\${constants.bing} %]" => '42', {tt_config => [@config_c]}) if ! $is_tt;
 process_ok("[% bam = 'somethingelse' %][% constants.foo.\$bam.\${constants.bing} %]" => '42', {tt_config => [@config_c]}) if ! $is_tt;
+
+process_ok('[% constants.${"harry"} %]' => 'do_this_once', {constants => {harry => 'foo'}, tt_config => \@config_c});
+process_ok('[% ${"constants"}.harry %]' => 'foo', {constants => {harry => 'foo'}, tt_config => \@config_c}) if ! $is_tt;
+process_ok('[% ${"constants"}.harry %]' => 'do_this_once', {constants => {harry => 'foo'}, tt_config => \@config_c}) if $is_tt;
+process_ok('[% ${"con${\\"s\\"}tants"}.harry %]' => 'foo', {constants => {harry => 'foo'}, tt_config => \@config_c}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### INTERPOLATE / ANYCASE / TRIM #####################################\n";
