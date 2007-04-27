@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 733 : 574;
+use Test::More tests => ! $is_tt ? 734 : 575;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1000,6 +1000,8 @@ process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|$a|A|${a}', {a => 'A', A => '
 process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|$a|A|${a}', {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1]});
 process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => 'bar', tt_config => [INTERPOLATE => 1]});
 process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1, INTERPOLATE => 1]});
+
+process_ok('[% constants.a %]|[% $constants.a %]|[% constants.$a %]' => 'A|A|A', {tt_config => [V1DOLLAR => 1, CONSTANTS => {a => 'A'}]});
 
 ###----------------------------------------------------------------###
 print "### configuration ####################################################\n";
