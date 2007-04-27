@@ -944,8 +944,12 @@ sub parse_expr {
 
     ### allow for leading $foo type constructs
     } elsif ($$str_ref =~ m{ \G \$ (\w+) \b \s* $QR_COMMENTS }gcxo) {
-        my $name = $1;
-        push @var, $self->parse_expr(\$name);
+        if ($self->{'V1DOLLAR'}) {
+            push @var, $1;
+            $is_namespace = 1 if $self->{'NAMESPACE'} && $self->{'NAMESPACE'}->{$1};
+        } else {
+            push @var, [$1, 0];
+        }
 
     ### allow for ${foo.bar} type constructs
     } elsif ($$str_ref =~ m{ \G \$\{ \s* }gcx) {
@@ -1013,10 +1017,8 @@ sub parse_expr {
         push(@var, $1) if ! $ARGS->{'no_dots'};
 
         ### allow for interpolated variables in the middle - one.$foo.two
-        if ($$str_ref =~ m{ \G \$(\w+) \s* $QR_COMMENTS }gcxo) {
-            my $name = $1;
-            my $var = $self->parse_expr(\$name);
-            push @var, $var;
+        if ($$str_ref =~ m{ \G \$ (\w+) \b \s* $QR_COMMENTS }gcxo) {
+            push @var, $self->{'V1DOLLAR'} ? $1 : [$1, 0];
 
         ### or one.${foo.bar}.two
         } elsif ($$str_ref =~ m{ \G \$\{ \s* }gcx) {
