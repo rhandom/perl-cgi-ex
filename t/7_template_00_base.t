@@ -8,13 +8,13 @@
 
 use vars qw($module $is_tt);
 BEGIN {
-    $module = 'CGI::Ex::Template'; #real    0m1.113s #user    0m0.416s #sys     0m0.016s
-#    $module = 'Template';         #real    0m3.022s #user    0m1.168s #sys     0m0.024s
+    $module = 'CGI::Ex::Template'; #real    0m0.885s #user    0m0.432s #sys     0m0.004s
+#    $module = 'Template';         #real    0m2.133s #user    0m1.108s #sys     0m0.024s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 737 : 577;
+use Test::More tests => ! $is_tt ? 740 : 579;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -983,6 +983,9 @@ process_ok("[% TRY ; PERL %] my \$n=7; print \$n [% END ; END %]" => '7', {tt_co
 
 process_ok("[% GET %]" => '', {GET => 'ONE'});
 process_ok("[% GET GET %]" => 'ONE', {GET => 'ONE'}) if ! $is_tt;
+process_ok("[% get one %]" => 'ONE', {one => 'ONE', tt_config => ['ANYCASE' => 1]});
+process_ok("[% get %]" => '', {get => 'ONE', tt_config => ['ANYCASE' => 1]});
+process_ok("[% get get %]" => 'ONE', {get => 'ONE', tt_config => ['ANYCASE' => 1]}) if ! $is_tt;
 
 process_ok("[% BLOCK foo %]\nhi\n[% END %][% PROCESS foo %]" => "\nhi\n");
 process_ok("[% BLOCK foo %]\nhi[% END %][% PROCESS foo %]" => "hi", {tt_config => [TRIM => 1]});
