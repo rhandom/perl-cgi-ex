@@ -221,9 +221,9 @@ TT3 are marked with (TT3).
 
     [% (a ~ b).length %]
 
-    [% "hi".repeat(3) %]
+    [% "hi".repeat(3) %] # = hihihi
 
-    [% {a => b}.size %]
+    [% {a => b}.size %] # = 1
 
 =item The "${" and "}" variable interpolators can contain expressions,
 not just variables.
@@ -234,6 +234,10 @@ not just variables.
 
     [% color = qw/Red Blue/; FOR [1..4] ; color.${ loop.index % color.size } ; END %]
       # = RedBlueRedBlue
+
+=item Tags can be nested.
+
+    [% f = "[% (1 + 2) %]" %][% f|eval %] # = 3
 
 =item Arrays can be accessed with non-integer numbers.
 
@@ -371,11 +375,20 @@ Used for Data::Dumpering the passed variable or expression.
 
 =item CET does not generate Perl code.
 
-It generates an "opcode" tree.
+It generates an "opcode" tree.  The opcode tree is an arrayref
+of scalars and array refs nested as deeply as possible.  This "simple"
+structure could be shared TT implementations in other languages
+via JSON or YAML.
 
 =item CET uses storable for its compiled templates.
 
 If EVAL_PERL is off, CET will not eval_string on ANY piece of information.
+
+=item There is eval_filter and MACRO recursion protection
+
+You can control the nested nature of eval_filter and MACRO
+recursion using the MAX_EVAL_RECURSE and MAX_MACRO_RECURSE
+configuration items.
 
 =item There is no context.
 
@@ -397,7 +410,7 @@ CET uses the load_parsed_tree method to get and cache templates.
 
 =item There is no grammar.
 
-CET has its own built in recursive grammar system.
+CET has its own built-in recursive regex based grammar system.
 
 =item There is no VIEW directive.
 
@@ -2433,12 +2446,25 @@ with the appropriate values from the variable cache (if INTERPOLATE is on).
 
     [% IF 1 %]The variable $variable had a value ${var.value}[% END %]
 
-
 =item LOAD_PERL
 
 Indicates if the USE directive can fall back and try and load a perl module
 if the indicated module was not found in the PLUGIN_BASE path.  See the
 USE directive.
+
+=item MAX_EVAL_RECURSE (CET only)
+
+Will use $CGI::Ex::Template::MAX_EVAL_RECURSE if not present.  Default is 50.
+Prevents runaway on the following:
+
+    [% f = "[% f|eval %]" %][% f|eval %]
+
+=item MAX_MACRO_RECURSE (CET only)
+
+Will use $CGI::Ex::Template::MAX_MACRO_RECURSE if not present.  Default is 50.
+Prevents runaway on the following:
+
+    [% MACRO f BLOCK %][% f %][% END %][% f %]
 
 =item NAMESPACE
 
