@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.09';
+$VERSION = '2.10';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
@@ -1163,13 +1163,12 @@ all of the basic data validation functions, avoid adding all of the
 millions of possible types, while still giving the capability for the
 developer to add their own types.
 
-CGI::Ex::Validate can work in a simple way like all of the other
-validators do.  However, it also allows for grouping of validation
-items and conditional validation of groups or individual items.  This
-is more in line with the normal validation procedures for a website.
-
 It also has full support for providing the same validation in javascript.
 It provides methods for attaching the javascript to existing forms.
+
+As opposed to other kitchen sync validation modules, CGI::Ex::Validate
+offers the simple types of validation, and makes it easy to add your
+own custom types.
 
 =head1 METHODS
 
@@ -1213,7 +1212,7 @@ array).
 
 If the form passes validation, validate will return undef.  If it
 fails validation, it will return a CGI::Ex::Validate::Error object.
-If the 'raise_error' general option has been set, validate will die
+If the 'raise_error' option has been set, validate will die
 with a CGI::Ex::validate::Error object as the value.
 
     my $err_obj = $self->validate($form, $val_hash);
@@ -1226,16 +1225,16 @@ with a CGI::Ex::validate::Error object as the value.
 
 =item C<generate_js>
 
-Requires TODO JSON or YAML to work properly (see L<JSON> or L<YAML>).
+Works with CGI::Ex::JSONDump, but can also work with  JSON or YAML
+if desired (see L<JSON> or L<YAML>).
 
 Takes a validation hash, a form name, and an optional javascript uri
 path and returns Javascript that can be embedded on a page and will
-perform identical validations as the server side.  The validation can
-be any validation hash (or arrayref of hashes.  The form name must be
+perform identical validations as the server side.  The form name must be
 the name of the form that the validation will act upon - the name is
 used to register an onsubmit function.  The javascript uri path is
-used to embed the locations two external javascript source files.
-
+used to embed the locations of javascript source files included
+with the CGI::Ex distribution.
 
 The javascript uri path is highly dependent upon the server
 configuration and therefore must be configured manually.  It may be
@@ -1245,29 +1244,27 @@ CGI/Ex/yaml_load.js and CGI/Ex/validate.js.  When generating the js
 code, generate_js will look in $JS_URI_PATH_YAML and
 $JS_URI_PATH_VALIDATE.  If either of these are not set, generate_js
 will default to "$JS_URI_PATH/CGI/Ex/yaml_load.js" and
-"$JS_URI_PATH/CGI/Ex/validate.js".
+"$JS_URI_PATH/CGI/Ex/validate.js" (Note: yaml_load is only needed
+if the flags no_jsondump and no_json have been set).
 
     $self->generate_js($val_hash, 'my_form', "/cgi-bin/js")
 
     # would generate something like the following...
 
-    <script src="/cgi-bin/js/CGI/Ex/yaml_load.js"></script>
     <script src="/cgi-bin/js/CGI/Ex/validate.js"></script>
     ... more js follows ...
 
-    $CGI::Ex::Validate::JS_URI_PATH      = "/stock/js";
-    $CGI::Ex::Validate::JS_URI_PATH_YAML = "/js/yaml_load.js";
+    $CGI::Ex::Validate::JS_URI_PATH = "/stock/js";
     $self->generate_js($val_hash, 'my_form')
 
     # would generate something like the following...
 
-    <script src="/js/yaml_load.js"></script>
     <script src="/stock/js/CGI/Ex/validate.js"></script>
     ... more js follows ...
 
 Referencing yaml_load.js and validate.js can be done in any of
 several ways.  They can be copied to or symlinked to a fixed location
-in the servers html directory.  They can also be printed out by a cgi.
+in the server's html directory.  They can also be printed out by a cgi.
 The method C<-E<gt>print_js> has been provided in CGI::Ex for printing
 js files found in the perl hierarchy.  See L<CGI::Ex> for more details.
 The $JS_URI_PATH of "/cgi-bin/js" could contain the following:
@@ -1296,30 +1293,21 @@ Returns a CGI::Ex object.  Used internally.
 
 =head1 VALIDATION HASH
 
-The validation hash may be passed as a perl a hashref or as a
+The validation hash may be passed as a hashref or as a
 filename, or as a YAML document string.  If it is a filename, it will
 be translated into a hash using the %EXT_HANDLER for the extension on
 the file.  If there is no extension, it will use $DEFAULT_EXT as a
-default.
+default.  CGI::Ex::Conf is used for the reading of files.
 
-The validation "hash" may also be an arrayref of hashrefs.  In this
-case, each arrayref is treated as a group and is validated separately.
-A group can have a validate_if function that allows for that
-particular group to apply only if certain conditions are met.
+Keys matching the regex m/^(general|group)\s+(\w+)$/ are reserved and
+are counted as GROUP OPTIONS.  Other keys (if any, should be field names
+that need validation).
 
-=head1 GROUPS
+If the GROUP OPTION 'group validate_if' is set, the validation will only
+be validated if the conditions are met.  If 'group validate_if' is not
+specified, then the validation will proceed.
 
-Each hashref that is passed as a validation hash is treated as a
-group.  Keys matching the regex m/^group\s+(\w+)$/ are reserved and
-are counted as GROUP OPTIONS.  Keys matching the regex m/^general\s+(\w+)$/
-are reserved and are counted as GENERAL OPTIONS.  Other keys (if
-any, should be keys that need validation).
-
-If the GROUP OPTION 'group validate_if' is set, the group will only
-be validated if the conditions are met.  Any group with out a validate_if
-fill be automatically validated.
-
-Each of the items listed in the group will be validated.  The
+Each of the items listed in the validation will be validated.  The
 validation order is determined in one of three ways:
 
 =over 4
@@ -1362,9 +1350,6 @@ validation order is determined in one of three ways:
 
 =back
 
-Each of the individual field validation hashrefs should contain the
-types listed in VALIDATION TYPES.
-
 Optionally the 'group fields' or the 'group order' may contain the
 word 'OR' as a special keyword.  If the item preceding 'OR' fails
 validation the item after 'OR' will be tested instead.  If the item
@@ -1373,10 +1358,22 @@ tested.
 
     'group order' => [qw(zip OR postalcode state OR region)],
 
-Each individual validation hashref will operate on the field contained
+Each individual field validation hashref will operate on the field contained
 in the 'field' key.  This key may also be a regular expression in the
 form of 'm/somepattern/'.  If a regular expression is used, all keys
-matching that pattern will be validated.
+matching that pattern will be validated.  If the field key is
+not specified, the key from the top level hash will be used.
+
+    foobar => {   # "foobar" is not used as key because field is specified
+       field    => 'real_key_name',
+       required => 1,
+    },
+    real_key_name2 => {
+       required => 1,
+    },
+
+Each of the individual field validation hashrefs should contain the
+types listed in VALIDATION TYPES.
 
 =head1 VALIDATION TYPES
 
@@ -1758,8 +1755,8 @@ The error object has several methods for determining what the errors were.
 Returns an array or arrayref (depending on scalar context) of errors that
 occurred in the order that they occurred.  Individual groups may have a heading
 and the entire validation will have a heading (the default heading can be changed
-via the 'as_array_title' general option).  Each error that occurred is a separate
-item and are pre-pended with 'as_array_prefix' (which is a general option - default
+via the 'as_array_title' group option).  Each error that occurred is a separate
+item and are pre-pended with 'as_array_prefix' (which is a group option - default
 is '  ').  The as_array_ options may also be set via a hashref passed to as_array.
 as_array_title defaults to 'Please correct the following items:'.
 
@@ -1803,18 +1800,20 @@ appended onto the error string.
 =item C<as_hash>
 
 Returns a hash or hashref (depending on scalar context) of errors that
-occurred.   Each key is the field name of the form that failed validation with
-'as_hash_suffix' added on as a suffix.  as_hash_suffix is available as a general option
-and may also be passed in via a hashref as the only argument to as_hash.
-The default value is '_error'.  The values of the hash are arrayrefs of errors
-that occurred to that form element.
+occurred.  Each key is the field name of the form that failed
+validation with 'as_hash_suffix' added on as a suffix.  as_hash_suffix
+is available as a group option and may also be passed in via a
+hashref as the only argument to as_hash.  The default value is
+'_error'.  The values of the hash are arrayrefs of errors that
+occurred to that form element.
 
-By default as_hash will return the values of the hash as arrayrefs (a list of the errors
-that occurred to that key).  It is possible to also return the values as strings.
-Three options are available for formatting: 'as_hash_header' which will be pre-pended
-onto the error string, 'as_hash_footer' which will be appended, and 'as_hash_join' which
-will be used to join the arrayref.  The only argument required to force the
-stringification is 'as_hash_join'.
+By default as_hash will return the values of the hash as arrayrefs (a
+list of the errors that occurred to that key).  It is possible to also
+return the values as strings.  Three options are available for
+formatting: 'as_hash_header' which will be pre-pended onto the error
+string, 'as_hash_footer' which will be appended, and 'as_hash_join'
+which will be used to join the arrayref.  The only argument required
+to force the stringification is 'as_hash_join'.
 
   ### if this returns the following
   my $hash = $err_obj->as_hash;
@@ -1835,67 +1834,62 @@ stringification is 'as_hash_join'.
 
 =head1 GROUP OPTIONS
 
-Any key in a validation hash matching the pattern m/^group\s+(\w+)$/
-is considered a group option.  The current know options are:
-
-=over 4
-
-=item C<'group title'>
-
-Used as a group section heading when as_array or as_string is called
-by the error object.
-
-=item C<'group order'>
-
-Order in which to validate key/value pairs of group.
-
-=item C<'group fields'>
-
-Arrayref of validation items to validate.
-
-=item C<'group validate_if'>
-
-Conditions that will be checked to see if the group should be validated.
-If no validate_if option is found, the group will be validated.
-
-=back
-
-=head1 GENERAL OPTIONS
-
-Any key in a validation hash matching the pattern m/^general\s+(\w+)$/
-is considered a general option.  General options will also be looked
-for in the Validate object ($self) and can be set when instantiating
-the object ($self->{raise_error} is equivalent to
-$valhash->{'general raise_error'}).  The current know options are:
-
-General options may be set in any group using the syntax:
-
-  'general general_option_name' => 'general_option_value'
-
-They will only be set if the group's validate_if is successful or
-if the group does not have a validate_if.  It is also possible to set
-a "group general" option using the following syntax:
-
-  'group general_option_name' => 'general_option_value'
-
-These items will only be set if the group fails validation.
-If a group has a validate_if block and passes validation, the group
-items will not be used.  This is so that a failed section can have
-its own settings.  Note though that the last option found will be
-used and that items set in $self override those set in the validation
-hash.
+Any key in a validation hash matching the pattern
+m/^(group|general)\s+(\w+)$/ is considered a group option (the reason
+that either group or general may be used is that CGI::Ex::Validate
+used to have the concept of validation groups - these were not
+commonly used so support has been deprecated as of the 2.10 release).
+Group options will also be looked for in the Validate object ($self)
+and can be set when instantiating the object ($self->{raise_error} is
+equivalent to $valhash->{'group raise_error'}).  The current know
+options are:
 
 Options may also be set globally before calling validate by
 populating the %DEFAULT_OPTIONS global hash.
 
 =over 4
 
-=item C<'general raise_error'>
+=item C<title>
+
+Used as a group section heading when as_array or as_string is called
+by the error object.
+
+    'group title' => 'Title of errors',
+
+=item C<order>
+
+Order in which to validate key/value pairs of group.
+
+    'group order' => [qw(user pass email OR phone)],
+
+=item C<fields>
+
+Arrayref of validation items to validate.
+
+    'group fields' => [{
+        field    => 'field1',
+        required => 1,
+    }, {
+        field    => 'field2',
+        required => 1,
+    }],
+
+=item C<validate_if>
+
+If specified - the entire hashref will only be validated if
+the "if" conditions are met.
+
+    'group validate_if => {field => 'email', required => 1},
+
+This group would only validate all fields if the email field
+was present.
+
+=item C<raise_error>
 
 If raise_error is true, any call to validate that fails validation
 will die with an error object as the value.
 
-=item C<'general no_extra_fields'>
+=item C<no_extra_fields>
 
 If no_extra_fields is true, validate will add errors for any field found
 in form that does not have a field_val hashref in the validation hash.
@@ -1906,76 +1900,80 @@ An important exception to this is that field_val hashrefs or field names listed
 in a validate_if or required_if statement will not be included.  You must
 have an explicit entry for each key.
 
-=item C<'general \w+_error'>
+=item C<\w+_error>
 
 These items allow for an override of the default errors.
 
-  'general required_error' => '$name is really required',
-  'general max_len_error'  => '$name must be shorter than $value characters',
+  'group required_error' => '$name is really required',
+  'group max_len_error'  => '$name must be shorter than $value characters',
     # OR #
   my $self = CGI::Ex::Validate->new({
     max_len_error => '$name must be shorter than $value characters',
   });
 
-=item C<'general as_array_title'>
+=item C<as_array_title>
 
 Used as the section title for all errors that occur, when as_array
 or as_string is called by the error object.
 
-=item C<'general as_array_prefix'>
+=item C<as_array_prefix>
 
 Used as prefix to individual errors that occur, when as_array
 or as_string is called by the error object.  Each individual error
 will be prefixed with this string.  Headings will not be prefixed.
 Default is '  '.
 
-=item C<'general as_string_join'>
+=item C<as_string_join>
 
 When as_string is called, the values from as_array will be joined with
 as_string_join.  Default value is "\n".
 
-=item C<'general as_string_header'>
+=item C<as_string_header>
 
 If set, will be pre-pended onto the string when as_string is called.
 
-=item C<'general as_string_footer'>
+=item C<as_string_footer>
 
 If set, will be pre-pended onto the string when as_string is called.
 
-=item C<'general as_hash_suffix'>
+=item C<as_hash_suffix>
 
 Added on to key names during the call to as_hash.  Default is '_error'.
 
-=item C<'general as_hash_join'>
+=item C<as_hash_join>
 
 By default, as_hash will return hashref values that are errors joined with
 the default as_hash_join value of <br />.  It can also return values that are
 arrayrefs of the errors.  This can be done by setting as_hash_join to a non-true value
 (for example '')
 
-=item C<'general as_hash_header'>
+=item C<as_hash_header>
 
 If as_hash_join has been set to a true value, as_hash_header may be set to
 a string that will be pre-pended on to the error string.
 
-=item C<'general as_hash_footer'>
+=item C<as_hash_footer>
 
 If as_hash_join has been set to a true value, as_hash_footer may be set to
 a string that will be postpended on to the error string.
 
-=item C<'general no_inline'>
+=item C<no_inline>
 
 If set to true, the javascript validation will not attempt to generate inline
 errors.  Default is true.  Inline errors are independent of confirm and alert
 errors.
 
-=item C<'general no_confirm'>
+    'general no_inline' => 1,
+
+=item C<no_confirm>
 
 If set to true, the javascript validation will try to use an alert instead
 of a confirm to inform the user of errors.  Alert and confirm are independent
 or inline errors.  Default is false.
 
-=item C<'general no_alert'>
+    'general no_confirm' => 1,
+
+=item C<no_alert>
 
 If set to true, the javascript validation will not show an alert box
 when errors occur.  Default is false.  This option only comes into
@@ -1984,23 +1982,9 @@ errors.  Although it is possible to turn off all errors by setting
 no_inline, no_confirm, and no_alert all to 1, it is suggested that at
 least one of the error reporting facilities is left on.
 
+    'general no_alert' => 1,
+
 =back
-
-It is possible to have a group that contains nothing but general options.
-
-  my $val_hash = [
-    {'general error_title'    => 'The following things went wrong',
-     'general error_prefix'   => '  - ',
-     'general raise_error'    => 1,
-     'general name_suffix'    => '_foo_error',
-     'general required_error' => '$name is required',
-    },
-    {'group title' => 'User Information',
-     username => {required => 1},
-     email    => {required => 1},
-     password => {required => 1},
-    },
-  ];
 
 =head1 JAVASCRIPT
 
@@ -2008,7 +1992,7 @@ CGI::Ex::Validate provides for having duplicate validation on the
 client side as on the server side.  Errors can be shown in any
 combination of inline and confirm, inline and alert, inline only,
 confirm only, alert only, and none.  These combinations are controlled
-by the general options no_inline, no_confirm, and no_alert.
+by the group options no_inline, no_confirm, and no_alert.
 Javascript validation can be generated for a page using the
 C<-E<gt>generate_js> Method of CGI::Ex::Validate.  It is also possible
 to store the validation inline with the html.  This can be done by
