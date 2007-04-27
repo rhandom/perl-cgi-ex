@@ -421,11 +421,6 @@ It only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 =item When debug dirs is on, directives on different lines separated by colons show the line they
 are on rather than a general line range.
 
-=item There is no ANYCASE configuration item.
-
-There was in initial beta tests, but it was dropped in favor of consistent parsing syntax (and
-a minimal amount of speedup).
-
 =back
 
 =head1 VARIABLES
@@ -2277,13 +2272,13 @@ the TT config documentation.
 
 These variables should be passed to the "new" constructor.
 
-   my $obj = CGI::Ex::Template->new(
-       VARIABLES  => \%hash_of_variables,
-       AUTO_RESET => 0,
-       TRIM       => 1,
-       POST_CHOMP => "=",
-       PRE_CHOMP  => "-",
-   );
+    my $obj = CGI::Ex::Template->new(
+        VARIABLES  => \%hash_of_variables,
+        AUTO_RESET => 0,
+        TRIM       => 1,
+        POST_CHOMP => "=",
+        PRE_CHOMP  => "-",
+    );
 
 
 =over 4
@@ -2291,6 +2286,12 @@ These variables should be passed to the "new" constructor.
 =item ABSOLUTE
 
 Boolean.  Default false.  Are absolute paths allowed for included files.
+
+=item ANYCASE
+
+Allow directive matching to be case insensitive.
+
+    [% get 23 %] prints 23 with ANYCASE => 1
 
 =item AUTO_RESET
 
@@ -2300,10 +2301,10 @@ Boolean.  Default 1.  Clear blocks that were set during the process method.
 
 A hashref of blocks that can be used by the process method.
 
-   BLOCKS => {
-       block_1 => sub { ... }, # coderef that returns a block
-       block_2 => 'A String',  # simple string
-   },
+    BLOCKS => {
+        block_1 => sub { ... }, # coderef that returns a block
+        block_2 => 'A String',  # simple string
+    },
 
 Note that a Template::Document cannot be supplied as a value (TT
 supports this).  However, it is possible to supply a value that is
@@ -2622,11 +2623,6 @@ See the section on VARIABLES for the types of information that can be passed in.
 =head1 UNSUPPORTED TT CONFIGURATION
 
 =over 4
-
-=item ANYCASE
-
-This will not be supported.  You will have to use the full case directive names.
-(It was in the beta code but was removed prior to release).
 
 =item WRAPPER
 
