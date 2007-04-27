@@ -1,0 +1,92 @@
+------------------------------------------------------------------------
+From a string or scalarref tests
+Benchmark: running CET_str, CTX_str, HTE_str, HT_str, TTX_str, TT_str, TextTemplate for at least 2 CPU seconds...
+   CET_str:  2 wallclock secs ( 1.99 usr +  0.01 sys =  2.00 CPU) @ 1302.50/s (n=2605)
+   CTX_str:  2 wallclock secs ( 2.11 usr +  0.00 sys =  2.11 CPU) @ 1592.42/s (n=3360)
+   HTE_str:  3 wallclock secs ( 2.10 usr +  0.00 sys =  2.10 CPU) @ 894.76/s (n=1879)
+    HT_str:  2 wallclock secs ( 2.12 usr +  0.00 sys =  2.12 CPU) @ 1345.75/s (n=2853)
+   TTX_str:  3 wallclock secs ( 2.06 usr +  0.01 sys =  2.07 CPU) @ 295.17/s (n=611)
+    TT_str:  2 wallclock secs ( 2.08 usr +  0.00 sys =  2.08 CPU) @ 280.77/s (n=584)
+TextTemplate:  3 wallclock secs ( 2.21 usr +  0.00 sys =  2.21 CPU) @ 1653.85/s (n=3655)
+               Rate  TT_str TTX_str HTE_str CET_str  HT_str CTX_str TextTemplate
+TT_str        281/s      --     -5%    -69%    -78%    -79%    -82%         -83%
+TTX_str       295/s      5%      --    -67%    -77%    -78%    -81%         -82%
+HTE_str       895/s    219%    203%      --    -31%    -34%    -44%         -46%
+CET_str      1302/s    364%    341%     46%      --     -3%    -18%         -21%
+HT_str       1346/s    379%    356%     50%      3%      --    -15%         -19%
+CTX_str      1592/s    467%    439%     78%     22%     18%      --          -4%
+TextTemplate 1654/s    489%    460%     85%     27%     23%      4%           --
+------------------------------------------------------------------------
+Compiled and cached on the file system tests
+Benchmark: running CET_compile, CTX_compile, HTJ_compile, HT_compile, TTX_compile, TT_compile for at least 2 CPU seconds...
+CET_compile:  2 wallclock secs ( 2.05 usr +  0.04 sys =  2.09 CPU) @ 2157.89/s (n=4510)
+CTX_compile:  2 wallclock secs ( 2.03 usr +  0.10 sys =  2.13 CPU) @ 3132.39/s (n=6672)
+HTJ_compile:  3 wallclock secs ( 2.00 usr +  0.08 sys =  2.08 CPU) @ 5580.77/s (n=11608)
+HT_compile:  2 wallclock secs ( 2.05 usr +  0.06 sys =  2.11 CPU) @ 1792.42/s (n=3782)
+TTX_compile:  3 wallclock secs ( 1.96 usr +  0.05 sys =  2.01 CPU) @ 784.08/s (n=1576)
+TT_compile:  2 wallclock secs ( 2.02 usr +  0.05 sys =  2.07 CPU) @ 688.89/s (n=1426)
+              Rate TT_compile TTX_compile HT_compile CET_compile CTX_compile HTJ_compile
+TT_compile   689/s         --        -12%       -62%        -68%        -78%        -88%
+TTX_compile  784/s        14%          --       -56%        -64%        -75%        -86%
+HT_compile  1792/s       160%        129%         --        -17%        -43%        -68%
+CET_compile 2158/s       213%        175%        20%          --        -31%        -61%
+CTX_compile 3132/s       355%        299%        75%         45%          --        -44%
+HTJ_compile 5581/s       710%        612%       211%        159%         78%          --
+------------------------------------------------------------------------
+Cached in memory tests
+Benchmark: running CET_mem, CTX_mem, HTE_mem, HT_mem, TTX_mem, TT_mem for at least 2 CPU seconds...
+   CET_mem:  3 wallclock secs ( 2.07 usr +  0.03 sys =  2.10 CPU) @ 3409.05/s (n=7159)
+   CTX_mem:  2 wallclock secs ( 2.03 usr +  0.04 sys =  2.07 CPU) @ 6106.28/s (n=12640)
+   HTE_mem:  3 wallclock secs ( 2.08 usr +  0.02 sys =  2.10 CPU) @ 1358.57/s (n=2853)
+    HT_mem:  3 wallclock secs ( 2.08 usr +  0.02 sys =  2.10 CPU) @ 2456.67/s (n=5159)
+   TTX_mem:  3 wallclock secs ( 2.15 usr +  0.00 sys =  2.15 CPU) @ 3120.47/s (n=6709)
+    TT_mem:  1 wallclock secs ( 2.04 usr +  0.02 sys =  2.06 CPU) @ 2162.62/s (n=4455)
+          Rate HTE_mem  TT_mem  HT_mem TTX_mem CET_mem CTX_mem
+HTE_mem 1359/s      --    -37%    -45%    -56%    -60%    -78%
+TT_mem  2163/s     59%      --    -12%    -31%    -37%    -65%
+HT_mem  2457/s     81%     14%      --    -21%    -28%    -60%
+TTX_mem 3120/s    130%     44%     27%      --     -8%    -49%
+CET_mem 3409/s    151%     58%     39%      9%      --    -44%
+CTX_mem 6106/s    349%    182%    149%     96%     79%      --
+------------------------------------------------------------------------
+All variants together
+Benchmark: running CET_compile, CET_mem, CET_str, CTX_compile, CTX_mem, CTX_str, HTE_mem, HTE_str, HTJ_compile, HT_compile, HT_mem, HT_str, TTX_compile, TTX_mem, TTX_str, TT_compile, TT_mem, TT_str, TextTemplate for at least 2 CPU seconds...
+CET_compile:  3 wallclock secs ( 1.95 usr +  0.07 sys =  2.02 CPU) @ 2237.13/s (n=4519)
+   CET_mem:  2 wallclock secs ( 2.11 usr +  0.02 sys =  2.13 CPU) @ 3361.50/s (n=7160)
+   CET_str:  2 wallclock secs ( 2.02 usr +  0.00 sys =  2.02 CPU) @ 1287.62/s (n=2601)
+CTX_compile:  3 wallclock secs ( 1.99 usr +  0.08 sys =  2.07 CPU) @ 3098.55/s (n=6414)
+   CTX_mem:  2 wallclock secs ( 2.17 usr +  0.06 sys =  2.23 CPU) @ 6426.01/s (n=14330)
+   CTX_str:  3 wallclock secs ( 2.12 usr +  0.00 sys =  2.12 CPU) @ 1649.06/s (n=3496)
+   HTE_mem:  2 wallclock secs ( 2.01 usr +  0.02 sys =  2.03 CPU) @ 1427.09/s (n=2897)
+   HTE_str:  3 wallclock secs ( 2.18 usr +  0.00 sys =  2.18 CPU) @ 924.31/s (n=2015)
+HTJ_compile:  2 wallclock secs ( 2.06 usr +  0.08 sys =  2.14 CPU) @ 5424.30/s (n=11608)
+HT_compile:  3 wallclock secs ( 2.05 usr +  0.06 sys =  2.11 CPU) @ 1696.21/s (n=3579)
+    HT_mem:  3 wallclock secs ( 2.00 usr +  0.09 sys =  2.09 CPU) @ 2334.93/s (n=4880)
+    HT_str:  3 wallclock secs ( 2.00 usr +  0.00 sys =  2.00 CPU) @ 1293.00/s (n=2586)
+TTX_compile:  2 wallclock secs ( 2.12 usr +  0.05 sys =  2.17 CPU) @ 787.10/s (n=1708)
+   TTX_mem:  3 wallclock secs ( 2.07 usr +  0.00 sys =  2.07 CPU) @ 3098.55/s (n=6414)
+   TTX_str:  3 wallclock secs ( 2.36 usr +  0.00 sys =  2.36 CPU) @ 284.32/s (n=671)
+TT_compile:  3 wallclock secs ( 2.10 usr +  0.03 sys =  2.13 CPU) @ 669.48/s (n=1426)
+    TT_mem:  3 wallclock secs ( 2.08 usr +  0.01 sys =  2.09 CPU) @ 2041.15/s (n=4266)
+    TT_str:  2 wallclock secs ( 2.07 usr +  0.00 sys =  2.07 CPU) @ 284.06/s (n=588)
+TextTemplate:  3 wallclock secs ( 2.10 usr +  0.00 sys =  2.10 CPU) @ 1669.52/s (n=3506)
+               Rate TT_str TTX_st TT_co TTX_c HTE_s CET_s HT_st HTE_m CTX_s TextT HT_co TT_me CET_c HT_me CTX_c TTX_m CET_m HTJ_c CTX_mem
+TT_str        284/s     --    -0%  -58%  -64%  -69%  -78%  -78%  -80%  -83%  -83%  -83%  -86%  -87%  -88%  -91%  -91%  -92%  -95%  -96%
+TTX_str       284/s     0%     --  -58%  -64%  -69%  -78%  -78%  -80%  -83%  -83%  -83%  -86%  -87%  -88%  -91%  -91%  -92%  -95%  -96%
+TT_compile    669/s   136%   135%    --  -15%  -28%  -48%  -48%  -53%  -59%  -60%  -61%  -67%  -70%  -71%  -78%  -78%  -80%  -88%  -90%
+TTX_compile   787/s   177%   177%   18%    --  -15%  -39%  -39%  -45%  -52%  -53%  -54%  -61%  -65%  -66%  -75%  -75%  -77%  -85%  -88%
+HTE_str       924/s   225%   225%   38%   17%    --  -28%  -29%  -35%  -44%  -45%  -46%  -55%  -59%  -60%  -70%  -70%  -73%  -83%  -86%
+CET_str      1288/s   353%   353%   92%   64%   39%    --   -0%  -10%  -22%  -23%  -24%  -37%  -42%  -45%  -58%  -58%  -62%  -76%  -80%
+HT_str       1293/s   355%   355%   93%   64%   40%    0%    --   -9%  -22%  -23%  -24%  -37%  -42%  -45%  -58%  -58%  -62%  -76%  -80%
+HTE_mem      1427/s   402%   402%  113%   81%   54%   11%   10%    --  -13%  -15%  -16%  -30%  -36%  -39%  -54%  -54%  -58%  -74%  -78%
+CTX_str      1649/s   481%   480%  146%  110%   78%   28%   28%   16%    --   -1%   -3%  -19%  -26%  -29%  -47%  -47%  -51%  -70%  -74%
+TextTemplate 1670/s   488%   487%  149%  112%   81%   30%   29%   17%    1%    --   -2%  -18%  -25%  -28%  -46%  -46%  -50%  -69%  -74%
+HT_compile   1696/s   497%   497%  153%  116%   84%   32%   31%   19%    3%    2%    --  -17%  -24%  -27%  -45%  -45%  -50%  -69%  -74%
+TT_mem       2041/s   619%   618%  205%  159%  121%   59%   58%   43%   24%   22%   20%    --   -9%  -13%  -34%  -34%  -39%  -62%  -68%
+CET_compile  2237/s   688%   687%  234%  184%  142%   74%   73%   57%   36%   34%   32%   10%    --   -4%  -28%  -28%  -33%  -59%  -65%
+HT_mem       2335/s   722%   721%  249%  197%  153%   81%   81%   64%   42%   40%   38%   14%    4%    --  -25%  -25%  -31%  -57%  -64%
+CTX_compile  3099/s   991%   990%  363%  294%  235%  141%  140%  117%   88%   86%   83%   52%   39%   33%    --   -0%   -8%  -43%  -52%
+TTX_mem      3099/s   991%   990%  363%  294%  235%  141%  140%  117%   88%   86%   83%   52%   39%   33%    0%    --   -8%  -43%  -52%
+CET_mem      3362/s  1083%  1082%  402%  327%  264%  161%  160%  136%  104%  101%   98%   65%   50%   44%    8%    8%    --  -38%  -48%
+HTJ_compile  5424/s  1810%  1808%  710%  589%  487%  321%  320%  280%  229%  225%  220%  166%  142%  132%   75%   75%   61%    --  -16%
+CTX_mem      6426/s  2162%  2160%  860%  716%  595%  399%  397%  350%  290%  285%  279%  215%  187%  175%  107%  107%   91%   18%    --
