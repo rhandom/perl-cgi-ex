@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 704 : 553;
+use Test::More tests => ! $is_tt ? 725 : 566;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -927,6 +927,8 @@ process_ok("[%n=1%][% MACRO foo(n) BLOCK %]Hi[% n %][% END %][% foo(2) %][%n%]" 
 process_ok("[%n=1%][% MACRO foo BLOCK %]Hi[% n = 2%][% END %][% foo %][%n%]" => 'Hi1');
 process_ok("[% MACRO foo(n) FOREACH i=[1..n] %][% i %][% END %][% foo(3) %]" => '123');
 
+process_ok('[% MACRO f BLOCK %]>[% TRY; f ; CATCH ;  "caught" ; END %][% END %][% f %]' => '>>>caught', {tt_config => [MAX_MACRO_RECURSE => 3]}) if ! $is_tt;
+
 ###----------------------------------------------------------------###
 print "### DEBUG ############################################################\n";
 
@@ -1037,7 +1039,28 @@ process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; fo
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*cd');
 
 ###----------------------------------------------------------------###
-print "### embedded tags ####################################################\n";
+print "### embedded items ###################################################\n";
+
+process_ok('[% " \" " %]' => ' " ');
+process_ok('[% " \$foo " %]' => ' $foo ');
+process_ok('[% " \${foo} " %]' => ' ${foo} ');
+process_ok('[% " \n " %]' => " \n ");
+process_ok('[% " \t " %]' => " \t ");
+process_ok('[% " \r " %]' => " \r ");
+
+process_ok("[% ' \\' ' %]" => " ' ");
+process_ok("[% ' \\r ' %]" => ' \r ');
+process_ok("[% ' \\n ' %]" => ' \n ');
+process_ok("[% ' \\t ' %]" => ' \t ');
+process_ok("[% ' \$foo ' %]" => ' $foo ');
+
+process_ok('[% A = "bar" ; ${ "A" } %]' => 'bar');
+process_ok('[% A = "bar" ; "(${ A })" %]' => '(bar)');
+process_ok('[% A = "bar" ; ${ {a => "A"}.a } %]' => 'bar') if ! $is_tt;
+process_ok('[% A = "bar" ; "(${ {a => \"A\"\\}.a })" %]' => '(A)') if ! $is_tt;
+process_ok('[% A = "bar" ; "(${ \\${ {a => \"A\"\\}.a \\} })" %]' => '(bar)') if ! $is_tt;
+process_ok('[% A = "bar" %](${ {a => \"A\"\\}.a })' => '(A)', {tt_config => [INTERPOLATE => 1]}) if ! $is_tt;
+process_ok('[% A = "bar" %](${ \\${ {a => \"A\"\\}.a \\} })' => '(bar)', {tt_config => [INTERPOLATE => 1]}) if ! $is_tt;
 
 process_ok('[% "[%" %]' => '[%') if ! $is_tt;
 process_ok('[% "%]" %]' => '%]') if ! $is_tt;
@@ -1046,6 +1069,9 @@ process_ok('[% "[% 1 + 2 %]" | eval %]' => '3') if ! $is_tt;
 
 process_ok('[% qw([%  1  +  2  %]).join %]' => '[% 1 + 2 %]') if ! $is_tt;
 process_ok('[% qw([%  1  +  2  %]).join.eval %]' => '3') if ! $is_tt;
+
+process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
+process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; f.eval;f.eval %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
