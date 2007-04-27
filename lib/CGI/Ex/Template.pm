@@ -192,8 +192,7 @@ BEGIN {
         INSERT  => [\&parse_INSERT,  \&play_INSERT],
         LAST    => [sub {},          \&play_control],
         MACRO   => [\&parse_MACRO,   \&play_MACRO],
-        META    => [undef,           sub {}],
-        METADEF => [undef,           \&play_METADEF],
+        META    => [undef,           \&play_META],
         NEXT    => [sub {},          \&play_control],
         PERL    => [\&parse_PERL,    \&play_PERL,     1],
         PROCESS => [\&parse_PROCESS, \&play_PROCESS],
@@ -421,7 +420,7 @@ sub load_parsed_tree {
                     my $_tree = $ref->{'_tree'};
                     foreach my $node (@$_tree) {
                         next if ! ref $node;
-                        next if $node->[0] eq 'METADEF';
+                        next if $node->[0] eq 'META';
                         last if $node->[0] ne 'BLOCK';
                         next if $block_name ne $node->[3];
                         $doc->{'_content'} = $ref->{'_content'};
@@ -531,7 +530,7 @@ sub parse_tree {
     local $self->{'_state'} = \@state; # allow for items to introspect (usually BLOCKS)
     local $self->{'_in_perl'};         # no interpolation in perl
     my @move_to_front;    # items that need to be declared first (usually BLOCKS)
-    my @meta;             # place to store any found meta information (to go into METADEF)
+    my @meta;             # place to store any found meta information (to go into META)
     my $post_chomp = 0;   # previous post_chomp setting
     my $continue   = 0;   # flag for multiple directives in the same tag
     my $post_op;          # found a post-operative DIRECTIVE
@@ -804,7 +803,7 @@ sub parse_tree {
         unshift @tree, @move_to_front;
     }
     if (@meta) {
-        unshift @tree, ['METADEF', 0, 0, {@meta}];
+        unshift @tree, ['META', 0, 0, {@meta}];
     }
 
     if ($#state > -1) {
@@ -2122,7 +2121,7 @@ sub play_MACRO {
     return;
 }
 
-sub play_METADEF {
+sub play_META {
     my ($self, $hash) = @_;
     my $ref;
     if ($self->{'_top_level'}) {
@@ -2776,7 +2775,7 @@ sub process {
         if (exists $self->{'PROCESS'}) {
             ### load the meta data for the top document
             my $doc  = $self->load_parsed_tree($content) || {};
-            my $meta = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'METADEF')
+            my $meta = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
                 ? $doc->{'_tree'}->[0]->[3] : {};
 
             $copy->{'template'} = $doc;
@@ -2961,7 +2960,7 @@ sub node_info {
     my ($self, $node) = @_;
     my $doc = $self->{'_vars'}->{'component'};
     my $i = $node->[1];
-    my $j = $node->[2] || return ''; # METADEF can be 0
+    my $j = $node->[2] || return ''; # META can be 0
     $doc->{'_content'} ||= do { my $s = $self->slurp($doc->{'_filename'}) ; \$s };
     my $s = substr(${ $doc->{'_content'} }, $i, $j - $i);
     $s =~ s/^\s+//;
