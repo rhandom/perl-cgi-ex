@@ -9,12 +9,12 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template'; #real    0m0.885s #user    0m0.432s #sys     0m0.004s
-#    $module = 'Template';         #real    0m2.133s #user    0m1.108s #sys     0m0.024s
+    $module = 'Template';         #real    0m2.133s #user    0m1.108s #sys     0m0.024s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 740 : 579;
+use Test::More tests => ! $is_tt ? 745 : 584;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -188,6 +188,12 @@ process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
 process_ok("[% qw/Foo Bar Baz/.0 %]" => 'Foo') if ! $is_tt;
 process_ok('[% [0..10].-1 %]' => '10') if ! $is_tt;
 process_ok('[% [0..10].${ 2.3 } %]' => '2') if ! $is_tt;
+
+process_ok("[% (1 + 2)() %]" => ''); # parse error
+process_ok("[% (1 + 2) %]" => '3');
+process_ok("[% (a) %]" => '2', {a => 2});
+process_ok("[% ('foo') %]" => 'foo');
+process_ok("[% (a(2)) %]" => '2', {a => sub { $_[0] }});
 
 ###----------------------------------------------------------------###
 print "### SET ##############################################################\n";
