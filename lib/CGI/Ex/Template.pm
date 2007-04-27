@@ -33,7 +33,7 @@ use vars qw($VERSION
             $QR_PRIVATE
 
             $PACKAGE_EXCEPTION $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
-            $MAX_EVAL_RECURSE
+            $MAX_EVAL_RECURSE $MAX_MACRO_RECURSE
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
@@ -48,6 +48,7 @@ BEGIN {
     $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
     $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
     $MAX_EVAL_RECURSE    = 50;
+    $MAX_MACRO_RECURSE   = 50;
 
     $TAGS = {
         asp       => ['<%',     '%>'    ], # ASP
@@ -910,18 +911,20 @@ sub parse_expr {
             $str =~ s/\\n/\n/g;
             $str =~ s/\\t/\t/g;
             $str =~ s/\\r/\r/g;
-            $str =~ s/\\([\"\$])/$1/g;
+            $str =~ s/\\"/"/g;
             my @pieces = $ARGS->{'auto_quote'}
-                ? split(m{ (\$\w+            | \$\{ [^\}]+ \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
-                : split(m{ (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $str);
+                ? split(m{ (?: ^ | (?<!\\)) (\$\w+            | \$\{ .*? (?<!\\) \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
+                : split(m{ (?: ^ | (?<!\\)) (\$\w+ (?:\.\w+)* | \$\{ .*? (?<!\\) \}) }x, $str);
             my $n = 0;
             foreach my $piece (@pieces) {
+                $piece =~ s/\\\$/\$/g;
                 next if ! ($n++ % 2);
                 next if $piece !~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
-                    && $piece !~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x;
+                    && $piece !~ m{ ^ \$\{ \s* (.*?) (?<!\\) \} $ }x;
                 my $name = $1;
+                $name =~ s/\\\}/\}/g;
                 $piece = $self->parse_expr(\$name);
-            }
+           }
             @pieces = grep {defined && length} @pieces;
             if (@pieces == 1 && ! ref $pieces[0]) {
                 push @var, \ $pieces[0];
@@ -1254,7 +1257,7 @@ sub interpolate_node {
     return if $self->{'_in_perl'};
 
     ### split on variables while keeping the variables
-    my @pieces = split m{ (?: ^ | (?<! \\)) (\$\w+ (?:\.\w+)* | \$\{ [^\}]+ \}) }x, $tree->[-1];
+    my @pieces = split m{ (?: ^ | (?<! \\)) (\$\w+ (?:\.\w+)* | \$\{ .*? (?<!\\) \}) }x, $tree->[-1];
     if ($#pieces <= 0) {
         $tree->[-1] =~ s{ \\ ([\"\$]) }{$1}xg;
         return;
@@ -1264,13 +1267,14 @@ sub interpolate_node {
     my $n = 0;
     foreach my $piece (@pieces) {
         $offset += length $piece; # we track the offset to make sure DEBUG has the right location
+        $piece =~ s{ \\ ([\"\$]) }{$1}xg;
         if (! ($n++ % 2)) { # odds will always be text chunks
             next if ! length $piece;
-            $piece =~ s{ \\ ([\"\$]) }{$1}xg;
             push @sub_tree, $piece;
         } elsif ($piece =~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
-                 || $piece =~ m{ ^ \$\{ \s* ([^\}]+) \} $ }x) {
+                 || $piece =~ m{ ^ \$\{ \s* (.*?) (?<!\\) \} $ }x) {
             my $name = $1;
+            $name =~ s/\\\}/\}/g;
             push @sub_tree, ['GET', $offset - length($piece), $offset, $self->parse_expr(\$name)];
         } else {
             $self->throw('parse', "Parse error during interpolate node");
@@ -2092,6 +2096,12 @@ sub play_MACRO {
         ### macros localize
         my $copy = $self_copy->{'_vars'};
         local $self_copy->{'_vars'}= {%$copy};
+
+        ### prevent recursion
+        local $self_copy->{'_macro_recurse'} = $self_copy->{'_macro_recurse'} || 0;
+        $self_copy->throw('macro_recurse', "MAX_MACRO_RECURSE $MAX_MACRO_RECURSE reached")
+            if ++$self_copy->{'_macro_recurse'} > ($self_copy->{'MAX_MACRO_RECURSE'} || $MAX_MACRO_RECURSE);
+
 
         ### set arguments
         my $named = pop(@_) if $_[-1] && UNIVERSAL::isa($_[-1],'HASH') && $#_ > $#$args;
@@ -3167,13 +3177,14 @@ sub vmethod_uri {
 sub filter_eval {
     my $context = shift;
 
-    ### prevent recursion
-    my $t = $context->_template;
-    local $t->{'_eval_recurse'} = $t->{'_eval_recurse'} || 0;
-    $context->throw('eval_recurse', "Max eval recursion $MAX_EVAL_RECURSE reached")
-        if ++$t->{'eval_recurse'} > $MAX_EVAL_RECURSE;
-
     return sub {
+        ### prevent recursion
+        my $t = $context->_template;
+        local $t->{'_eval_recurse'} = $t->{'_eval_recurse'} || 0;
+        $context->throw('eval_recurse', "MAX_EVAL_RECURSE $MAX_EVAL_RECURSE reached")
+            if ++$t->{'_eval_recurse'} > ($t->{'MAX_EVAL_RECURSE'} || $MAX_EVAL_RECURSE);
+
+
         my $text = shift;
         return $context->process(\$text);
     };
