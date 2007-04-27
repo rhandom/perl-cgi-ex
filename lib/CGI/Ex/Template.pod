@@ -426,10 +426,6 @@ are on rather than a general line range.
 There was in initial beta tests, but it was dropped in favor of consistent parsing syntax (and
 a minimal amount of speedup).
 
-=item There is no V1DOLLAR configuration item.
-
-This is a TT version 1 compatibility item and is not available in CET.
-
 =back
 
 =head1 VARIABLES
@@ -2596,6 +2592,23 @@ rather than in embedded expressions (such as [% a || b || c %]).
 
 You can also sub class the module and override the undefined_get method.
 
+=item V1DOLLAR
+
+This allows for some compatibility with TT1 templates.  The only real
+behavior change is that [% $foo %] becomes the same as [% foo %].  The
+following is a basic table of changes invoked by using V1DOLLAR.
+
+   With V1DOLLAR        Equivalent Without V1DOLLAR (Normal default)
+   "[% foo %]"          "[% foo %]"
+   "[% $foo %]"         "[% foo %]"
+   "[% ${foo} %]"       "[% ${foo} %]"
+   "[% foo.$bar %]"     "[% foo.bar %]"
+   "[% ${foo.bar} %]"   "[% ${foo.bar} %]"
+   "[% ${foo.$bar} %]"  "[% ${foo.bar} %]"
+   "Text: $foo"         "Text: $foo"
+   "Text: ${foo}"       "Text: ${foo}"
+   "Text: ${$foo}"      "Text: ${foo}"
+
 =item VARIABLES
 
 A hashref of variables to initialize the template stash with.  These
@@ -2622,10 +2635,6 @@ This will be supported - just not done yet.
 =item ERROR
 
 This will be supported - just not done yet.
-
-=item V1DOLLAR
-
-This will not be supported.
 
 =item LOAD_TEMPLATES
 
