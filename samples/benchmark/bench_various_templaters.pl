@@ -22,6 +22,7 @@ use HTML::Template::Expr;
 use HTML::Template::JIT;
 use CGI::Ex::Dump qw(debug);
 use CGI::Ex::Template;
+use CGI::Ex::Template::XS;
 use POSIX qw(tmpnam);
 use File::Path qw(mkpath rmtree);
 
@@ -145,6 +146,11 @@ my $ct = CGI::Ex::Template->new({
   VARIABLES    => $stash_t,
 });
 
+my $ctx = CGI::Ex::Template::XS->new({
+  INCLUDE_PATH => \@dirs,
+  VARIABLES    => $stash_t,
+});
+
 my $pt = Text::Template->new(TYPE => 'STRING', SOURCE => $content_p, HASH => $form);
 
 my $ht = HTML::Template->new(type => 'scalarref', source => \$content_ht);
@@ -175,6 +181,9 @@ $ttx->process(\$content_tt, $form, \$out_ttx);
 my $out_ct = "";
 $ct->process(\$content_tt, $form, \$out_ct);
 
+my $out_ctx = "";
+$ctx->process(\$content_tt, $form, \$out_ctx);
+
 my $out_c2 = "";
 $ct->process('foo.tt', $form, \$out_c2);
 
@@ -191,6 +200,10 @@ my $out_htj = $ht_j->output;
 if ($out_ct ne $out_tt) {
     debug $out_ct, $out_tt;
     die "CGI::Ex::Template didn't match tt";
+}
+if ($out_ctx ne $out_tt) {
+    debug $out_ctx, $out_tt;
+    die "CGI::Ex::Template::XS didn't match tt";
 }
 if ($out_ttx ne $out_tt) {
     debug $out_ttx, $out_tt;
@@ -294,6 +307,28 @@ my $tests = {
         $ct->process('foo.tt', $form, \$out);
     },
 
+    CTX_str => sub {
+        my $ct = CGI::Ex::Template::XS->new({
+            INCLUDE_PATH => \@dirs,
+            VARIABLES    => $stash_t,
+        });
+        my $out = "";
+        $ct->process(\$content_tt, $form, \$out);
+    },
+    CTX_mem => sub {
+        my $out = "";
+        $ctx->process('foo.tt', $form, \$out);
+    },
+    CTX_compile => sub {
+        my $ct = CGI::Ex::Template::XS->new({
+            INCLUDE_PATH => \@dirs,
+            VARIABLES    => $stash_t,
+            COMPILE_DIR  => $dir2,
+        });
+        my $out = '';
+        $ct->process('foo.tt', $form, \$out);
+    },
+
     TextTemplate => sub {
         my $pt = Text::Template->new(
             TYPE   => 'STRING',
@@ -343,9 +378,9 @@ my $tests = {
 };
 
 
-my %mem_tests = map {($_ => $tests->{$_})} qw(TT_mem TTX_mem CET_mem HT_mem HTE_mem);
-my %cpl_tests = map {($_ => $tests->{$_})} qw(TT_compile TTX_compile CET_compile HT_compile HTJ_compile);
-my %str_tests = map {($_ => $tests->{$_})} qw(TT_str TTX_str CET_str HT_str HTE_str TextTemplate);
+my %mem_tests = map {($_ => $tests->{$_})} qw(TT_mem TTX_mem CET_mem HT_mem HTE_mem CTX_mem);
+my %cpl_tests = map {($_ => $tests->{$_})} qw(TT_compile TTX_compile CET_compile HT_compile HTJ_compile CTX_compile);
+my %str_tests = map {($_ => $tests->{$_})} qw(TT_str TTX_str CET_str HT_str HTE_str TextTemplate CTX_str);
 
 print "------------------------------------------------------------------------\n";
 print "From a string or scalarref tests\n";
