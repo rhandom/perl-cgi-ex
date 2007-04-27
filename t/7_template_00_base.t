@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 725 : 566;
+use Test::More tests => ! $is_tt ? 733 : 574;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -41,6 +41,7 @@ sub process_ok { # process the value and say if it was ok
     print $obj->error if ! $ok && $obj->can('error');
     print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
     exit if ! $ok;
+    return $obj;
 }
 
 ###----------------------------------------------------------------###
@@ -76,7 +77,7 @@ sub process_ok { # process the value and say if it was ok
 }
 
 my $obj = Foo2->new;
-
+my $vars;
 
 ###----------------------------------------------------------------###
 print "### GET ##############################################################\n";
@@ -263,7 +264,7 @@ process_ok("[% a = 1 a = a + 2 a %]" => 3) if ! $is_tt;
 ###----------------------------------------------------------------###
 print "### reserved words ###################################################\n";
 
-my $vars = {
+$vars = {
     GET => 'named_get',
     get => 'lower_named_get',
     named_get => 'value of named_get',
@@ -984,6 +985,21 @@ process_ok("[% BLOCK foo %]hi\n[% END %][% PROCESS foo %]" => "hi", {tt_config =
 process_ok("[% BLOCK foo %]hi[% nl %][% END %][% PROCESS foo %]" => "hi", {nl => "\n", tt_config => [TRIM => 1]});
 process_ok("[% BLOCK foo %][% nl %]hi[% END %][% PROCESS foo %]" => "hi", {nl => "\n", tt_config => [TRIM => 1]});
 process_ok("A[% TRY %]\nhi\n[% END %]" => "A\nhi", {tt_config => [TRIM => 1]});
+
+###----------------------------------------------------------------###
+print "### V1DOLLAR #########################################################\n";
+
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar'});
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1]});
+
+$vars = {a => {b => {c=>'Cb'}, B => {c=>'CB'}}, b => 'B', Cb => 'bar', CB => 'Bar'};
+process_ok('[% a.b.c %]|[% $a.b.c %]|[% a.$b.c %]|[% ${ a.b.c } %]' => 'Cb||CB|bar', $vars);
+process_ok('[% a.b.c %]|[% $a.b.c %]|[% a.$b.c %]|[% ${ a.b.c } %]' => 'Cb|Cb|Cb|bar', {%$vars, tt_config => [V1DOLLAR => 1]});
+
+process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|$a|A|${a}', {a => 'A', A => 'bar'});
+process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|$a|A|${a}', {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1]});
+process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => 'bar', tt_config => [INTERPOLATE => 1]});
+process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1, INTERPOLATE => 1]});
 
 ###----------------------------------------------------------------###
 print "### configuration ####################################################\n";
