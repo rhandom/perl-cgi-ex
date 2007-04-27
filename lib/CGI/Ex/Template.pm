@@ -75,7 +75,7 @@ BEGIN {
         fmt      => \&vmethod_as_scalar,
         'format' => \&vmethod_format,
         hash     => sub { {value => $_[0]} },
-        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
+        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; s/\'/&apos;/g; $_ },
         item     => sub { $_[0] },
         lcfirst  => sub { lcfirst $_[0] },
         length   => sub { defined($_[0]) ? length($_[0]) : 0 },
@@ -875,6 +875,7 @@ sub parse_expr {
     my @var;
     my $is_literal;
     my $is_namespace;
+    my $already_parsed_args;
 
     ### allow hex
     if ($$str_ref =~ m{ \G 0x ( [a-fA-F0-9]+ ) \s* $QR_COMMENTS }gcxo) {
@@ -995,9 +996,19 @@ sub parse_expr {
 
         $$str_ref =~ m{ \G \) \s* $QR_COMMENTS }gcxo
             || $self->throw('parse.missing.paren', "Missing close \)", undef, pos($$str_ref));
-        @var = @$var;
-        pop @var; # pull off the trailing args of the paren group
-        # TODO - we could forward lookahed for a period or pipe
+
+        $self->throw('parse', 'Paren group cannot be followed by an open paren', undef, pos($$str_ref))
+            if $$str_ref =~ m{ \G \( }gcx;
+
+        $already_parsed_args = 1;
+        if (! ref $var) {
+            push @var, \$var, 0;
+            $is_literal = 1;
+        } elsif (! defined $var->[0]) {
+            push @var, $var, 0;
+        } else {
+            push @var, @$var;
+        }
 
     ### nothing to find - return failure
     } else {
@@ -1007,7 +1018,9 @@ sub parse_expr {
     return if $is_aq; # auto_quoted thing was too complicated
 
     ### looks for args for the initial
-    if ($$str_ref =~ m{ \G \( \s* $QR_COMMENTS }gcxo) {
+    if ($already_parsed_args) {
+        # do nothing
+    } elsif ($$str_ref =~ m{ \G \( \s* $QR_COMMENTS }gcxo) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $args = $self->parse_args($str_ref, {is_parened => 1});
         $$str_ref =~ m{ \G \) \s* $QR_COMMENTS }gcxo
