@@ -9,12 +9,12 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template'; #real    0m0.885s #user    0m0.432s #sys     0m0.004s
-    $module = 'Template';         #real    0m2.133s #user    0m1.108s #sys     0m0.024s
+#    $module = 'Template';         #real    0m2.133s #user    0m1.108s #sys     0m0.024s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 745 : 584;
+use Test::More tests => ! $is_tt ? 770 : 586;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -27,21 +27,27 @@ Taint::Runtime::taint_start() if test_taint;
 sub process_ok { # process the value and say if it was ok
     my $str  = shift;
     my $test = shift;
-    my $vars = shift;
-    my $obj  = shift || $module->new(@{ $vars->{tt_config} || [] }); # new object each time
+    my $vars = shift || {};
+    my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
+    my $obj  = shift || $module->new(@$conf); # new object each time
     my $out  = '';
     my $line = (caller)[2];
+    delete $vars->{'tt_config'};
 
     Taint::Runtime::taint(\$str) if test_taint;
 
     $obj->process(\$str, $vars, \$out);
     my $ok = ref($test) ? $out =~ $test : $out eq $test;
-    ok($ok, "Line $line   \"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
-    warn "#   process_ok called at line $line.\n" if ! $ok;
-    print $obj->error if ! $ok && $obj->can('error');
-    print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
-    exit if ! $ok;
-    return $obj;
+    if ($ok) {
+        ok(1, "Line $line   \"$str\" => \"$out\"");
+        return $obj;
+    } else {
+        ok(0, "Line $line   \"$str\"");
+        warn "# Was:\n$out\n# Should've been:\n$test\n";
+        print $obj->error if $obj->can('error');
+        print Dumper $obj->parse_tree(\$str) if $obj->can('parse_tree');
+        exit;
+    }
 }
 
 ###----------------------------------------------------------------###
@@ -1042,6 +1048,8 @@ print "### META #############################################################\n"
 process_ok("[% template.name %]" => 'input text');
 process_ok("[% META foo = 'bar' %][% template.foo %]" => 'bar');
 process_ok("[% META foo = 'bar' %][% component.foo %]" => 'bar');
+process_ok("[% META foo = 'bar' %][% component = '' %][% component.foo %]|foo" => '|foo');
+process_ok("[% META foo = 'bar' %][% template = '' %][% template.foo %]|foo" => '|foo');
 
 ###----------------------------------------------------------------###
 print "### references #######################################################\n";
@@ -1104,6 +1112,38 @@ process_ok('[% qw([%  1  +  2  %]).join.eval %]' => '3') if ! $is_tt;
 
 process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
 process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; f.eval;f.eval %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
+
+###----------------------------------------------------------------###
+print "### DUMP #############################################################\n";
+
+if (! $is_tt) {
+local $ENV{'REQUEST_METHOD'} = 0;
+process_ok("[% DUMP a %]" => "DUMP: File \"input text\" line 1\n    a = undef;\n");
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = undef;');
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = \'s\';', {a => "s"});
+process_ok("[%\n p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 2 a = \'s\';', {a => "s"});
+process_ok("[% p = DUMP a, b; p.collapse %]" => 'DUMP: File "input text" line 1 a, b = [ \'s\', undef ];', {a => "s"});
+process_ok("[% p = DUMP a Useqq => 'b'; p.collapse %]" => 'DUMP: File "input text" line 1 a Useqq => \'b\' = [ \'s\', { \'Useqq\' => \'b\' } ];', {a => "s"});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = "s";', {a => "s", tt_config => [DUMP => {Useqq => 1}]});
+process_ok("[% p = DUMP a; p.collapse %]|foo" => '|foo', {a => "s", tt_config => [DUMP => 0]});
+process_ok("[% p = DUMP _a, b; p.collapse %]" => 'DUMP: File "input text" line 1 _a, b = [ undef, \'c\' ];', {_a => "s", b=> "c"});
+process_ok("[% p = DUMP {a => 'b'}; p.collapse %]" => 'DUMP: File "input text" line 1 {a => \'b\'} = { \'a\' => \'b\' };');
+process_ok("[% p = DUMP _a; p.collapse %]" => 'DUMP: File "input text" line 1 _a = undef;', {_a => "s"});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = { \'b\' => \'c\' };', {a => {b => 'c'}});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = {};', {a => {_b => 'c'}});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = {};', {a => {_b => 'c'}, tt_config => [DUMP => {Sortkeys => 1}]});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 Dump(7)', {a => 7, tt_config => [DUMP => {handler=>sub {"Dump(@_)"}}]});
+process_ok("[% p = DUMP a; p.collapse %]" => 'a = \'s\';', {a => "s", tt_config => [DUMP => {no_header => 1}]});
+process_ok("[% p = DUMP a; p.collapse %]" => 'a = \'s\';', {a => "s", tt_config => [DUMP => {no_header => 1}]});
+process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {no_header => 1, html => 1}]});
+local $ENV{'REQUEST_METHOD'} = 1;
+process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {no_header => 1}]});
+process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {no_header => 1, html => 0}]});
+local $ENV{'REQUEST_METHOD'} = 0;
+process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1}]});
+process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 1}]});
+process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 0}]});
+}
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
