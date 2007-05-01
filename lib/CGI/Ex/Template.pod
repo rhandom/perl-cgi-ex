@@ -929,6 +929,11 @@ This is a filter and is not available via the Text virtual object.
 
     [% item.uri %] Perform a very basic URI encoding.
 
+=item url
+
+    [% item.url %] Perform a URI encoding - but some characters such
+                   as : and / are left intact.
+
 =back
 
 =head2 LIST VIRTUAL METHODS
@@ -1298,13 +1303,15 @@ defined or was zero length.
 
 =item C<DUMP>
 
-This is not provided in TT.  DUMP inserts a Data::Dumper printout
-of the variable or expression.  If no argument is passed it will
-dump the entire contents of the current variable stash (with
-private keys removed.
+DUMP inserts a Data::Dumper printout of the variable or expression.
+If no argument is passed it will dump the entire contents of the
+current variable stash (with private keys removed).
 
-If the template is being processed in a web request, DUMP will html
-encode the DUMP automatically.
+The output also includes the current file and line number that the
+DUMP directive was called from.
+
+See the DUMP configuration item for ways to customize and control
+the output available to the DUMP directive.
 
     [% DUMP %] # dumps everything
 
@@ -2379,6 +2386,68 @@ The name of a default template file to use if the passed one is not found.
 
 String to use to split INCLUDE_PATH with.  Default is :.  It is more
 straight forward to just send INCLUDE_PATH an arrayref of paths.
+
+=item DUMP
+
+Configures the behavior of the DUMP tag.  May be set to 0, a hashref,
+or another true value.  Default is true.
+
+If set to 0, all DUMP directives will do nothing.  This is useful if
+you would like to turn off the DUMP directives under some environments.
+
+IF set to a true value (or undefined) then DUMP directives will operate.
+
+If set to a hashref, the values of the hash can be used to configure
+the operation of the DUMP directives.  The following are the values
+that can be set in this hash.
+
+=over 4
+
+=item EntireStash
+
+Default 1.  If set to 0, then the DUMP directive will not print the
+entire contents of the stash when a DUMP directive is called without
+arguments.
+
+=item handler
+
+Default undef.  If set to a coderef, the DUMP directive will pass the
+arguments to be dumped and expects a string with the dumped data.  This
+gives complete control over the dump process.
+
+Note 1: The default handler makes sure that values matching the
+private variable regex are not included.  If you install your own handler,
+you will need to take care of these variables if you intend for them
+to not be shown.
+
+Note 2: If you would like the name of the variable to be dumped, include
+the string '$VAR1' and the DUMP directive will interpolate the value.  For
+example, to dump all output as YAML - you could do the following:
+
+    DUMP => {
+       handler => sub {
+           require YAML;
+           return "\$VAR1 =\n".YAML::Dump(shift);
+       },
+    }
+
+=item header
+
+Default 1.  Controls whether a header is printed for each DUMP directive.
+The header contains the file and line number the DUMP directive was
+called from.  If set to 0 the headers are disabled.
+
+=item html
+
+Defaults to 1 if $ENV{'REQUEST_METHOD'} is set - 0 otherwise.  If set to
+one, then the output of the DUMP directive is passed to the html filter
+and encased in "pre" tags.  If set to 0 no html encoding takes place.
+
+=item Sortkeys, Useqq, Ident, Pad, etc
+
+Any of the Data::Dumper configuration items may be passed.
+
+=back
 
 =item END_TAG
 
