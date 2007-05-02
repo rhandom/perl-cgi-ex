@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 770 : 586;
+use Test::More tests => ! $is_tt ? 771 : 588;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -845,8 +845,10 @@ process_ok("[% TAGS mason     %]<% 1 + 2 >"  => 3);
 process_ok("[% TAGS metatext  %]%% 1 + 2 %%" => 3);
 process_ok("[% TAGS php       %]<? 1 + 2 ?>" => 3);
 process_ok("[% TAGS star      %][* 1 + 2 *]" => 3);
+process_ok("[% TAGS template  %][% 1 + 2 %]" => 3);
 process_ok("[% TAGS template1 %][% 1 + 2 %]" => 3);
 process_ok("[% TAGS template1 %]%% 1 + 2 %%" => 3);
+process_ok("[% TAGS tt2       %][% 1 + 2 %]" => 3);
 
 process_ok("[% TAGS html %] <!--- 1 + 2 -->" => '3');
 process_ok("[% TAGS html %]<!-- 1 + 2 --->" => '3') if ! $is_tt;
@@ -1133,7 +1135,6 @@ process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a =
 process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = {};', {a => {_b => 'c'}});
 process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = {};', {a => {_b => 'c'}, tt_config => [DUMP => {Sortkeys => 1}]});
 process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 Dump(7)', {a => 7, tt_config => [DUMP => {handler=>sub {"Dump(@_)"}}]});
-process_ok("[% p = DUMP a; p.collapse %]" => 'a = \'s\';', {a => "s", tt_config => [DUMP => {header => 0}]});
 process_ok("[% p = DUMP a; p.collapse %]" => 'a = \'s\';', {a => "s", tt_config => [DUMP => {header => 0}]});
 process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {header => 0, html => 1}]});
 local $ENV{'REQUEST_METHOD'} = 1;
