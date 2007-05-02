@@ -1862,7 +1862,7 @@ sub play_DUMP {
         my $obj = Data::Dumper->new([]);
         my $meth;
         foreach my $prop (keys %$conf) { $obj->$prop($conf->{$prop}) if $prop =~ /^\w+$/ && ($meth = $obj->can($prop)) }
-        my $sort = $obj->Sortkeys;
+        my $sort = defined($conf->{'Sortkeys'}) ? $obj->Sortkeys : 1;
         $obj->Sortkeys(sub { my $h = shift; [grep {$_ !~ $QR_PRIVATE} ($sort ? sort keys %$h : keys %$h)] });
         $handler = sub { $obj->Values([@_]); $obj->Dump }
     }
