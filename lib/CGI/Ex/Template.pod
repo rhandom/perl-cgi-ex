@@ -1677,7 +1677,9 @@ The named tags are (duplicated from TT):
     metatext  => ['%%',     '%%'    ], # Text::MetaText
     php       => ['<\?',    '\?>'   ], # PHP
     star      => ['\[\*',   '\*\]'  ], # TT alternate
+    template  => ['\[%',    '%\]'   ], # Normal Template Toolkit
     template1 => ['[\[%]%', '%[%\]]'], # allow TT1 style
+    tt2       => ['\[%',    '%\]'   ], # TT2
 
 If custom tags are supplied, by default they are escaped using
 quotemeta.  If a third argument is given and is equal to "unquoted",
@@ -2411,7 +2413,7 @@ arguments.
 
 =item handler
 
-Default undef.  If set to a coderef, the DUMP directive will pass the
+Defaults to an internal coderef.  If set to a coderef, the DUMP directive will pass the
 arguments to be dumped and expects a string with the dumped data.  This
 gives complete control over the dump process.
 
@@ -2440,7 +2442,7 @@ called from.  If set to 0 the headers are disabled.
 =item html
 
 Defaults to 1 if $ENV{'REQUEST_METHOD'} is set - 0 otherwise.  If set to
-one, then the output of the DUMP directive is passed to the html filter
+1, then the output of the DUMP directive is passed to the html filter
 and encased in "pre" tags.  If set to 0 no html encoding takes place.
 
 =item Sortkeys, Useqq, Ident, Pad, etc

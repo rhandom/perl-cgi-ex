@@ -61,7 +61,9 @@ BEGIN {
         metatext  => ['%%',     '%%'    ], # Text::MetaText
         php       => ['<\?',    '\?>'   ], # PHP
         star      => ['\[\*',   '\*\]'  ], # TT alternate
+        template  => ['\[%',    '%\]'   ], # Normal Template Toolkit
         template1 => ['[\[%]%', '%[%\]]'], # allow TT1 style
+        tt2       => ['\[%',    '%\]'   ], # TT2
     };
 
     $SCALAR_OPS = {
@@ -1855,12 +1857,12 @@ sub play_DUMP {
         $handler = sub { $obj->Values([@_]); $obj->Dump }
     }
 
-    my @dump = $dump ? map { scalar $self->play_expr($_) } @$dump : ();
+    my @dump = @$dump ? map { scalar $self->play_expr($_) } @$dump : ();
 
     ### look for the text describing what to dump
     my $info = $self->node_info($node);
     my $out;
-    if (@dump) {
+    if (@$dump) {
         $out = $handler->(@$dump && @$dump == 1 ? $dump[0] : \@dump);
         my $name = $info->{'text'};
         $name =~ s/^[+\-~=]?\s*DUMP\s+//;
