@@ -1138,7 +1138,7 @@ process_ok("[% p = DUMP a; p.collapse %]" => 'a = \'s\';', {a => "s", tt_config 
 process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {header => 0, html => 1}]});
 local $ENV{'REQUEST_METHOD'} = 1;
 process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {header => 0}]});
-process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {header => 0, html => 0}]});
+process_ok("[% p = DUMP a; p.collapse %]" => 'a = \'s\';', {a => "s", tt_config => [DUMP => {header => 0, html => 0}]});
 local $ENV{'REQUEST_METHOD'} = 0;
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1}]});
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 1}]});
