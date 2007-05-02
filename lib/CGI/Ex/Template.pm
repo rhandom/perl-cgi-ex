@@ -696,9 +696,9 @@ sub parse_tree {
                 next;
 
             } elsif ($func eq 'META') {
-                my $args = $self->parse_args($str_ref);
+                my $args = $self->parse_args($str_ref, {named_at_front => 1});
                 my $hash;
-                if (($hash = $self->play_expr($args->[-1]))
+                if (($hash = $self->play_expr($args->[0]))
                     && UNIVERSAL::isa($hash, 'HASH')) {
                     unshift @meta, %$hash; # first defined win
                 }
@@ -1258,8 +1258,12 @@ sub parse_args {
         }
     }
 
-    ### allow for named arguments to be added also
-    push @args, [[undef, '{}', @named], ['named']] if scalar @named;
+    ### allow for named arguments to be added at the front (if asked)
+    if ($ARGS->{'named_at_front'}) {
+        unshift @args, [[undef, '{}', @named], 0];
+    } elsif (scalar @named) { # only add at end - if there are some
+        push @args,    [[undef, '{}', @named], 0]
+    }
 
     return \@args;
 }
@@ -1523,6 +1527,12 @@ sub play_expr {
     }
 
     return $ref;
+}
+
+sub is_empty_named_args {
+    my ($self, $hash_ident) = @_;
+    # [[undef, '{}', 'key1', 'val1', 'key2, 'val2'], 0]
+    return @{ $hash_ident->[0] } <= 2;
 }
 
 sub set_variable {
@@ -1835,7 +1845,7 @@ sub play_DEFAULT {
 
 sub parse_DUMP {
     my ($self, $str_ref) = @_;
-    return $self->parse_args($str_ref);
+    return $self->parse_args($str_ref, {named_at_front => 1});
 }
 
 sub play_DUMP {
@@ -1857,13 +1867,15 @@ sub play_DUMP {
         $handler = sub { $obj->Values([@_]); $obj->Dump }
     }
 
-    my @dump = @$dump ? map { scalar $self->play_expr($_) } @$dump : ();
+    my ($named, @dump) = @$dump;
+    push @dump, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+    $_ = $self->play_expr($_) foreach @dump;
 
     ### look for the text describing what to dump
     my $info = $self->node_info($node);
     my $out;
-    if (@$dump) {
-        $out = $handler->(@$dump && @$dump == 1 ? $dump[0] : \@dump);
+    if (@dump) {
+        $out = $handler->(@dump && @dump == 1 ? $dump[0] : \@dump);
         my $name = $info->{'text'};
         $name =~ s/^[+\-~=]?\s*DUMP\s+//;
         $name =~ s/\s*[+\-~=]?$//;
