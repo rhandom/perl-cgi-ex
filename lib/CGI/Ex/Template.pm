@@ -1,7 +1,7 @@
 package CGI::Ex::Template;
 
 #STAT_TTL
-#url filter
+#memory leak in USE
 
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/Template.pod
@@ -97,6 +97,7 @@ BEGIN {
         ucfirst  => sub { ucfirst $_[0] },
         upper    => sub { uc $_[0] },
         uri      => \&vmethod_uri,
+        url      => \&vmethod_url,
     };
 
     $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
@@ -343,10 +344,9 @@ sub _process {
         if (! @{ $doc->{'_tree'} }) { # no tags found - just return the content
             $$out_ref = ${ $doc->{'_content'} };
         } else {
-            local $self->{'_vars'}->{'component'} = $doc;
-            $self->{'_vars'}->{'template'}  = $doc if $self->{'_top_level'};
+            local $self->{'_component'} = $doc;
+            local $self->{'_template'}  = $self->{'_top_level'} ? $doc : $self->{'_template'};
             $self->execute_tree($doc->{'_tree'}, $out_ref);
-            delete $self->{'_vars'}->{'template'} if $self->{'_top_level'};
         }
     };
 
@@ -377,9 +377,9 @@ sub load_parsed_tree {
 
     ### looks like a string reference
     if (ref $file) {
-        $doc->{'_content'}   = $file;
-        $doc->{'name'}       = 'input text';
-        $doc->{'is_str_ref'} = 1;
+        $doc->{'_content'}    = $file;
+        $doc->{'name'}        = 'input text';
+        $doc->{'_is_str_ref'} = 1;
 
     ### looks like a previously cached-in-memory document
     } elsif ($self->{'_documents'}->{$file}
@@ -476,12 +476,12 @@ sub load_parsed_tree {
             $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
         }
 
-        local $self->{'_vars'}->{'component'} = $doc;
+        local $self->{'_component'} = $doc;
         $doc->{'_tree'} = $self->parse_tree($doc->{'_content'}); # errors die
     }
 
     ### cache parsed_tree in memory unless asked not to do so
-    if (! $doc->{'is_str_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
+    if (! $doc->{'_is_str_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
         $self->{'_documents'}->{$file} ||= $doc;
         $doc->{'_cache_time'} = time;
 
@@ -713,14 +713,6 @@ sub parse_tree {
                     $pointer = $node->[4] ||= [];
                 }
             }
-
-        #} elsif (1) {
-        #    $node->[0] = 'GET';
-        #    $node->[2] = $node->[1] + 5;
-        #    $node->[3] = ['one',0];
-        #    $$str_ref =~ m{ $END }gcx;
-        #    push @$pointer, $node;
-        #    next;
 
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_expr($str_ref))) {
@@ -1265,7 +1257,7 @@ sub parse_args {
     }
 
     ### allow for named arguments to be added also
-    push @args, [[undef, '{}', @named], 0] if scalar @named;
+    push @args, [[undef, '{}', @named], ['named']] if scalar @named;
 
     return \@args;
 }
@@ -1365,7 +1357,7 @@ sub play_expr {
             return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
             return \$self->{'_vars'}->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $self->{'_vars'}->{$name};
             $ref = $self->{'_vars'}->{$name};
-            $ref = $VOBJS->{$name} if ! defined $ref;
+            $ref = ($name eq 'template' || $name eq 'component') ? $self->{"_$name"} : $VOBJS->{$name} if ! defined $ref;
         }
     }
 
@@ -1768,7 +1760,7 @@ sub play_BLOCK {
     ### store a named reference - but do nothing until something processes it
     $self->{'BLOCKS'}->{$block_name} = {
         _tree => $node->[4],
-        name  => $self->{'_vars'}->{'component'}->{'name'} .'/'. $block_name,
+        name  => $self->{'_component'}->{'name'} .'/'. $block_name,
     };
 
     return;
@@ -1841,37 +1833,52 @@ sub play_DEFAULT {
 
 sub parse_DUMP {
     my ($self, $str_ref) = @_;
-    my $ref = $self->parse_expr($str_ref);
-    return $ref;
+    return $self->parse_args($str_ref);
 }
 
 sub play_DUMP {
-    my ($self, $ident, $node) = @_;
-    require Data::Dumper;
-    local $Data::Dumper::Sortkeys  = 1;
+    my ($self, $dump, $node) = @_;
+
+    my $conf = $self->{'DUMP'};
+    return if ! $conf && defined $conf; # DUMP => 0
+    $conf = {} if ref $conf ne 'HASH';
+
+    ### allow for handler override
+    my $handler = $conf->{'handler'};
+    if (! $handler) {
+        require Data::Dumper;
+        my $obj = Data::Dumper->new([]);
+        my $meth;
+        foreach my $prop (keys %$conf) { $obj->$prop($conf->{$prop}) if $prop =~ /^\w+$/ && ($meth = $obj->can($prop)) }
+        my $sort = $obj->Sortkeys;
+        $obj->Sortkeys(sub { my $h = shift; [grep {$_ !~ $QR_PRIVATE} ($sort ? sort keys %$h : keys %$h)] });
+        $handler = sub { $obj->Values([@_]); $obj->Dump }
+    }
+
+    my @dump = $dump ? map { scalar $self->play_expr($_) } @$dump : ();
+
+    ### look for the text describing what to dump
     my $info = $self->node_info($node);
     my $out;
-    my $var;
-    if (defined $ident) {
-        $out = Data::Dumper::Dumper($self->play_expr($ident));
-        $var = $info->{'text'};
-        $var =~ s/^[+\-~=]?\s*DUMP\s+//;
-        $var =~ s/\s*[+\-~=]?$//;
+    if (@dump) {
+        $out = $handler->(@$dump && @$dump == 1 ? $dump[0] : \@dump);
+        my $name = $info->{'text'};
+        $name =~ s/^[+\-~=]?\s*DUMP\s+//;
+        $name =~ s/\s*[+\-~=]?$//;
+        $out =~ s/\$VAR1/$name/;
+    } elsif (defined($conf->{'EntireStash'}) && ! $conf->{'EntireStash'}) {
+        $out = '';
     } else {
-        my @were_never_here = (qw(template component), grep {$_ =~ $QR_PRIVATE} keys %{ $self->{'_vars'} });
-        local @{ $self->{'_vars'} }{ @were_never_here };
-        delete @{ $self->{'_vars'} }{ @were_never_here };
-        $out = Data::Dumper::Dumper($self->{'_vars'});
-        $var = 'EntireStash';
+        $out = $handler->($self->{'_vars'});
+        $out =~ s/\$VAR1/EntireStash/g;
     }
-    if ($ENV{'REQUEST_METHOD'}) {
-        $out =~ s/</&lt;/g;
+
+    if ($conf->{'html'} || (! defined($conf->{'html'}) && $ENV{'REQUEST_METHOD'})) {
+        $out = $SCALAR_OPS->{'html'}->($out);
         $out = "<pre>$out</pre>";
-        $out =~ s/\$VAR1/$var/;
-        $out = "<b>DUMP: File \"$info->{file}\" line $info->{line}</b>$out";
+        $out = "<b>DUMP: File \"$info->{file}\" line $info->{line}</b>$out" if $conf->{'header'} || ! defined $conf->{'header'};
     } else {
-        $out =~ s/\$VAR1/$var/;
-        $out = "DUMP: File \"$info->{file}\" line $info->{line}\n    $out";
+        $out = "DUMP: File \"$info->{file}\" line $info->{line}\n    $out" if $conf->{'header'} || ! defined $conf->{'header'};
     }
 
     return $out;
@@ -2146,9 +2153,9 @@ sub play_META {
     my ($self, $hash) = @_;
     my $ref;
     if ($self->{'_top_level'}) {
-        $ref = $self->{'_vars'}->{'template'} ||= {};
+        $ref = $self->{'_template'} ||= {};
     } else {
-        $ref = $self->{'_vars'}->{'component'} ||= {};
+        $ref = $self->{'_component'} ||= {};
     }
     foreach my $key (keys %$hash) {
         next if $key eq 'name' || $key eq 'modtime';
@@ -2270,7 +2277,7 @@ sub play_PROCESS {
             $self->throw('process', "Unable to process document $filename") if $ref->[0] ne 'template';
             $self->throw('process', "Recursion detected in $node->[0] \$template") if $self->{'_process_dollar_template'};
             local $self->{'_process_dollar_template'} = 1;
-            local $self->{'_vars'}->{'component'} = my $doc = $filename;
+            local $self->{'_component'} = my $doc = $filename;
             return if ! $doc->{'_tree'};
 
             ### execute and trim
@@ -2776,7 +2783,6 @@ sub process {
         my $var2 = $self->{'VARIABLES'} || $self->{'PRE_DEFINE'} || {};
         $var1->{'global'} ||= {}; # allow for the "global" namespace - that continues in between processing
         my $copy = {%$var2, %$var1, %$swap};
-        local $copy->{'template'};
 
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
 
@@ -2799,7 +2805,7 @@ sub process {
             my $meta = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
                 ? $doc->{'_tree'}->[0]->[3] : {};
 
-            $copy->{'template'} = $doc;
+            local $self->{'_template'} = $doc;
             @{ $doc }{keys %$meta} = values %$meta;
 
             ### process any other templates
@@ -2979,7 +2985,7 @@ sub debug_node {
 
 sub node_info {
     my ($self, $node) = @_;
-    my $doc = $self->{'_vars'}->{'component'};
+    my $doc = $self->{'_component'};
     my $i = $node->[1];
     my $j = $node->[2] || return ''; # META can be 0
     $doc->{'_content'} ||= do { my $s = $self->slurp($doc->{'_filename'}) ; \$s };
@@ -2996,7 +3002,7 @@ sub node_info {
 sub get_line_number_by_index {
     my ($self, $doc, $index) = @_;
     ### get the line offsets for the doc
-    my $lines = $doc->{'line_offsets'} ||= do {
+    my $lines = $doc->{'_line_offsets'} ||= do {
         $doc->{'_content'} ||= do { my $s = $self->slurp($doc->{'_filename'}) ; \$s };
         my $i = 0;
         my @lines = (0);
@@ -3191,6 +3197,13 @@ sub vmethod_uri {
     my $str = shift;
     utf8::encode($str) if defined &utf8::encode;
     $str =~ s/([^A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg;
+    return $str;
+}
+
+sub vmethod_url {
+    my $str = shift;
+    utf8::encode($str) if defined &utf8::encode;
+    $str =~ s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg;
     return $str;
 }
 
