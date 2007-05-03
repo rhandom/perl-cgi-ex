@@ -32,7 +32,7 @@ use vars qw($VERSION
             $QR_FILENAME
             $QR_NUM
             $QR_AQ_NOTDOT
-            $QR_AQ_SPACE
+            $QR_AQ_SPACE  $QR_AQ_FSPACE
             $QR_PRIVATE
 
             $PACKAGE_EXCEPTION $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
@@ -43,7 +43,7 @@ use vars qw($VERSION
             );
 
 BEGIN {
-    $VERSION = '2.10';
+    $VERSION = '2.11';
 
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
@@ -68,13 +68,12 @@ BEGIN {
 
     $SCALAR_OPS = {
         '0'      => sub { $_[0] },
-        as       => \&vmethod_as_scalar,
         chunk    => \&vmethod_chunk,
         collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
         defined  => sub { defined $_[0] ? 1 : '' },
         indent   => \&vmethod_indent,
         int      => sub { local $^W; int $_[0] },
-        fmt      => \&vmethod_as_scalar,
+        fmt      => \&vmethod_fmt_scalar,
         'format' => \&vmethod_format,
         hash     => sub { {value => $_[0]} },
         html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; s/\'/&apos;/g; $_ },
@@ -110,10 +109,9 @@ BEGIN {
     };
 
     $LIST_OPS = {
-        as      => \&vmethod_as_list,
         defined => sub { return 1 if @_ == 1; defined $_[0]->[ defined($_[1]) ? $_[1] : 0 ] },
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
-        fmt     => \&vmethod_as_list,
+        fmt     => \&vmethod_fmt_list,
         grep    => sub { local $^W; my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
         hash    => sub { local $^W; my $list = shift; return {@$list} if ! @_; my $i = shift || 0; return {map {$i++ => $_} @$list} },
         import  => sub { my $ref = shift; push @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_; '' },
@@ -126,9 +124,9 @@ BEGIN {
         new     => sub { local $^W; return [@_] },
         null    => sub { '' },
         nsort   => \&vmethod_nsort,
+        pick    => \&vmethod_pick,
         pop     => sub { pop @{ $_[0] } },
         push    => sub { my $ref = shift; push @$ref, @_; return '' },
-        random  => sub { my $ref = shift; $ref->[ rand @$ref ] },
         reverse => sub { [ reverse @{ $_[0] } ] },
         shift   => sub { shift  @{ $_[0] } },
         size    => sub { local $^W; scalar @{ $_[0] } },
@@ -140,12 +138,11 @@ BEGIN {
     };
 
     $HASH_OPS = {
-        as      => \&vmethod_as_hash,
         defined => sub { return 1 if @_ == 1; defined $_[0]->{ defined($_[1]) ? $_[1] : '' } },
-        delete  => sub { my $h = shift; my @v = delete @{ $h }{map {defined($_) ? $_ : ''} @_}; @_ == 1 ? $v[0] : \@v },
+        delete  => sub { my $h = shift; delete @{ $h }{map {defined($_) ? $_ : ''} @_}; '' },
         each    => sub { [%{ $_[0] }] },
         exists  => sub { exists $_[0]->{ defined($_[1]) ? $_[1] : '' } },
-        fmt     => \&vmethod_as_hash,
+        fmt     => \&vmethod_fmt_hash,
         hash    => sub { $_[0] },
         import  => sub { my ($a, $b) = @_; @{$a}{keys %$b} = values %$b if ref($b) eq 'HASH'; '' },
         item    => sub { my ($h, $k) = @_; $k = '' if ! defined $k; $k =~ $QR_PRIVATE ? undef : $h->{$k} },
@@ -290,7 +287,8 @@ BEGIN {
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_NUM       = '(?:\d*\.\d+ | \d+) (?: [eE][+-]\d+ )?';
     $QR_AQ_NOTDOT = "(?! \\s* $QR_COMMENTS \\.)";
-    $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=[;+]) )'; # the + comes into play on filenames
+    $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=;) )';
+    $QR_AQ_FSPACE = '(?: \\s+ | \$ | (?=[;+,]) )'; # the + comes into play on filenames
     $QR_PRIVATE   = qr/^[_.]/;
 
     $WHILE_MAX    = 1000;
@@ -1232,17 +1230,26 @@ sub parse_args {
 
     my @args;
     my @named;
+    my $name;
     while (1) {
         my $mark = pos $$str_ref;
         if (! $ARGS->{'is_parened'}
+            && ! $ARGS->{'require_positional'}
             && $$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$self->{'_end_tag'}))) }gcxo
             && ((pos($$str_ref) = $mark) || 1)                  # always revert
             && $DIRECTIVES->{$self->{'ANYCASE'} ? uc($1) : $1}  # looks like a directive - we are done
             ) {
             last;
         }
+        if ($$str_ref =~ m{ \G [+=~-]? $self->{'_end_tag'} }gcx) {
+            pos($$str_ref) = $mark;
+            last;
+        }
 
-        if (defined(my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"}))
+        if (! $ARGS->{'require_positional'}
+            && ($ARGS->{'allow_extended_named'}
+                ? defined($name = $self->parse_expr($str_ref))
+                : defined($name = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"})))
             && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # see if we also match assignment
                 || ((pos $$str_ref = $mark) && 0))               # if not - we need to rollback
             ) {
@@ -1250,9 +1257,16 @@ sub parse_args {
             my $val = $self->parse_expr($str_ref);
             $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo;
             push @named, $name, $val;
+        } elsif ($ARGS->{'allow_bare_filenames'}
+                 && defined(my $filename = $self->parse_expr($str_ref, {auto_quote => "($QR_FILENAME | \\w+ (?: :\\w+)* ) $QR_AQ_FSPACE"}))) {
+            push @args, $filename;
+            $ARGS->{'require_positional'} = ($$str_ref =~ m{ \G [,+] \s* $QR_COMMENTS }gcxo) || 0
         } elsif (defined(my $arg = $self->parse_expr($str_ref))) {
             push @args, $arg;
             $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo;
+            $ARGS->{'require_positional'} = ($$str_ref =~ m{ \G ,    \s* $QR_COMMENTS }gcxo) || 0;
+        } elsif ($ARGS->{'require_positional'}) {
+            $self->throw('parse', 'Argument required', undef, pos($$str_ref));
         } else {
             last;
         }
@@ -2086,10 +2100,11 @@ sub play_INCLUDE {
 sub parse_INSERT { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_INSERT {
-    my ($self, $var, $node, $out_ref) = @_;
-    my ($names, $args) = @$var;
+    my ($self, $args, $node, $out_ref) = @_;
 
-    foreach my $name (@$names) {
+    my ($named, @files) = @$args;
+
+    foreach my $name (@files) {
         my $filename = $self->play_expr($name);
         $$out_ref .= $self->_insert($filename);
     }
@@ -2223,50 +2238,26 @@ sub play_PERL {
 
 sub parse_PROCESS {
     my ($self, $str_ref) = @_;
-    my $info = [[], []];
-    while (defined(my $filename = $self->parse_expr($str_ref, {
-                       auto_quote => "($QR_FILENAME | \\w+ (?: :\\w+)* ) $QR_AQ_SPACE",
-                   }))) {
-        push @{$info->[0]}, $filename;
-        last if $$str_ref !~ m{ \G \+ \s* $QR_COMMENTS }gcxo;
-    }
 
-    ### we can almost use parse_args - except we allow for nested key names (foo.bar) here
-    while (1) {
-        my $mark = pos $$str_ref;
-        if ($$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$self->{'_end_tag'}))) }gcxo) {
-            pos($$str_ref) = $mark;
-            last if $DIRECTIVES->{$self->{'ANYCASE'} ? uc $1 : $1}; # looks like a directive - we are done
-        }
-        if ($$str_ref =~ m{ \G [+=~-]? $self->{'_end_tag'} }gcx) {
-            pos($$str_ref) = $mark;
-            last;
-        }
-
-        my $var = $self->parse_expr($str_ref);
-
-        last if ! defined $var;
-        if ($$str_ref !~ m{ \G = >? \s* }gcx) {
-            $self->throw('parse.missing.equals', 'Missing equals while parsing args', undef, pos($$str_ref));
-        }
-
-        my $val = $self->parse_expr($str_ref);
-        push @{$info->[1]}, [$var, $val];
-        $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo if $val;
-    }
-
-    return $info;
+    return $self->parse_args($str_ref, {
+        named_at_front       => 1,
+        allow_extended_named => 1,
+        allow_bare_filenames => 1,
+        require_positional   => 1,
+    });
 }
 
 sub play_PROCESS {
     my ($self, $info, $node, $out_ref) = @_;
 
-    my ($files, $args) = @$info;
+    my ($args, @files) = @$info;
 
     ### set passed args
-    foreach (@$args) {
-        my $key = $_->[0];
-        my $val = $self->play_expr($_->[1]);
+    # [[undef, '{}', 'key1', 'val1', 'key2', 'val2'], 0]
+    $args = $args->[0];
+    foreach (my $i = 2; $i < @$args; $i+=2) {
+        my $key = $args->[$i];
+        my $val = $self->play_expr($args->[$i+1]);
         if (ref($key) && @$key == 2 && $key->[0] eq 'import' && UNIVERSAL::isa($val, 'HASH')) { # import ?! - whatever
             foreach my $key (keys %$val) {
                 $self->set_variable([$key,0], $val->{$key});
@@ -2277,7 +2268,7 @@ sub play_PROCESS {
     }
 
     ### iterate on any passed block or filename
-    foreach my $ref (@$files) {
+    foreach my $ref (@files) {
         next if ! defined $ref;
         my $filename = $self->play_expr($ref);
         my $out = ''; # have temp item to allow clear to correctly clear
@@ -2660,21 +2651,21 @@ sub play_WHILE {
     return undef;
 }
 
-sub parse_WRAPPER { $DIRECTIVES->{'INCLUDE'}->[0]->(@_) }
+sub parse_WRAPPER { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_WRAPPER {
-    my ($self, $var, $node, $out_ref) = @_;
+    my ($self, $args, $node, $out_ref) = @_;
     my $sub_tree = $node->[4] || return;
 
-    my ($names, $args) = @$var;
+    my ($named, @files) = @$args;
 
     my $out = '';
     $self->execute_tree($sub_tree, \$out);
 
-    foreach my $name (reverse @$names) {
+    foreach my $name (reverse @files) {
         local $self->{'_vars'}->{'content'} = $out;
         $out = '';
-        $DIRECTIVES->{'INCLUDE'}->[1]->($self, [[$name], $args], $node, \$out);
+        $DIRECTIVES->{'INCLUDE'}->[1]->($self, [$named, $name], $node, \$out);
     }
 
     $$out_ref .= $out;
@@ -3055,7 +3046,7 @@ sub define_vmethod {
     return 1;
 }
 
-sub vmethod_as_scalar {
+sub vmethod_fmt_scalar {
     my $str = shift; $str = ''   if ! defined $str;
     my $pat = shift; $pat = '%s' if ! defined $pat;
     local $^W;
@@ -3063,7 +3054,7 @@ sub vmethod_as_scalar {
               : sprintf($pat, $str);
 }
 
-sub vmethod_as_list {
+sub vmethod_fmt_list {
     my $ref = shift || return '';
     my $pat = shift; $pat = '%s' if ! defined $pat;
     my $sep = shift; $sep = ' '  if ! defined $sep;
@@ -3072,7 +3063,7 @@ sub vmethod_as_list {
               : join($sep, map {sprintf $pat, $_} @$ref);
 }
 
-sub vmethod_as_hash {
+sub vmethod_fmt_hash {
     my $ref = shift || return '';
     my $pat = shift; $pat = "%s\t%s" if ! defined $pat;
     my $sep = shift; $sep = "\n"     if ! defined $sep;
@@ -3135,6 +3126,15 @@ sub vmethod_nsort {
                                                                : UNIVERSAL::can($_, $field) ? $_->$field()
                                                                : $_)]} @$list ]
         : [sort {$a <=> $b} @$list];
+}
+
+sub vmethod_pick {
+    my $ref = shift;
+    no warnings;
+    my $n   = int(shift);
+    $n = 1 if $n < 1;
+    my @ind = map { $ref->[ rand @$ref ] } 1 .. $n;
+    return $n == 1 ? $ind[0] : \@ind;
 }
 
 sub vmethod_repeat {
