@@ -478,7 +478,7 @@ sub load_parsed_tree {
 
         local $self->{'_component'} = $doc;
         $doc->{'_tree'} = eval { $self->parse_tree($doc->{'_content'}) }
-            || do { my $e = $@; $e->doc($doc) if UNIVERSAL::can($e, 'doc'); die $e }; # errors die
+            || do { my $e = $@; $e->doc($doc) if UNIVERSAL::can($e, 'doc') && ! $e->doc; die $e }; # errors die
     }
 
     ### cache parsed_tree in memory unless asked not to do so
