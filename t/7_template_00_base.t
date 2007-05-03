@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 771 : 588;
+use Test::More tests => ! $is_tt ? 761 : 588;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -188,8 +188,6 @@ process_ok("[% \"hi \${foo.echo(7)}\" %]" => 'hi 7', {foo => $obj});
 process_ok("[% _foo %]2" => '2', {_foo => 1});
 process_ok("[% \$bar %]2" => '2', {_foo => 1, bar => '_foo'});
 process_ok("[% __foo %]2" => '2', {__foo => 1});
-process_ok("[% _foo = 1 %][% _foo %]2" => '2');
-process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
 
 process_ok("[% qw/Foo Bar Baz/.0 %]" => 'Foo') if ! $is_tt;
 process_ok('[% [0..10].-1 %]' => '10') if ! $is_tt;
@@ -273,29 +271,8 @@ process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '232') if ! $is_tt;
 process_ok("[% a = 1 a = a + 2 a %]" => 3) if ! $is_tt;
 
-###----------------------------------------------------------------###
-print "### reserved words ###################################################\n";
-
-$vars = {
-    GET => 'named_get',
-    get => 'lower_named_get',
-    named_get => 'value of named_get',
-    hold_get => 'GET',
-};
-process_ok("[% GET %]" => '', $vars);
-process_ok("[% GET GET %]" => 'named_get', $vars) if ! $is_tt;
-process_ok("[% GET get %]" => 'lower_named_get', $vars);
-process_ok("[% GET \${'GET'} %]" => 'bar', {GET => 'bar'});
-
-process_ok("[% GET = 1 %][% GET GET %]" => '', $vars);
-process_ok("[% SET GET = 1 %][% GET GET %]" => '1', $vars) if ! $is_tt;
-
-process_ok("[% GET \$hold_get %]" => 'named_get', $vars);
-process_ok("[% GET \$GET %]" => 'value of named_get', $vars) if ! $is_tt;
-process_ok("[% BLOCK GET %]hi[% END %][% PROCESS GET %]" => 'hi') if ! $is_tt;
-process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo a = GET %]" => 'hi', $vars) if ! $is_tt;
-process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo GET = 1 %]" => '');
-process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo IF GET %]" => 'hi', $vars) if ! $is_tt;
+process_ok("[% _foo = 1 %][% _foo %]2" => '2');
+process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
 
 ###----------------------------------------------------------------###
 print "### CALL / DEFAULT ###################################################\n";
@@ -314,10 +291,6 @@ ok($t == 3, "CALL method actually called var");
 print "### scalar vmethods ##################################################\n";
 
 process_ok("[% n.0 %]" => '7', {n => 7}) if ! $is_tt;
-process_ok("[% n.as %]" => '7', {n => 7}) if ! $is_tt;
-process_ok("[% n.as('%02d') %]" => '07', {n => 7}) if ! $is_tt;
-process_ok("[% n.as('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
-process_ok("[% n.as('(%s)') %]" => "(a\nb)", {n => "a\nb"}) if ! $is_tt;
 process_ok("[% n.chunk(3).join %]" => 'abc def g', {n => 'abcdefg'});
 process_ok("[% n.chunk(-3).join %]" => 'a bcd efg', {n => 'abcdefg'});
 process_ok("[% n|collapse %]" => "a b", {n => '  a  b  '}); # TT2 filter
@@ -330,11 +303,12 @@ process_ok("[% n|indent('wow ') %]" => "wow a\nwow b", {n => "a\nb"}); # TT2 fil
 process_ok("[% n.int %]" => "123", {n => "123.234"}) if ! $is_tt;
 process_ok("[% n.int %]" => "123", {n => "123gggg"}) if ! $is_tt;
 process_ok("[% n.int %]" => "0", {n => "ff123.234"}) if ! $is_tt;
+process_ok("[% n.fmt %]" => '7', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('%02d') %]" => '07', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('(%s)') %]" => "(a\nb)", {n => "a\nb"}) if ! $is_tt;
 process_ok("[% n|format('%02d') %]" => '07', {n => 7}); # TT2 filter
-process_ok("[% n.format('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
+process_ok("[% n|format('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
 process_ok("[% n|format('(%s)') %]" => "(a)\n(b)", {n => "a\nb"}); # TT2 filter
 process_ok("[% n.hash.items.1 %]" => "b", {n => {a => "b"}});
 process_ok("[% n|html %]" => "&amp;", {n => '&'}); # TT2 filter
@@ -381,16 +355,13 @@ process_ok("[% n|uri %]" => 'a%20b', {n => "a b"}); # TT2 filter
 ###----------------------------------------------------------------###
 print "### list vmethods ####################################################\n";
 
-process_ok("[% a.as %]" => '2 3', {a => [2,3]}) if ! $is_tt;
-process_ok("[% a.as('%02d') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
-process_ok("[% a.as('%02d',' ') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
-process_ok("[% a.as('%02d','|') %]" => '02|03', {a => [2,3]}) if ! $is_tt;
-process_ok("[% a.as('%0*d','|', 3) %]" => '002|003', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.defined %]" => '1', {a => [2,3]});
 process_ok("[% a.defined(1) %]" => '1', {a => [2,3]});
 process_ok("[% a.defined(3) %]" => '', {a => [2,3]});
 process_ok("[% a.first %]" => '2', {a => [2..10]});
 process_ok("[% a.first(3).join %]" => '2 3 4', {a => [2..10]});
+process_ok("[% a.fmt %]" => '2 3', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.fmt('%02d') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.fmt('%02d',' ') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.fmt('%02d','|') %]" => '02|03', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.fmt('%0*d','|', 3) %]" => '002|003', {a => [2,3]}) if ! $is_tt;
@@ -417,7 +388,8 @@ process_ok("[% a.nsort.join %]" => '1 2 3', {a => [2, 3, 1]});
 process_ok("[% a.nsort('b').0.b %]" => '7', {a => [{b => 23}, {b => 7}]});
 process_ok("[% a.pop %][% a.join %]" => '32', {a => [2, 3]});
 process_ok("[% a.push(3) %][% a.join %]" => '2 3 3', {a => [2, 3]});
-process_ok("[% a.random %]" => qr{ ^\d$ }x, {a => [2, 3]}) if ! $is_tt;
+process_ok("[% a.pick %]" => qr{ ^[23]$ }x, {a => [2, 3]}) if ! $is_tt;
+process_ok("[% a.pick(5).join('') %]" => qr{ ^[23]{5}$ }x, {a => [2, 3]}) if ! $is_tt;
 process_ok("[% a.reverse.join %]" => '3 2', {a => [2, 3]});
 process_ok("[% a.shift %][% a.join %]" => '23', {a => [2, 3]});
 process_ok("[% a.size %]" => '2', {a => [2, 3]});
@@ -436,25 +408,18 @@ process_ok("[% a.unshift(3) %][% a.join %]" => '3 2 3', {a => [2, 3]});
 ###----------------------------------------------------------------###
 print "### hash vmethods ####################################################\n";
 
-process_ok("[% h.as %]" => "b\tB\nc\tC", {h => {b => "B", c => "C"}}) if ! $is_tt;
-process_ok("[% h.as('%s => %s') %]" => "b => B\nc => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
-process_ok("[% h.as('%s => %s', '|') %]" => "b => B|c => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
-process_ok("[% h.as('%*s=>%s', '|', 3) %]" => "  b=>B|  c=>C", {h => {b => "B", c => "C"}}) if ! $is_tt;
-process_ok("[% h.as('%*s=>%*s', '|', 3, 4) %]" => "  b=>   B|  c=>   C", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.defined %]" => "1", {h => {}});
 process_ok("[% h.defined('a') %]" => "1", {h => {a => 1}});
 process_ok("[% h.defined('b') %]" => "", {h => {a => 1}});
 process_ok("[% h.defined('a') %]" => "", {h => {a => undef}});
-process_ok("[% h.delete('a') %]|[% h.keys.0 %]" => "1|b", {h => {a => 1, b=> 2}}) if ! $is_tt;
-process_ok("[% h.delete('a') %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}}) if $is_tt;
-process_ok("[% h.delete('a', 'b').join %]|[% h.keys.0 %]" => "1 2|", {h => {a => 1, b=> 2}}) if ! $is_tt;
-process_ok("[% h.delete('a', 'b').join %]|[% h.keys.0 %]" => "|", {h => {a => 1, b=> 2}}) if $is_tt;
-process_ok("[% h.delete('a', 'c').join %]|[% h.keys.0 %]" => "1 |b", {h => {a => 1, b=> 2}}) if ! $is_tt;
-process_ok("[% h.delete('a', 'c').join %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}}) if $is_tt;
+process_ok("[% h.delete('a') %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}});
+process_ok("[% h.delete('a', 'b').join %]|[% h.keys.0 %]" => "|", {h => {a => 1, b=> 2}});
+process_ok("[% h.delete('a', 'c').join %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}});
 process_ok("[% h.each.sort.join %]" => "1 2 a b", {h => {a => 1, b=> 2}});
 process_ok("[% h.exists('a') %]" => "1", {h => {a => 1}});
 process_ok("[% h.exists('b') %]" => "", {h => {a => 1}});
 process_ok("[% h.exists('a') %]" => "1", {h => {a => undef}});
+process_ok("[% h.fmt %]" => "b\tB\nc\tC", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.fmt('%s => %s') %]" => "b => B\nc => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.fmt('%s => %s', '|') %]" => "b => B|c => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.fmt('%*s=>%s', '|', 3) %]" => "  b=>B|  c=>C", {h => {b => "B", c => "C"}}) if ! $is_tt;
@@ -518,8 +483,7 @@ process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => 
 process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {$_[0]x2},0]}]});
 process_ok('[% "hi" FILTER foo(2) %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {my$a=$_[1];sub{$_[0]x$a}},1]}]});
 
-process_ok('[% ["a".."z"].random %]' => qr/^[a-z]/) if ! $is_tt;
-process_ok('[% ["a".."z"].${ 26.rand } %]' => qr/^[a-z]/) if ! $is_tt;
+process_ok('[% ["a".."z"].pick %]' => qr/^[a-z]/) if ! $is_tt;
 
 process_ok("[% ' ' | uri %]" => '%20');
 
@@ -534,9 +498,9 @@ process_ok('[% {a => "B", c => "D"}.fmt %]' => "a\tB\nc\tD") if ! $is_tt;
 process_ok('[% {a => "B", c => "D"}.fmt("%s:%s") %]' => "a:B\nc:D") if ! $is_tt;
 process_ok('[% {a => "B", c => "D"}.fmt("%s:%s", "; ") %]' => "a:B; c:D") if ! $is_tt;
 
-process_ok('[% 1.format("%s") %]' => '1') if ! $is_tt;
-process_ok('[% 1.format("%*s", 6) %]' => '     1') if ! $is_tt;
-process_ok('[% 1.format("%-*s", 6) %]' => '1     ') if ! $is_tt;
+process_ok('[% 1|format("%s") %]' => '1') if ! $is_tt;
+process_ok('[% 1|format("%*s", 6) %]' => '     1') if ! $is_tt;
+process_ok('[% 1|format("%-*s", 6) %]' => '1     ') if ! $is_tt;
 
 process_ok('[% 1.fmt("%-*s", 6) %]' => '1     ') if ! $is_tt;
 process_ok('[% [1,2].fmt("%-*s", "|", 6) %]' => '1     |2     ') if ! $is_tt;
@@ -669,11 +633,11 @@ process_ok("[% 0 ? 1 ? 1 + 2 * 3 : 1 + 2 * 4 : 1 + 2 * 5 %]" => '11');
 ###----------------------------------------------------------------###
 print "### BLOCK / PROCESS / INCLUDE#########################################\n";
 
-process_ok("[% PROCESS foo %]" => '');
-process_ok("[% BLOCK foo %]" => '');
-process_ok("[% BLOCK foo %][% END %]" => '');
+process_ok("[% PROCESS foo %]one" => '');
+process_ok("[% BLOCK foo %]one" => '');
+process_ok("[% BLOCK foo %][% END %]one" => 'one');
 process_ok("[% BLOCK %][% END %]one" => 'one');
-process_ok("[% BLOCK foo %]hi there[% END %]" => '');
+process_ok("[% BLOCK foo %]hi there[% END %]one" => 'one');
 process_ok("[% BLOCK foo %][% BLOCK foo %][% END %][% END %]" => '');
 process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
 process_ok("[% PROCESS foo %][% BLOCK foo %]hi there[% END %]" => 'hi there');
@@ -1079,6 +1043,30 @@ process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-"
 
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; foo %]' => '-AB-cd');
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*cd');
+
+###----------------------------------------------------------------###
+print "### reserved words ###################################################\n";
+
+$vars = {
+    GET => 'named_get',
+    get => 'lower_named_get',
+    named_get => 'value of named_get',
+    hold_get => 'GET',
+};
+process_ok("[% GET %]" => '', $vars);
+process_ok("[% GET GET %]" => 'named_get', $vars) if ! $is_tt;
+process_ok("[% GET get %]" => 'lower_named_get', $vars);
+process_ok("[% GET \${'GET'} %]" => 'bar', {GET => 'bar'});
+
+process_ok("[% GET = 1 %][% GET GET %]" => '', $vars);
+process_ok("[% SET GET = 1 %][% GET GET %]" => '1', $vars) if ! $is_tt;
+
+process_ok("[% GET \$hold_get %]" => 'named_get', $vars);
+process_ok("[% GET \$GET %]" => 'value of named_get', $vars) if ! $is_tt;
+process_ok("[% BLOCK GET %]hi[% END %][% PROCESS GET %]" => 'hi') if ! $is_tt;
+process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo a = GET %]" => 'hi', $vars) if ! $is_tt;
+process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo GET = 1 %]" => '');
+process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo IF GET %]" => 'hi', $vars) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### embedded items ###################################################\n";
