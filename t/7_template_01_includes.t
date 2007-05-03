@@ -29,20 +29,30 @@ mkdir $test_dir, 0755;
 ok(-d $test_dir, "Got a test dir up and running");
 
 
-sub process_ok { # process the value
+sub process_ok { # process the value and say if it was ok
     my $str  = shift;
     my $test = shift;
-    my $args = shift;
+    my $vars = shift || {};
+    my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
+    my $obj  = shift || $module->new(@$conf, ABSOLUTE => 1, INCLUDE_PATH => $test_dir); # new object each time
     my $out  = '';
+    my $line = (caller)[2];
+    delete $vars->{'tt_config'};
 
     Taint::Runtime::taint(\$str) if test_taint;
 
-    my $obj = $module->new(ABSOLUTE => 1, INCLUDE_PATH => $test_dir);
-    $obj->process(\$str, $args, \$out);
-    my $ok = $out eq $test;
-    ok($ok, "\"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
-    my $line = (caller)[2];
-    warn "#   process_ok called at line $line.\n" if ! $ok;
+    $obj->process(\$str, $vars, \$out);
+    my $ok = ref($test) ? $out =~ $test : $out eq $test;
+    if ($ok) {
+        ok(1, "Line $line   \"$str\" => \"$out\"");
+        return $obj;
+    } else {
+        ok(0, "Line $line   \"$str\"");
+        warn "# Was:\n$out\n# Should've been:\n$test\n";
+        print $obj->error if $obj->can('error');
+        print Dumper $obj->parse_tree(\$str) if $obj->can('parse_tree');
+        exit;
+    }
 }
 
 ### create some files to include
