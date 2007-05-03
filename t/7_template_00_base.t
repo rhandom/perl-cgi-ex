@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 761 : 588;
+use Test::More tests => ! $is_tt ? 764 : 589;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -641,6 +641,9 @@ process_ok("[% BLOCK foo %]hi there[% END %]one" => 'one');
 process_ok("[% BLOCK foo %][% BLOCK foo %][% END %][% END %]" => '');
 process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
 process_ok("[% PROCESS foo %][% BLOCK foo %]hi there[% END %]" => 'hi there');
+process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo foo %]" => 'hi therehi there') if ! $is_tt;
+process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo, foo %]" => 'hi therehi there') if ! $is_tt;
+process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo + foo %]" => 'hi therehi there');
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo %]" => 'hi ONE there', {one => 'ONE'});
 process_ok("[% BLOCK foo %]hi [% IF 1 %]Yes[% END %] there[% END %]<<[% PROCESS foo %]>>" => '<<hi Yes there>>');
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo one = 'two' %]" => 'hi two there');
