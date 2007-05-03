@@ -477,7 +477,8 @@ sub load_parsed_tree {
         }
 
         local $self->{'_component'} = $doc;
-        $doc->{'_tree'} = $self->parse_tree($doc->{'_content'}); # errors die
+        $doc->{'_tree'} = eval { $self->parse_tree($doc->{'_content'}) }
+            || do { my $e = $@; $e->doc($doc) if UNIVERSAL::can($e, 'doc'); die $e }; # errors die
     }
 
     ### cache parsed_tree in memory unless asked not to do so
@@ -629,7 +630,7 @@ sub parse_tree {
                     $parent_node->[5] = $node;
                     my $parent_type = $parent_node->[0];
                     if (! $DIRECTIVES->{$func}->[4]->{$parent_type}) {
-                        $self->throw('parse', "Found unmatched nested block", $node, 0);
+                        $self->throw('parse', "Found unmatched nested block", $node, pos($$str_ref));
                     }
                 }
 
@@ -740,10 +741,7 @@ sub parse_tree {
             $post_op  = undef;
 
         } else { # error
-            my $all  = substr($$str_ref, $node->[1], pos($$str_ref) - $node->[1]);
-            $all =~ s/^\s+//;
-            $all =~ s/\s+$//;
-            $self->throw('parse', "Not sure how to handle tag \"$all\"", $node);
+            $self->throw('parse', "Not sure how to handle tag", $node, pos($$str_ref));
         }
 
         ### we now have the directive to capture for an item like "SET foo = BLOCK" - store it
@@ -836,6 +834,7 @@ sub parse_expr {
     my $str_ref = shift;
     my $ARGS    = shift || {};
     my $is_aq   = $ARGS->{'auto_quote'} ? 1 : 0;
+    my $mark    = pos $$str_ref;
 
     ### allow for custom auto_quoting (such as hash constructors)
     if ($is_aq) {
@@ -843,7 +842,7 @@ sub parse_expr {
             return $1;
 
         ### allow for auto-quoted $foo or ${foo.bar} type constructs
-        } elsif ($$str_ref =~ m{ \G \$ (\w+ (?:\.\w+)*) \b \s* $QR_COMMENTS }gcxo) {
+        } elsif ($$str_ref =~ m{ \G \$ (\w+\b (?:\.\w+\b)*) \s* $QR_COMMENTS }gcxo) {
             my $name = $1;
             return $self->parse_expr(\$name);
 
@@ -858,7 +857,6 @@ sub parse_expr {
 
     ### test for leading prefix operators
     my $has_prefix;
-    my $mark = pos $$str_ref;
     while (! $is_aq && $$str_ref =~ m{ \G ($QR_OP_PREFIX) }gcxo) {
         push @{ $has_prefix }, $1;
         $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
@@ -909,7 +907,7 @@ sub parse_expr {
             $str =~ s/\\t/\t/g;
             $str =~ s/\\r/\r/g;
             $str =~ s/\\"/"/g;
-            my @pieces = $ARGS->{'auto_quote'}
+            my @pieces = $is_aq
                 ? split(m{ (?: ^ | (?<!\\)) (\$\w+            | \$\{ .*? (?<!\\) \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
                 : split(m{ (?: ^ | (?<!\\)) (\$\w+ (?:\.\w+)* | \$\{ .*? (?<!\\) \}) }x, $str);
             my $n = 0;
@@ -971,7 +969,7 @@ sub parse_expr {
     } elsif (! $is_aq && $$str_ref =~ m{ \G \{ \s* $QR_COMMENTS }gcxo) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $hashref = [undef, '{}'];
-        while (defined(my $key = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"}))) {
+        while (defined(my $key = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) $QR_AQ_NOTDOT"}))) {
             $$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo;
             my $val = $self->parse_expr($str_ref);
             push @$hashref, $key, $val;
@@ -1249,18 +1247,18 @@ sub parse_args {
         if (! $ARGS->{'require_positional'}
             && ($ARGS->{'allow_extended_named'}
                 ? defined($name = $self->parse_expr($str_ref))
-                : defined($name = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"})))
+                : defined($name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) $QR_AQ_NOTDOT"})))
             && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # see if we also match assignment
-                || ((pos $$str_ref = $mark) && 0))               # if not - we need to rollback
+                || ((pos($$str_ref) = $mark) && 0))               # if not - we need to rollback
             ) {
             $self->throw('parse', 'Named arguments not allowed', undef, $mark) if $ARGS->{'positional_only'};
             my $val = $self->parse_expr($str_ref);
             $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo;
             push @named, $name, $val;
         } elsif ($ARGS->{'allow_bare_filenames'}
-                 && defined(my $filename = $self->parse_expr($str_ref, {auto_quote => "($QR_FILENAME | \\w+ (?: :\\w+)* ) $QR_AQ_FSPACE"}))) {
+                 && defined(my $filename = $self->parse_expr($str_ref, {auto_quote => "($QR_FILENAME | \\w+\\b (?: :\\w+\\b)* ) $QR_AQ_FSPACE"}))) {
             push @args, $filename;
-            $ARGS->{'require_positional'} = ($$str_ref =~ m{ \G [,+] \s* $QR_COMMENTS }gcxo) || 0
+            $ARGS->{'require_positional'} = ($$str_ref =~ m{ \G [,+] \s* $QR_COMMENTS }gcxo) || 0;
         } elsif (defined(my $arg = $self->parse_expr($str_ref))) {
             push @args, $arg;
             $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo;
@@ -1804,7 +1802,7 @@ sub parse_CASE {
 
 sub parse_CATCH {
     my ($self, $str_ref) = @_;
-    return $self->parse_expr($str_ref, {auto_quote => "(\\w+ (?: \\.\\w+)*) $QR_AQ_SPACE"});
+    return $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE"});
 }
 
 sub play_control {
@@ -2115,7 +2113,7 @@ sub play_INSERT {
 sub parse_MACRO {
     my ($self, $str_ref, $node) = @_;
 
-    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"});
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) $QR_AQ_NOTDOT"});
     $self->throw('parse', "Missing macro name", undef, pos($$str_ref)) if ! defined $name;
     if (! ref $name) {
         $name = [ $name, 0 ];
@@ -2452,7 +2450,7 @@ sub play_SWITCH {
 
 sub parse_THROW {
     my ($self, $str_ref, $node) = @_;
-    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+ (?: \\.\\w+)*) $QR_AQ_SPACE"});
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE"});
     $self->throw('parse.missing', "Missing name in THROW", $node, pos($$str_ref)) if ! $name;
     my $args = $self->parse_args($str_ref);
     return [$name, $args];
@@ -2544,14 +2542,14 @@ sub parse_USE {
 
     my $var;
     my $mark = pos $$str_ref;
-    if (defined(my $_var = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"}))
+    if (defined(my $_var = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) $QR_AQ_NOTDOT"}))
         && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # make sure there is assignment
-            || ((pos $$str_ref = $mark) && 0))               # otherwise we need to rollback
+            || ((pos($$str_ref) = $mark) && 0))               # otherwise we need to rollback
         ) {
         $var = $_var;
     }
 
-    my $module = $self->parse_expr($str_ref, {auto_quote => "(\\w+ (?: (?:\\.|::) \\w+)*) $QR_AQ_NOTDOT"});
+    my $module = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: (?:\\.|::) \\w+\\b)*) $QR_AQ_NOTDOT"});
     $self->throw('parse', "Missing plugin name while parsing $$str_ref", undef, pos($$str_ref)) if ! defined $module;
     $module =~ s/\./::/g;
 
@@ -2913,7 +2911,9 @@ sub DEBUG {
 ###----------------------------------------------------------------###
 
 sub exception {
-    my ($self, $type, $info, $node) = @_;
+    my $self = shift;
+    my $type = shift;
+    my $info = shift;
     return $type if ref($type) =~ /Template::Exception$/;
     if (ref($info) eq 'ARRAY') {
         my $hash = ref($info->[-1]) eq 'HASH' ? pop(@$info) : {};
@@ -2929,7 +2929,7 @@ sub exception {
             $type = 'undef';
         }
     }
-    return $PACKAGE_EXCEPTION->new($type, $info, $node);
+    return $PACKAGE_EXCEPTION->new($type, $info, @_);
 }
 
 sub throw { die shift->exception(@_) }
@@ -3287,8 +3287,8 @@ use overload
     fallback => 1;
 
 sub new {
-    my ($class, $type, $info, $node, $pos, $str_ref) = @_;
-    return bless [$type, $info, $node, $pos, $str_ref], $class;
+    my ($class, $type, $info, $node, $pos, $doc) = @_;
+    return bless [$type, $info, $node, $pos, $doc], $class;
 }
 
 sub type { shift->[0] }
@@ -3297,15 +3297,19 @@ sub info { shift->[1] }
 
 sub node {
     my $self = shift;
-    $self->[2] = shift if $#_ == 0;
+    $self->[2] = shift if @_;
     $self->[2];
 }
 
-sub offset { shift->[3] || 0 }
+sub offset {
+    my $self = shift;
+    $self->[3] = shift if @_;
+    $self->[3];
+}
 
 sub doc {
     my $self = shift;
-    $self->[4] = shift if $#_ == 0;
+    $self->[4] = shift if @_;
     $self->[4];
 }
 
