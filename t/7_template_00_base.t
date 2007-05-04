@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 783 : 592;
+use Test::More tests => ! $is_tt ? 785 : 594;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -274,6 +274,13 @@ process_ok("[% a = 1 a = a + 2 a %]" => 3) if ! $is_tt;
 
 process_ok("[% _foo = 1 %][% _foo %]2" => '2');
 process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
+
+###----------------------------------------------------------------###
+print "### multiple statements in same tag ##################################\n";
+
+process_ok("[% foo; %]" => '1', {foo => 1});
+process_ok("[% GET foo; %]" => '1', {foo => 1});
+process_ok("[% GET foo; GET foo %]" => '11', {foo => 1});
 
 ###----------------------------------------------------------------###
 print "### CALL / DEFAULT ###################################################\n";
@@ -744,6 +751,11 @@ process_ok("[% FOREACH [1..3] %][% loop.size %][% END %][% loop.size %]" => '333
 process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '333') if ! $is_tt;
 process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '3331') if $is_tt;
 
+process_ok('[% FOREACH f = [1..3]; 1; END %]' => '111');
+process_ok('[% FOREACH f = [1..3]; f; END %]' => '123');
+process_ok('[% FOREACH f = [1..3]; "$f"; END %]' => '123');
+process_ok('[% FOREACH f = [1..3]; f + 1; END %]' => '234');
+
 ###----------------------------------------------------------------###
 print "### WHILE ############################################################\n";
 
@@ -785,15 +797,6 @@ process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% CLEAR %][% END 
 process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% CLEAR %][% END %][% f %][% END %]" => '123');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.last %][% CLEAR %][% END %][% END %]" => '');
 process_ok("[% FOREACH f = [1..3] %][% IF loop.last %][% CLEAR %][% END %][% f %][% END %]" => '3');
-
-###----------------------------------------------------------------###
-print "### multiple statements in same tag ##################################\n";
-
-process_ok("[% GET foo; GET foo %]" => '11', {foo => 1});
-process_ok('[% FOREACH f = [1..3]; 1; END %]' => '111');
-process_ok('[% FOREACH f = [1..3]; f; END %]' => '123');
-process_ok('[% FOREACH f = [1..3]; "$f"; END %]' => '123');
-process_ok('[% FOREACH f = [1..3]; f + 1; END %]' => '234');
 
 ###----------------------------------------------------------------###
 print "### post opererative directives ######################################\n";
