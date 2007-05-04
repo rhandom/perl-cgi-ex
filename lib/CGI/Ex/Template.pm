@@ -209,7 +209,8 @@ BEGIN {
         TRY     => [sub {},          \&play_TRY,      1],
         UNLESS  => [\&parse_UNLESS,  \&play_UNLESS,   1,       1],
         USE     => [\&parse_USE,     \&play_USE],
-        WHILE   => [\&parse_IF,      \&play_WHILE,    1,       1],
+        VIEW    => [\&parse_VIEW,    \&play_VIEW,     1],
+        WHILE   => [\&parse_WHILE,   \&play_WHILE,    1,       1],
         WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1,       1],
         #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
     };
@@ -333,8 +334,14 @@ sub _process {
     ### parse and execute
     my $doc;
     eval {
+        ### handed us a precompiled document
+        if (ref($file) eq 'HASH' && $file->{'_tree'}) {
+            $doc = $file;
+
         ### load the document
-        $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");;
+        } else {
+            $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");;
+        }
 
         ### prevent recursion
         $self->throw('file', "recursion into '$doc->{name}'")
@@ -349,13 +356,13 @@ sub _process {
             local $self->{'_template'}  = $self->{'_top_level'} ? $doc : $self->{'_template'};
             $self->execute_tree($doc->{'_tree'}, $out_ref);
         }
-    };
 
-    ### trim whitespace from the beginning and the end of a block or template
-    if ($self->{'TRIM'}) {
-        substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ \s+ $ }{}x; # tail first
-        substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ ^ \s+ }{}x;
-    }
+        ### trim whitespace from the beginning and the end of a block or template
+        if ($self->{'TRIM'}) {
+            substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ \s+ $ }{}x; # tail first
+            substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ ^ \s+ }{}x;
+        }
+    };
 
     ### handle exceptions
     if (my $err = $@) {
@@ -842,11 +849,19 @@ sub parse_expr {
         if ($$str_ref =~ m{ \G $ARGS->{'auto_quote'} \s* $QR_COMMENTS }gcx) {
             return $1;
 
-        ### allow for auto-quoted $foo or ${foo.bar} type constructs
+        ### allow for auto-quoted $foo
         } elsif ($$str_ref =~ m{ \G \$ (\w+\b (?:\.\w+\b)*) \s* $QR_COMMENTS }gcxo) {
             my $name = $1;
-            return $self->parse_expr(\$name);
+            if ($$str_ref !~ m{ \G \( }gcx || $name =~ /^(?:qw|m|\d)/) {
+                return $self->parse_expr(\$name);
+            }
+            ### this is a little cryptic/odd - but TT allows items in
+            ### autoquote position to only be prefixed by a $ - gross
+            ### so we will defer to the regular parsing - but after the $
+            pos($$str_ref) = $mark + 1;
+            $is_aq = undef; # but don't allow operators - false flag handed down
 
+        ### allow for ${foo.bar} type constructs
         } elsif ($$str_ref =~ m{ \G \$\{ \s* }gcx) {
             my $var = $self->parse_expr($str_ref);
             $$str_ref =~ m{ \G \s* \} \s* $QR_COMMENTS }gcxo
@@ -1023,7 +1038,11 @@ sub parse_expr {
         return;
     }
 
-    return if $is_aq; # auto_quoted thing was too complicated
+    # auto_quoted thing was too complicated
+    if ($is_aq) {
+        pos($$str_ref) = $mark;
+        return;
+    }
 
     ### looks for args for the initial
     if ($already_parsed_args) {
@@ -1037,6 +1056,7 @@ sub parse_expr {
     } else {
         push @var, 0;
     }
+
 
     ### allow for nested items
     while ($$str_ref =~ m{ \G ( \.(?!\.) | \|(?!\|) ) \s* $QR_COMMENTS }gcxo) {
@@ -1088,7 +1108,7 @@ sub parse_expr {
     }
 
     ### allow for all "operators"
-    if (! $self->{'_operator_precedence'}) {
+    if (! $self->{'_operator_precedence'} && defined $is_aq) {
         my $tree;
         my $found;
         while (1) {
@@ -1250,7 +1270,7 @@ sub parse_args {
     while (1) {
         my $mark = pos $$str_ref;
         if (! $ARGS->{'is_parened'}
-            && ! $ARGS->{'require_positional'}
+            && ! $ARGS->{'require_arg'}
             && $$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$self->{'_end_tag'}))) }gcxo
             && ((pos($$str_ref) = $mark) || 1)                  # always revert
             && $DIRECTIVES->{$self->{'ANYCASE'} ? uc($1) : $1}  # looks like a directive - we are done
@@ -1262,8 +1282,7 @@ sub parse_args {
             last;
         }
 
-        if (! $ARGS->{'require_positional'}
-            && ($ARGS->{'allow_extended_named'}
+        if (($ARGS->{'allow_extended_named'}
                 ? defined($name = $self->parse_expr($str_ref))
                 : defined($name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) $QR_AQ_NOTDOT"})))
             && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # see if we also match assignment
@@ -1273,15 +1292,18 @@ sub parse_args {
             my $val = $self->parse_expr($str_ref);
             $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo;
             push @named, $name, $val;
+            $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo) || 0;
+
         } elsif ($ARGS->{'allow_bare_filenames'}
                  && defined(my $filename = $self->parse_expr($str_ref, {auto_quote => "($QR_FILENAME | \\w+\\b (?: :\\w+\\b)* ) $QR_AQ_FSPACE"}))) {
             push @args, $filename;
-            $ARGS->{'require_positional'} = ($$str_ref =~ m{ \G [,+] \s* $QR_COMMENTS }gcxo) || 0;
+            $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G [,+] \s* $QR_COMMENTS }gcxo) || 0;
+
         } elsif (defined(my $arg = $self->parse_expr($str_ref))) {
             push @args, $arg;
-            $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo;
-            $ARGS->{'require_positional'} = ($$str_ref =~ m{ \G ,    \s* $QR_COMMENTS }gcxo) || 0;
-        } elsif ($ARGS->{'require_positional'}) {
+            $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G ,    \s* $QR_COMMENTS }gcxo) || 0;
+
+        } elsif ($ARGS->{'require_arg'}) {
             $self->throw('parse', 'Argument required', undef, pos($$str_ref));
         } else {
             last;
@@ -2261,7 +2283,7 @@ sub parse_PROCESS {
         named_at_front       => 1,
         allow_extended_named => 1,
         allow_bare_filenames => 1,
-        require_positional   => 1,
+        require_arg          => 1,
     });
 }
 
@@ -2297,10 +2319,18 @@ sub play_PROCESS {
 
         ### allow for $template which is used in some odd instances
         } else {
-            $self->throw('process', "Unable to process document $filename") if $ref->[0] ne 'template';
+            my $doc;
+            if ($ref->[0] eq 'template') {
+                $doc = $filename;
+            } else {
+                $doc = $self->play_expr($ref);
+                if (ref($doc) ne 'HASH' || ! $doc->{'_tree'}) {
+                    $self->throw('process', "Passed item doesn't appear to be a valid document");
+                }
+            }
             $self->throw('process', "Recursion detected in $node->[0] \$template") if $self->{'_process_dollar_template'};
             local $self->{'_process_dollar_template'} = 1;
-            local $self->{'_component'} = my $doc = $filename;
+            local $self->{'_component'} = $filename;
             return if ! $doc->{'_tree'};
 
             ### execute and trim
@@ -2641,6 +2671,55 @@ sub play_USE {
 
     return;
 }
+
+sub parse_VIEW { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
+
+sub play_VIEW {
+    my ($self, $ref, $node, $out_ref) = @_;
+
+    my ($args, $name) = @$ref;
+
+    ### get args ready
+    # [[undef, '{}', 'key1', 'val1', 'key2', 'val2'], 0]
+    $args = $args->[0];
+    my $hash = {};
+    foreach (my $i = 2; $i < @$args; $i+=2) {
+        my $key = $args->[$i];
+        my $val = $self->play_expr($args->[$i+1]);
+        if (ref $key) {
+            if (@$key == 2 && ! ref($key->[0]) && ! $key->[1]) {
+                $key = $key->[0];
+            } else {
+                $self->set_variable($key, $val);
+                next; # what TT does
+            }
+        }
+        $hash->{$key} = $val;
+    }
+
+    ### get the view
+    require Template::View;
+    my $view = Template::View->new($self->context, $hash)
+        || $self->throw('view', $Template::View::ERROR);
+
+    ### 'play it'
+    my $old_view = $self->play_expr(['view', 0]);
+    $self->set_variable($self->play_expr($name), $view);
+    $self->set_variable(['view', 0], $view);
+
+    if ($node->[4]) {
+        my $out = '';
+        $self->execute_tree($node->[4], \$out);
+        # throw away out
+    }
+
+    $self->set_variable(['view', 0], $old_view);
+    $view->seal;
+
+    return '';
+}
+
+sub parse_WHILE { $DIRECTIVES->{'IF'}->[0]->(@_) }
 
 sub play_WHILE {
     my ($self, $var, $node, $out_ref) = @_;
@@ -3025,7 +3104,9 @@ sub node_info {
 }
 
 sub get_line_number_by_index {
-    my ($self, $doc, $index) = @_;
+    my ($self, $doc, $index, $include_char) = @_;
+    return 1 if $index <= 0;
+
     ### get the line offsets for the doc
     my $lines = $doc->{'_line_offsets'} ||= do {
         $doc->{'_content'} ||= do { my $s = $self->slurp($doc->{'_filename'}) ; \$s };
@@ -3038,15 +3119,20 @@ sub get_line_number_by_index {
         }
         \@lines;
     };
+
     ### binary search them (this is fast even on big docs)
-    return $#$lines + 1 if $index > $lines->[-1];
     my ($i, $j) = (0, $#$lines);
-    while (1) {
-        return $i + 1 if abs($i - $j) <= 1;
-        my $k = int(($i + $j) / 2);
-        $j = $k if $lines->[$k] >= $index;
-        $i = $k if $lines->[$k] <= $index;
+    if ($index > $lines->[-1]) {
+        $i = $j;
+    } else {
+        while (1) {
+            last if abs($i - $j) <= 1;
+            my $k = int(($i + $j) / 2);
+            $j = $k if $lines->[$k] >= $index;
+            $i = $k if $lines->[$k] <= $index;
+        }
     }
+    return $include_char ? ($i + 1, $index - $lines->[$i]) : $i + 1;
 }
 
 ###----------------------------------------------------------------###
@@ -3336,11 +3422,13 @@ sub doc {
 sub as_string {
     my $self = shift;
     my $msg  = $self->type .' error - '. $self->info;
-    if (my $node = $self->node) {
-#        $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
-    }
     if ($self->type =~ /^parse/) {
-        $msg .= " (At char ".$self->offset.")";
+        if (my $doc = $self->doc) {
+            my ($line, $char) = CGI::Ex::Template->get_line_number_by_index($doc, $self->offset, 'include_char');
+            $msg .= " (At line $line char $char)"
+        } else {
+            $msg .= " (At char ".$self->offset.")";
+        }
     }
     return $msg;
 }
@@ -3410,6 +3498,11 @@ use vars qw($AUTOLOAD);
 
 sub _template { shift->{'_template'} || die "Missing _template" }
 
+sub template {
+    my ($self, $name) = @_;
+    return $self->_template->{'BLOCKS'}->{$name} || $self->_template->load_parsed_tree($name);
+}
+
 sub config { shift->_template }
 
 sub stash {
@@ -3424,21 +3517,20 @@ sub eval_perl { shift->_template->{'EVAL_PERL'} }
 sub process {
     my $self = shift;
     my $ref  = shift;
-    my $vars = $self->_template->_vars;
     my $out  = '';
-    $self->_template->_process($ref, $vars, \$out);
+    $self->_template->_process($ref, $self->_template->_vars, \$out);
     return $out;
 }
 
 sub include {
     my $self = shift;
-    my $file = shift;
+    my $ref  = shift;
     my $args = shift || {};
 
     $self->_template->set_variable($_, $args->{$_}) for keys %$args;
 
     my $out = ''; # have temp item to allow clear to correctly clear
-    eval { $self->_template->_process($file, $self->{'_vars'}, \$out) };
+    eval { $self->_template->_process($ref, $self->_template->_vars, \$out) };
     if (my $err = $@) {
         die $err if ref($err) !~ /Template::Exception$/ || $err->type !~ /return/;
     }
