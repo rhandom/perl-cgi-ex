@@ -31,8 +31,7 @@ use vars qw($VERSION
             $QR_COMMENTS
             $QR_FILENAME
             $QR_NUM
-            $QR_AQ_NOTDOT
-            $QR_AQ_SPACE  $QR_AQ_FSPACE
+            $QR_AQ_SPACE
             $QR_PRIVATE
 
             $PACKAGE_EXCEPTION $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
@@ -288,9 +287,7 @@ BEGIN {
     $QR_COMMENTS  = '(?-s: \# .* \s*)*';
     $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
     $QR_NUM       = '(?:\d*\.\d+ | \d+) (?: [eE][+-]\d+ )?';
-    $QR_AQ_NOTDOT = "(?! \\s* $QR_COMMENTS \\.)";
     $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=;) )';
-    $QR_AQ_FSPACE = '(?: \\s+ | \$ | (?=[;+,]) )'; # the + comes into play on filenames
     $QR_PRIVATE   = qr/^[_.]/;
 
     $WHILE_MAX    = 1000;
@@ -846,7 +843,7 @@ sub parse_expr {
 
     ### allow for custom auto_quoting (such as hash constructors)
     if ($is_aq) {
-        if ($$str_ref =~ m{ \G $ARGS->{'auto_quote'} \s* $QR_COMMENTS }gcx) {
+        if ($$str_ref =~ m{ \G $ARGS->{'auto_quote'} }gcx) {
             return $1;
 
         ### allow for auto-quoted $foo
@@ -1002,7 +999,7 @@ sub parse_expr {
     } elsif (! $is_aq && $$str_ref =~ m{ \G \{ \s* $QR_COMMENTS }gcxo) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $hashref = [undef, '{}'];
-        while (defined(my $key = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) $QR_AQ_NOTDOT"}))) {
+        while (defined(my $key = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"}))) {
             $$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo;
             my $val = $self->parse_expr($str_ref);
             push @$hashref, $key, $val;
@@ -1269,6 +1266,8 @@ sub parse_args {
     my $name;
     while (1) {
         my $mark = pos $$str_ref;
+
+        ### look to see if the next thing is a directive or a closing tag
         if (! $ARGS->{'is_parened'}
             && ! $ARGS->{'require_arg'}
             && $$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$self->{'_end_tag'}))) }gcxo
@@ -1282,32 +1281,43 @@ sub parse_args {
             last;
         }
 
-        if (($ARGS->{'allow_extended_named'}
-                ? defined($name = $self->parse_expr($str_ref))
-                : defined($name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) $QR_AQ_NOTDOT"})))
-            && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # see if we also match assignment
-                || ((pos($$str_ref) = $mark) && 0))               # if not - we need to rollback
-            ) {
+        ### find the initial arg
+        my $name;
+        if ($ARGS->{'allow_bare_filenames'}) {
+            $name = $self->parse_expr($str_ref, {auto_quote => "
+              ($QR_FILENAME                                             # file name
+              | \\w+\\b (?: :\\w+\\b)* )                                # or block
+                (?= [+,;]                                               # followed by explicit + , or ;
+                 ".($self->{'end_tag'} ? "| $self->{'end_tag'}" : "")." # or a closing end tag
+                  | \\s+(?![\\s=]))                                     # or space not before an =
+                  \\s* $QR_COMMENTS"});
+        }
+        if (! defined $name) {
+            $name = $self->parse_expr($str_ref);
+            if (! defined $name) {
+                if ($ARGS->{'require_arg'}) {
+                    $self->throw('parse', 'Argument required', undef, pos($$str_ref));
+                } else {
+                    last;
+                }
+            }
+        }
+
+        $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
+
+        ### see if it is named or positional
+        if ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo) {
             $self->throw('parse', 'Named arguments not allowed', undef, $mark) if $ARGS->{'positional_only'};
             my $val = $self->parse_expr($str_ref);
-            $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo;
+            $name = $name->[0] if ref($name) && @$name == 2 && ! $name->[1]; # strip a level of indirection on named arguments
             push @named, $name, $val;
-            $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo) || 0;
-
-        } elsif ($ARGS->{'allow_bare_filenames'}
-                 && defined(my $filename = $self->parse_expr($str_ref, {auto_quote => "($QR_FILENAME | \\w+\\b (?: :\\w+\\b)* ) $QR_AQ_FSPACE"}))) {
-            push @args, $filename;
-            $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G [,+] \s* $QR_COMMENTS }gcxo) || 0;
-
-        } elsif (defined(my $arg = $self->parse_expr($str_ref))) {
-            push @args, $arg;
-            $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G ,    \s* $QR_COMMENTS }gcxo) || 0;
-
-        } elsif ($ARGS->{'require_arg'}) {
-            $self->throw('parse', 'Argument required', undef, pos($$str_ref));
         } else {
-            last;
+            push @args, $name;
         }
+
+        ### look for trailing comma
+        $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G [,+] \s* $QR_COMMENTS }gcxo) || 0;
+
     }
 
     ### allow for named arguments to be added at the front (if asked)
@@ -1844,7 +1854,7 @@ sub parse_CASE {
 
 sub parse_CATCH {
     my ($self, $str_ref) = @_;
-    return $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE"});
+    return $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE \s* $QR_COMMENTS"});
 }
 
 sub play_control {
@@ -2155,7 +2165,7 @@ sub play_INSERT {
 sub parse_MACRO {
     my ($self, $str_ref, $node) = @_;
 
-    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) $QR_AQ_NOTDOT"});
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"});
     $self->throw('parse', "Missing macro name", undef, pos($$str_ref)) if ! defined $name;
     if (! ref $name) {
         $name = [ $name, 0 ];
@@ -2500,7 +2510,7 @@ sub play_SWITCH {
 
 sub parse_THROW {
     my ($self, $str_ref, $node) = @_;
-    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE"});
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE \\s* $QR_COMMENTS"});
     $self->throw('parse.missing', "Missing name in THROW", $node, pos($$str_ref)) if ! $name;
     my $args = $self->parse_args($str_ref);
     return [$name, $args];
@@ -2592,14 +2602,14 @@ sub parse_USE {
 
     my $var;
     my $mark = pos $$str_ref;
-    if (defined(my $_var = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) $QR_AQ_NOTDOT"}))
+    if (defined(my $_var = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"}))
         && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # make sure there is assignment
             || ((pos($$str_ref) = $mark) && 0))               # otherwise we need to rollback
         ) {
         $var = $_var;
     }
 
-    my $module = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: (?:\\.|::) \\w+\\b)*) $QR_AQ_NOTDOT"});
+    my $module = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: (?:\\.|::) \\w+\\b)*) (?! \\.) \\s* $QR_COMMENTS"});
     $self->throw('parse', "Missing plugin name while parsing $$str_ref", undef, pos($$str_ref)) if ! defined $module;
     $module =~ s/\./::/g;
 
@@ -2789,7 +2799,7 @@ sub include_filename {
 
     my $paths = $self->{'INCLUDE_PATHS'} ||= do {
         # TT does this everytime a file is looked up - we are going to do it just in time - the first time
-        my $paths = $self->{'INCLUDE_PATH'} || $self->throw('file', "INCLUDE_PATH not set");
+        my $paths = $self->{'INCLUDE_PATH'} || [];
         $paths = $paths->()                 if UNIVERSAL::isa($paths, 'CODE');
         $paths = $self->split_paths($paths) if ! UNIVERSAL::isa($paths, 'ARRAY');
         $paths; # return of the do
