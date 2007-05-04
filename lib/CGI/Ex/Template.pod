@@ -397,7 +397,8 @@ configuration items.
 =item There is no context.
 
 CET provides a context object that mimics the Template::Context
-interface for use by some TT filters, eval perl blocks, and plugins.
+interface for use by some TT filters, eval perl blocks, views,
+and plugins.
 
 =item There is no stash.
 
@@ -412,30 +413,39 @@ perl blocks, and plugins.
 
 CET uses the load_parsed_tree method to get and cache templates.
 
-=item There is no grammar.
+=item There is no parser/grammar.
 
-CET has its own built-in recursive regex based grammar system.
+CET has its own built-in recursive regex based parser and grammar system.
 
-=item There is no VIEW directive.
+CET can actually be substituted in place of the native Template::Parser and
+Template::Grammar in TT by using the Template::Parser::CET module.  This
+module uses the output of parse_tree to generate a TT style compiled perl
+document.
 
 =item The DEBUG directive is more limited.
 
 It only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 
-=item When debug dirs is on, directives on different lines separated by colons show the line they
-are on rather than a general line range.
+=item CET has better line information
+
+When debug dirs is on, directives on different lines separated
+by colons show the line they are on rather than a general line range.
+
+Parse errors actually know what line and character they occured at.
 
 =back
 
 =head1 VARIABLES
 
-This section discusses how to use variables and expressions in the TT mini-language.
+This section discusses how to use variables and expressions in the TT
+mini-language.
 
-A variable is the most simple construct to insert into the TT mini language.  A variable
-name will look for the matching value inside CGI::Ex::Templates internal stash of variables
-which is essentially a hash reference.  This stash is initially populated by either passing
-a hashref as the second argument to the process method, or by setting the "VARIABLES" or
-"PRE_DEFINE" configuration variables.
+A variable is the most simple construct to insert into the TT mini
+language.  A variable name will look for the matching value inside
+CGI::Ex::Templates internal stash of variables which is essentially a
+hash reference.  This stash is initially populated by either passing a
+hashref as the second argument to the process method, or by setting
+the "VARIABLES" or "PRE_DEFINE" configuration variables.
 
     ### some sample variables
     my %vars = (
@@ -462,8 +472,9 @@ a hashref as the second argument to the process method, or by setting the "VARIA
 
 =head2 GETTING VARIABLES
 
-Once you have variables defined, they can be used directly in the template by using their name
-in the stash.  Or by using the GET directive.
+Once you have variables defined, they can be used directly in the
+template by using their name in the stash.  Or by using the GET
+directive.
 
     [% foo %]
     [% one %]
@@ -475,7 +486,8 @@ Would print when processed:
     1.0
     bar
 
-To access members of a hashref or an arrayref, you can chain together the names using a ".".
+To access members of a hashref or an arrayref, you can chain together
+the names using a ".".
 
     [% some_data.a %]
     [% my_list.0] [% my_list.1 %] [% my_list.-1 %]
@@ -487,8 +499,9 @@ Would print:
     20 21 50
     4
 
-If the value of a variable is a code reference, it will be called.  You can add a set of parenthesis
-and arguments to pass arguments.  Arguments are variables and can be as complex as necessary.
+If the value of a variable is a code reference, it will be called.
+You can add a set of parenthesis and arguments to pass arguments.
+Arguments are variables and can be as complex as necessary.
 
     [% some_code %]
     [% some_code() %]
@@ -502,7 +515,8 @@ Would print:
     You passed me (bar).
     You passed me (1.0, 2, 3).
 
-If the value of a variable is an object, methods can be called using the "." operator.
+If the value of a variable is an object, methods can be called using
+the "." operator.
 
     [% cet %]
 
@@ -530,9 +544,10 @@ Would print:
     31
     3 | 1 | 4 | 5 | 9
 
-It is also possible to "interpolate" variable names using a "$".  This allows for storing
-the name of a variable inside another variable.  If a variable name is a little
-more complex it can be embedded inside of "${" and "}".
+It is also possible to "interpolate" variable names using a "$".  This
+allows for storing the name of a variable inside another variable.  If
+a variable name is a little more complex it can be embedded inside of
+"${" and "}".
 
     [% $vname %]
     [% ${vname} %]
@@ -548,8 +563,9 @@ Would print:
     3234
     3234
 
-In CET it is also possible to embed any expression (non-directive) in "${" and "}"
-and it is possible to use non-integers for array access.  (This is not available in TT2)
+In CET it is also possible to embed any expression (non-directive) in
+"${" and "}" and it is possible to use non-integers for array access.
+(This is not available in TT2)
 
     [% ['a'..'z'].${ 2.3 } %]
     [% {ab => 'AB'}.${ 'a' ~ 'b' } %]
@@ -563,8 +579,8 @@ Would print:
 
 =head2 SETTING VARIABLES.
 
-To define variables during processing, you can use the = operator.  In most cases
-this is the same as using the SET directive.
+To define variables during processing, you can use the = operator.  In
+most cases this is the same as using the SET directive.
 
     [% a = 234 %][% a %]
     [% SET b = "Hello" %][% b %]
@@ -714,8 +730,8 @@ operators.  An expression can be used anywhere a variable can be used
 with the exception of the variable name in the SET directive, and the
 filename of PROCESS, INCLUDE, WRAPPER, and INSERT.
 
-The following section shows some samples of expressions.  For a full list
-of available operators, please see the section titled OPERATORS.
+The following section shows some samples of expressions.  For a full
+list of available operators, please see the section titled OPERATORS.
 
     [% 1 + 2 %]           Prints 3
     [% 1 + 2 * 3 %]       Prints 7
@@ -742,11 +758,11 @@ are discussed in a later section.
 
 =head2 SCALAR VIRTUAL METHODS AND FILTERS
 
-The following is the list of builtin virtual methods and filters
-that can be called on scalar data types.  In CET and TT3, filters and
-virtual methods are more closely related than in TT2.  In general anywhere a
-virtual method can be used a filter can be used also - and likewise all scalar
-virtual methods can be used as filters.
+The following is the list of builtin virtual methods and filters that
+can be called on scalar data types.  In CET and TT3, filters and
+virtual methods are more closely related than in TT2.  In general
+anywhere a virtual method can be used a filter can be used also - and
+likewise all scalar virtual methods can be used as filters.
 
 In addition to the filters listed below, CET will automatically load
 Template::Filters and use them if Template::Toolkit is installed.
@@ -762,8 +778,10 @@ object (except for true filters such as eval and redirect).
 
 =item '0'
 
-    [% item = 'foo' %][% item.0 %] Returns self.  Allows for scalars to mask as arrays (scalars
-                                   already will, but this allows for more direct access).
+    [% item = 'foo' %][% item.0 %] Returns foo.
+
+Allows for scalars to mask as arrays (scalars already will, but this
+allows for more direct access).
 
 =item chunk
 
@@ -1897,6 +1915,14 @@ Would print:
 See the PLUGIN_BASE, and PLUGINS configuration items.
 
 See the documentation for Template::Manual::Plugins.
+
+=item C<VIEW>
+
+Implement a TT style view.  For more information, please
+see the Template::View documentation.  This DIRECTIVE
+will correctly parse the arguments and then pass them
+along to a newly created Template::View object.  It
+will fail if Template::View can not be found.
 
 =item C<WHILE>
 
