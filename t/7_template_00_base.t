@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 782 : 591;
+use Test::More tests => ! $is_tt ? 783 : 592;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -105,6 +105,7 @@ process_ok("[% foo(7) %]" => 7,      {foo => sub { $_[0] }});
 process_ok("[% foo.length %]" => 1,  {foo => sub { 7 }});
 process_ok("[% foo.0 %]" => 7,       {foo => sub { return 7, 2, 3 }});
 process_ok("[% foo(bar) %]" => 7,    {foo => sub { $_[0] }, bar => 7});
+process_ok("[% foo(bar.baz) %]" => 7,{foo => sub { $_[0] }, bar => {baz => 7}});
 process_ok("[% foo.seven %]" => 7,   {foo => $obj});
 process_ok("[% foo.seven() %]" => 7, {foo => $obj});
 process_ok("[% foo.seven.length %]" => 1, {foo => $obj});
