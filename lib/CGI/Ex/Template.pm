@@ -257,8 +257,9 @@ BEGIN {
         ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]                           } ],
         ['left',    45,        ['and', 'AND'],      undef                                       ],
         ['right',   40,        ['or', 'OR'],        undef                                       ],
-        ['',         0,        ['{}'],              undef                                       ],
-        ['',         0,        ['[]'],              undef                                       ],
+#        ['',         0,        ['{}'],              undef                                       ],
+#        ['',         0,        ['[]'],              undef                                       ],
+#        ['',         0,        ['qr'],              undef                                       ],
     ];
     $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
     $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
@@ -883,11 +884,28 @@ sub parse_expr {
     } elsif (! $is_aq && $$str_ref =~ m{ \G qw (\W) \s* }gcxo) {
         my $quote = $1;
         $quote =~ y|([{<|)]}>|;
-        $$str_ref =~ m{ \G (.*?) \Q$quote\E \s* $QR_COMMENTS }gcxs
+        $$str_ref =~ m{ \G (.*?) (?<!\\) \Q$quote\E \s* $QR_COMMENTS }gcxs
             || $self->throw('parse.missing.array_close', "Missing close \"$quote\"", undef, pos($$str_ref));
         my $str = $1;
-        $str =~ s{ ^ \s+ | \s+ $ }{}x;
+        $str =~ s{ ^ \s+ }{}x;
+        $str =~ s{ \s+ $ }{}x;
+        $str =~ s{ \\ \Q$quote\E }{$quote}gx;
         push @var, [undef, '[]', split /\s+/, $str];
+
+    ### allow for regex constructor
+    } elsif (! $is_aq
+             && ($$str_ref =~ m{ \G (/) }gcx
+                 || $$str_ref =~ m{ \G m (\W) }gcx)) {
+        my $quote = $1;
+        $quote =~ y|([{<|)]}>|;
+        $$str_ref =~ m{ \G (.*?) (?<!\\) \Q$quote\E ([msixeg]*) \s* $QR_COMMENTS }gcxs
+            || $self->throw('parse.missing.regex_close', "Missing close \"$quote\"", undef, pos($$str_ref));
+        my ($str, $opts) = ($1, $2);
+        $str =~ s{ \\ \Q$quote\E }{$quote}gx;
+        $self->throw('parse', 'e option not allowed on regex', undef, pos($$str_ref)) if $opts =~ /e/;
+        $self->throw('parse', 'g option not supported on regex', undef, pos($$str_ref)) if $opts =~ /g/;
+        $self->throw('parse', "Invalid regex: $@", undef, pos($$str_ref)) if ! eval { "" =~ /$str/; 1 };
+        push @var, [undef, 'qr', $str, $opts];
 
     ### looks like a normal variable start
     } elsif ($$str_ref =~ m{ \G (\w+) \s* $QR_COMMENTS }gcxo) {
@@ -1754,6 +1772,8 @@ sub play_operator {
             $last->[-1] = (ref $last->[-1] ? [@{ $last->[-1] }, @_] : [@_]) if @_;
             return $self->play_expr($last);
         } };
+    } elsif ($op eq 'qr') {
+        return $tree->[3] ? qr{(?$tree->[3]:$tree->[2])} : qr{$tree->[2]};
     }
 
     $self->throw('operator', "Un-implemented operation $op");
