@@ -544,6 +544,7 @@ sub parse_tree {
     my $continue   = 0;   # flag for multiple directives in the same tag
     my $post_op;          # found a post-operative DIRECTIVE
     my $capture;          # flag to start capture
+    my @in_view;          # let us know if we are in a view
     my $func;
     my $node;
     my $mark;
@@ -645,12 +646,21 @@ sub parse_tree {
                 ### normal end block
                 if ($func eq 'END') {
                     if ($DIRECTIVES->{$parent_node->[0]}->[5]) { # move things like BLOCKS to front
-                        push @move_to_front, $parent_node;
+                        if ($parent_node->[0] eq 'BLOCK'
+                            && defined($parent_node->[3])
+                            && @in_view) {
+                            push @{ $in_view[-1] }, $parent_node;
+                        } else {
+                            push @move_to_front, $parent_node;
+                        }
                         if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
                             splice(@$pointer, -1, 1, ());
                         }
                     } elsif ($parent_node->[0] =~ /PERL$/) {
                         delete $self->{'_in_perl'};
+                    } elsif ($parent_node->[0] eq 'VIEW') {
+                        my $ref = { map {($_->[3] => $_->[4])} @{ pop @in_view }};
+                        unshift @{ $parent_node->[3] }, $ref;
                     }
 
                 ### continuation block - such as an elsif
@@ -718,6 +728,7 @@ sub parse_tree {
                     push @state, $node;
                     $pointer = $node->[4] ||= [];
                 }
+                push @in_view, [] if $func eq 'VIEW';
             }
 
         ### allow for bare variable getting and setting
@@ -736,7 +747,7 @@ sub parse_tree {
             }
 
         ### now look for the closing tag
-        } elsif ($$str_ref =~ m{ \G ([+=~-]?) ($END) }gcxs) {
+        } elsif ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) ($END) }gcxso) {
             my $end = $2;
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
@@ -757,7 +768,7 @@ sub parse_tree {
         }
 
         ### look for the closing tag again
-        if ($$str_ref =~ m{ \G ([+=~-]?) ($END) }gcxs) {
+        if ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) ($END) }gcxs) {
             my $end = $2;
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
@@ -2291,7 +2302,6 @@ sub parse_PROCESS {
 
     return $self->parse_args($str_ref, {
         named_at_front       => 1,
-        allow_extended_named => 1,
         allow_bare_filenames => 1,
         require_arg          => 1,
     });
@@ -2682,12 +2692,22 @@ sub play_USE {
     return;
 }
 
-sub parse_VIEW { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
+sub parse_VIEW {
+    my ($self, $str_ref) = @_;
+
+    my $ref = $self->parse_args($str_ref, {
+        named_at_front       => 1,
+        require_arg          => 1,
+    });
+
+    return $ref;
+}
+#sub parse_VIEW { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_VIEW {
     my ($self, $ref, $node, $out_ref) = @_;
 
-    my ($args, $name) = @$ref;
+    my ($blocks, $args, $name) = @$ref;
 
     ### get args ready
     # [[undef, '{}', 'key1', 'val1', 'key2', 'val2'], 0]
@@ -2707,6 +2727,13 @@ sub play_VIEW {
         $hash->{$key} = $val;
     }
 
+    ### prepare the blocks
+    foreach my $key (keys %$blocks) {
+        $blocks->{$key} = {name => "$name/$key", _tree => $blocks->{$key}};
+    }
+
+    $hash->{'blocks'} = $blocks;
+
     ### get the view
     require Template::View;
     my $view = Template::View->new($self->context, $hash)
@@ -2714,7 +2741,7 @@ sub play_VIEW {
 
     ### 'play it'
     my $old_view = $self->play_expr(['view', 0]);
-    $self->set_variable($self->play_expr($name), $view);
+    $self->set_variable($name, $view);
     $self->set_variable(['view', 0], $view);
 
     if ($node->[4]) {
