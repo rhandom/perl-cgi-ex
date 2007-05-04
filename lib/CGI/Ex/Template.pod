@@ -235,6 +235,10 @@ not just variables.
     [% color = qw/Red Blue/; FOR [1..4] ; color.${ loop.index % color.size } ; END %]
       # = RedBlueRedBlue
 
+=item You can use regular expression quoting.
+
+    [% "foo".match( /(F\w+)/i ).0 %] # = foo
+
 =item Tags can be nested.
 
     [% f = "[% (1 + 2) %]" %][% f|eval %] # = 3
@@ -849,6 +853,12 @@ processed separately.
 
     [% item.match("(\w+) (\w+)", 1) %] Same as before - but match globally.
 
+In CGI::Ex::Template and TT3 you can use regular expressions notation as well.
+
+    [% item.match( /(\w+) (\w+)/ ) %] Same as before.
+
+    [% item.match( m{(\w+) (\w+)} ) %] Same as before.
+
 =item null
 
     [% item.null %] Do nothing.
@@ -887,9 +897,17 @@ This is a filter and is not available via the Text virtual object.
 
     [% item.replace("(\w+)", "($1)") %] Surround all words with parenthesis.
 
+In CGI::Ex::Template and TT3 you may also use normal regular expression notation.
+
+    [% item.replace(/(\w+)/, "($1)") %] Same as before.
+
 =item search
 
     [% item.search("(\w+)") %] Tests if the given pattern is in the string.
+
+In CGI::Ex::Template and TT3 you may also use normal regular expression notation.
+
+    [% item.search(/(\w+)/, "($1)") %] Same as before.
 
 =item size
 
@@ -902,6 +920,10 @@ This is a filter and is not available via the Text virtual object.
     [% item.split("\s+") %] Returns an arrayref from the item split on /\s+/
 
     [% item.split("\s+", 3) %] Returns an arrayref from the item split on /\s+/ splitting until 3 elements are found.
+
+In CGI::Ex::Template and TT3 you may also use normal regular expression notation.
+
+    [% item.split( /\s+/, 3 ) %] Same as before.
 
 =item stderr
 
@@ -1003,10 +1025,14 @@ Default pattern is %s and the default join string is a space.
 
     [% mylist.push(23) %] Adds an element to the end of the arrayref (the stash is modified).
 
-=item random
+=item pick
 
-    [% mylist.random %] Returns a random item from the list.
-    [% ['a' .. 'z'].random %]
+    [% mylist.pick %] Returns a random item from the list.
+    [% ['a' .. 'z'].pick %]
+
+An additional numeric argument is how many items to return.
+
+    [% ['a' .. 'z'].pick(8).join('') %]
 
 Note: This filter is not available as of TT2.15.
 
@@ -1074,6 +1100,9 @@ Default pattern is "%s\t%s" and the default join string is a newline.
 =item delete
 
     [% myhash.delete('a') %]  Deletes the item from the hash.
+
+Unlink Perl the value is not returned.  Multiple values may be passed
+and represent the keys to be deleted.
 
 =item each
 
@@ -2188,6 +2217,12 @@ execution of the compiled template.
 This operator is not used in TT.  It is used internally
 by CGI::Ex::Template to delay the creation of an array until the
 execution of the compiled template.
+
+=item C<qr>
+
+This operator is not used in TT.  It is used internally
+by CGI::Ex::Template to store a regular expression and its options.
+It will return a compiled Regexp object when compiled.
 
 =back
 
