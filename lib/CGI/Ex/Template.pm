@@ -1827,18 +1827,15 @@ sub play_operator {
 sub parse_BLOCK {
     my ($self, $str_ref, $node) = @_;
 
-    my $block_name = '';
-    if ($$str_ref =~ m{ \G (\w+ (?: :\w+)*) \s* (?! [\.\|]) }gcx
-        || $$str_ref =~ m{ \G '(|.*?[^\\])' \s* (?! [\.\|]) }gcx
-        || $$str_ref =~ m{ \G "(|.*?[^\\])" \s* (?! [\.\|]) }gcx
-        ) {
-        $block_name = $1;
-        ### allow for nested blocks to have nested names
-        my @names = map {$_->[3]} grep {$_->[0] eq 'BLOCK'} @{ $self->{'_state'} };
-        $block_name = join("/", @names, $block_name) if scalar @names;
-    }
+    my $block_name = $self->parse_expr($str_ref, {auto_quote => "
+              ($QR_FILENAME                                             # file name
+              | \\w+\\b (?: :\\w+\\b)* )                                # or block
+                (?= [+,;]                                               # followed by explicit + , or ;
+                 ".($self->{'end_tag'} ? "| $self->{'end_tag'}" : "")." # or a closing end tag
+                  | \\s+(?![\\s=]))                                     # or space not before an =
+                  \\s* $QR_COMMENTS"});
 
-    return $block_name;
+    return defined($block_name) ? $block_name : '';
 }
 
 sub play_BLOCK {
@@ -2728,10 +2725,10 @@ sub play_VIEW {
     }
 
     ### prepare the blocks
+    my $prefix = $hash->{'prefix'} || (ref($name) && @$name == 2 && ! $name->[1] && ! ref($name->[0])) ? "$name->[0]/" : '';
     foreach my $key (keys %$blocks) {
-        $blocks->{$key} = {name => "$name/$key", _tree => $blocks->{$key}};
+        $blocks->{$key} = {name => "${prefix}${key}", _tree => $blocks->{$key}};
     }
-
     $hash->{'blocks'} = $blocks;
 
     ### get the view
