@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 764 : 589;
+use Test::More tests => ! $is_tt ? 779 : 591;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -631,6 +631,21 @@ process_ok("[% t = 0 or 0 ? 0 : 0 or 2 ? 2 : 3 %][% t %]" => '2');
 process_ok("[% 0 ? 1 ? 1 + 2 * 3 : 1 + 2 * 4 : 1 + 2 * 5 %]" => '11');
 
 ###----------------------------------------------------------------###
+print "### regex ############################################################\n";
+
+process_ok("[% /foo/ %]"     => '(?-xism:foo)') if ! $is_tt;
+process_ok("[% /foo/x %]"    => '(?-xism:(?x:foo))') if ! $is_tt;
+process_ok("[% /foo/xi %]"   => '(?-xism:(?xi:foo))') if ! $is_tt;
+process_ok("[% /foo/xis %]"  => '(?-xism:(?xis:foo))') if ! $is_tt;
+process_ok("[% /foo/xism %]" => '(?-xism:(?xism:foo))') if ! $is_tt;
+process_ok("[% /foo/e %]"    => '') if ! $is_tt;
+process_ok("[% /foo/g %]"    => '') if ! $is_tt;
+process_ok("[% /foo %]"      => '') if ! $is_tt;
+process_ok("[% /foo**/ %]"   => '') if ! $is_tt;
+process_ok("[% /fo\\/o/ %]"     => '(?-xism:fo/o)') if ! $is_tt;
+process_ok("[% 'foobar'.match(/(f\\w\\w)/).0 %]" => 'foo') if ! $is_tt;
+
+###----------------------------------------------------------------###
 print "### BLOCK / PROCESS / INCLUDE#########################################\n";
 
 process_ok("[% PROCESS foo %]one" => '');
@@ -1080,6 +1095,11 @@ process_ok('[% " \${foo} " %]' => ' ${foo} ');
 process_ok('[% " \n " %]' => " \n ");
 process_ok('[% " \t " %]' => " \t ");
 process_ok('[% " \r " %]' => " \r ");
+
+process_ok("[% 'foo\\'bar' %]"  => "foo'bar");
+process_ok('[% "foo\\"bar" %]'  => 'foo"bar');
+process_ok('[% qw(foo \)).1 %]' => ')') if ! $is_tt;
+process_ok('[% qw|foo \||.1 %]' => '|') if ! $is_tt;
 
 process_ok("[% ' \\' ' %]" => " ' ");
 process_ok("[% ' \\r ' %]" => ' \r ');
