@@ -2627,7 +2627,7 @@ sub parse_USE {
 
     my $args;
     my $open = $$str_ref =~ m{ \G \( \s* $QR_COMMENTS }gcxo;
-    $args = $self->parse_args($str_ref, {is_parened => $open});
+    $args = $self->parse_args($str_ref, {is_parened => $open, named_at_front => 1});
 
     if ($open) {
         $$str_ref =~ m{ \G \) \s* $QR_COMMENTS }gcxo || $self->throw('parse.missing', "Missing close ')'", undef, pos($$str_ref));
@@ -2644,6 +2644,9 @@ sub play_USE {
     $var = $module if ! defined $var;
     my @var = map {($_, 0, '.')} split /(?:\.|::)/, $var;
     pop @var; # remove the trailing '.'
+
+    my $named = shift @$args;
+    push @$args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
 
     ### look for a plugin_base
     my $BASE = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
