@@ -538,13 +538,13 @@ sub parse_tree {
     my @state;            # maintain block levels
     local $self->{'_state'} = \@state; # allow for items to introspect (usually BLOCKS)
     local $self->{'_in_perl'};         # no interpolation in perl
+    my @in_view;          # let us know if we are in a view
     my @move_to_front;    # items that need to be declared first (usually BLOCKS)
     my @meta;             # place to store any found meta information (to go into META)
     my $post_chomp = 0;   # previous post_chomp setting
     my $continue   = 0;   # flag for multiple directives in the same tag
     my $post_op;          # found a post-operative DIRECTIVE
     my $capture;          # flag to start capture
-    my @in_view;          # let us know if we are in a view
     my $func;
     my $node;
     my $mark;
@@ -1836,7 +1836,10 @@ sub parse_BLOCK {
                   | \\s+(?![\\s=]))                                     # or space not before an =
                   \\s* $QR_COMMENTS"});
 
-    return defined($block_name) ? $block_name : '';
+    return '' if ! defined $block_name;
+
+    my $prepend = join "/", map {$_->[3]} grep {ref($_) && $_->[0] eq 'BLOCK'} @{ $self->{'_state'} || {} };
+    return $prepend ? "$prepend/$block_name" : $block_name;
 }
 
 sub play_BLOCK {
