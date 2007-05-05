@@ -1862,7 +1862,7 @@ sub parse_CASE {
 
 sub parse_CATCH {
     my ($self, $str_ref) = @_;
-    return $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE \s* $QR_COMMENTS"});
+    return $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE \\s* $QR_COMMENTS"});
 }
 
 sub play_control {
