@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 785 : 594;
+use Test::More tests => ! $is_tt ? 786 : 595;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1038,6 +1038,7 @@ print "### META #############################################################\n"
 
 process_ok("[% template.name %]" => 'input text');
 process_ok("[% META foo = 'bar' %][% template.foo %]" => 'bar');
+process_ok("[% META name = 'bar' %][% template.name %]" => 'input text');
 process_ok("[% META foo = 'bar' %][% component.foo %]" => 'bar');
 process_ok("[% META foo = 'bar' %][% component = '' %][% component.foo %]|foo" => '|foo');
 process_ok("[% META foo = 'bar' %][% template = '' %][% template.foo %]|foo" => '|foo');

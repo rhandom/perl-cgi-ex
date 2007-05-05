@@ -714,6 +714,7 @@ sub parse_tree {
                 my $hash;
                 if (($hash = $self->play_expr($args->[0]))
                     && UNIVERSAL::isa($hash, 'HASH')) {
+                    delete @{ $hash }{ 'name', 'modtime' };
                     unshift @meta, %$hash; # first defined win
                 }
 
@@ -2244,10 +2245,9 @@ sub play_META {
     } else {
         $ref = $self->{'_component'} ||= {};
     }
-    foreach my $key (keys %$hash) {
-        next if $key eq 'name' || $key eq 'modtime';
-        $ref->{$key} = $hash->{$key};
-    }
+
+    my @keys = keys %$hash;
+    @{ $ref }{ @keys } = @{ $hash }{ @keys };
     return;
 }
 
