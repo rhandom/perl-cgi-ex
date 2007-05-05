@@ -560,7 +560,7 @@ This is the base block
 [%- END -%]
 [% VIEW super %]
    [%- BLOCK parent -%]
-   [%- INCLUDE parent | replace('base', 'super') -%]
+   [%- INCLUDE parent FILTER replace('base', 'super') -%]
    [%- END -%]
 [% END -%]
 base: [% INCLUDE parent %]
