@@ -1280,6 +1280,7 @@ sub parse_args {
     my @args;
     my @named;
     my $name;
+    my $end = $self->{'_end_tag'} || '(?!)';
     while (1) {
         my $mark = pos $$str_ref;
 
@@ -1301,12 +1302,18 @@ sub parse_args {
         my $name;
         if ($ARGS->{'allow_bare_filenames'}) {
             $name = $self->parse_expr($str_ref, {auto_quote => "
-              ($QR_FILENAME                                             # file name
-              | \\w+\\b (?: :\\w+\\b)* )                                # or block
-                (?= [+,;]                                               # followed by explicit + , or ;
-                 ".($self->{'end_tag'} ? "| $self->{'end_tag'}" : "")." # or a closing end tag
-                  | \\s+(?![\\s=]))                                     # or space not before an =
-                  \\s* $QR_COMMENTS"});
+              ($QR_FILENAME               # file name
+              | \\w+\\b (?: :\\w+\\b)* )  # or block
+                (?= [-~=+]? $end          # an end tag
+                  | \\s*[+,;]             # followed by explicit + , or ;
+                  | \\s+ (?! [\\s=])      # or space not before an =
+                )  \\s* $QR_COMMENTS"});
+            # filenames can be separated with a "+" - why a "+" ?
+            if ($$str_ref =~ m{ \G \+ (?! [+=~-]? $end) \s* $QR_COMMENTS }gcxo) {
+                push @args, $name;
+                $ARGS->{'require_arg'} = 1;
+                next;
+            }
         }
         if (! defined $name) {
             $name = $self->parse_expr($str_ref);
@@ -1332,8 +1339,7 @@ sub parse_args {
         }
 
         ### look for trailing comma
-        $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G [,+] \s* $QR_COMMENTS }gcxo) || 0;
-
+        $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo) || 0;
     }
 
     ### allow for named arguments to be added at the front (if asked)
@@ -1832,13 +1838,14 @@ sub play_operator {
 sub parse_BLOCK {
     my ($self, $str_ref, $node) = @_;
 
+    my $end = $self->{'_end_tag'} || '(?!)';
     my $block_name = $self->parse_expr($str_ref, {auto_quote => "
-              ($QR_FILENAME                                             # file name
-              | \\w+\\b (?: :\\w+\\b)* )                                # or block
-                (?= [+,;]                                               # followed by explicit + , or ;
-                 ".($self->{'end_tag'} ? "| $self->{'end_tag'}" : "")." # or a closing end tag
-                  | \\s+(?![\\s=]))                                     # or space not before an =
-                  \\s* $QR_COMMENTS"});
+              ($QR_FILENAME               # file name
+              | \\w+\\b (?: :\\w+\\b)* )  # or block
+                (?= [-~=+]? $end          # an end tag
+                  | \\s*[+,;]             # followed by explicit + , or ;
+                  | \\s+ (?! [\\s=])      # or space not before an =
+                )  \\s* $QR_COMMENTS"});
 
     return '' if ! defined $block_name;
 
