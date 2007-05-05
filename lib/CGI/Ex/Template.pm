@@ -1287,13 +1287,13 @@ sub parse_args {
         ### look to see if the next thing is a directive or a closing tag
         if (! $ARGS->{'is_parened'}
             && ! $ARGS->{'require_arg'}
-            && $$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$self->{'_end_tag'}))) }gcxo
+            && $$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$end))) }gcxo
             && ((pos($$str_ref) = $mark) || 1)                  # always revert
             && $DIRECTIVES->{$self->{'ANYCASE'} ? uc($1) : $1}  # looks like a directive - we are done
             ) {
             last;
         }
-        if ($$str_ref =~ m{ \G [+=~-]? $self->{'_end_tag'} }gcx) {
+        if ($$str_ref =~ m{ \G [+=~-]? $end }gcx) {
             pos($$str_ref) = $mark;
             last;
         }
@@ -1304,7 +1304,7 @@ sub parse_args {
             $name = $self->parse_expr($str_ref, {auto_quote => "
               ($QR_FILENAME               # file name
               | \\w+\\b (?: :\\w+\\b)* )  # or block
-                (?= [-~=+]? $end          # an end tag
+                (?= [+=~-]? $end          # an end tag
                   | \\s*[+,;]             # followed by explicit + , or ;
                   | \\s+ (?! [\\s=])      # or space not before an =
                 )  \\s* $QR_COMMENTS"});
@@ -1842,7 +1842,7 @@ sub parse_BLOCK {
     my $block_name = $self->parse_expr($str_ref, {auto_quote => "
               ($QR_FILENAME               # file name
               | \\w+\\b (?: :\\w+\\b)* )  # or block
-                (?= [-~=+]? $end          # an end tag
+                (?= [+=~-]? $end          # an end tag
                   | \\s*[+,;]             # followed by explicit + , or ;
                   | \\s+ (?! [\\s=])      # or space not before an =
                 )  \\s* $QR_COMMENTS"});
@@ -1964,8 +1964,8 @@ sub play_DUMP {
     if (@dump) {
         $out = $handler->(@dump && @dump == 1 ? $dump[0] : \@dump);
         my $name = $info->{'text'};
-        $name =~ s/^[+\-~=]?\s*DUMP\s+//;
-        $name =~ s/\s*[+\-~=]?$//;
+        $name =~ s/^[+=~-]?\s*DUMP\s+//;
+        $name =~ s/\s*[+=~-]?$//;
         $out =~ s/\$VAR1/$name/;
     } elsif (defined($conf->{'EntireStash'}) && ! $conf->{'EntireStash'}) {
         $out = '';
