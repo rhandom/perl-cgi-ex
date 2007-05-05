@@ -718,7 +718,6 @@ sub parse_tree {
                 my $hash;
                 if (($hash = $self->play_expr($args->[0]))
                     && UNIVERSAL::isa($hash, 'HASH')) {
-                    delete @{ $hash }{ 'name', 'modtime' };
                     unshift @meta, %$hash; # first defined win
                 }
 
@@ -2252,14 +2251,17 @@ sub play_MACRO {
 
 sub play_META {
     my ($self, $hash) = @_;
+
+    my @keys = keys %$hash;
+
     my $ref;
     if ($self->{'_top_level'}) {
         $ref = $self->{'_template'} ||= {};
+        @keys = grep { ! /^(name|modtime)$/ } @keys;
     } else {
         $ref = $self->{'_component'} ||= {};
     }
 
-    my @keys = keys %$hash;
     @{ $ref }{ @keys } = @{ $hash }{ @keys };
     return;
 }
