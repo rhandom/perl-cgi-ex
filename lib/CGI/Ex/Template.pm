@@ -2519,14 +2519,19 @@ sub parse_THROW {
     my ($self, $str_ref, $node) = @_;
     my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE \\s* $QR_COMMENTS"});
     $self->throw('parse.missing', "Missing name in THROW", $node, pos($$str_ref)) if ! $name;
-    my $args = $self->parse_args($str_ref);
+    my $args = $self->parse_args($str_ref, {named_at_front => 1});
     return [$name, $args];
 }
 
 sub play_THROW {
     my ($self, $ref, $node) = @_;
     my ($name, $args) = @$ref;
+
     $name = $self->play_expr($name);
+
+    my $named = shift @$args;
+    push @$args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+
     my @args = $args ? map { $self->play_expr($_) } @$args : ();
     $self->throw($name, \@args, $node);
 }
