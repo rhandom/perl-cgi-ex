@@ -680,7 +680,7 @@ sub parse_tree {
                         \G (\w+)                # tags name
                         \s* $QR_COMMENTS        # optional comments
                         ([+~=-]?) ($END)        # forced close
-                    }gcx) {
+                    }gcxs) {
                     my $ref = $TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
                     ($START, $END) = @$ref;
                     ($post_chomp, $end) = ($2, $3);
@@ -690,7 +690,7 @@ sub parse_tree {
                             (?:\s+(un|)quoted?)? # optional unquoted adjective
                             \s* $QR_COMMENTS     # optional comments
                             ([+~=-]?) ($END)     # forced close
-                        }gcxo) {
+                        }gcxs) {
                     ($START, $END, my $unquote, $post_chomp, $end) = ($1, $2, $3, $4, $5);
                     for ($START, $END) {
                         if ($unquote) { eval { "" =~ /$_/; 1 } || $self->throw('parse', "Invalid TAGS \"$_\": $@", undef, pos($$str_ref)) }
@@ -748,7 +748,7 @@ sub parse_tree {
             }
 
         ### now look for the closing tag
-        } elsif ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) ($END) }gcxso) {
+        } elsif ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) ($END) }gcxs) {
             my $end = $2;
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
@@ -1307,7 +1307,7 @@ sub parse_args {
         if (! defined $name) {
             $name = $self->parse_expr($str_ref);
             if (! defined $name) {
-                if ($ARGS->{'require_arg'}) {
+                if ($ARGS->{'require_arg'} && ! @args && ! $ARGS->{'positional_only'} && ! @named) {
                     $self->throw('parse', 'Argument required', undef, pos($$str_ref));
                 } else {
                     last;
