@@ -2732,7 +2732,9 @@ sub play_VIEW {
     $hash->{'blocks'} = $blocks;
 
     ### get the view
-    require Template::View;
+    if (! eval { require Template::View }) {
+        $self->throw('view', 'Could not load Template::View library');
+    }
     my $view = Template::View->new($self->context, $hash)
         || $self->throw('view', $Template::View::ERROR);
 
@@ -2744,7 +2746,7 @@ sub play_VIEW {
     if ($node->[4]) {
         my $out = '';
         $self->execute_tree($node->[4], \$out);
-        # throw away out
+        # throw away $out
     }
 
     $self->set_variable(['view', 0], $old_view);
@@ -3551,6 +3553,10 @@ sub eval_perl { shift->_template->{'EVAL_PERL'} }
 sub process {
     my $self = shift;
     my $ref  = shift;
+    my $args = shift || {};
+
+    $self->_template->set_variable($_, $args->{$_}) for keys %$args;
+
     my $out  = '';
     $self->_template->_process($ref, $self->_template->_vars, \$out);
     return $out;
@@ -3561,10 +3567,15 @@ sub include {
     my $ref  = shift;
     my $args = shift || {};
 
-    $self->_template->set_variable($_, $args->{$_}) for keys %$args;
+    my $t = $self->_template;
+
+    my $swap = $t->{'_vars'};
+    local $t->{'_vars'} = {%$swap};
+
+    $t->set_variable($_, $args->{$_}) for keys %$args;
 
     my $out = ''; # have temp item to allow clear to correctly clear
-    eval { $self->_template->_process($ref, $self->_template->_vars, \$out) };
+    eval { $t->_process($ref, $t->_vars, \$out) };
     if (my $err = $@) {
         die $err if ref($err) !~ /Template::Exception$/ || $err->type !~ /return/;
     }
