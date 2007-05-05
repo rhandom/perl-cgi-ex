@@ -541,13 +541,13 @@ process_ok(" \n\n[%- foo %]" => " \n");
 process_ok(" \n[%- foo %]" => " ") if ! $is_tt;
 process_ok(" \n \n[%- foo %]" => " \n ") if ! $is_tt;
 
-process_ok("[% foo %] " => ' ');
-process_ok("[% foo -%] " => ' ');
-process_ok("[% foo -%]\n" => '');
-process_ok("[% foo -%] \n" => '');
-process_ok("[% foo -%]\n " => ' ');
-process_ok("[% foo -%]\n\n\n" => "\n\n");
-process_ok("[% foo -%] \n " => ' ');
+process_ok("[% 7 %] " => '7 ');
+process_ok("[% 7 -%] " => '7 ');
+process_ok("[% 7 -%]\n" => '7');
+process_ok("[% 7 -%] \n" => '7');
+process_ok("[% 7 -%]\n " => '7 ');
+process_ok("[% 7 -%]\n\n\n" => "7\n\n");
+process_ok("[% 7 -%] \n " => '7 ');
 
 ###----------------------------------------------------------------###
 print "### string operators #################################################\n";
