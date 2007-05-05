@@ -751,12 +751,11 @@ sub parse_tree {
                 $node->[3] = $var;
             }
 
-        ### now look for the closing tag
+        ### handle empty tags [% %]
         } elsif ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) ($END) }gcxs) {
             my $end = $2;
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
-
             $node->[2] = pos($$str_ref) - length($end);
             $continue = 0;
             $post_op  = undef;
@@ -978,7 +977,6 @@ sub parse_expr {
             }
         }
         if ($is_aq) {
-            #$$str_ref = $copy; # TODO ?
             return ${ $var[0] } if $is_literal;
             push @var, 0;
             return \@var;
@@ -1048,6 +1046,7 @@ sub parse_expr {
 
     ### nothing to find - return failure
     } else {
+        pos($$str_ref) = $mark if $is_aq || $has_prefix;
         return;
     }
 
@@ -2460,6 +2459,7 @@ sub parse_SET {
             push @SET, ['=', $set, undef];
         }
     }
+
     return \@SET;
 }
 
