@@ -957,6 +957,7 @@ sub parse_expr {
             my $n = 0;
             foreach my $piece (@pieces) {
                 $piece =~ s/\\\$/\$/g;
+                $piece =~ s/\\//g;
                 next if ! ($n++ % 2);
                 next if $piece !~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                     && $piece !~ m{ ^ \$\{ \s* (.*?) (?<!\\) \} $ }x;
