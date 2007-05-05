@@ -593,11 +593,15 @@ sub parse_tree {
                 splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
             }
             if ($$str_ref =~ m{ \G \# }gcx) {       # leading # means to comment the entire section
-                $$str_ref =~ m{ \G (.*?) ($END) }gcxs # brute force - can't comment tags with nested %]
+                $$str_ref =~ m{ \G (.*?) ([+~=-]?) ($END) }gcxs # brute force - can't comment tags with nested %]
                     || $self->throw('parse', "Missing closing tag", undef, pos($$str_ref));
                 $node->[0] = '#';
-                $node->[2] = pos($$str_ref) - length($2);
+                $node->[2] = pos($$str_ref) - length($3);
                 push @$pointer, $node;
+
+                $post_chomp = $2;
+                $post_chomp ||= $self->{'POST_CHOMP'};
+                $post_chomp =~ y/-=~+/1230/ if $post_chomp;
                 next;
             }
             $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
@@ -735,7 +739,7 @@ sub parse_tree {
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_expr($str_ref))) {
             push @$pointer, $node;
-            if ($$str_ref =~ m{ \G ($QR_OP_ASSIGN) >? \s* $QR_COMMENTS }gcxo) {
+            if ($$str_ref =~ m{ \G ($QR_OP_ASSIGN) >? (?! [+=~-]? $END) \s* $QR_COMMENTS }gcx) {
                 $node->[0] = 'SET';
                 $node->[3] = eval { $DIRECTIVES->{'SET'}->[0]->($self, $str_ref, $node, $1, $var) };
                 if (my $err = $@) {
