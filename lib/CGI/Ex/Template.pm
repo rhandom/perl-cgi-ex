@@ -922,7 +922,7 @@ sub parse_expr {
     ### allow for regex constructor
     } elsif (! $is_aq
              && ($$str_ref =~ m{ \G (/) }gcx
-                 || $$str_ref =~ m{ \G m (\W) }gcx)) {
+                 || $$str_ref =~ m{ \G m ([^\s\w]) }gcx)) {
         my $quote = $1;
         $quote =~ y|([{<|)]}>|;
         $$str_ref =~ m{ \G (.*?) (?<!\\) \Q$quote\E ([msixeg]*) \s* $QR_COMMENTS }gcxs
