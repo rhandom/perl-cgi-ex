@@ -285,7 +285,7 @@ BEGIN {
 
     $QR_DIRECTIVE = '( [a-zA-Z]+\b | \| )';
     $QR_COMMENTS  = '(?-s: \# .* \s*)*';
-    $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
+    $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\.][\w\-\.]* (?:/[\w\-\.]+)*';
     $QR_NUM       = '(?:\d*\.\d+ | \d+) (?: [eE][+-]\d+ )?';
     $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=;) )';
     $QR_PRIVATE   = qr/^[_.]/;
