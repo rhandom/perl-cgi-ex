@@ -3482,16 +3482,16 @@ sub doc {
 
 sub as_string {
     my $self = shift;
-    my $msg  = $self->type .' error - '. $self->info;
     if ($self->type =~ /^parse/) {
         if (my $doc = $self->doc) {
             my ($line, $char) = CGI::Ex::Template->get_line_number_by_index($doc, $self->offset, 'include_char');
-            $msg .= " (At line $line char $char)"
+            return $self->type ." error - $doc->{'name'} line $line char $char: ". $self->info;
         } else {
-            $msg .= " (At char ".$self->offset.")";
+            return $self->type .' error - '. $self->info .' (At char '. $self->offset .')';
         }
+    } else {
+        return $self->type .' error - '. $self->info;
     }
-    return $msg;
 }
 
 ###----------------------------------------------------------------###
