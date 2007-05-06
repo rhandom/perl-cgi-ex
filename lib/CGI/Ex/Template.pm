@@ -758,6 +758,7 @@ sub parse_tree {
             $node->[2] = pos($$str_ref) - length($end);
             $continue = 0;
             $post_op  = undef;
+            next;
 
         } else { # error
             $self->throw('parse', "Not sure how to handle tag", $node, pos($$str_ref));
@@ -2258,7 +2259,6 @@ sub play_META {
     my $ref;
     if ($self->{'_top_level'}) {
         $ref = $self->{'_template'} ||= {};
-        @keys = grep { ! /^(name|modtime)$/ } @keys;
     } else {
         $ref = $self->{'_component'} ||= {};
     }
