@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 787 : 596;
+use Test::More tests => ! $is_tt ? 788 : 597;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -708,6 +708,10 @@ process_ok("[%# BLOCK one %]" => '');
 process_ok("[%# BLOCK one %]two" => 'two');
 process_ok("[%# BLOCK one %]two[% END %]" => '');
 process_ok("[%# BLOCK one %]two[% END %]three" => '');
+process_ok("[%
+#
+-%]
+foo" => "foo");
 
 ###----------------------------------------------------------------###
 print "### FOREACH / NEXT / LAST ############################################\n";
@@ -1039,7 +1043,7 @@ print "### META #############################################################\n"
 
 process_ok("[% template.name %]" => 'input text');
 process_ok("[% META foo = 'bar' %][% template.foo %]" => 'bar');
-process_ok("[% META name = 'bar' %][% template.name %]" => 'input text');
+process_ok("[% META name = 'bar' %][% template.name %]" => 'bar');
 process_ok("[% META foo = 'bar' %][% component.foo %]" => 'bar');
 process_ok("[% META foo = 'bar' %][% component = '' %][% component.foo %]|foo" => '|foo');
 process_ok("[% META foo = 'bar' %][% template = '' %][% template.foo %]|foo" => '|foo');
