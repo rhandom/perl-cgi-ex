@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 785 : 597;
+use Test::More tests => ! $is_tt ? 792 : 598;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -174,7 +174,9 @@ process_ok("[% foo.\$name %]" => 7, {name => 'bar', foo => {bar => 7}});
 process_ok("[% foo.\$name.baz %]" => '', {name => 'bar', bar => {baz => 7}});
 
 process_ok("[% \"hi\" %]" => 'hi');
+process_ok("[% \"hi %]" => '');
 process_ok("[% 'hi' %]" => 'hi');
+process_ok("[% 'hi %]"  => '');
 process_ok("[% \"\$foo\" %]"   => '7', {foo => 7});
 process_ok("[% \"hi \$foo\" %]"   => 'hi 7', {foo => 7});
 process_ok("[% \"hi \${foo}\" %]" => 'hi 7', {foo => 7});
@@ -642,6 +644,7 @@ process_ok("[% 0 ? 1 ? 1 + 2 * 3 : 1 + 2 * 4 : 1 + 2 * 5 %]" => '11');
 print "### regex ############################################################\n";
 
 process_ok("[% /foo/ %]"     => '(?-xism:foo)') if ! $is_tt;
+process_ok("[% /foo %]"      => '') if ! $is_tt;
 process_ok("[% /foo/x %]"    => '(?-xism:(?x:foo))') if ! $is_tt;
 process_ok("[% /foo/xi %]"   => '(?-xism:(?xi:foo))') if ! $is_tt;
 process_ok("[% /foo/xis %]"  => '(?-xism:(?xis:foo))') if ! $is_tt;
@@ -850,10 +853,15 @@ process_ok("[% BLOCK foo %][% TAGS html %]<!-- 1 + 2 -->[% END %][% PROCESS foo 
 process_ok("[% TAGS <!-- --> %]<!-- 1 + 2 -->" => '3');
 
 process_ok("[% TAGS [<] [>]          %][<] 1 + 2 [>]" => 3);
-process_ok("[% TAGS [<] [>] unquoted %]<   1 + 2 >"  => 3) if ! $is_tt;
+process_ok("[% TAGS '[<]' '[>]'      %][<] 1 + 2 [>]" => 3) if ! $is_tt;
+process_ok("[% TAGS /[<]/ /[>]/      %]<   1 + 2 >"  => 3) if ! $is_tt;
 process_ok("[% TAGS ** **            %]**  1 + 2 **" => 3);
-process_ok("[% TAGS ** ** quoted     %]**  1 + 2 **" => 3);
-process_ok("[% TAGS ** ** unquoted   %]**  1 + 2 **" => "") if ! $is_tt;
+process_ok("[% TAGS '**' '**'        %]**  1 + 2 **" => 3) if ! $is_tt;
+process_ok("[% TAGS /**/ /**/        %]**  1 + 2 **" => "") if ! $is_tt;
+
+process_ok("[% TAGS html --><!-- 1 + 2 -->" => '3') if ! $is_tt;
+process_ok("[% TAGS html ; 7 --><!-- 1 + 2 -->" => '73') if ! $is_tt;
+process_ok("[% TAGS html ; 7 %]<!-- 1 + 2 -->" => '') if ! $is_tt; # error - the old closing tag must come next
 
 ###----------------------------------------------------------------###
 print "### SWITCH / CASE ####################################################\n";

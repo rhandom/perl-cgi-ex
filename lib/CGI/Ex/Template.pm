@@ -680,13 +680,8 @@ sub parse_tree {
 
             } elsif ($func eq 'TAGS') {
                 my $end;
-                if ($$str_ref =~ m{
-                        \G (\w+)                # tags name
-                        \s* $QR_COMMENTS        # optional comments
-                        ([+~=-]?) ($END)        # forced close
-                    }gcxs) {
+                if ($$str_ref =~ m{ \G (\w+) \s* $QR_COMMENTS }gcxs) {
                     my $ref = $TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
-                    ($post_chomp, $end) = ($2, $3);
                     ($START, $END) = @$ref;
 
                 } else {
@@ -699,22 +694,25 @@ sub parse_tree {
                         ? $self->parse_expr($str_ref)
                         : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s* $QR_COMMENTS"})
                             || $self->throw('parse', "Invalid closing tag in TAGS", undef, pos($$str_ref));
-                    $$str_ref =~ m{ \G ([+~=-]?) ($self->{'_end_tag'}) }gcxs
-                        || $self->throw('parse', "Missing required close tag \"$self->{'_end_tag'}\" on TAGS directive", undef, pos($$str_ref));
-                    ($post_chomp, $end) = ($1, $2);
                     for my $tag ($START, $END) {
                         $tag = $self->play_expr($tag);
                         $tag = quotemeta($tag) if ! ref $tag;
                     }
                 }
 
-                $post_chomp ||= $self->{'POST_CHOMP'};
-                $post_chomp =~ y/-=~+/1230/ if $post_chomp;
-                $node->[2] = pos($$str_ref) - length($end);
-                $continue = 0;
-                $post_op  = undef;
-                $self->{'_end_tag'} = $END; # need to keep track so parse_expr knows when to stop
-                next;
+                $node->[2] = pos $$str_ref;
+
+                ### allow for one more closing tag of the old style
+                if ($$str_ref =~ m{ \G ([+~=-]?) $self->{'_end_tag'} }gcxs) {
+                    $post_chomp = $1 || $self->{'POST_CHOMP'};
+                    $post_chomp =~ y/-=~+/1230/ if $post_chomp;
+                    $continue = 0;
+                    $post_op  = undef;
+                    $self->{'_end_tag'} = $END; # need to keep track so parse_expr knows when to stop
+                    next;
+                }
+
+                $self->{'_end_tag'} = $END;
 
             } elsif ($func eq 'META') {
                 my $args = $self->parse_args($str_ref, {named_at_front => 1});
@@ -911,7 +909,7 @@ sub parse_expr {
         $is_literal = 1;
 
     ### allow for quoted array constructor
-    } elsif (! $is_aq && $$str_ref =~ m{ \G qw (\W) \s* }gcxo) {
+    } elsif (! $is_aq && $$str_ref =~ m{ \G qw ([^\w\s]) \s* }gcxo) {
         my $quote = $1;
         $quote =~ y|([{<|)]}>|;
         $$str_ref =~ m{ \G (.*?) (?<!\\) \Q$quote\E \s* $QR_COMMENTS }gcxs
@@ -923,7 +921,9 @@ sub parse_expr {
         push @var, [undef, '[]', split /\s+/, $str];
 
     ### allow for regex constructor
-    } elsif (! $is_aq && $$str_ref =~ m{ \G / (.*?) (?<! \\) / ([msixeg]*) \s* $QR_COMMENTS }gcxos) {
+    } elsif (! $is_aq && $$str_ref =~ m{ \G / }gcx) {
+        $$str_ref =~ m{ \G (.*?) (?<! \\) / ([msixeg]*) \s* $QR_COMMENTS }gcxos
+            || $self->throw('parse', 'Unclosed regex tag "/"', undef, pos($$str_ref));
         my ($str, $opts) = ($1, $2);
         $self->throw('parse', 'e option not allowed on regex',   undef, pos($$str_ref)) if $opts =~ /e/;
         $self->throw('parse', 'g option not supported on regex', undef, pos($$str_ref)) if $opts =~ /g/;
@@ -941,14 +941,16 @@ sub parse_expr {
         $is_namespace = 1 if $self->{'NAMESPACE'} && $self->{'NAMESPACE'}->{$1};
 
     ### allow for literal strings
-    } elsif ($$str_ref =~ m{ \G ([\"\']) (|.*?[^\\]) \1 \s* $QR_COMMENTS }gcxos) {
-        if ($1 eq "'") { # no interpolation on single quoted strings
-            my $str = $2;
+    } elsif ($$str_ref =~ m{ \G ([\"\']) }gcx) {
+        my $quote = $1;
+        $$str_ref =~ m{ \G (.*?) (?<! \\) $quote \s* $QR_COMMENTS }gcxs
+            || $self->throw('parse', "Unclosed quoted string ($1)", undef, pos($$str_ref));
+        my $str = $1;
+        if ($quote eq "'") { # no interpolation on single quoted strings
             $str =~ s{ \\\' }{\'}xg;
             push @var, \ $str;
             $is_literal = 1;
         } else {
-            my $str = $2;
             $str =~ s/\\n/\n/g;
             $str =~ s/\\t/\t/g;
             $str =~ s/\\r/\r/g;
