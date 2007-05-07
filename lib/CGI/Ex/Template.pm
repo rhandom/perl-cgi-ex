@@ -686,30 +686,33 @@ sub parse_tree {
                         ([+~=-]?) ($END)        # forced close
                     }gcxs) {
                     my $ref = $TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
-                    ($START, $END) = @$ref;
                     ($post_chomp, $end) = ($2, $3);
+                    ($START, $END) = @$ref;
 
-                } elsif ($$str_ref =~ m{
-                            \G (\S+) \s+ (\S+)   # two non-space things
-                            (?:\s+(un|)quoted?)? # optional unquoted adjective
-                            \s* $QR_COMMENTS     # optional comments
-                            ([+~=-]?) ($END)     # forced close
-                        }gcxs) {
-                    ($START, $END, my $unquote, $post_chomp, $end) = ($1, $2, $3, $4, $5);
-                    for ($START, $END) {
-                        if ($unquote) { eval { "" =~ /$_/; 1 } || $self->throw('parse', "Invalid TAGS \"$_\": $@", undef, pos($$str_ref)) }
-                        else { $_ = quotemeta $_ }
-                    }
                 } else {
-                    $self->throw('parse', "Invalid TAGS", undef, pos($$str_ref));
+                    local $self->{'_operator_precedence'} = 1; # prevent operator matching
+                    $START = $$str_ref =~ m{ \G (?= [\'\"\/]) }gcx
+                        ? $self->parse_expr($str_ref)
+                        : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s+ $QR_COMMENTS"})
+                            || $self->throw('parse', "Invalid opening tag in TAGS", undef, pos($$str_ref));
+                    $END   = $$str_ref =~ m{ \G (?= [\'\"\/]) }gcx
+                        ? $self->parse_expr($str_ref)
+                        : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s* $QR_COMMENTS"})
+                            || $self->throw('parse', "Invalid closing tag in TAGS", undef, pos($$str_ref));
+                    $$str_ref =~ m{ \G ([+~=-]?) ($self->{'_end_tag'}) }gcxs
+                        || $self->throw('parse', "Missing required close tag \"$self->{'_end_tag'}\" on TAGS directive", undef, pos($$str_ref));
+                    ($post_chomp, $end) = ($1, $2);
+                    for my $tag ($START, $END) {
+                        $tag = $self->play_expr($tag);
+                        $tag = quotemeta($tag) if ! ref $tag;
+                    }
                 }
+
                 $post_chomp ||= $self->{'POST_CHOMP'};
                 $post_chomp =~ y/-=~+/1230/ if $post_chomp;
-
                 $node->[2] = pos($$str_ref) - length($end);
                 $continue = 0;
                 $post_op  = undef;
-
                 $self->{'_end_tag'} = $END; # need to keep track so parse_expr knows when to stop
                 next;
 
