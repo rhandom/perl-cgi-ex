@@ -749,6 +749,13 @@ Note: this works in CET and is planned for TT3.
 
 Note: virtual methods can only be used on hash contructs in CET, not in TT.
 
+=item Regex Constructs.
+
+    [% /foo/ %]                              Prints (?-xism:foo)
+    [% a = /(foo)/i %][% "FOO".match(a).0 %] Prints FOO
+
+Note: this works in CET and is planned for TT3.
+
 =head1 EXPRESSIONS
 
 Expressions are one or more variables or literals joined together with
@@ -2921,12 +2928,13 @@ $DIRECTIVES hashref.
 
 =head1 VARIABLE PARSE TREE
 
-CGI::Ex::Template parses templates into an tree of operations.  Even
-variable access is parsed into a tree.  This is done in a manner
-somewhat similar to the way that TT operates except that nested
-variables such as foo.bar|baz contain the '.' or '|' in between each
-name level.  Operators are parsed and stored as part of the variable (it
-may be more appropriate to say we are parsing a term or an expression).
+CGI::Ex::Template parses templates into an tree of operations (an AST
+or abstract syntax tree).  Even variable access is parsed into a tree.
+This is done in a manner somewhat similar to the way that TT operates
+except that nested variables such as foo.bar|baz contain the '.' or
+'|' in between each name level.  Operators are parsed and stored as
+part of the variable (it may be more appropriate to say we are parsing
+a term or an expression).
 
 The following table shows a variable or expression and the corresponding parsed tree
 (this is what the parse_expr method would return).
@@ -2940,6 +2948,8 @@ The following table shows a variable or expression and the corresponding parsed 
     one.${two().three} [ 'one',  0, '.', ['two', [], '.', 'three', 0], 0]
     2.34               2.34
     "one"              "one"
+    1 + 2              [ [ undef, '+', 1, 2 ], 0]
+    a + b              [ [ undef, '+', ['a', 0], ['b', 0] ], 0 ]
     "one"|length       [ [ undef, '~', "one" ], 0, '|', 'length', 0 ]
     "one $a two"       [ [ undef, '~', 'one ', ['a', 0], ' two' ], 0 ]
     [0, 1, 2]          [ [ undef, '[]', 0, 1, 2 ], 0 ]
@@ -2948,8 +2958,6 @@ The following table shows a variable or expression and the corresponding parsed 
     {a  => 'b'}        [ [ undef, '{}', 'a', 'b' ], 0 ]
     {a  => 'b'}.size   [ [ undef, '{}', 'a', 'b' ], 0, '.', 'size', 0 ]
     {$a => b}          [ [ undef, '{}', ['a', 0], ['b', 0] ], 0 ]
-    1 + 2              [ [ undef, '+', 1, 2 ], 0]
-    a + b              [ [ undef, '+', ['a', 0], ['b', 0] ], 0 ]
     a * (b + c)        [ [ undef, '*', ['a', 0], [ [undef, '+', ['b', 0], ['c', 0]], 0 ]], 0 ]
     (a + b)            [ [ undef, '+', ['a', 0], ['b', 0] ]], 0 ]
     (a + b) * c        [ [ undef, '*', [ [undef, '+', ['a', 0], ['b', 0] ], 0 ], ['c', 0] ], 0 ]
@@ -3113,7 +3121,7 @@ Used to get debug info on a directive if DEBUG_DIRS is set.
 
 =item C<filter_*>
 
-Methods by these names implement filters that are more than one line.
+Methods by these names implement filters that are more complex than one liners.
 
 =item C<get_line_number_by_index>
 
@@ -3158,7 +3166,7 @@ by the pseudo context object and may disappear at some point.
 
 =item C<vmethod_*>
 
-Methods by these names implement virtual methods that are more than one line.
+Methods by these names implement virtual methods that are more complex than oneliners.
 
 =back
 
@@ -3166,5 +3174,9 @@ Methods by these names implement virtual methods that are more than one line.
 =head1 AUTHOR
 
 Paul Seamons <paul at seamons dot com>
+
+=head1 LICENSE
+
+This module may be distributed under the same terms as Perl itself.
 
 =cut
