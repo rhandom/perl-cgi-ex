@@ -270,6 +270,19 @@ the virtual method. (TT3)
 
     [% "aa" | repeat(2) . length %] # = 4
 
+=item Added V2PIPE configuration item
+
+Restores the behavior of the pipe operator to be
+compatible with TT2.
+
+With V2PIPE = 1
+
+    [% PROCESS a | repeat(2) %] # = value of block or file a repeated twice
+
+With V2PIPE = 0 (default)
+
+    [% PROCESS a | repeat(2) %] # = process block or file named a ~ a
+
 =item Added Virtual Object Namespaces. (TT3)
 
 The Text, List, and Hash types give direct access
@@ -314,6 +327,12 @@ to virtual methods.
     [% a = qw(a b c); a.1 %] # = b
 
     [% qw/a b c/.2 %] # = c
+
+=item Added regex contructor. (TT3)
+
+    [% "FOO".match(/(foo)/i).0 %] # = FOO
+
+    [% a = /(foo)/i; "FOO".match(a).0 %] # = FOO
 
 =item Allow for scientific notation. (TT3)
 
@@ -1390,7 +1409,8 @@ TODO - enumerate the at least 7 ways to pass and use filters.
 Alias for the FILTER directive.  Note that | is similar to the
 '.' in CGI::Ex::Template.  Therefore a pipe cannot be used directly after a
 variable name in some situations (the pipe will act only on that variable).
-This is the behavior employed by TT3.
+This is the behavior employed by TT3.  To get the TT2 behavior for a PIPE, use
+the V2PIPE configuration item.
 
 =item C<FINAL>
 
@@ -1729,16 +1749,21 @@ The named tags are (duplicated from TT):
     tt2       => ['\[%',    '%\]'   ], # TT2
 
 If custom tags are supplied, by default they are escaped using
-quotemeta.  If a third argument is given and is equal to "unquoted",
-then no quoting takes place on the new tags.
+quotemeta.  You may also pass explicitly quoted strings,
+or regular expressions as arguments as well (if your
+regex begins with a ', ", or / you must quote it.
 
     [% TAGS [<] [>] %]          matches "[<] tag [>]"
 
-    [% TAGS [<] [>] unquoted %] matches "< tag >"
+    [% TAGS '[<]' '[>]' %]      matches "[<] tag [>]"
+
+    [% TAGS "[<]" "[>]" %]      matches "[<] tag [>]"
+
+    [% TAGS /[<]/ /[>]/ %]      matches "< tag >"
 
     [% TAGS ** ** %]            matches "** tag **"
 
-    [% TAGS ** ** unquoted %]   Throws an exception.
+    [% TAGS /**/ /**/ %]        Throws an exception.
 
 =item C<THROW>
 
@@ -2741,6 +2766,31 @@ following is a basic table of changes invoked by using V1DOLLAR.
    "Text: $foo"         "Text: $foo"
    "Text: ${foo}"       "Text: ${foo}"
    "Text: ${$foo}"      "Text: ${foo}"
+
+=item V2PIPE
+
+Restores the behavior of the pipe operator to be compatible with TT2.
+
+With V2PIPE = 1
+
+    [%- BLOCK a %]b is [% b %]
+    [% END %]
+    [%- PROCESS a b => 237 | repeat(2) %]
+
+    # output of block "a" with b set to 237 is passed to the repeat(2) filter
+
+    b is 237
+    b is 237
+
+With V2PIPE = 0 (default)
+
+    [%- BLOCK a %]b is [% b %]
+    [% END %]
+    [% PROCESS a b => 237 | repeat(2) %]
+
+    # b set to 237 repeated twice, and b passed to block "a"
+
+    b is 237237
 
 =item VARIABLES
 
