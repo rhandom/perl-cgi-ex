@@ -39,6 +39,9 @@ use vars qw($VERSION
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
+
+            @CONFIG_COMPILETIME
+            @CONFIG_RUNTIME
             );
 
 BEGIN {
@@ -177,6 +180,7 @@ BEGIN {
         CATCH   => [\&parse_CATCH,   undef,           0,       0,       {TRY => 1, CATCH => 1}],
         CLEAR   => [sub {},          \&play_CLEAR],
         '#'     => [sub {},          sub {}],
+        CONFIG  => [\&parse_CONFIG,  \&play_CONFIG],
         DEBUG   => [\&parse_DEBUG,   \&play_DEBUG],
         DEFAULT => [\&parse_DEFAULT, \&play_DEFAULT],
         DUMP    => [\&parse_DUMP,    \&play_DUMP],
@@ -293,6 +297,9 @@ BEGIN {
     $WHILE_MAX    = 1000;
     $EXTRA_COMPILE_EXT = '.sto2';
 
+    @CONFIG_COMPILETIME = qw(ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
+    @CONFIG_RUNTIME     = qw(DUMP);
+
     eval {require Scalar::Util};
 };
 
@@ -351,6 +358,7 @@ sub _process {
         } else {
             local $self->{'_component'} = $doc;
             local $self->{'_template'}  = $self->{'_top_level'} ? $doc : $self->{'_template'};
+            local @{ $self }{@CONFIG_RUNTIME} = @{ $self }{@CONFIG_RUNTIME};
             $self->execute_tree($doc->{'_tree'}, $out_ref);
         }
 
@@ -532,6 +540,8 @@ sub parse_tree {
     my $START = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
     my $END   = $self->{'END_TAG'}   || $TAGS->{$STYLE}->[1];
     local $self->{'_end_tag'} = $END;
+
+    local @{ $self }{@CONFIG_COMPILETIME} = @{ $self }{@CONFIG_COMPILETIME};
 
     my @tree;             # the parsed tree
     my $pointer = \@tree; # pointer to current tree to handle nested blocks
@@ -1075,8 +1085,15 @@ sub parse_expr {
 
 
     ### allow for nested items
-    while ($$str_ref =~ m{ \G ( \.(?!\.) | \|(?!\|) ) \s* $QR_COMMENTS }gcxo) {
+    while ($$str_ref =~ m{ \G ( \.(?!\.) | \|(?!\|) ) }gcx) {
+        if ($1 eq '|' && $self->{'V2PIPE'}) {
+            pos($$str_ref) -= 1;
+            last;
+        }
+
         push(@var, $1) if ! $ARGS->{'no_dots'};
+
+        $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
 
         ### allow for interpolated variables in the middle - one.$foo.two
         if ($$str_ref =~ m{ \G \$ (\w+) \b \s* $QR_COMMENTS }gcxo) {
@@ -1891,6 +1908,50 @@ sub play_control {
 sub play_CLEAR {
     my ($self, $undef, $node, $out_ref) = @_;
     $$out_ref = '';
+}
+
+sub parse_CONFIG {
+    my ($self, $str_ref) = @_;
+
+    my %ctime = map {$_ => 1} @CONFIG_COMPILETIME;
+    my %rtime = map {$_ => 1} @CONFIG_RUNTIME;
+
+    my $config = $self->parse_args($str_ref, {named_at_front => 1, is_parened => 1});
+    my $ref = $config->[0]->[0];
+    for (my $i = 2; $i < @$ref; $i += 2) {
+        my $key = $ref->[$i] = uc $ref->[$i];
+        my $val = $ref->[$i + 1];
+        if ($ctime{$key}) {
+            splice @$ref, $i, 2, (); # remove the options
+            $self->{$key} = $self->play_expr($val);
+            $i -= 2;
+        } elsif (! $rtime{$key}) {
+            $self->throw('parse', "Unknown CONFIG option \"$key\"", undef, pos($$str_ref));
+        }
+    }
+    for (my $i = 1; $i < @$config; $i++) {
+        my $key = $config->[$i] = uc $config->[$i]->[0];
+        if ($ctime{$key}) {
+            $config->[$i] = "CONFIG $key = ".(defined($self->{$key}) ? $self->{$key} : 'undef');
+        } elsif (! $rtime{$key}) {
+            $self->throw('parse', "Unknown CONFIG option \"$key\"", undef, pos($$str_ref));
+        }
+    }
+    return $config;
+}
+
+sub play_CONFIG {
+    my ($self, $config) = @_;
+
+    my %rtime = map {$_ => 1} @CONFIG_RUNTIME;
+
+    ### do runtime config - not many options get these
+    my ($named, @the_rest) = @$config;
+    $named = $self->play_expr($named);
+    @{ $self }{keys %$named} = @{ $named }{keys %$named};
+
+    ### show what current values are
+    return join("\n", map { $rtime{$_} ? ("CONFIG $_ = ".(defined($self->{$_}) ? $self->{$_} : 'undef')) : $_ } @the_rest);
 }
 
 sub parse_DEBUG {
