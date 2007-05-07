@@ -18,7 +18,7 @@ CGI::Ex::Template - Fast and lightweight TT2/3 template engine
     $t->process('my/template.tt', $swap)
         || die $t->error;
 
-    ### Anything in the Template::Toolkit SYNOPSIS would fit here also
+    ### CET uses the same syntax and configuration as Template::Toolkit
 
 =head1 DESCRIPTION
 

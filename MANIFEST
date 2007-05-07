@@ -82,5 +82,6 @@ t/5_dump_00_base.t
 t/6_die_00_base.t
 t/7_template_00_base.t
 t/7_template_01_includes.t
+t/7_template_02_view.t
 t/8_auth_00_base.t
 t/9_jsondump_00_base.t
