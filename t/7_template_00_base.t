@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 794 : 599;
+use Test::More tests => ! $is_tt ? 806 : 599;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1185,6 +1185,27 @@ local $ENV{'REQUEST_METHOD'} = 0;
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1}]});
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 1}]});
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 0}]});
+}
+
+###----------------------------------------------------------------###
+print "### CONFIG ############################################################\n";
+
+if (! $is_tt) {
+process_ok("[% CONFIG ANYCASE     => 1   %][% get 234 %]" => 234);
+process_ok("[% CONFIG anycase     => 1   %][% get 234 %]" => 234);
+process_ok("[% CONFIG PRE_CHOMP   => '-' %]\n[% 234 %]" => 234);
+process_ok("[% CONFIG POST_CHOMP  => '-' %][% 234 %]\n" => 234);
+process_ok("[% CONFIG INTERPOLATE => '-' %]\${ 234 }"   => 234);
+process_ok("[% CONFIG V1DOLLAR    => 1   %][% a = 234 %][% \$a %]"   => 234);
+process_ok("[% CONFIG V2PIPE => 1 %][% BLOCK a %]b is [% b %][% END %][% PROCESS a b => 234 | repeat(2) %]"   => "b is 234b is 234");
+
+process_ok("[% CONFIG BOGUS => 2 %]bar" => '');
+
+process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
+process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
+
+process_ok("[% CONFIG DUMP    %]|[% CONFIG DUMP    => 0 %][% DUMP           %]bar" => 'CONFIG DUMP = undef|bar');
+process_ok("[% CONFIG DUMP => {Useqq=>1, header=>0, html=>0} %][% DUMP 'foo' %]" => "'foo' = \"foo\";\n");
 }
 
 ###----------------------------------------------------------------###
