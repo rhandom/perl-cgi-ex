@@ -396,6 +396,13 @@ Used for Data::Dumpering the passed variable or expression.
 
    [% DUMP a.a %]
 
+=item Added CONFIG directive.
+
+   [% CONFIG
+        ANYCASE   => 1
+        PRE_CHOMP => '-'
+   %]
+
 =item CET does not generate Perl code.
 
 It generates an "opcode" tree.  The opcode tree is an arrayref
@@ -1347,6 +1354,36 @@ Used with the TRY directive.  See the L</"TRY"> directive.
 Clears any of the content currently generated in the innermost block
 or template.  This can be useful when used in conjunction with the TRY
 statement to clear generated content if an error occurs later.
+
+=item C<CONFIG>
+
+Allow for changing the value of some compile time and runtime configuration
+options.
+
+    [% CONFIG
+        ANYCASE   => 1
+        PRE_CHOMP => '-'
+    %]
+
+The following compile time configuration options may be set:
+
+    ANYCASE
+    INTERPOLATE
+    PRE_CHOMP
+    POST_CHOMP
+    V1DOLLAR
+    V2PIPE
+
+The following runtime configuration options may be set:
+
+    DUMP
+
+If non-named parameters as passed, they will show the current configuration:
+
+   [% CONFIG ANYCASE, PRE_CHOMP %]
+
+   CONFIG ANYCASE = undef
+   CONFIG PRE_CHOMP = undef
 
 =item C<DEBUG>
 
