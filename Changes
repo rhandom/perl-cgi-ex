@@ -1,3 +1,15 @@
+2.11   2007-05-07
+        * Add more samples to App synopsis.
+        * Add VIEW directive support to Template.
+        * Update data storage to more easily support TT2 parsers.
+        * Add regex support in Template.
+        * Add CONFIG directive in Template.
+        * Better error reporting.
+        * Allow parser to parse all TT2 tests in TT2 test suite.
+        * Add V2PIPE configuration to provide backward support for TT2 non-inline pipes.
+        * Add vmethod url.
+        * Cleanup argument parsing to be more compatible with TT2.
+
 2.10   2007-04-27
         * Allow for fully regex grammar based engine.
         * Move to generic operator parse tree.  All constructs are now only arrayrefs.
