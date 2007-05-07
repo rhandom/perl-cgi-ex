@@ -920,17 +920,15 @@ sub parse_expr {
         push @var, [undef, '[]', split /\s+/, $str];
 
     ### allow for regex constructor
-    } elsif (! $is_aq
-             && ($$str_ref =~ m{ \G (/) }gcx
-                 || $$str_ref =~ m{ \G m ([^\s\w]) }gcx)) {
-        my $quote = $1;
-        $quote =~ y|([{<|)]}>|;
-        $$str_ref =~ m{ \G (.*?) (?<!\\) \Q$quote\E ([msixeg]*) \s* $QR_COMMENTS }gcxs
-            || $self->throw('parse.missing.regex_close', "Missing close \"$quote\"", undef, pos($$str_ref));
+    } elsif (! $is_aq && $$str_ref =~ m{ \G / (.*?) (?<! \\) / ([msixeg]*) \s* $QR_COMMENTS }gcxos) {
         my ($str, $opts) = ($1, $2);
-        $str =~ s{ \\ \Q$quote\E }{$quote}gx;
-        $self->throw('parse', 'e option not allowed on regex', undef, pos($$str_ref)) if $opts =~ /e/;
+        $self->throw('parse', 'e option not allowed on regex',   undef, pos($$str_ref)) if $opts =~ /e/;
         $self->throw('parse', 'g option not supported on regex', undef, pos($$str_ref)) if $opts =~ /g/;
+        $str =~ s|\\n|\n|g;
+        $str =~ s|\\t|\t|g;
+        $str =~ s|\\r|\r|g;
+        $str =~ s|\\\/|\/|g;
+        $str =~ s|\\\$|\$|g;
         $self->throw('parse', "Invalid regex: $@", undef, pos($$str_ref)) if ! eval { "" =~ /$str/; 1 };
         push @var, [undef, 'qr', $str, $opts];
 

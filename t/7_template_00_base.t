@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 788 : 597;
+use Test::More tests => ! $is_tt ? 785 : 597;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -642,9 +642,6 @@ process_ok("[% 0 ? 1 ? 1 + 2 * 3 : 1 + 2 * 4 : 1 + 2 * 5 %]" => '11');
 print "### regex ############################################################\n";
 
 process_ok("[% /foo/ %]"     => '(?-xism:foo)') if ! $is_tt;
-process_ok("[% m/foo/ %]"     => '(?-xism:foo)') if ! $is_tt;
-process_ok("[% m|foo| %]"     => '(?-xism:foo)') if ! $is_tt;
-process_ok("[% m{foo} %]"     => '(?-xism:foo)') if ! $is_tt;
 process_ok("[% /foo/x %]"    => '(?-xism:(?x:foo))') if ! $is_tt;
 process_ok("[% /foo/xi %]"   => '(?-xism:(?xi:foo))') if ! $is_tt;
 process_ok("[% /foo/xis %]"  => '(?-xism:(?xis:foo))') if ! $is_tt;
