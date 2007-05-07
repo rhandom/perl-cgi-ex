@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 792 : 598;
+use Test::More tests => ! $is_tt ? 794 : 599;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1023,6 +1023,18 @@ process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => '
 process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1, INTERPOLATE => 1]});
 
 process_ok('[% constants.a %]|[% $constants.a %]|[% constants.$a %]' => 'A|A|A', {tt_config => [V1DOLLAR => 1, CONSTANTS => {a => 'A'}]});
+
+###----------------------------------------------------------------###
+print "### V2PIPE ###########################################################\n";
+
+process_ok("[%- BLOCK a %]b is [% b %]
+[% END %]
+[%- PROCESS a b => 237 | repeat(2) %]" => "b is 237
+b is 237\n", {tt_config => [V2PIPE => 1]});
+
+process_ok("[%- BLOCK a %]b is [% b %]
+[% END %]
+[%- PROCESS a b => 237 | repeat(2) %]" => "b is 237237\n") if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### configuration ####################################################\n";
