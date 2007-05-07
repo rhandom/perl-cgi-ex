@@ -4,6 +4,10 @@ CGI::Ex::App - Anti-framework application framework.
 
 =head1 SYNOPSIS
 
+A basic example:
+
+    -------- File: /cgi-bin/my_cgi --------
+
     #!/usr/bin/perl -w
 
     use strict;
@@ -13,10 +17,123 @@ CGI::Ex::App - Anti-framework application framework.
     exit;
 
     sub main_file_print {
-        return \ "Hello World";
+        return \ "Hello World!";
     }
 
-There is a longer "SYNOPSIS" after the process flow discussion.
+Well, you should put your content in an external file...
+
+    -------- File: /cgi-bin/my_cgi --------
+
+    #!/usr/bin/perl -w
+
+    use strict;
+    use base qw(CGI::Ex::App);
+
+    __PACKAGE__->navigate;
+
+    sub base_dir_abs { '/var/www/templates' }
+
+
+    -------- File: /var/www/templates/my_cgi/main.html --------
+
+    Hello World!
+
+How about if we want to add substitutions...
+
+    -------- File: /cgi-bin/my_cgi --------
+
+    #!/usr/bin/perl -w
+
+    use strict;
+    use base qw(CGI::Ex::App);
+
+    __PACKAGE__->navigate;
+
+    sub base_dir_abs { '/var/www/templates' }
+
+    sub main_hash_swap {
+        my $self = shift;
+        return {
+            greeting => 'Hello',
+            date     => sub { scalar localtime },
+        };
+    }
+
+
+    -------- File: /var/www/templates/my_cgi/main.html --------
+
+    [% greeting %] World! ([% date %])
+
+
+How about a form with validation (inluding javascript validation)...
+
+    -------- File: /cgi-bin/my_cgi --------
+
+    #!/usr/bin/perl -w
+
+    use strict;
+    use base qw(CGI::Ex::App);
+
+    __PACKAGE__->navigate;
+
+    sub base_dir_abs { '/var/www/templates' }
+
+    sub main_hash_swap { {date => sub { scalar localtime }} }
+
+    sub main_hash_fill {
+        return {
+            guess => 50,
+        };
+    }
+
+    sub main_hash_validation {
+        return {
+            guess => {
+                required => 1,
+                compare1       => '<= 100',
+                compare1_error => 'Please enter a value less than 101',
+                compare2       => '>  0',
+                compare2_error => 'Please enter a value greater than 0',
+            },
+        };
+    }
+
+    sub main_finalize {
+        my $self   = shift;
+        my $form   = $self->form;
+
+        $self->add_to_form({was_correct => ($form->{'guess'} == 23)});
+
+        return 0; # indicate to show the page without trying to move along
+    }
+
+
+    -------- File: /var/www/templates/my_cgi/main.html --------
+
+    <h2>Hello World! ([% date %])</h2>
+
+    [% IF was_correct %]
+       <b>Correct!</b> - The number was [% guess %].<br>
+    [% ELSIF guess %]
+       <b>Incorrect</b> - The number was not [% guess %].<br>
+    [% END %]
+
+    <form name="[% form_name %]" method="post">
+
+    Enter a number between 1 and 100: <input type="text" name="guess"><br>
+    <span id="guess_error" style="color:red">[% guess_error %]</span><br>
+
+    <input type="submit">
+    </form>
+
+    [% js_validation %]
+
+
+There are infinite possibilities.  There is a longer "SYNOPSIS" after
+the process flow discussion and more examples near the end of this
+document.  It is interesting to note that there have been no databases
+so far.  CGI::Ex::App is Controller/Viewer that is somewhat Model
+agnostic.
 
 =head1 DESCRIPTION
 
