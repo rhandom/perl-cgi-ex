@@ -3012,13 +3012,15 @@ sub process {
         my $copy = {%$var2, %$var1, %$swap};
 
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
+        local $self->{'_template'};
 
         delete $self->{'_debug_off'};
         delete $self->{'_debug_format'};
 
         ### handle pre process items that go before every document
         if ($self->{'PRE_PROCESS'}) {
-            foreach my $name (@{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
+            $self->_load_template_meta($content);
+            foreach my $name (reverse @{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
                 my $out = '';
                 $self->_process($name, $copy, \$out);
                 $output = $out . $output;
@@ -3027,15 +3029,7 @@ sub process {
 
         ### handle the process config - which loads a template in place of the real one
         if (exists $self->{'PROCESS'}) {
-            ### load the meta data for the top document
-            my $doc  = $self->load_parsed_tree($content) || {};
-            my $meta = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
-                ? $doc->{'_tree'}->[0]->[3] : {};
-
-            local $self->{'_template'} = $doc;
-            @{ $doc }{keys %$meta} = values %$meta;
-
-            ### process any other templates
+            $self->_load_template_meta($content);
             foreach my $name (@{ $self->split_paths($self->{'PROCESS'}) }) {
                 next if ! length $name;
                 $self->_process($name, $copy, \$output);
@@ -3050,6 +3044,7 @@ sub process {
 
         ### handle post process items that go after every document
         if ($self->{'POST_PROCESS'}) {
+            $self->_load_template_meta($content);
             foreach my $name (@{ $self->split_paths($self->{'POST_PROCESS'}) }) {
                 $self->_process($name, $copy, \$output);
             }
@@ -3131,6 +3126,24 @@ sub DEBUG {
     my $self = shift;
     print STDERR "DEBUG: ", @_;
 }
+
+sub _load_template_meta {
+    my $self = shift;
+    return if $self->{'_template'}; # only do once as need
+
+    ### load the meta data for the top document
+    ### this is needed by some of the custom handlers such as PRE_PROCESS and POST_PROCESS
+    my $content = shift;
+    my $doc     = $self->{'_template'} = $self->load_parsed_tree($content) || {};
+    my $meta    = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
+        ? $doc->{'_tree'}->[0]->[3] : {};
+
+    $self->{'_template'} = $doc;
+    @{ $doc }{keys %$meta} = values %$meta;
+
+    return;
+}
+
 
 ###----------------------------------------------------------------###
 
