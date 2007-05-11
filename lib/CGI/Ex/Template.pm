@@ -1457,9 +1457,6 @@ sub play_expr {
 
     ### determine the top level of this particular variable access
     my $ref;
-    use CGI::Ex::Dump qw(debug dex_trace);
-    debug dex_trace
-        if ref $var ne 'ARRAY';
     my $name = $var->[$i++];
     my $args = $var->[$i++];
     warn "play_expr: begin \"$name\"\n" if trace;
