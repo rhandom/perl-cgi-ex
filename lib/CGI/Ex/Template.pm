@@ -1,8 +1,5 @@
 package CGI::Ex::Template;
 
-#STAT_TTL
-#memory leak in USE
-
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/Template.pod
 #  Copyright 2007 - Paul Seamons                                     #
@@ -421,8 +418,10 @@ sub load_parsed_tree {
 
     ### handle cached not_founds
     } elsif ($self->{'_not_found'}->{$file}
-             && (time - $self->{'_not_found'}->{$file}->{'cache_time'}
-                 < ($self->{'NEGATIVE_STAT_TTL'} || $self->{'STAT_TTL'} || $STAT_TTL))) { # negative cache for a second
+             && ((time - $self->{'_not_found'}->{$file}->{'cache_time'}
+                  < ($self->{'NEGATIVE_STAT_TTL'} || $self->{'STAT_TTL'} || $STAT_TTL))  # negative cache for a second
+                 || do { delete $self->{'_not_found'}->{$file}; 0 } # clear cache on failure
+                 )) {
         die $self->{'_not_found'}->{$file}->{'exception'};
 
     ### go and look on the file system
