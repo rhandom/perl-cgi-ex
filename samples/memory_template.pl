@@ -24,6 +24,14 @@ if (! fork) {
     $module = 'Template';
 } elsif (! fork) {
     $module = 'Template';
+    $name   = 'Template Stash::XS';
+    require Template::Stash::XS;
+} elsif (! fork) {
+    $module = 'HTML::Template';
+} elsif (! fork) {
+    $module = 'HTML::Template::Expr';
+} elsif (! fork) {
+    $module = 'Template';
     $name   = 'Template::Parser::CET';
     require Template::Parser::CET;
     Template::Parser::CET->activate;
@@ -37,11 +45,17 @@ if ($module) {
     $pm =~ s|::|/|g;
     require $pm;
 
-    my $t = $module->new(ABSOLUTE => 1);
-    my $out = '';
-    $t->process(\$txt, $swap, \$out);
-    print "$name $out";
-    for (1..30) { my $out; $t->process(\$txt, $swap, \$out); };
+    if ($module =~ /HTML::Template/) {
+        my $t = eval { $module->new };
+
+    } else {
+
+        my $t = $module->new(ABSOLUTE => 1);
+        my $out = '';
+        $t->process(\$txt, $swap, \$out);
+        print "$name $out";
+        for (1..30) { my $out; $t->process(\$txt, $swap, \$out); };
+    }
 
 #    print "$name $_\n" foreach sort keys %INC;
     print "$name times: (@{[times]})\n";
