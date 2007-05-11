@@ -3018,12 +3018,11 @@ sub process {
         delete $self->{'_debug_format'};
 
         ### handle pre process items that go before every document
+        my $pre = '';
         if ($self->{'PRE_PROCESS'}) {
             $self->_load_template_meta($content);
-            foreach my $name (reverse @{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
-                my $out = '';
-                $self->_process($name, $copy, \$out);
-                $output = $out . $output;
+            foreach my $name (@{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
+                $self->_process($name, $copy, \$pre);
             }
         }
 
@@ -3041,6 +3040,19 @@ sub process {
             $self->_process($content, $copy, \$output);
         }
 
+        ### handle wrapper directives
+        if (exists $self->{'WRAPPER'}) {
+            $self->_load_template_meta($content);
+            foreach my $name (reverse @{ $self->split_paths($self->{'WRAPPER'}) }) {
+                next if ! length $name;
+                local $copy->{'content'} = $output;
+                my $out = '';
+                $self->_process($name, $copy, \$out);
+                $output = $out;
+            }
+        }
+
+        $output = $pre . $output if length $pre;
 
         ### handle post process items that go after every document
         if ($self->{'POST_PROCESS'}) {
