@@ -9,12 +9,12 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template';
-#    $module = 'Template';
+    $module = 'Template';
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => (! $is_tt) ? 89 : 83;
+use Test::More tests => (! $is_tt) ? 93 : 83;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -109,6 +109,14 @@ END { unlink $die_template };
 open($fh, ">$die_template") || die "Couldn't open $die_template: $!";
 print $fh "[% THROW bing 'blang' %])";
 close $fh;
+
+###
+my $config_template = "$test_dir/config.tt";
+END { unlink $config_template };
+open($fh, ">$config_template") || die "Couldn't open $config_template: $!";
+print $fh "[% CONFIG DUMP => {html => 1} %][% DUMP foo %]";
+close $fh;
+
 
 ###----------------------------------------------------------------###
 print "### INSERT ###########################################################\n";
@@ -238,6 +246,23 @@ process_ok("(outer)[% TRY %][% PROCESS 'die.tt' %][% CATCH %] [% END %]" => '(ou
 process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', PRE_PROCESS => 'die.tt']});
 process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', POST_PROCESS => 'die.tt']});
 process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', WRAPPER => 'die.tt']});
+
+###----------------------------------------------------------------###
+print "### CONFIG and DUMP ##################################################\n";
+
+process_ok("[% CONFIG DUMP => {html => 0}; DUMP foo; PROCESS config.tt; DUMP foo %]" => qq{DUMP: File "input text" line 1
+    foo = 'FOO';
+<b>DUMP: File "config.tt" line 1</b><pre>foo = &apos;FOO&apos;;
+</pre>DUMP: File "input text" line 1
+    foo = 'FOO';
+}, {foo => 'FOO'}) if ! $is_tt;
+
+###----------------------------------------------------------------###
+print "### NOT FOUND CACHE ##################################################\n";
+
+process_ok("[% BLOCK foo; TRY; PROCESS blurty.tt; CATCH %]([% error.type %])([% error.info %])\n[% END; END; PROCESS foo; PROCESS foo %]" => "(file)(blurty.tt: not found)\n(file)(blurty.tt: not found (cached))\n", {tt_config => [NEGATIVE_STAT_TTL => 2]}) if ! $is_tt;
+process_ok("[% BLOCK foo; TRY; PROCESS blurty.tt; CATCH %]([% error.type %])([% error.info %])\n[% END; END; PROCESS foo; PROCESS foo %]" => "(file)(blurty.tt: not found)\n(file)(blurty.tt: not found)\n", {tt_config => [NEGATIVE_STAT_TTL => -1]}) if ! $is_tt;
+process_ok("[% BLOCK foo; TRY; PROCESS blurty.tt; CATCH %]([% error.type %])([% error.info %])\n[% END; END; PROCESS foo; PROCESS foo %]" => "(file)(blurty.tt: not found)\n(file)(blurty.tt: not found)\n", {tt_config => [STAT_TTL => -1]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
