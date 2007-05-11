@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 25 - ($is_tt ? 6 : 0);
+use Test::More tests => (! $is_tt) ? 89 : 83;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -94,6 +94,20 @@ my $catch_template = "$test_dir/catch.tt";
 END { unlink $catch_template };
 open($fh, ">$catch_template") || die "Couldn't open $catch_template: $!";
 print $fh "Error ([% error.type %]) - ([% error.info %])";
+close $fh;
+
+###
+my $catch2_template = "$test_dir/catch2.tt";
+END { unlink $catch2_template };
+open($fh, ">$catch2_template") || die "Couldn't open $catch2_template: $!";
+print $fh "Error2 ([% error.type %]) - ([% error.info %])";
+close $fh;
+
+###
+my $die_template = "$test_dir/die.tt";
+END { unlink $die_template };
+open($fh, ">$die_template") || die "Couldn't open $die_template: $!";
+print $fh "[% THROW bing 'blang' %])";
 close $fh;
 
 ###----------------------------------------------------------------###
@@ -198,3 +212,32 @@ process_ok("[% META foo='BLAM' %] " => 'HiBLAM there', {tt_config => [WRAPPER =>
 process_ok(" one " => 'BARHi one there', {tt_config => [WRAPPER => 'wrap.tt', PRE_PROCESS => 'bar.tt']});
 process_ok(" one " => 'HiBARthere', {tt_config => [WRAPPER => 'wrap.tt', PROCESS => 'bar.tt']});
 process_ok(" one " => 'Hi one thereBAR', {tt_config => [WRAPPER => 'wrap.tt', POST_PROCESS => 'bar.tt']});
+
+###----------------------------------------------------------------###
+print "### CONFIG ERRORS ####################################################\n";
+
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERROR  => 'catch.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERRORS => 'catch.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERROR  => {default => 'catch.tt'}]});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERRORS => {default => 'catch.tt'}]});
+process_ok("[% THROW foo 'bar' %]" => 'Error2 (foo) - (bar)', {tt_config => [ERRORS => {foo => 'catch2.tt', default => 'catch.tt'}]});
+process_ok("[% THROW foo.baz 'bar' %]" => 'Error2 (foo.baz) - (bar)', {tt_config => [ERRORS => {foo => 'catch2.tt', default => 'catch.tt'}]});
+process_ok("[% THROW foo.baz 'bar' %]" => 'Error2 (foo.baz) - (bar)', {tt_config => [ERRORS => {'foo.baz' => 'catch2.tt', default => 'catch.tt'}]});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)', {tt_config => [ERRORS => {'foo.baz' => 'catch2.tt', default => 'catch.tt'}]});
+process_ok("[% THROW foo.baz 'bar' %]" => 'Error2 (foo.baz) - (bar)', {tt_config => [ERRORS => {foo => 'catch2.tt', default => 'catch.tt'}]});
+
+process_ok("[% THROW foo 'bar' %]" => 'BARError (foo) - (bar)',  {tt_config => [ERROR  => 'catch.tt', PRE_PROCESS => 'bar.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'Error (bing) - (blang)',  {tt_config => [ERROR  => 'catch.tt', PROCESS => 'die.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'Error (bing) - (blang)',  {tt_config => [ERROR  => 'catch.tt', PROCESS => ['bar.tt', 'die.tt']]});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)BAR',  {tt_config => [ERROR  => 'catch.tt', POST_PROCESS => 'bar.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'HiError (foo) - (bar)there', {tt_config => [ERROR  => 'catch.tt', WRAPPER => 'wrap.tt']});
+
+process_ok("(outer)[% PROCESS 'die.tt' %]" => 'Error (bing) - (blang)',  {tt_config => [ERROR  => 'catch.tt']});
+process_ok("(outer)[% TRY %][% PROCESS 'die.tt' %][% CATCH %] [% END %]" => '(outer) ',  {tt_config => [ERROR  => 'catch.tt']});
+
+process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', PRE_PROCESS => 'die.tt']});
+process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', POST_PROCESS => 'die.tt']});
+process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', WRAPPER => 'die.tt']});
+
+###----------------------------------------------------------------###
+print "### DONE #############################################################\n";
