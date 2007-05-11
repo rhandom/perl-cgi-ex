@@ -215,7 +215,7 @@ process_ok("[% USE view -%]
    CATCH view ;
      \"[\$error.type] \$error.info\" ;
    END
-%]" => "[view] file error - Template_View: not found", $vars);
+%]" => qr{^\Q[view] file error - Template_View: not found\E}, $vars);
 
 process_ok("[% USE view -%]
 [% view.print( foo ) %]" => "{ e => 2.718, pi => 3.14 }", $vars);
@@ -418,9 +418,9 @@ Goodbye World!
 [% END %]
 [% END -%]
 [% TRY; INCLUDE foo; CATCH; error; END %]
-[% foo.include_hello %]" => "file error - foo: not found
+[% foo.include_hello %]" => qr{^\Qfile error - foo: not found
 Hello World!
-", $vars);
+\E}, $vars);
 
 process_ok("[% title = \"Previous Title\" -%]
 [% VIEW foo 
