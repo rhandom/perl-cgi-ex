@@ -421,7 +421,8 @@ sub load_parsed_tree {
 
     ### handle cached not_founds
     } elsif ($self->{'_not_found'}->{$file}
-             && (time - $self->{'_not_found'}->{$file}->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL))) { # negative cache for a second
+             && (time - $self->{'_not_found'}->{$file}->{'cache_time'}
+                 < ($self->{'NEGATIVE_STAT_TTL'} || $self->{'STAT_TTL'} || $STAT_TTL))) { # negative cache for a second
         die $self->{'_not_found'}->{$file}->{'exception'};
 
     ### go and look on the file system
@@ -449,12 +450,13 @@ sub load_parsed_tree {
                         last;
                     }
                 }
-                die $err if ! $doc->{'_tree'};
+                $err = '' if ! $doc->{'_tree'};
             } elsif ($self->{'DEFAULT'}) {
-                $doc->{'_filename'} = eval { $self->include_filename($self->{'DEFAULT'}) } || die $err;
-            } else {
-                ### create pseudo document that will throw not found - stat_ttl will remove it
-                if (! defined($self->{'NEGATIVE_CACHE'}) || $self->{'NEGATIVE_CACHE'}) {
+                $err = '' if ($doc->{'_filename'} = eval { $self->include_filename($self->{'DEFAULT'}) });
+            }
+            if ($err) {
+                ### cache the negative error
+                if (! defined($self->{'NEGATIVE_STAT_TTL'}) || $self->{'NEGATIVE_STAT_TTL'}) {
                     $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
                     $self->{'_not_found'}->{$file} = {
                         cache_time => time,
