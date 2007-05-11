@@ -3026,18 +3026,47 @@ sub process {
             }
         }
 
-        ### handle the process config - which loads a template in place of the real one
-        if (exists $self->{'PROCESS'}) {
-            $self->_load_template_meta($content);
-            foreach my $name (@{ $self->split_paths($self->{'PROCESS'}) }) {
-                next if ! length $name;
-                $self->_process($name, $copy, \$output);
+        ### process the central file now - catching errors to allow for the ERROR config
+        eval {
+            ### handle the PROCESS config - which loads another template in place of the real one
+            if (exists $self->{'PROCESS'}) {
+                $self->_load_template_meta($content);
+                foreach my $name (@{ $self->split_paths($self->{'PROCESS'}) }) {
+                    next if ! length $name;
+                    $self->_process($name, $copy, \$output);
+                }
+
+                ### handle "normal" content
+            } else {
+                local $self->{'_start_top_level'} = 1;
+                $self->_process($content, $copy, \$output);
+            }
+        };
+
+        ### catch errors with ERROR config
+        if (my $err = $@) {
+            $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+            die $err if $err->type =~ /stop|return/;
+            my $catch = $self->{'ERRORS'} || $self->{'ERROR'} || die $err;
+            $catch = {default => $catch} if ! ref $catch;
+            my $type = $err->type;
+            my $last_found;
+            my $file;
+            foreach my $name (keys %$catch) {
+                my $_name = (! defined $name || lc($name) eq 'default') ? '' : $name;
+                if ($type =~ / ^ \Q$_name\E \b /x
+                    && (! defined($last_found) || length($last_found) < length($_name))) { # more specific wins
+                    $last_found = $_name;
+                    $file       = $catch->{$name};
+                }
             }
 
-        ### handle "normal" content
-        } else {
-            local $self->{'_start_top_level'} = 1;
-            $self->_process($content, $copy, \$output);
+            ### found error handler - try it out
+            if (defined $file) {
+                $output = '';
+                local $copy->{'error'} = local $copy->{'e'} = $err;
+                $self->_process($file, $copy, \$output);
+            }
         }
 
         ### handle wrapper directives
