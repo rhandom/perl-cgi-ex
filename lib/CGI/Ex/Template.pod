@@ -15,8 +15,13 @@ CGI::Ex::Template - Fast and lightweight TT2/3 template engine
         hash => {a => 'b'},
     };
 
+    # print to STDOUT
     $t->process('my/template.tt', $swap)
         || die $t->error;
+
+    # process into a variable
+    my $out = '';
+    $t->process('my/template.tt', $swap, \$out);
 
     ### CET uses the same syntax and configuration as Template::Toolkit
 
@@ -180,9 +185,7 @@ to Template::Stash::define_vmethod.
 
 =head1 TODO
 
-    Add WRAPPER configuration item (the WRAPPER directive is supported).
-
-    Add ERROR config item
+    Add HTML::Template support
 
 =head1 HOW IS CGI::Ex::Template DIFFERENT
 
@@ -402,6 +405,14 @@ Used for Data::Dumpering the passed variable or expression.
         ANYCASE   => 1
         PRE_CHOMP => '-'
    %]
+
+=item Configuration options can use lowercase names instead
+of the all uppercase names that TT2 uses.
+
+    my $t = CGI::Ex::Template->new({
+        anycase     => 1,
+        interpolate => 1,
+    });
 
 =item CET does not generate Perl code.
 
@@ -1623,12 +1634,25 @@ Arguments may also be passed to the template:
 Filenames must be relative to INCLUDE_PATH unless the ABSOLUTE
 or RELATIVE configuration items are set.
 
+Multiple filenames can be passed by separating them with a plus, a space,
+or commas (TT2 doesn't support the comma).  Any supplied arguments will
+be used on all templates.
+
+    [% INCLUDE "path/to/template.html",
+               "path/to/template2.html" a = "An arg" b = "Another arg" %]
+
 =item C<INSERT>
 
 Insert the contents of a file without template parsing.
 
 Filenames must be relative to INCLUDE_PATH unless the ABSOLUTE
 or RELATIVE configuration items are set.
+
+Multiple filenames can be passed by separating them with a plus, a space,
+or commas (TT2 doesn't support the comma).
+
+    [% INSERT "path/to/template.html",
+              "path/to/template2.html" %]
 
 =item C<LAST>
 
@@ -1723,6 +1747,13 @@ Arguments may also be passed to the template:
 
 Filenames must be relative to INCLUDE_PATH unless the ABSOLUTE
 or RELATIVE configuration items are set.
+
+Multiple filenames can be passed by separating them with a plus, a space,
+or commas (TT2 doesn't support the comma).  Any supplied arguments will
+be used on all templates.
+
+    [% PROCESS "path/to/template.html",
+               "path/to/template2.html" a = "An arg" b = "Another arg" %]
 
 =item C<RAWPERL>
 
@@ -2037,8 +2068,8 @@ Block directive.  Processes contents of its block and then passes them
 in the [% content %] variable to the block or filename listed in the
 WRAPPER tag.
 
-    [% WRAPPER foo %]
-    My content to be processed.[% a = 2 %]
+    [% WRAPPER foo b = 23 %]
+    My content to be processed ([% b %]).[% a = 2 %]
     [% END %]
 
     [% BLOCK foo %]
@@ -2050,10 +2081,10 @@ WRAPPER tag.
 This would print.
 
     A header (2).
-    My content to be processed.
+    My content to be processed (23).
     A footer (2).
 
-The WRAPPER directive may also be used as a post directive.
+The WRAPPER directive may also be used as a post operative directive.
 
     [% BLOCK baz %]([% content %])[% END -%]
     [% "foobar" WRAPPER baz %]
@@ -2061,6 +2092,17 @@ The WRAPPER directive may also be used as a post directive.
 Would print
 
     (foobar)');
+
+Multiple filenames can be passed by separating them with a plus, a space,
+or commas (TT2 doesn't support the comma).  Any supplied arguments will
+be used on all templates.  Wrappers are processed in reverse order, so
+that the first wrapper listed will surround each subsequent wrapper listed.
+Variables from inner wrappers are available to the next wrapper that
+surrounds it.
+
+    [% WRAPPER "path/to/outer.html",
+               "path/to/inner.html" a = "An arg" b = "Another arg" %]
+
 
 =back
 
@@ -2585,6 +2627,37 @@ Any of the Data::Dumper configuration items may be passed.
 
 Set a string to use as the closing delimiter for TT.  Default is "%]".
 
+=item ERROR
+
+Used as a fall back when the processing of a template fails.  May either
+be a single filename that will be used in all cases, or may be a hashref
+of options where the keynames represent error types that will be handled
+by the filename in their value.  A key named default will be used if no
+other matching keyname can be found.  The selection process is similar
+to that of the TRY/CATCH/THROW directives (see those directives for more
+information).
+
+    my $t = CGI::Ex::Template->new({
+        ERROR => 'general/catch_all_errors.html',
+    });
+
+    my $t = CGI::Ex::Template->new({
+        ERROR => {
+            default   => 'general/catch_all_errors.html',
+            foo       => 'catch_all_general_foo_errors.html',
+            'foo.bar' => 'catch_foo_bar_errors.html',
+        },
+    });
+
+Note that the ERROR handler will only be used for errors during the
+processing of the main document.  It will not catch errors that
+occur in templates found in the PRE_PROCESS, POST_PROCESS, and WRAPPER
+configuration items.
+
+=item ERRORS
+
+Same as the ERROR configuration item.  Both may be used interchangably.
+
 =item EVAL_PERL
 
 Boolean.  Default false.  If set to a true value, PERL and RAWPERL blocks
@@ -2761,6 +2834,13 @@ that are relative to the currently running process.
 
 Set a string to use as the opening delimiter for TT.  Default is "[%".
 
+=item STAT_TTL
+
+Defaults to $STAT_TTL which defaults to 1.  Represents time-to-live
+seconds until a cached in memory document is compared to the file
+system for modifications.  Setting this number higher will allow for
+fewer file system accesses.
+
 =item TAG_STYLE
 
 Allow for setting the type of tag delimiters to use for parsing the TT.
@@ -2842,21 +2922,30 @@ A hashref of variables to initialize the template stash with.  These
 variables are available for use in any of the executed templates.
 See the section on VARIABLES for the types of information that can be passed in.
 
-=back
+=item WRAPPER
 
+Operates similar to the WRAPPER directive.  The option can be given a
+single filename, or an arrayref of filenames that will be used to wrap
+the processed content.  If an arrayref is passed the filenames are
+processed in reverse order, so that the first filename specified will
+end up being on the outside (surrounding all other wrappers).
+
+   my $t = CGI::Ex::Template->new(
+       WRAPPER => ['my/wrappers/outer.html', 'my/wrappers/inner.html'],
+   );
+
+Content generated by the PRE_PROCESS and POST_PROCESS will come before
+and after (respectively) the content generated by the WRAPPER
+configuration item.
+
+See the WRAPPER direcive for more examples of how wrappers are construted.
+
+=back
 
 
 =head1 UNSUPPORTED TT CONFIGURATION
 
 =over 4
-
-=item WRAPPER
-
-This will be supported - just not done yet.
-
-=item ERROR
-
-This will be supported - just not done yet.
 
 =item LOAD_TEMPLATES
 
@@ -2915,7 +3004,9 @@ filters, and perl blocks.
 
 CGI::Ex::Template has its own built in parser.  The closest similarity is
 the parse_tree method.  The output of parse_tree is an optree that is
-later run by execute_tree.
+later run by execute_tree.  CET provides a backend to the Template::Parser::CET
+module which can be used to replace the default parser when using
+the standard Template::Toolkit library.
 
 =item GRAMMAR
 
