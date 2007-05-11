@@ -2754,6 +2754,16 @@ Is the same as
 
 Any number of hashes can be added to the NAMESPACE hash.
 
+=item NEGATIVE_STAT_TTL (Not in TT)
+
+Defaults to STAT_TTL which defaults to $STAT_TTL which defaults to 1.
+
+Similar to STAT_TTL - but represents the time-to-live
+seconds until a document that was not found is checked again against
+the system for modifications.  Setting this number higher will allow for
+fewer file system accesses.  Setting it to a negative number will allow
+for the file system to be checked every hit.
+
 =item OUTPUT
 
 Alternate way of passing in the output location for processed templates.
@@ -2839,7 +2849,8 @@ Set a string to use as the opening delimiter for TT.  Default is "[%".
 Defaults to $STAT_TTL which defaults to 1.  Represents time-to-live
 seconds until a cached in memory document is compared to the file
 system for modifications.  Setting this number higher will allow for
-fewer file system accesses.
+fewer file system accesses.  Setting it to a negative number will allow
+for the file system to be checked every hit.
 
 =item TAG_STYLE
 
