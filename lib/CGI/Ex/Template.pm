@@ -396,9 +396,8 @@ sub load_parsed_tree {
 
     ### looks like a previously cached-in-memory document
     } elsif ($ref
-             && (   (time - $ref->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL)) # don't stat more than once a second
-                 || ($ref->{'modtime'} == (stat $ref->{'_filename'})[9]
-                     && ($ref->{'cache_time'} = time)) # reset cache time if the file is not modified
+             && (   time - $ref->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL) # don't stat more than once a second
+                 || $ref->{'modtime'} == (stat $ref->{'_filename'})[9]               # otherwise see if the file was modified
                     )) {
         $doc = $self->{'_documents'}->{$file};
         return $doc;
@@ -420,6 +419,10 @@ sub load_parsed_tree {
         $doc->{'_tree'} = $block->{'_tree'} || $self->throw('block', "Invalid block definition (missing tree)");
         return $doc;
 
+    ### handle cached not_founds
+    } elsif ($self->{'_not_found'}->{$file}
+             && (time - $self->{'_not_found'}->{$file}->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL))) { # negative cache for a second
+        die $self->{'_not_found'}->{$file}->{'exception'};
 
     ### go and look on the file system
     } else {
@@ -451,10 +454,13 @@ sub load_parsed_tree {
                 $doc->{'_filename'} = eval { $self->include_filename($self->{'DEFAULT'}) } || die $err;
             } else {
                 ### create pseudo document that will throw not found - stat_ttl will remove it
-                $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
-                $doc->{'_tree'} = [['THROW', 0, 0, [$err->type, [[[undef, '{}'],0], $err->info." (cached)"]]]];
-                $doc->{'cache_time'} = $doc->{'modtime'} = time;
-                $self->{'_documents'}->{$file} = $doc;
+                if (! defined($self->{'NEGATIVE_CACHE'}) || $self->{'NEGATIVE_CACHE'}) {
+                    $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+                    $self->{'_not_found'}->{$file} = {
+                        cache_time => time,
+                        exception  => $self->exception($err->type, $err->info." (cached)"),
+                    };
+                }
                 die $err;
             }
         }
@@ -1450,6 +1456,9 @@ sub play_expr {
 
     ### determine the top level of this particular variable access
     my $ref;
+    use CGI::Ex::Dump qw(debug dex_trace);
+    debug dex_trace
+        if ref $var ne 'ARRAY';
     my $name = $var->[$i++];
     my $args = $var->[$i++];
     warn "play_expr: begin \"$name\"\n" if trace;
@@ -2749,10 +2758,9 @@ sub play_USE {
         if ($self->{'PLUGIN_FACTORY'}->{$module} || eval {require $require}) {
             my $shape   = $package->load;
             my $context = $self->context;
-            @args       = map { $self->play_expr($_) } @args;
-            $obj = $shape->new($context, @args);
+            $obj = $shape->new($context, map { $self->play_expr($_) } @args);
         } elsif (lc($module) eq 'iterator') { # use our iterator if none found (TT's works just fine)
-            $obj = $PACKAGE_ITERATOR->new($args ? $self->play_expr($args->[0]) : []);
+            $obj = $PACKAGE_ITERATOR->new($args[0]);
         } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
             foreach my $package (@packages) {
                 my $require = "$package.pm";
@@ -2760,15 +2768,13 @@ sub play_USE {
                 eval {require $require} || next;
                 my $shape   = $package->load;
                 my $context = $self->context;
-                @args       = map { $self->play_expr($_) } @args;
-                $obj = $shape->new($context, @args);
+                $obj = $shape->new($context, map { $self->play_expr($_) } @args);
             }
         } elsif ($self->{'LOAD_PERL'}) {
             my $require = "$module.pm";
             $require =~ s|::|/|g;
             if (eval {require $require}) {
-                @args       = map { $self->play_expr($_) } @args;
-                $obj = $module->new(@args);
+                $obj = $module->new(map { $self->play_expr($_) } @args);
             }
         }
     }
@@ -2793,7 +2799,6 @@ sub parse_VIEW {
 
     return $ref;
 }
-#sub parse_VIEW { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_VIEW {
     my ($self, $ref, $node, $out_ref) = @_;
