@@ -1,3 +1,13 @@
+2.12
+      2007-05-11
+        * Add STAT_TTL
+        * Add NEGATIVE_STAT_TTL
+        * Add WRAPPER configuation
+        * Add ERROR and ERRORS configuration
+        * Cleanup handling of PRE_PROCESS and POST_PROCESS
+        * Add more tests for the file operations
+        * Cleanup some potential argument issues on cached USE and THROW
+
 2.11   2007-05-07
         * Add more samples to App synopsis.
         * Add VIEW directive support to Template.
