@@ -39,6 +39,7 @@ use vars qw($VERSION
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
+            $STAT_TTL
 
             @CONFIG_COMPILETIME
             @CONFIG_RUNTIME
@@ -52,8 +53,6 @@ BEGIN {
     $PACKAGE_CONTEXT     = 'CGI::Ex::Template::_Context';
     $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
     $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
-    $MAX_EVAL_RECURSE    = 50;
-    $MAX_MACRO_RECURSE   = 50;
 
     $TAGS = {
         asp       => ['<%',     '%>'    ], # ASP
@@ -221,49 +220,46 @@ BEGIN {
     ### setup the operator parsing
     $OPERATORS = [
         # type      precedence symbols              action (undef means play_operator will handle)
-        ['prefix',  99,        ['\\'],              undef                                       ],
-        ['postfix', 98,        ['++'],              undef                                       ],
-        ['postfix', 98,        ['--'],              undef                                       ],
-        ['prefix',  97,        ['++'],              undef                                       ],
-        ['prefix',  97,        ['--'],              undef                                       ],
-        ['right',   96,        ['**', 'pow'],       sub {     $_[0] ** $_[1]                  } ],
-        ['prefix',  93,        ['!'],               sub {   ! $_[0]                           } ],
+        ['prefix',  99,        ['\\'],              undef                       ],
+        ['postfix', 98,        ['++'],              undef                       ],
+        ['postfix', 98,        ['--'],              undef                       ],
+        ['prefix',  97,        ['++'],              undef                       ],
+        ['prefix',  97,        ['--'],              undef                       ],
+        ['right',   96,        ['**', 'pow'],       sub {     $_[0] ** $_[1]  } ],
+        ['prefix',  93,        ['!'],               sub {   ! $_[0]           } ],
         ['prefix',  93,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        ['left',    90,        ['*'],               sub {     $_[0] *  $_[1]                  } ],
-        ['left',    90,        ['/'],               sub {     $_[0] /  $_[1]                  } ],
-        ['left',    90,        ['div', 'DIV'],      sub { int($_[0] /  $_[1])                 } ],
-        ['left',    90,        ['%', 'mod', 'MOD'], sub {     $_[0] %  $_[1]                  } ],
-        ['left',    85,        ['+'],               sub {     $_[0] +  $_[1]                  } ],
+        ['left',    90,        ['*'],               sub {     $_[0] *  $_[1]  } ],
+        ['left',    90,        ['/'],               sub {     $_[0] /  $_[1]  } ],
+        ['left',    90,        ['div', 'DIV'],      sub { int($_[0] /  $_[1]) } ],
+        ['left',    90,        ['%', 'mod', 'MOD'], sub {     $_[0] %  $_[1]  } ],
+        ['left',    85,        ['+'],               sub {     $_[0] +  $_[1]  } ],
         ['left',    85,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        ['left',    85,        ['~', '_'],          undef                                       ],
-        ['none',    80,        ['<'],               sub {     $_[0] <  $_[1]                  } ],
-        ['none',    80,        ['>'],               sub {     $_[0] >  $_[1]                  } ],
-        ['none',    80,        ['<='],              sub {     $_[0] <= $_[1]                  } ],
-        ['none',    80,        ['>='],              sub {     $_[0] >= $_[1]                  } ],
-        ['none',    80,        ['lt'],              sub {     $_[0] lt $_[1]                  } ],
-        ['none',    80,        ['gt'],              sub {     $_[0] gt $_[1]                  } ],
-        ['none',    80,        ['le'],              sub {     $_[0] le $_[1]                  } ],
-        ['none',    80,        ['ge'],              sub {     $_[0] ge $_[1]                  } ],
-        ['none',    75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]                  } ],
-        ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]                  } ],
-        ['left',    70,        ['&&'],              undef                                       ],
-        ['right',   65,        ['||'],              undef                                       ],
-        ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]                  } ],
-        ['ternary', 55,        ['?', ':'],          undef                                       ],
-        ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]                  } ],
-        ['assign',  53,        ['-='],              sub {     $_[0] -  $_[1]                  } ],
-        ['assign',  53,        ['*='],              sub {     $_[0] *  $_[1]                  } ],
-        ['assign',  53,        ['/='],              sub {     $_[0] /  $_[1]                  } ],
-        ['assign',  53,        ['%='],              sub {     $_[0] %  $_[1]                  } ],
-        ['assign',  53,        ['**='],             sub {     $_[0] ** $_[1]                  } ],
-        ['assign',  53,        ['~=', '_='],        sub {     $_[0] .  $_[1]                  } ],
-        ['assign',  52,        ['='],               undef                                       ],
-        ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]                           } ],
-        ['left',    45,        ['and', 'AND'],      undef                                       ],
-        ['right',   40,        ['or', 'OR'],        undef                                       ],
-#        ['',         0,        ['{}'],              undef                                       ],
-#        ['',         0,        ['[]'],              undef                                       ],
-#        ['',         0,        ['qr'],              undef                                       ],
+        ['left',    85,        ['~', '_'],          undef                       ],
+        ['none',    80,        ['<'],               sub {     $_[0] <  $_[1]  } ],
+        ['none',    80,        ['>'],               sub {     $_[0] >  $_[1]  } ],
+        ['none',    80,        ['<='],              sub {     $_[0] <= $_[1]  } ],
+        ['none',    80,        ['>='],              sub {     $_[0] >= $_[1]  } ],
+        ['none',    80,        ['lt'],              sub {     $_[0] lt $_[1]  } ],
+        ['none',    80,        ['gt'],              sub {     $_[0] gt $_[1]  } ],
+        ['none',    80,        ['le'],              sub {     $_[0] le $_[1]  } ],
+        ['none',    80,        ['ge'],              sub {     $_[0] ge $_[1]  } ],
+        ['none',    75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]  } ],
+        ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]  } ],
+        ['left',    70,        ['&&'],              undef                       ],
+        ['right',   65,        ['||'],              undef                       ],
+        ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]  } ],
+        ['ternary', 55,        ['?', ':'],          undef                       ],
+        ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]  } ],
+        ['assign',  53,        ['-='],              sub {     $_[0] -  $_[1]  } ],
+        ['assign',  53,        ['*='],              sub {     $_[0] *  $_[1]  } ],
+        ['assign',  53,        ['/='],              sub {     $_[0] /  $_[1]  } ],
+        ['assign',  53,        ['%='],              sub {     $_[0] %  $_[1]  } ],
+        ['assign',  53,        ['**='],             sub {     $_[0] ** $_[1]  } ],
+        ['assign',  53,        ['~=', '_='],        sub {     $_[0] .  $_[1]  } ],
+        ['assign',  52,        ['='],               undef                       ],
+        ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]           } ],
+        ['left',    45,        ['and', 'AND'],      undef                       ],
+        ['right',   40,        ['or', 'OR'],        undef                       ],
     ];
     $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
     $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
@@ -295,7 +291,10 @@ BEGIN {
     $QR_PRIVATE   = qr/^[_.]/;
 
     $WHILE_MAX    = 1000;
-    $EXTRA_COMPILE_EXT = '.sto2';
+    $EXTRA_COMPILE_EXT = '.sto';
+    $MAX_EVAL_RECURSE  = 50;
+    $MAX_MACRO_RECURSE = 50;
+    $STAT_TTL          ||= 1;
 
     @CONFIG_COMPILETIME = qw(ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
     @CONFIG_RUNTIME     = qw(DUMP);
@@ -387,6 +386,7 @@ sub load_parsed_tree {
     return if ! defined $file;
 
     my $doc = {name => $file};
+    my $ref = $self->{'_documents'}->{$file};
 
     ### looks like a string reference
     if (ref $file) {
@@ -395,12 +395,12 @@ sub load_parsed_tree {
         $doc->{'_is_str_ref'} = 1;
 
     ### looks like a previously cached-in-memory document
-    } elsif ($self->{'_documents'}->{$file}
-             && (   ($self->{'_documents'}->{$file}->{'_cache_time'} == time) # don't stat more than once a second
-                 || ($self->{'_documents'}->{$file}->{'modtime'}
-                     == (stat $self->{'_documents'}->{$file}->{'_filename'})[9]))) {
+    } elsif ($ref
+             && (   (time - $ref->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL)) # don't stat more than once a second
+                 || ($ref->{'modtime'} == (stat $ref->{'_filename'})[9]
+                     && ($ref->{'cache_time'} = time)) # reset cache time if the file is not modified
+                    )) {
         $doc = $self->{'_documents'}->{$file};
-        $doc->{'_cache_time'} = time;
         return $doc;
 
     ### looks like a block name of some sort
@@ -450,6 +450,11 @@ sub load_parsed_tree {
             } elsif ($self->{'DEFAULT'}) {
                 $doc->{'_filename'} = eval { $self->include_filename($self->{'DEFAULT'}) } || die $err;
             } else {
+                ### create pseudo document that will throw not found - stat_ttl will remove it
+                $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+                $doc->{'_tree'} = [['THROW', 0, 0, [$err->type, [[[undef, '{}'],0], $err->info." (cached)"]]]];
+                $doc->{'cache_time'} = $doc->{'modtime'} = time;
+                $self->{'_documents'}->{$file} = $doc;
                 die $err;
             }
         }
@@ -497,14 +502,14 @@ sub load_parsed_tree {
     ### cache parsed_tree in memory unless asked not to do so
     if (! $doc->{'_is_str_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
         $self->{'_documents'}->{$file} ||= $doc;
-        $doc->{'_cache_time'} = time;
+        $doc->{'cache_time'} = time;
 
         ### allow for config option to keep the cache size down
         if ($self->{'CACHE_SIZE'}) {
             my $all = $self->{'_documents'};
             if (scalar(keys %$all) > $self->{'CACHE_SIZE'}) {
                 my $n = 0;
-                foreach my $file (sort {$all->{$b}->{'_cache_time'} <=> $all->{$a}->{'_cache_time'}} keys %$all) {
+                foreach my $file (sort {$all->{$b}->{'cache_time'} <=> $all->{$a}->{'cache_time'}} keys %$all) {
                     delete($all->{$file}) if ++$n > $self->{'CACHE_SIZE'};
                 }
             }
@@ -2610,10 +2615,10 @@ sub play_THROW {
 
     $name = $self->play_expr($name);
 
-    my $named = shift @$args;
-    push @$args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+    my ($named, @args) = @$args;
+    push @args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
 
-    my @args = $args ? map { $self->play_expr($_) } @$args : ();
+    @args = map { $self->play_expr($_) } @args;
     $self->throw($name, \@args, $node);
 }
 
@@ -2726,8 +2731,8 @@ sub play_USE {
     my @var = map {($_, 0, '.')} split /(?:\.|::)/, $var;
     pop @var; # remove the trailing '.'
 
-    my $named = shift @$args;
-    push @$args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+    my ($named, @args) = @$args;
+    push @args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
 
     ### look for a plugin_base
     my $BASE = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
@@ -2744,7 +2749,7 @@ sub play_USE {
         if ($self->{'PLUGIN_FACTORY'}->{$module} || eval {require $require}) {
             my $shape   = $package->load;
             my $context = $self->context;
-            my @args    = $args ? map { $self->play_expr($_) } @$args : ();
+            @args       = map { $self->play_expr($_) } @args;
             $obj = $shape->new($context, @args);
         } elsif (lc($module) eq 'iterator') { # use our iterator if none found (TT's works just fine)
             $obj = $PACKAGE_ITERATOR->new($args ? $self->play_expr($args->[0]) : []);
@@ -2755,14 +2760,14 @@ sub play_USE {
                 eval {require $require} || next;
                 my $shape   = $package->load;
                 my $context = $self->context;
-                my @args    = $args ? map { $self->play_expr($_) } @$args : ();
+                @args       = map { $self->play_expr($_) } @args;
                 $obj = $shape->new($context, @args);
             }
         } elsif ($self->{'LOAD_PERL'}) {
             my $require = "$module.pm";
             $require =~ s|::|/|g;
             if (eval {require $require}) {
-                my @args = $args ? map { $self->play_expr($_) } @$args : ();
+                @args       = map { $self->play_expr($_) } @args;
                 $obj = $module->new(@args);
             }
         }
