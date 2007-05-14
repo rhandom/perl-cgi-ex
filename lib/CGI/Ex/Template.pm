@@ -3180,15 +3180,17 @@ sub _load_template_meta {
     my $self = shift;
     return if $self->{'_template'}; # only do once as need
 
-    ### load the meta data for the top document
-    ### this is needed by some of the custom handlers such as PRE_PROCESS and POST_PROCESS
-    my $content = shift;
-    my $doc     = $self->{'_template'} = $self->load_parsed_tree($content) || {};
-    my $meta    = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
-        ? $doc->{'_tree'}->[0]->[3] : {};
+    eval {
+        ### load the meta data for the top document
+        ### this is needed by some of the custom handlers such as PRE_PROCESS and POST_PROCESS
+        my $content = shift;
+        my $doc     = $self->{'_template'} = $self->load_parsed_tree($content) || {};
+        my $meta    = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
+            ? $doc->{'_tree'}->[0]->[3] : {};
 
-    $self->{'_template'} = $doc;
-    @{ $doc }{keys %$meta} = values %$meta;
+        $self->{'_template'} = $doc;
+        @{ $doc }{keys %$meta} = values %$meta;
+    };
 
     return;
 }
