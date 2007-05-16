@@ -7,297 +7,262 @@ package CGI::Ex::Template;
 ###----------------------------------------------------------------###
 
 use strict;
-use constant trace => $ENV{'CET_TRACE'} || 0; # enable for low level tracing
-use vars qw($VERSION
-            $TAGS
-            $SCALAR_OPS $HASH_OPS $LIST_OPS $FILTER_OPS $VOBJS
-            $DIRECTIVES $QR_DIRECTIVE
 
-            $OPERATORS
-            $OP_DISPATCH
-            $OP_ASSIGN
-            $OP
-            $OP_PREFIX
-            $OP_POSTFIX
-            $OP_TERNARY
+our $VERSION = '2.12';
 
-            $QR_OP
-            $QR_OP_PREFIX
-            $QR_OP_ASSIGN
+our $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
+our $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
+our $PACKAGE_CONTEXT     = 'CGI::Ex::Template::_Context';
+our $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
+our $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
+our $QR_PRIVATE          = qr/^[_.]/;
 
-            $QR_COMMENTS
-            $QR_FILENAME
-            $QR_NUM
-            $QR_AQ_SPACE
-            $QR_PRIVATE
-
-            $PACKAGE_EXCEPTION $PACKAGE_ITERATOR $PACKAGE_CONTEXT $PACKAGE_STASH $PACKAGE_PERL_HANDLE
-            $MAX_EVAL_RECURSE $MAX_MACRO_RECURSE
-            $WHILE_MAX
-            $EXTRA_COMPILE_EXT
-            $DEBUG
-            $STAT_TTL
-
-            @CONFIG_COMPILETIME
-            @CONFIG_RUNTIME
-            );
-
-BEGIN {
-    $VERSION = '2.12';
-
-    $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
-    $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
-    $PACKAGE_CONTEXT     = 'CGI::Ex::Template::_Context';
-    $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
-    $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
-
-    $TAGS = {
-        asp       => ['<%',     '%>'    ], # ASP
-        default   => ['\[%',    '%\]'   ], # default
-        html      => ['<!--',   '-->'   ], # HTML comments
-        mason     => ['<%',     '>'     ], # HTML::Mason
-        metatext  => ['%%',     '%%'    ], # Text::MetaText
-        php       => ['<\?',    '\?>'   ], # PHP
-        star      => ['\[\*',   '\*\]'  ], # TT alternate
-        template  => ['\[%',    '%\]'   ], # Normal Template Toolkit
-        template1 => ['[\[%]%', '%[%\]]'], # allow TT1 style
-        tt2       => ['\[%',    '%\]'   ], # TT2
-    };
-
-    $SCALAR_OPS = {
-        '0'      => sub { $_[0] },
-        chunk    => \&vmethod_chunk,
-        collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
-        defined  => sub { defined $_[0] ? 1 : '' },
-        indent   => \&vmethod_indent,
-        int      => sub { local $^W; int $_[0] },
-        fmt      => \&vmethod_fmt_scalar,
-        'format' => \&vmethod_format,
-        hash     => sub { {value => $_[0]} },
-        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; s/\'/&apos;/g; $_ },
-        item     => sub { $_[0] },
-        lcfirst  => sub { lcfirst $_[0] },
-        length   => sub { defined($_[0]) ? length($_[0]) : 0 },
-        list     => sub { [$_[0]] },
-        lower    => sub { lc $_[0] },
-        match    => \&vmethod_match,
-        new      => sub { defined $_[0] ? $_[0] : '' },
-        null     => sub { '' },
-        rand     => sub { local $^W; rand shift },
-        remove   => sub { vmethod_replace(shift, shift, '', 1) },
-        repeat   => \&vmethod_repeat,
-        replace  => \&vmethod_replace,
-        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
-        size     => sub { 1 },
-        split    => \&vmethod_split,
-        stderr   => sub { print STDERR $_[0]; '' },
-        substr   => \&vmethod_substr,
-        trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
-        ucfirst  => sub { ucfirst $_[0] },
-        upper    => sub { uc $_[0] },
-        uri      => \&vmethod_uri,
-        url      => \&vmethod_url,
-    };
-
-    $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
-        eval     => [\&filter_eval, 1],
-        evaltt   => [\&filter_eval, 1],
-        file     => [\&filter_redirect, 1],
-        redirect => [\&filter_redirect, 1],
-    };
-
-    $LIST_OPS = {
-        defined => sub { return 1 if @_ == 1; defined $_[0]->[ defined($_[1]) ? $_[1] : 0 ] },
-        first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
-        fmt     => \&vmethod_fmt_list,
-        grep    => sub { local $^W; my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
-        hash    => sub { local $^W; my $list = shift; return {@$list} if ! @_; my $i = shift || 0; return {map {$i++ => $_} @$list} },
-        import  => sub { my $ref = shift; push @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_; '' },
-        item    => sub { $_[0]->[ $_[1] || 0 ] },
-        join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
-        last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
-        list    => sub { $_[0] },
-        max     => sub { local $^W; $#{ $_[0] } },
-        merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
-        new     => sub { local $^W; return [@_] },
-        null    => sub { '' },
-        nsort   => \&vmethod_nsort,
-        pick    => \&vmethod_pick,
-        pop     => sub { pop @{ $_[0] } },
-        push    => sub { my $ref = shift; push @$ref, @_; return '' },
-        reverse => sub { [ reverse @{ $_[0] } ] },
-        shift   => sub { shift  @{ $_[0] } },
-        size    => sub { local $^W; scalar @{ $_[0] } },
-        slice   => sub { my ($ref, $a, $b) = @_; $a ||= 0; $b = $#$ref if ! defined $b; return [@{$ref}[$a .. $b]] },
-        sort    => \&vmethod_sort,
-        splice  => \&vmethod_splice,
-        unique  => sub { my %u; return [ grep { ! $u{$_}++ } @{ $_[0] } ] },
-        unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
-    };
-
-    $HASH_OPS = {
-        defined => sub { return 1 if @_ == 1; defined $_[0]->{ defined($_[1]) ? $_[1] : '' } },
-        delete  => sub { my $h = shift; delete @{ $h }{map {defined($_) ? $_ : ''} @_}; '' },
-        each    => sub { [%{ $_[0] }] },
-        exists  => sub { exists $_[0]->{ defined($_[1]) ? $_[1] : '' } },
-        fmt     => \&vmethod_fmt_hash,
-        hash    => sub { $_[0] },
-        import  => sub { my ($a, $b) = @_; @{$a}{keys %$b} = values %$b if ref($b) eq 'HASH'; '' },
-        item    => sub { my ($h, $k) = @_; $k = '' if ! defined $k; $k =~ $QR_PRIVATE ? undef : $h->{$k} },
-        items   => sub { [ %{ $_[0] } ] },
-        keys    => sub { [keys %{ $_[0] }] },
-        list    => \&vmethod_list_hash,
-        new     => sub { local $^W; return (@_ == 1 && ref $_[-1] eq 'HASH') ? $_[-1] : {@_} },
-        null    => sub { '' },
-        nsort   => sub { my $ref = shift; [sort {   $ref->{$a} <=>    $ref->{$b}} keys %$ref] },
-        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } sort keys %{ $_[0] } ] },
-        size    => sub { scalar keys %{ $_[0] } },
-        sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
-        values  => sub { [values %{ $_[0] }] },
-    };
-
-    $VOBJS = {
-        Text => $SCALAR_OPS,
-        List => $LIST_OPS,
-        Hash => $HASH_OPS,
-    };
-    foreach (values %$VOBJS) {
-        $_->{'Text'} = $_->{'as'};
-        $_->{'Hash'} = $_->{'hash'};
-        $_->{'List'} = $_->{'list'};
-    }
-
-    $DIRECTIVES = {
-        #name       parse_sub        play_sub         block    postdir  continue  move_to_front
-        BLOCK   => [\&parse_BLOCK,   \&play_BLOCK,    1,       0,       0,        1],
-        BREAK   => [sub {},          \&play_control],
-        CALL    => [\&parse_CALL,    \&play_CALL],
-        CASE    => [\&parse_CASE,    undef,           0,       0,       {SWITCH => 1, CASE => 1}],
-        CATCH   => [\&parse_CATCH,   undef,           0,       0,       {TRY => 1, CATCH => 1}],
-        CLEAR   => [sub {},          \&play_CLEAR],
-        '#'     => [sub {},          sub {}],
-        CONFIG  => [\&parse_CONFIG,  \&play_CONFIG],
-        DEBUG   => [\&parse_DEBUG,   \&play_DEBUG],
-        DEFAULT => [\&parse_DEFAULT, \&play_DEFAULT],
-        DUMP    => [\&parse_DUMP,    \&play_DUMP],
-        ELSE    => [sub {},          undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
-        ELSIF   => [\&parse_IF,      undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
-        END     => [undef,           sub {}],
-        FILTER  => [\&parse_FILTER,  \&play_FILTER,   1,       1],
-        '|'     => [\&parse_FILTER,  \&play_FILTER,   1,       1],
-        FINAL   => [sub {},          undef,           0,       0,       {TRY => 1, CATCH => 1}],
-        FOR     => [\&parse_FOREACH, \&play_FOREACH,  1,       1],
-        FOREACH => [\&parse_FOREACH, \&play_FOREACH,  1,       1],
-        GET     => [\&parse_GET,     \&play_GET],
-        IF      => [\&parse_IF,      \&play_IF,       1,       1],
-        INCLUDE => [\&parse_INCLUDE, \&play_INCLUDE],
-        INSERT  => [\&parse_INSERT,  \&play_INSERT],
-        LAST    => [sub {},          \&play_control],
-        MACRO   => [\&parse_MACRO,   \&play_MACRO],
-        META    => [undef,           \&play_META],
-        NEXT    => [sub {},          \&play_control],
-        PERL    => [\&parse_PERL,    \&play_PERL,     1],
-        PROCESS => [\&parse_PROCESS, \&play_PROCESS],
-        RAWPERL => [\&parse_PERL,    \&play_RAWPERL,  1],
-        RETURN  => [sub {},          \&play_control],
-        SET     => [\&parse_SET,     \&play_SET],
-        STOP    => [sub {},          \&play_control],
-        SWITCH  => [\&parse_SWITCH,  \&play_SWITCH,   1],
-        TAGS    => [undef,           sub {}],
-        THROW   => [\&parse_THROW,   \&play_THROW],
-        TRY     => [sub {},          \&play_TRY,      1],
-        UNLESS  => [\&parse_UNLESS,  \&play_UNLESS,   1,       1],
-        USE     => [\&parse_USE,     \&play_USE],
-        VIEW    => [\&parse_VIEW,    \&play_VIEW,     1],
-        WHILE   => [\&parse_WHILE,   \&play_WHILE,    1,       1],
-        WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1,       1],
-        #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
-    };
-
-    ### setup the operator parsing
-    $OPERATORS = [
-        # type      precedence symbols              action (undef means play_operator will handle)
-        ['prefix',  99,        ['\\'],              undef                       ],
-        ['postfix', 98,        ['++'],              undef                       ],
-        ['postfix', 98,        ['--'],              undef                       ],
-        ['prefix',  97,        ['++'],              undef                       ],
-        ['prefix',  97,        ['--'],              undef                       ],
-        ['right',   96,        ['**', 'pow'],       sub {     $_[0] ** $_[1]  } ],
-        ['prefix',  93,        ['!'],               sub {   ! $_[0]           } ],
-        ['prefix',  93,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        ['left',    90,        ['*'],               sub {     $_[0] *  $_[1]  } ],
-        ['left',    90,        ['/'],               sub {     $_[0] /  $_[1]  } ],
-        ['left',    90,        ['div', 'DIV'],      sub { int($_[0] /  $_[1]) } ],
-        ['left',    90,        ['%', 'mod', 'MOD'], sub {     $_[0] %  $_[1]  } ],
-        ['left',    85,        ['+'],               sub {     $_[0] +  $_[1]  } ],
-        ['left',    85,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        ['left',    85,        ['~', '_'],          undef                       ],
-        ['none',    80,        ['<'],               sub {     $_[0] <  $_[1]  } ],
-        ['none',    80,        ['>'],               sub {     $_[0] >  $_[1]  } ],
-        ['none',    80,        ['<='],              sub {     $_[0] <= $_[1]  } ],
-        ['none',    80,        ['>='],              sub {     $_[0] >= $_[1]  } ],
-        ['none',    80,        ['lt'],              sub {     $_[0] lt $_[1]  } ],
-        ['none',    80,        ['gt'],              sub {     $_[0] gt $_[1]  } ],
-        ['none',    80,        ['le'],              sub {     $_[0] le $_[1]  } ],
-        ['none',    80,        ['ge'],              sub {     $_[0] ge $_[1]  } ],
-        ['none',    75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]  } ],
-        ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]  } ],
-        ['left',    70,        ['&&'],              undef                       ],
-        ['right',   65,        ['||'],              undef                       ],
-        ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]  } ],
-        ['ternary', 55,        ['?', ':'],          undef                       ],
-        ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]  } ],
-        ['assign',  53,        ['-='],              sub {     $_[0] -  $_[1]  } ],
-        ['assign',  53,        ['*='],              sub {     $_[0] *  $_[1]  } ],
-        ['assign',  53,        ['/='],              sub {     $_[0] /  $_[1]  } ],
-        ['assign',  53,        ['%='],              sub {     $_[0] %  $_[1]  } ],
-        ['assign',  53,        ['**='],             sub {     $_[0] ** $_[1]  } ],
-        ['assign',  53,        ['~=', '_='],        sub {     $_[0] .  $_[1]  } ],
-        ['assign',  52,        ['='],               undef                       ],
-        ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]           } ],
-        ['left',    45,        ['and', 'AND'],      undef                       ],
-        ['right',   40,        ['or', 'OR'],        undef                       ],
-    ];
-    $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
-    $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
-    $OP_DISPATCH = {map {my $ref = $_; map {$_ => $ref->[3]} @{$ref->[2]}} grep {$_->[3]             } @$OPERATORS};
-    $OP_ASSIGN   = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'assign' } @$OPERATORS};
-    $OP_POSTFIX  = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'postfix'} @$OPERATORS}; # bool is postfix
-    $OP_TERNARY  = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'ternary'} @$OPERATORS}; # bool is ternary
-    sub _op_qr { # no mixed \w\W operators
-        my %used;
-        my $chrs = join '|', reverse sort map {quotemeta $_} grep {++$used{$_} < 2} grep {! /\{\}|\[\]/} grep {/^\W{2,}$/} @_;
-        my $chr  = join '',          sort map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
-        my $word = join '|', reverse sort                    grep {++$used{$_} < 2} grep {/^\w+$/}    @_;
-        $chr = "[$chr]" if $chr;
-        $word = "\\b(?:$word)\\b" if $word;
-        return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
-    }
-    sub _build_op_qr        { _op_qr(map {@{ $_->[2] }} grep {$_->[0] ne 'prefix'} @$OPERATORS) }
-    sub _build_op_qr_prefix { _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'prefix'} @$OPERATORS) }
-    sub _build_op_qr_assign { _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'assign'} @$OPERATORS) }
-    $QR_OP        = _build_op_qr();
-    $QR_OP_PREFIX = _build_op_qr_prefix();
-    $QR_OP_ASSIGN = _build_op_qr_assign();
-
-    $QR_DIRECTIVE = '( [a-zA-Z]+\b | \| )';
-    $QR_COMMENTS  = '(?-s: \# .* \s*)*';
-    $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\.][\w\-\.]* (?:/[\w\-\.]+)*';
-    $QR_NUM       = '(?:\d*\.\d+ | \d+) (?: [eE][+-]\d+ )?';
-    $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=;) )';
-    $QR_PRIVATE   = qr/^[_.]/;
-
-    $WHILE_MAX    = 1000;
-    $EXTRA_COMPILE_EXT = '.sto';
-    $MAX_EVAL_RECURSE  = 50;
-    $MAX_MACRO_RECURSE = 50;
-    $STAT_TTL          ||= 1;
-
-    @CONFIG_COMPILETIME = qw(ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
-    @CONFIG_RUNTIME     = qw(DUMP);
-
-    eval {require Scalar::Util};
+our $TAGS = {
+    asp       => ['<%',     '%>'    ], # ASP
+    default   => ['\[%',    '%\]'   ], # default
+    html      => ['<!--',   '-->'   ], # HTML comments
+    mason     => ['<%',     '>'     ], # HTML::Mason
+    metatext  => ['%%',     '%%'    ], # Text::MetaText
+    php       => ['<\?',    '\?>'   ], # PHP
+    star      => ['\[\*',   '\*\]'  ], # TT alternate
+    template  => ['\[%',    '%\]'   ], # Normal Template Toolkit
+    template1 => ['[\[%]%', '%[%\]]'], # allow TT1 style
+    tt2       => ['\[%',    '%\]'   ], # TT2
 };
+
+our $SCALAR_OPS = {
+    '0'      => sub { $_[0] },
+    chunk    => \&vmethod_chunk,
+    collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
+    defined  => sub { defined $_[0] ? 1 : '' },
+    indent   => \&vmethod_indent,
+    int      => sub { local $^W; int $_[0] },
+    fmt      => \&vmethod_fmt_scalar,
+    'format' => \&vmethod_format,
+    hash     => sub { {value => $_[0]} },
+    html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; s/\'/&apos;/g; $_ },
+    item     => sub { $_[0] },
+    lcfirst  => sub { lcfirst $_[0] },
+    length   => sub { defined($_[0]) ? length($_[0]) : 0 },
+    list     => sub { [$_[0]] },
+    lower    => sub { lc $_[0] },
+    match    => \&vmethod_match,
+    new      => sub { defined $_[0] ? $_[0] : '' },
+    null     => sub { '' },
+    rand     => sub { local $^W; rand shift },
+    remove   => sub { vmethod_replace(shift, shift, '', 1) },
+    repeat   => \&vmethod_repeat,
+    replace  => \&vmethod_replace,
+    search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
+    size     => sub { 1 },
+    split    => \&vmethod_split,
+    stderr   => sub { print STDERR $_[0]; '' },
+    substr   => \&vmethod_substr,
+    trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
+    ucfirst  => sub { ucfirst $_[0] },
+    upper    => sub { uc $_[0] },
+    uri      => \&vmethod_uri,
+    url      => \&vmethod_url,
+};
+
+our $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
+    eval     => [\&filter_eval, 1],
+    evaltt   => [\&filter_eval, 1],
+    file     => [\&filter_redirect, 1],
+    redirect => [\&filter_redirect, 1],
+};
+
+our $LIST_OPS = {
+    defined => sub { return 1 if @_ == 1; defined $_[0]->[ defined($_[1]) ? $_[1] : 0 ] },
+    first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
+    fmt     => \&vmethod_fmt_list,
+    grep    => sub { local $^W; my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
+    hash    => sub { local $^W; my $list = shift; return {@$list} if ! @_; my $i = shift || 0; return {map {$i++ => $_} @$list} },
+    import  => sub { my $ref = shift; push @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_; '' },
+    item    => sub { $_[0]->[ $_[1] || 0 ] },
+    join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
+    last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
+    list    => sub { $_[0] },
+    max     => sub { local $^W; $#{ $_[0] } },
+    merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
+    new     => sub { local $^W; return [@_] },
+    null    => sub { '' },
+    nsort   => \&vmethod_nsort,
+    pick    => \&vmethod_pick,
+    pop     => sub { pop @{ $_[0] } },
+    push    => sub { my $ref = shift; push @$ref, @_; return '' },
+    reverse => sub { [ reverse @{ $_[0] } ] },
+    shift   => sub { shift  @{ $_[0] } },
+    size    => sub { local $^W; scalar @{ $_[0] } },
+    slice   => sub { my ($ref, $a, $b) = @_; $a ||= 0; $b = $#$ref if ! defined $b; return [@{$ref}[$a .. $b]] },
+    sort    => \&vmethod_sort,
+    splice  => \&vmethod_splice,
+    unique  => sub { my %u; return [ grep { ! $u{$_}++ } @{ $_[0] } ] },
+    unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
+};
+
+our $HASH_OPS = {
+    defined => sub { return 1 if @_ == 1; defined $_[0]->{ defined($_[1]) ? $_[1] : '' } },
+    delete  => sub { my $h = shift; delete @{ $h }{map {defined($_) ? $_ : ''} @_}; '' },
+    each    => sub { [%{ $_[0] }] },
+    exists  => sub { exists $_[0]->{ defined($_[1]) ? $_[1] : '' } },
+    fmt     => \&vmethod_fmt_hash,
+    hash    => sub { $_[0] },
+    import  => sub { my ($a, $b) = @_; @{$a}{keys %$b} = values %$b if ref($b) eq 'HASH'; '' },
+    item    => sub { my ($h, $k) = @_; $k = '' if ! defined $k; $k =~ $QR_PRIVATE ? undef : $h->{$k} },
+    items   => sub { [ %{ $_[0] } ] },
+    keys    => sub { [keys %{ $_[0] }] },
+    list    => \&vmethod_list_hash,
+    new     => sub { local $^W; return (@_ == 1 && ref $_[-1] eq 'HASH') ? $_[-1] : {@_} },
+    null    => sub { '' },
+    nsort   => sub { my $ref = shift; [sort {   $ref->{$a} <=>    $ref->{$b}} keys %$ref] },
+    pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } sort keys %{ $_[0] } ] },
+    size    => sub { scalar keys %{ $_[0] } },
+    sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
+    values  => sub { [values %{ $_[0] }] },
+};
+
+our $VOBJS = {
+    Text => $SCALAR_OPS,
+    List => $LIST_OPS,
+    Hash => $HASH_OPS,
+};
+foreach (values %$VOBJS) {
+    $_->{'Text'} = $_->{'as'};
+    $_->{'Hash'} = $_->{'hash'};
+    $_->{'List'} = $_->{'list'};
+}
+
+our $DIRECTIVES = {
+    #name       parse_sub        play_sub         block    postdir  continue  move_to_front
+    BLOCK   => [\&parse_BLOCK,   \&play_BLOCK,    1,       0,       0,        1],
+    BREAK   => [sub {},          \&play_control],
+    CALL    => [\&parse_CALL,    \&play_CALL],
+    CASE    => [\&parse_CASE,    undef,           0,       0,       {SWITCH => 1, CASE => 1}],
+    CATCH   => [\&parse_CATCH,   undef,           0,       0,       {TRY => 1, CATCH => 1}],
+    CLEAR   => [sub {},          \&play_CLEAR],
+    '#'     => [sub {},          sub {}],
+    CONFIG  => [\&parse_CONFIG,  \&play_CONFIG],
+    DEBUG   => [\&parse_DEBUG,   \&play_DEBUG],
+    DEFAULT => [\&parse_DEFAULT, \&play_DEFAULT],
+    DUMP    => [\&parse_DUMP,    \&play_DUMP],
+    ELSE    => [sub {},          undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
+    ELSIF   => [\&parse_IF,      undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
+    END     => [undef,           sub {}],
+    FILTER  => [\&parse_FILTER,  \&play_FILTER,   1,       1],
+    '|'     => [\&parse_FILTER,  \&play_FILTER,   1,       1],
+    FINAL   => [sub {},          undef,           0,       0,       {TRY => 1, CATCH => 1}],
+    FOR     => [\&parse_FOREACH, \&play_FOREACH,  1,       1],
+    FOREACH => [\&parse_FOREACH, \&play_FOREACH,  1,       1],
+    GET     => [\&parse_GET,     \&play_GET],
+    IF      => [\&parse_IF,      \&play_IF,       1,       1],
+    INCLUDE => [\&parse_INCLUDE, \&play_INCLUDE],
+    INSERT  => [\&parse_INSERT,  \&play_INSERT],
+    LAST    => [sub {},          \&play_control],
+    MACRO   => [\&parse_MACRO,   \&play_MACRO],
+    META    => [undef,           \&play_META],
+    NEXT    => [sub {},          \&play_control],
+    PERL    => [\&parse_PERL,    \&play_PERL,     1],
+    PROCESS => [\&parse_PROCESS, \&play_PROCESS],
+    RAWPERL => [\&parse_PERL,    \&play_RAWPERL,  1],
+    RETURN  => [sub {},          \&play_control],
+    SET     => [\&parse_SET,     \&play_SET],
+    STOP    => [sub {},          \&play_control],
+    SWITCH  => [\&parse_SWITCH,  \&play_SWITCH,   1],
+    TAGS    => [undef,           sub {}],
+    THROW   => [\&parse_THROW,   \&play_THROW],
+    TRY     => [sub {},          \&play_TRY,      1],
+    UNLESS  => [\&parse_UNLESS,  \&play_UNLESS,   1,       1],
+    USE     => [\&parse_USE,     \&play_USE],
+    VIEW    => [\&parse_VIEW,    \&play_VIEW,     1],
+    WHILE   => [\&parse_WHILE,   \&play_WHILE,    1,       1],
+    WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1,       1],
+    #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
+};
+
+### setup the operator parsing
+our $OPERATORS = [
+    # type      precedence symbols              action (undef means play_operator will handle)
+    ['prefix',  99,        ['\\'],              undef                       ],
+    ['postfix', 98,        ['++'],              undef                       ],
+    ['postfix', 98,        ['--'],              undef                       ],
+    ['prefix',  97,        ['++'],              undef                       ],
+    ['prefix',  97,        ['--'],              undef                       ],
+    ['right',   96,        ['**', 'pow'],       sub {     $_[0] ** $_[1]  } ],
+    ['prefix',  93,        ['!'],               sub {   ! $_[0]           } ],
+    ['prefix',  93,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
+    ['left',    90,        ['*'],               sub {     $_[0] *  $_[1]  } ],
+    ['left',    90,        ['/'],               sub {     $_[0] /  $_[1]  } ],
+    ['left',    90,        ['div', 'DIV'],      sub { int($_[0] /  $_[1]) } ],
+    ['left',    90,        ['%', 'mod', 'MOD'], sub {     $_[0] %  $_[1]  } ],
+    ['left',    85,        ['+'],               sub {     $_[0] +  $_[1]  } ],
+    ['left',    85,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
+    ['left',    85,        ['~', '_'],          undef                       ],
+    ['none',    80,        ['<'],               sub {     $_[0] <  $_[1]  } ],
+    ['none',    80,        ['>'],               sub {     $_[0] >  $_[1]  } ],
+    ['none',    80,        ['<='],              sub {     $_[0] <= $_[1]  } ],
+    ['none',    80,        ['>='],              sub {     $_[0] >= $_[1]  } ],
+    ['none',    80,        ['lt'],              sub {     $_[0] lt $_[1]  } ],
+    ['none',    80,        ['gt'],              sub {     $_[0] gt $_[1]  } ],
+    ['none',    80,        ['le'],              sub {     $_[0] le $_[1]  } ],
+    ['none',    80,        ['ge'],              sub {     $_[0] ge $_[1]  } ],
+    ['none',    75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]  } ],
+    ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]  } ],
+    ['left',    70,        ['&&'],              undef                       ],
+    ['right',   65,        ['||'],              undef                       ],
+    ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]  } ],
+    ['ternary', 55,        ['?', ':'],          undef                       ],
+    ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]  } ],
+    ['assign',  53,        ['-='],              sub {     $_[0] -  $_[1]  } ],
+    ['assign',  53,        ['*='],              sub {     $_[0] *  $_[1]  } ],
+    ['assign',  53,        ['/='],              sub {     $_[0] /  $_[1]  } ],
+    ['assign',  53,        ['%='],              sub {     $_[0] %  $_[1]  } ],
+    ['assign',  53,        ['**='],             sub {     $_[0] ** $_[1]  } ],
+    ['assign',  53,        ['~=', '_='],        sub {     $_[0] .  $_[1]  } ],
+    ['assign',  52,        ['='],               undef                       ],
+    ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]           } ],
+    ['left',    45,        ['and', 'AND'],      undef                       ],
+    ['right',   40,        ['or', 'OR'],        undef                       ],
+];
+our $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
+our $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
+our $OP_DISPATCH = {map {my $ref = $_; map {$_ => $ref->[3]} @{$ref->[2]}} grep {$_->[3]             } @$OPERATORS};
+our $OP_ASSIGN   = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'assign' } @$OPERATORS};
+our $OP_POSTFIX  = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'postfix'} @$OPERATORS}; # bool is postfix
+our $OP_TERNARY  = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'ternary'} @$OPERATORS}; # bool is ternary
+sub _op_qr { # no mixed \w\W operators
+    my %used;
+    my $chrs = join '|', reverse sort map {quotemeta $_} grep {++$used{$_} < 2} grep {! /\{\}|\[\]/} grep {/^\W{2,}$/} @_;
+    my $chr  = join '',          sort map {quotemeta $_} grep {++$used{$_} < 2} grep {/^\W$/}     @_;
+    my $word = join '|', reverse sort                    grep {++$used{$_} < 2} grep {/^\w+$/}    @_;
+    $chr = "[$chr]" if $chr;
+    $word = "\\b(?:$word)\\b" if $word;
+    return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
+}
+sub _build_op_qr        { _op_qr(map {@{ $_->[2] }} grep {$_->[0] ne 'prefix'} @$OPERATORS) }
+sub _build_op_qr_prefix { _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'prefix'} @$OPERATORS) }
+sub _build_op_qr_assign { _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'assign'} @$OPERATORS) }
+our $QR_OP        = _build_op_qr();
+our $QR_OP_PREFIX = _build_op_qr_prefix();
+our $QR_OP_ASSIGN = _build_op_qr_assign();
+
+our $QR_DIRECTIVE = '( [a-zA-Z]+\b | \| )';
+our $QR_COMMENTS  = '(?-s: \# .* \s*)*';
+our $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\.][\w\-\.]* (?:/[\w\-\.]+)*';
+our $QR_BLOCK     = '\w+\b (?: :\w+\b)* )';
+our $QR_NUM       = '(?:\d*\.\d+ | \d+) (?: [eE][+-]\d+ )?';
+our $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=;) )';
+
+our $WHILE_MAX    = 1000;
+our $EXTRA_COMPILE_EXT = '.sto';
+our $MAX_EVAL_RECURSE  = 50;
+our $MAX_MACRO_RECURSE = 50;
+our $STAT_TTL          ||= 1;
+
+our @CONFIG_COMPILETIME = qw(ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
+our @CONFIG_RUNTIME     = qw(DUMP);
+
+eval {require Scalar::Util};
 
 ###----------------------------------------------------------------###
 
@@ -1335,7 +1300,7 @@ sub parse_args {
         if ($ARGS->{'allow_bare_filenames'}) {
             $name = $self->parse_expr($str_ref, {auto_quote => "
               ($QR_FILENAME               # file name
-              | \\w+\\b (?: :\\w+\\b)* )  # or block
+              | $QR_BLOCK                 # or block
                 (?= [+=~-]? $end          # an end tag
                   | \\s*[+,;]             # followed by explicit + , or ;
                   | \\s+ (?! [\\s=])      # or space not before an =
@@ -1433,12 +1398,10 @@ sub execute_tree {
     for my $node (@$tree) {
         ### text nodes are just the bare text
         if (! ref $node) {
-            warn "NODE: TEXT\n" if trace;
             $$out_ref .= $node if defined $node;
             next;
         }
 
-        warn "NODE: $node->[0] (char $node->[1])\n" if trace;
         $$out_ref .= $self->debug_node($node) if $self->{'_debug_dirs'} && ! $self->{'_debug_off'};
 
         my $val = $DIRECTIVES->{$node->[0]}->[1]->($self, $node->[3], $node, $out_ref);
@@ -1459,7 +1422,6 @@ sub play_expr {
     my $ref;
     my $name = $var->[$i++];
     my $args = $var->[$i++];
-    warn "play_expr: begin \"$name\"\n" if trace;
     if (ref $name) {
         if (! defined $name->[0]) { # operator
             return $self->play_operator($name) if wantarray && $name->[1] eq '..';
@@ -1506,7 +1468,6 @@ sub play_expr {
         my $was_dot_call = $ARGS->{'no_dots'} ? 1 : $var->[$i++] eq '.';
         $name            = $var->[$i++];
         $args            = $var->[$i++];
-        warn "play_expr: nested \"$name\"\n" if trace;
 
         ### allow for named portions of a variable name (foo.$name.bar)
         if (ref $name) {
@@ -1873,7 +1834,7 @@ sub parse_BLOCK {
     my $end = $self->{'_end_tag'} || '(?!)';
     my $block_name = $self->parse_expr($str_ref, {auto_quote => "
               ($QR_FILENAME               # file name
-              | \\w+\\b (?: :\\w+\\b)* )  # or block
+              | $QR_BLOCK                 # or block
                 (?= [+=~-]? $end          # an end tag
                   | \\s*[+,;]             # followed by explicit + , or ;
                   | \\s+ (?! [\\s=])      # or space not before an =
@@ -2949,10 +2910,8 @@ sub _insert {
 
 sub slurp {
     my ($self, $file) = @_;
-    local *FH;
-    open(FH, "<$file") || $self->throw('file', "$file couldn't be opened: $!");
-    read FH, my $txt, -s $file;
-    close FH;
+    open(my $fh, '<', $file) || $self->throw('file', "$file couldn't be opened: $!");
+    read $fh, my $txt, -s $file;
     return $txt;
 }
 
@@ -2983,7 +2942,7 @@ sub process {
 
     my $args;
     $args = ($#ARGS == 0 && UNIVERSAL::isa($ARGS[0], 'HASH')) ? {%{$ARGS[0]}} : {@ARGS} if scalar @ARGS;
-    $self->DEBUG("set binmode\n") if $DEBUG && $args->{'binmode'}; # holdover for TT2 tests
+    $self->DEBUG("set binmode\n") if $args->{'binmode'}; # holdover for TT2 tests
 
     ### get the content
     my $content;
@@ -3149,14 +3108,12 @@ sub process {
             }
         }
         if ($file) {
-            local *FH;
-            if (open FH, ">$file") {
+            if (open my $fh, '>', $file) {
                 if (my $bm = $args->{'binmode'}) {
-                    if (+$bm == 1) { binmode FH }
-                    else           { binmode FH, $bm }
+                    if (+$bm == 1) { binmode $fh }
+                    else           { binmode $fh, $bm }
                 }
-                print FH $output;
-                close FH;
+                print $fh $output;
             } else {
                 $self->{'error'} = $self->throw('file', "$out couldn't be opened for writing: $!");
             }
@@ -3544,14 +3501,12 @@ sub filter_redirect {
             require File::Path;
             File::Path::mkpath($path) || $context->throw('redirect', "Couldn't mkpath \"$path\": $!");
         }
-        local *FH;
-        open (FH, ">$path/$file") || $context->throw('redirect', "Couldn't open \"$file\": $!");
+        open (my $fh, '>', "$path/$file") || $context->throw('redirect', "Couldn't open \"$file\": $!");
         if (my $bm = (! $options) ? 0 : ref($options) ? $options->{'binmode'} : $options) {
-            if (+$bm == 1) { binmode FH }
-            else { binmode FH, $bm}
+            if (+$bm == 1) { binmode $fh }
+            else { binmode $fh, $bm}
         }
-        print FH $text;
-        close FH;
+        print $fh $text;
         return '';
     };
 }
