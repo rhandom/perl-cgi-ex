@@ -533,7 +533,6 @@ sub parse_tree {
     my $capture;          # flag to start capture
     my $func;
     my $node;
-    my $mark;
     local pos $$str_ref = 0;
 
     while (1) {
@@ -723,7 +722,7 @@ sub parse_tree {
             next;
         }
 
-        $mark = pos $$str_ref;
+        my $mark = pos $$str_ref;
 
         ### semi-colon = end of statement - we will need to continue parsing this tag
         if ($$str_ref =~ m{ \G ; \s* $QR_COMMENTS }gcxo) {
@@ -748,11 +747,8 @@ sub parse_tree {
             $post_op  = undef;
         }
 
-        if ($continue && $continue == $mark) {
-            $self->throw('parse', "Not sure how to handle tag", $node, pos($$str_ref));
-        }
-
         ### no closing tag yet - no need to get an opening tag on next loop
+        $self->throw('parse', "Not sure how to handle tag", $node, pos($$str_ref)) if $continue == $mark;
         $continue = $mark;
     }
 
