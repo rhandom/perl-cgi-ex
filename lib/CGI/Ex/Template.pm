@@ -146,7 +146,7 @@ our $DIRECTIVES = {
     DUMP    => [\&parse_DUMP,    \&play_DUMP],
     ELSE    => [sub {},          undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
     ELSIF   => [\&parse_IF,      undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
-    END     => [undef,           sub {}],
+    END     => [sub {},          sub {}],
     FILTER  => [\&parse_FILTER,  \&play_FILTER,   1,       1],
     '|'     => [\&parse_FILTER,  \&play_FILTER,   1,       1],
     FINAL   => [sub {},          undef,           0,       0,       {TRY => 1, CATCH => 1}],
@@ -158,16 +158,16 @@ our $DIRECTIVES = {
     INSERT  => [\&parse_INSERT,  \&play_INSERT],
     LAST    => [sub {},          \&play_control],
     MACRO   => [\&parse_MACRO,   \&play_MACRO],
-    META    => [undef,           \&play_META],
+    META    => [\&parse_META,    \&play_META],
     NEXT    => [sub {},          \&play_control],
     PERL    => [\&parse_PERL,    \&play_PERL,     1],
     PROCESS => [\&parse_PROCESS, \&play_PROCESS],
-    RAWPERL => [\&parse_PERL,    \&play_RAWPERL,  1],
+    RAWPERL => [\&parse_RAWPERL, \&play_RAWPERL,  1],
     RETURN  => [sub {},          \&play_control],
     SET     => [\&parse_SET,     \&play_SET],
     STOP    => [sub {},          \&play_control],
     SWITCH  => [\&parse_SWITCH,  \&play_SWITCH,   1],
-    TAGS    => [undef,           sub {}],
+    TAGS    => [\&parse_TAGS,    sub {}],
     THROW   => [\&parse_THROW,   \&play_THROW],
     TRY     => [sub {},          \&play_TRY,      1],
     UNLESS  => [\&parse_UNLESS,  \&play_UNLESS,   1,       1],
@@ -541,7 +541,7 @@ sub parse_tree {
         if ($continue) {
             $node = [undef, pos($$str_ref), undef];
 
-        ### look through the string using index
+        ### find the next opening tag
         } else {
             $$str_ref =~ m{ \G (.*?) $START }gcxs
                 || last;
@@ -599,20 +599,33 @@ sub parse_tree {
             && ($DIRECTIVES->{$func}
                 || ((pos($$str_ref) -= length $1) && 0))
             ) {                       # is it a directive
-            $node->[0] = $func;
             $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcx;
 
-            ### store out this current node level
-            if ($post_op) { # on a post operator - replace the original node with the new one - store the old in the new
+            $node->[0] = $func;
+
+            ### store out this current node level to the appropriate tree location
+            # on a post operator - replace the original node with the new one - store the old in the new
+            if ($post_op) {
                 my @post_op = @$post_op;
                 @$post_op = @$node;
                 $node = $post_op;
                 $node->[4] = [\@post_op];
+            # handle directive captures for an item like "SET foo = BLOCK"
             } elsif ($capture) {
-                # do nothing - it will be handled further down
+                push @{ $capture->[4] }, $node;
+                undef $capture;
+                # normal nodes
             } else{
                 push @$pointer, $node;
             }
+
+            ### parse any remaining tag details
+            $node->[3] = eval { $DIRECTIVES->{$func}->[0]->($self, $str_ref, $node) };
+            if (my $err = $@) {
+                $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
+                die $err;
+            }
+            $node->[2] = pos $$str_ref;
 
             ### anything that behaves as a block ending
             if ($func eq 'END' || $DIRECTIVES->{$func}->[4]) { # [4] means it is a continuation block (ELSE, CATCH, etc)
@@ -655,38 +668,18 @@ sub parse_tree {
 
                 ### continuation block - such as an elsif
                 } else {
-                    $node->[3] = eval { $DIRECTIVES->{$func}->[0]->($self, $str_ref, $node) };
-                    if (my $err = $@) {
-                        $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
-                        die $err;
-                    }
                     push @state, $node;
                     $pointer = $node->[4] ||= [];
                 }
 
+            ### handle block directives
+            } elsif ($DIRECTIVES->{$func}->[2] && ! $post_op) {
+                    push @state, $node;
+                    $pointer = $node->[4] ||= []; # allow future parsed nodes before END tag to end up in current node
+                    push @in_view, [] if $func eq 'VIEW';
+
             } elsif ($func eq 'TAGS') {
-                my $end;
-                if ($$str_ref =~ m{ \G (\w+) \s* $QR_COMMENTS }gcxs) {
-                    my $ref = $TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
-                    ($START, $END) = @$ref;
-
-                } else {
-                    local $self->{'_operator_precedence'} = 1; # prevent operator matching
-                    $START = $$str_ref =~ m{ \G (?= [\'\"\/]) }gcx
-                        ? $self->parse_expr($str_ref)
-                        : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s+ $QR_COMMENTS"})
-                            || $self->throw('parse', "Invalid opening tag in TAGS", undef, pos($$str_ref));
-                    $END   = $$str_ref =~ m{ \G (?= [\'\"\/]) }gcx
-                        ? $self->parse_expr($str_ref)
-                        : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s* $QR_COMMENTS"})
-                            || $self->throw('parse', "Invalid closing tag in TAGS", undef, pos($$str_ref));
-                    for my $tag ($START, $END) {
-                        $tag = $self->play_expr($tag);
-                        $tag = quotemeta($tag) if ! ref $tag;
-                    }
-                }
-
-                $node->[2] = pos $$str_ref;
+                ($START, $END) = @{ $node->[3] };
 
                 ### allow for one more closing tag of the old style
                 if ($$str_ref =~ m{ \G ([+~=-]?) $self->{'_end_tag'} }gcxs) {
@@ -697,29 +690,11 @@ sub parse_tree {
                     $self->{'_end_tag'} = $END; # need to keep track so parse_expr knows when to stop
                     next;
                 }
-
                 $self->{'_end_tag'} = $END;
 
             } elsif ($func eq 'META') {
-                my $args = $self->parse_args($str_ref, {named_at_front => 1});
-                my $hash;
-                if (($hash = $self->play_expr($args->[0]))
-                    && UNIVERSAL::isa($hash, 'HASH')) {
-                    unshift @meta, %$hash; # first defined win
-                }
-
-            ### all other "normal" tags
-            } else {
-                $node->[3] = eval { $DIRECTIVES->{$func}->[0]->($self, $str_ref, $node) };
-                if (my $err = $@) {
-                    $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
-                    die $err;
-                }
-                if ($DIRECTIVES->{$func}->[2] && ! $post_op) { # this looks like a block directive
-                    push @state, $node;
-                    $pointer = $node->[4] ||= [];
-                }
-                push @in_view, [] if $func eq 'VIEW';
+                unshift @meta, %{ $node->[3] }; # first defined win
+                $node->[3] = undef;             # only let these be defined once - at the front of the tree
             }
 
         ### allow for bare variable getting and setting
@@ -736,80 +711,60 @@ sub parse_tree {
                 $node->[0] = 'GET';
                 $node->[3] = $var;
             }
-
-        ### handle empty tags [% %]
-        } elsif ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) ($END) }gcxs) {
-            my $end = $2;
-            $post_chomp = $1 || $self->{'POST_CHOMP'};
-            $post_chomp =~ y/-=~+/1230/ if $post_chomp;
-            $node->[2] = pos($$str_ref) - length($end);
-            $continue = 0;
-            $post_op  = undef;
-            next;
-
-        } else { # error
-            $self->throw('parse', "Not sure how to handle tag", $node, pos($$str_ref));
+            $node->[2] = pos $$str_ref;
         }
 
-        ### we now have the directive to capture for an item like "SET foo = BLOCK" - store it
-        if ($capture) {
-            my $parent_node = $capture;
-            push @{ $parent_node->[4] }, $node;
-            undef $capture;
-        }
-
-        ### look for the closing tag again
-        if ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) ($END) }gcxs) {
-            my $end = $2;
+        ### look for the closing tag
+        if ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) $END }gcxs) {
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
-
-            $node->[2] = pos($$str_ref) - length($end);
             $continue = 0;
             $post_op  = undef;
             next;
         }
 
-        ### we always continue - and always record our position now
-        $continue  = 1;
-        $node->[2] = pos $$str_ref;
+        $mark = pos $$str_ref;
+
+        ### semi-colon = end of statement - we will need to continue parsing this tag
+        if ($$str_ref =~ m{ \G ; \s* $QR_COMMENTS }gcxo) {
+            $post_op   = undef;
 
         ### we are flagged to start capturing the output of the next directive - set it up
-        if ($node->[6]) {
+        } elsif ($node->[6]) {
             $post_op   = undef;
             $capture   = $node;
 
-        ### semi-colon = end of statement - we will need to continue parsing this tag
-        } elsif ($$str_ref =~ m{ \G ; \s* $QR_COMMENTS }gcxo) {
-            $post_op   = undef;
+        ### looking at a post operator ([% u FOREACH u IN [1..3] %])
+        } elsif ($$str_ref =~ m{ \G $QR_DIRECTIVE }gcxo   # find a word without advancing position
+                 && ($func = $self->{'ANYCASE'} ? uc($1) : $1)
+                 && (($DIRECTIVES->{$func}                # and its a directive
+                      && $DIRECTIVES->{$func}->[3])        # that can be post operative
+                     || ((pos($$str_ref) = $mark) && 0))  # otherwise rollback
+                 ) {
+            $post_op   = $node; # store flag so next loop puts items in this node
+            pos($$str_ref) = $mark;
 
         } else {
-            ### looking at a post operator ([% u FOREACH u IN [1..3] %])
-            $mark = pos $$str_ref;
-            if ($$str_ref =~ m{ \G $QR_DIRECTIVE }gcxo   # find a word without advancing position
-                && ($func = $self->{'ANYCASE'} ? uc($1) : $1)
-                && (($DIRECTIVES->{$func}                # and its a directive
-                    && $DIRECTIVES->{$func}->[3])        # that can be post operative
-                    || ((pos($$str_ref) = $mark) && 0))  # otherwise rollback
-                ) {
-                $post_op   = $node; # store flag so next loop puts items in this node
-                pos($$str_ref) = $mark;
-
-            } else {
-                $post_op  = undef;
-            }
+            $post_op  = undef;
         }
+
+        if ($continue && $continue == $mark) {
+            $self->throw('parse', "Not sure how to handle tag", $node, pos($$str_ref));
+        }
+
+        ### no closing tag yet - no need to get an opening tag on next loop
+        $continue = $mark;
     }
 
+    ### cleanup the tree
     if (@move_to_front) {
         unshift @tree, @move_to_front;
     }
     if (@meta) {
         unshift @tree, ['META', 0, 0, {@meta}];
     }
-
     if ($#state > -1) {
-        $self->throw('parse.missing.end', "Missing END", $state[-1], 0);
+        $self->throw('parse', "Missing END tag $END", $state[-1], 0);
     }
 
     ### pull off the last text portion - if any
@@ -1929,37 +1884,13 @@ sub play_DUMP {
 }
 
 sub parse_FILTER {
-    my ($self, $str_ref) = @_;
-    my $name = '';
-    if ($$str_ref =~ m{ \G ([^\W\d]\w*) \s* = \s* }gcx) {
-        $name = $1;
-    }
-
-    my $filter = $self->parse_expr($str_ref);
-    $filter = '' if ! defined $filter;
-
-    return [$name, $filter];
+    require CGI::Ex::Template::Extra;
+    &CGI::Ex::Template::Extra::parse_FILTER;
 }
 
 sub play_FILTER {
-    my ($self, $ref, $node, $out_ref) = @_;
-    my ($name, $filter) = @$ref;
-
-    return '' if ! @$filter;
-
-    $self->{'FILTERS'}->{$name} = $filter if length $name;
-
-    my $sub_tree = $node->[4];
-
-    ### play the block
-    my $out = '';
-    eval { $self->execute_tree($sub_tree, \$out) };
-    die $@ if $@ && ref($@) !~ /Template::Exception$/;
-
-    my $var = [[undef, '~', $out], 0, '|', @$filter]; # make a temporary var out of it
-
-
-    return $DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
+    require CGI::Ex::Template::Extra;
+    &CGI::Ex::Template::Extra::play_FILTER;
 }
 
 sub parse_FOREACH {
@@ -2138,9 +2069,18 @@ sub play_MACRO {
     &CGI::Ex::Template::Extra::play_MACRO;
 }
 
+sub parse_META {
+    my ($self, $str_ref) = @_;
+    my $args = $self->parse_args($str_ref, {named_at_front => 1});
+    my $hash;
+    return $hash if ($hash = $self->play_expr($args->[0])) && UNIVERSAL::isa($hash, 'HASH');
+    return undef;
+}
+
+
 sub play_META {
     my ($self, $hash) = @_;
-
+    return if ! $hash;
     my @keys = keys %$hash;
 
     my $ref;
@@ -2241,6 +2181,8 @@ sub play_PROCESS {
 
     return;
 }
+
+sub parse_RAWPERL { $DIRECTIVES->{'PERL'}->[0]->(@_) }
 
 sub play_RAWPERL {
     require CGI::Ex::Template::Extra;
@@ -2352,6 +2294,32 @@ sub play_SWITCH {
     }
 
     return;
+}
+
+sub parse_TAGS {
+    my ($self, $str_ref, $node) = @_;
+
+    my ($start, $end);
+    if ($$str_ref =~ m{ \G (\w+) \s* $QR_COMMENTS }gcxs) {
+        my $ref = $TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
+        ($start, $end) = @$ref;
+
+    } else {
+        local $self->{'_operator_precedence'} = 1; # prevent operator matching
+        $start = $$str_ref =~ m{ \G (?= [\'\"\/]) }gcx
+            ? $self->parse_expr($str_ref)
+            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s+ $QR_COMMENTS"})
+            || $self->throw('parse', "Invalid opening tag in TAGS", undef, pos($$str_ref));
+        $end   = $$str_ref =~ m{ \G (?= [\'\"\/]) }gcx
+            ? $self->parse_expr($str_ref)
+            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s* $QR_COMMENTS"})
+            || $self->throw('parse', "Invalid closing tag in TAGS", undef, pos($$str_ref));
+        for my $tag ($start, $end) {
+            $tag = $self->play_expr($tag);
+            $tag = quotemeta($tag) if ! ref $tag;
+        }
+    }
+    return [$start, $end];
 }
 
 sub parse_THROW {
