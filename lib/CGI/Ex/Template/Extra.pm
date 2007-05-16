@@ -127,6 +127,40 @@ sub play_DUMP {
     return $out;
 }
 
+sub parse_FILTER {
+    my ($self, $str_ref) = @_;
+    my $name = '';
+    if ($$str_ref =~ m{ \G ([^\W\d]\w*) \s* = \s* }gcx) {
+        $name = $1;
+    }
+
+    my $filter = $self->parse_expr($str_ref);
+    $filter = '' if ! defined $filter;
+
+    return [$name, $filter];
+}
+
+sub play_FILTER {
+    my ($self, $ref, $node, $out_ref) = @_;
+    my ($name, $filter) = @$ref;
+
+    return '' if ! @$filter;
+
+    $self->{'FILTERS'}->{$name} = $filter if length $name;
+
+    my $sub_tree = $node->[4];
+
+    ### play the block
+    my $out = '';
+    eval { $self->execute_tree($sub_tree, \$out) };
+    die $@ if $@ && ref($@) !~ /Template::Exception$/;
+
+    my $var = [[undef, '~', $out], 0, '|', @$filter]; # make a temporary var out of it
+
+
+    return $CGI::Ex::Template::DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
+}
+
 sub parse_MACRO {
     my ($self, $str_ref, $node) = @_;
 
