@@ -529,7 +529,7 @@ sub parse_tree {
     my @meta;             # place to store any found meta information (to go into META)
     my $post_chomp = 0;   # previous post_chomp setting
     my $continue   = 0;   # flag for multiple directives in the same tag
-    my $post_op;          # found a post-operative DIRECTIVE
+    my $post_op    = 0;   # found a post-operative DIRECTIVE
     my $capture;          # flag to start capture
     my $func;
     my $node;
@@ -604,7 +604,7 @@ sub parse_tree {
 
             ### store out this current node level to the appropriate tree location
             # on a post operator - replace the original node with the new one - store the old in the new
-            if ($post_op) {
+            if ($DIRECTIVES->{$func}->[3] && $post_op) {
                 my @post_op = @$post_op;
                 @$post_op = @$node;
                 $node = $post_op;
@@ -685,7 +685,7 @@ sub parse_tree {
                     $post_chomp = $1 || $self->{'POST_CHOMP'};
                     $post_chomp =~ y/-=~+/1230/ if $post_chomp;
                     $continue = 0;
-                    $post_op  = undef;
+                    $post_op  = 0;
                     $self->{'_end_tag'} = $END; # need to keep track so parse_expr knows when to stop
                     next;
                 }
@@ -718,38 +718,27 @@ sub parse_tree {
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
             $continue = 0;
-            $post_op  = undef;
+            $post_op  = 0;
             next;
         }
 
-        my $mark = pos $$str_ref;
-
         ### semi-colon = end of statement - we will need to continue parsing this tag
         if ($$str_ref =~ m{ \G ; \s* $QR_COMMENTS }gcxo) {
-            $post_op   = undef;
+            $post_op   = 0;
 
         ### we are flagged to start capturing the output of the next directive - set it up
         } elsif ($node->[6]) {
-            $post_op   = undef;
-            $capture   = $node;
+            $post_op = 0;
+            $capture = $node;
 
-        ### looking at a post operator ([% u FOREACH u IN [1..3] %])
-        } elsif ($$str_ref =~ m{ \G $QR_DIRECTIVE }gcxo   # find a word without advancing position
-                 && ($func = $self->{'ANYCASE'} ? uc($1) : $1)
-                 && (($DIRECTIVES->{$func}                # and its a directive
-                      && $DIRECTIVES->{$func}->[3])        # that can be post operative
-                     || ((pos($$str_ref) = $mark) && 0))  # otherwise rollback
-                 ) {
-            $post_op   = $node; # store flag so next loop puts items in this node
-            pos($$str_ref) = $mark;
-
+        ### allow next directive to be post-operative (or not)
         } else {
-            $post_op  = undef;
+            $post_op = $node;
         }
 
         ### no closing tag yet - no need to get an opening tag on next loop
-        $self->throw('parse', "Not sure how to handle tag", $node, pos($$str_ref)) if $continue == $mark;
-        $continue = $mark;
+        $self->throw('parse', "Not sure how to handle tag", $node, pos($$str_ref)) if $continue == pos $$str_ref;
+        $continue = pos $$str_ref;
     }
 
     ### cleanup the tree
