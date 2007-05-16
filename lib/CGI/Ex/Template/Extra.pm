@@ -6,6 +6,9 @@ CGI::Ex::Template::Extra - load extra and advanced features that aren't as commo
 
 =cut
 
+use strict;
+use warnings;
+
 sub parse_CONFIG {
     my ($self, $str_ref) = @_;
 
@@ -124,6 +127,176 @@ sub play_DUMP {
     return $out;
 }
 
+sub parse_MACRO {
+    my ($self, $str_ref, $node) = @_;
+
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $CGI::Ex::Template::QR_COMMENTS"});
+    $self->throw('parse', "Missing macro name", undef, pos($$str_ref)) if ! defined $name;
+    if (! ref $name) {
+        $name = [ $name, 0 ];
+    }
+
+    my $args;
+    if ($$str_ref =~ m{ \G \( \s* }gcx) {
+        $args = $self->parse_args($str_ref, {positional_only => 1});
+        $$str_ref =~ m{ \G \) \s* }gcx || $self->throw('parse.missing', "Missing close ')'", undef, pos($$str_ref));
+    }
+
+    $node->[6] = 1;           # set a flag to keep parsing
+    return [$name, $args];
+}
+
+sub play_MACRO {
+    my ($self, $ref, $node, $out_ref) = @_;
+    my ($name, $args) = @$ref;
+
+    ### get the sub tree
+    my $sub_tree = $node->[4];
+    if (! $sub_tree || ! $sub_tree->[0]) {
+        $self->set_variable($name, undef);
+        return;
+    } elsif ($sub_tree->[0]->[0] eq 'BLOCK') {
+        $sub_tree = $sub_tree->[0]->[4];
+    }
+
+    my $self_copy = $self;
+    eval {require Scalar::Util; Scalar::Util::weaken($self_copy)};
+
+    ### install a closure in the stash that will handle the macro
+    $self->set_variable($name, sub {
+        ### macros localize
+        my $copy = $self_copy->{'_vars'};
+        local $self_copy->{'_vars'}= {%$copy};
+
+        ### prevent recursion
+        local $self_copy->{'_macro_recurse'} = $self_copy->{'_macro_recurse'} || 0;
+        my $max = $self_copy->{'MAX_MACRO_RECURSE'} || $CGI::Ex::Template::MAX_MACRO_RECURSE;
+        $self_copy->throw('macro_recurse', "MAX_MACRO_RECURSE $max reached")
+            if ++$self_copy->{'_macro_recurse'} > $max;
+
+        ### set arguments
+        my $named = pop(@_) if $_[-1] && UNIVERSAL::isa($_[-1],'HASH') && $#_ > $#$args;
+        my @positional = @_;
+        foreach my $var (@$args) {
+            $self_copy->set_variable($var, shift(@positional));
+        }
+        foreach my $name (sort keys %$named) {
+            $self_copy->set_variable([$name, 0], $named->{$name});
+        }
+
+        ### finally - run the sub tree
+        my $out = '';
+        $self_copy->execute_tree($sub_tree, \$out);
+        return $out;
+    });
+
+    return;
+}
+
+sub play_PERL {
+    my ($self, $info, $node, $out_ref) = @_;
+    $self->throw('perl', 'EVAL_PERL not set') if ! $self->{'EVAL_PERL'};
+
+    ### fill in any variables
+    my $perl = $node->[4] || return;
+    my $out  = '';
+    $self->execute_tree($perl, \$out);
+    $out = $1 if $out =~ /^(.+)$/s; # blatant untaint - shouldn't use perl anyway
+
+    ### try the code
+    my $err;
+    eval {
+        package CGI::Ex::Template::Perl;
+
+        my $context = $self->context;
+        my $stash   = $context->stash;
+
+        ### setup a fake handle
+        local *PERLOUT;
+        tie *PERLOUT, 'CGI::Ex::Template::EvalPerlHandle', $out_ref;
+        my $old_fh = select PERLOUT;
+
+        eval $out;
+        $err = $@;
+
+        ### put the handle back
+        select $old_fh;
+
+    };
+    $err ||= $@;
+
+
+    if ($err) {
+        $self->throw('undef', $err) if ref($err) !~ /Template::Exception$/;
+        die $err;
+    }
+
+    return;
+}
+
+sub play_RAWPERL {
+    my ($self, $info, $node, $out_ref) = @_;
+    $self->throw('perl', 'EVAL_PERL not set') if ! $self->{'EVAL_PERL'};
+
+    ### fill in any variables
+    my $tree = $node->[4] || return;
+    my $perl  = '';
+    $self->execute_tree($tree, \$perl);
+    $perl = $1 if $perl =~ /^(.+)$/s; # blatant untaint - shouldn't use perl anyway
+
+    ### try the code
+    my $err;
+    my $output = '';
+    eval {
+        package CGI::Ex::Template::Perl;
+
+        my $context = $self->context;
+        my $stash   = $context->stash;
+
+        eval $perl;
+        $err = $@;
+    };
+    $err ||= $@;
+
+    $$out_ref .= $output;
+
+    if ($err) {
+        $self->throw('undef', $err) if ref($err) !~ /Template::Exception$/;
+        die $err;
+    }
+
+    return;
+}
+
+sub parse_USE {
+    my ($self, $str_ref) = @_;
+
+    my $QR_COMMENTS = $CGI::Ex::Template::QR_COMMENTS;
+
+    my $var;
+    my $mark = pos $$str_ref;
+    if (defined(my $_var = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"}))
+        && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # make sure there is assignment
+            || ((pos($$str_ref) = $mark) && 0))               # otherwise we need to rollback
+        ) {
+        $var = $_var;
+    }
+
+    my $module = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: (?:\\.|::) \\w+\\b)*) (?! \\.) \\s* $QR_COMMENTS"});
+    $self->throw('parse', "Missing plugin name while parsing $$str_ref", undef, pos($$str_ref)) if ! defined $module;
+    $module =~ s/\./::/g;
+
+    my $args;
+    my $open = $$str_ref =~ m{ \G \( \s* $QR_COMMENTS }gcxo;
+    $args = $self->parse_args($str_ref, {is_parened => $open, named_at_front => 1});
+
+    if ($open) {
+        $$str_ref =~ m{ \G \) \s* $QR_COMMENTS }gcxo || $self->throw('parse.missing', "Missing close ')'", undef, pos($$str_ref));
+    }
+
+    return [$var, $module, $args];
+}
+
 sub play_USE {
     my ($self, $ref, $node, $out_ref) = @_;
     my ($var, $module, $args) = @$ref;
@@ -182,6 +355,16 @@ sub play_USE {
     return;
 }
 
+sub parse_VIEW {
+    my ($self, $str_ref) = @_;
+
+    my $ref = $self->parse_args($str_ref, {
+        named_at_front       => 1,
+        require_arg          => 1,
+    });
+
+    return $ref;
+}
 
 sub play_VIEW {
     my ($self, $ref, $node, $out_ref) = @_;
@@ -237,5 +420,194 @@ sub play_VIEW {
     return '';
 }
 
+###----------------------------------------------------------------###
+
+sub list_plugins {
+    my $self = shift;
+    my $args = shift || {};
+    my $base = $args->{'base'} || '';
+
+    return $self->{'_plugins'}->{$base} ||= do {
+        my @plugins;
+
+        $base =~ s|::|/|g;
+        my @dirs = grep {-d $_} map {"$_/$base"} @INC;
+
+        foreach my $dir (@dirs) {
+            require File::Find;
+            File::Find::find(sub {
+                my $mod = $base .'/'. ($File::Find::name =~ m|^ $dir / (.*\w) \.pm $|x ? $1 : return);
+                $mod =~ s|/|::|g;
+                push @plugins, $mod;
+            }, $dir);
+        }
+
+        \@plugins; # return of the do
+    };
+}
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::Context;
+
+use vars qw($AUTOLOAD);
+
+sub new {
+    my $class = shift;
+    my $self  = shift || {};
+    die "Missing _template" if ! $self->{'_template'};
+    return bless $self, $class;
+}
+
+sub _template { shift->{'_template'} || die "Missing _template" }
+
+sub template {
+    my ($self, $name) = @_;
+    return $self->_template->{'BLOCKS'}->{$name} || $self->_template->load_parsed_tree($name);
+}
+
+sub config { shift->_template }
+
+sub stash {
+    my $self = shift;
+    return $self->{'stash'} ||= bless {_template => $self->_template}, 'CGI::Ex::Template::_Stash';
+}
+
+sub insert { shift->_template->_insert(@_) }
+
+sub eval_perl { shift->_template->{'EVAL_PERL'} }
+
+sub process {
+    my $self = shift;
+    my $ref  = shift;
+    my $args = shift || {};
+
+    $self->_template->set_variable($_, $args->{$_}) for keys %$args;
+
+    my $out  = '';
+    $self->_template->_process($ref, $self->_template->_vars, \$out);
+    return $out;
+}
+
+sub include {
+    my $self = shift;
+    my $ref  = shift;
+    my $args = shift || {};
+
+    my $t = $self->_template;
+
+    my $swap = $t->{'_vars'};
+    local $t->{'_vars'} = {%$swap};
+
+    $t->set_variable($_, $args->{$_}) for keys %$args;
+
+    my $out = ''; # have temp item to allow clear to correctly clear
+    eval { $t->_process($ref, $t->_vars, \$out) };
+    if (my $err = $@) {
+        die $err if ref($err) !~ /Template::Exception$/ || $err->type !~ /return/;
+    }
+
+    return $out;
+}
+
+sub define_filter {
+    my ($self, $name, $filter, $is_dynamic) = @_;
+    $filter = [ $filter, 1 ] if $is_dynamic;
+    $self->define_vmethod('filter', $name, $filter);
+}
+
+sub filter {
+    my ($self, $name, $args, $alias) = @_;
+    my $t = $self->_template;
+
+    my $filter;
+    if (! ref $name) {
+        $filter = $t->{'FILTERS'}->{$name} || $CGI::Ex::Template::FILTER_OPS->{$name} || $CGI::Ex::Template::SCALAR_OPS->{$name};
+        $t->throw('filter', $name) if ! $filter;
+    } elsif (UNIVERSAL::isa($name, 'CODE') || UNIVERSAL::isa($name, 'ARRAY')) {
+        $filter = $name;
+    } elsif (UNIVERSAL::can($name, 'factory')) {
+        $filter = $name->factory || $t->throw($name->error);
+    } else {
+        $t->throw('undef', "$name: filter not found");
+    }
+
+    if (UNIVERSAL::isa($filter, 'ARRAY')) {
+        $filter = ($filter->[1]) ? $filter->[0]->($t->context, @$args) : $filter->[0];
+    } elsif ($args && @$args) {
+        my $sub = $filter;
+        $filter = sub { $sub->(shift, @$args) };
+    }
+
+    $t->{'FILTERS'}->{$alias} = $filter if $alias;
+
+    return $filter;
+}
+
+sub define_vmethod { shift->_template->define_vmethod(@_) }
+
+sub throw {
+    my ($self, $type, $info) = @_;
+
+    if (UNIVERSAL::isa($type, $CGI::Ex::Template::PACKAGE_EXCEPTION)) {
+	die $type;
+    } elsif (defined $info) {
+	$self->_template->throw($type, $info);
+    } else {
+	$self->_template->throw('undef', $type);
+    }
+}
+
+sub AUTOLOAD { shift->_template->throw('not_implemented', "The method $AUTOLOAD has not been implemented") }
+
+sub DESTROY {}
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::_Stash;
+
+use vars qw($AUTOLOAD);
+
+sub _template { shift->{'_template'} || die "Missing _template" }
+
+sub get {
+    my ($self, $var) = @_;
+    if (! ref $var) {
+        if ($var =~ /^\w+$/) {  $var = [$var, 0] }
+        else {                  $var = $self->_template->parse_expr(\$var, {no_dots => 1}) }
+    }
+    return $self->_template->play_expr($var, {no_dots => 1});
+}
+
+sub set {
+    my ($self, $var, $val) = @_;
+    if (! ref $var) {
+        if ($var =~ /^\w+$/) {  $var = [$var, 0] }
+        else {                  $var = $self->_template->parse_expr(\$var, {no_dots => 1}) }
+    }
+    $self->_template->set_variable($var, $val, {no_dots => 1});
+    return $val;
+}
+
+sub AUTOLOAD { shift->_template->throw('not_implemented', "The method $AUTOLOAD has not been implemented") }
+
+sub DESTROY {}
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::EvalPerlHandle;
+
+sub TIEHANDLE {
+    my ($class, $out_ref) = @_;
+    return bless [$out_ref], $class;
+}
+
+sub PRINT {
+    my $self = shift;
+    ${ $self->[0] } .= $_ for grep {defined && length} @_;
+    return 1;
+}
+
+###----------------------------------------------------------------###
 
 1;
