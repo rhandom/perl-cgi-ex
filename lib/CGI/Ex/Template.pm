@@ -273,7 +273,7 @@ our $MAX_MACRO_RECURSE = 50;
 our $STAT_TTL          ||= 1;
 
 our @CONFIG_COMPILETIME = qw(ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
-our @CONFIG_RUNTIME     = qw(DUMP);
+our @CONFIG_RUNTIME     = qw(DUMP VMETHOD_FUNCTIONS);
 
 eval {require Scalar::Util};
 BEGIN {require CGI::Ex::Template::Extra if $ENV{'MOD_PERL'}};

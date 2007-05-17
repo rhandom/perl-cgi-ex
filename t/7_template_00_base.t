@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 852 : 607;
+use Test::More tests => ! $is_tt ? 853 : 607;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1258,6 +1258,7 @@ process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" 
 
 process_ok("[% CONFIG DUMP    %]|[% CONFIG DUMP    => 0 %][% DUMP           %]bar" => 'CONFIG DUMP = undef|bar');
 process_ok("[% CONFIG DUMP => {Useqq=>1, header=>0, html=>0} %][% DUMP 'foo' %]" => "'foo' = \"foo\";\n");
+process_ok("[% CONFIG VMETHOD_FUNCTIONS => 0 %][% sprintf('%d %d', 7, 8) %] d" => ' d');
 }
 
 ###----------------------------------------------------------------###
