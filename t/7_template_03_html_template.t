@@ -61,7 +61,7 @@ print $fh "([% template.foo %][% INCLUDE bar.tt %])";
 close $fh;
 
 ###----------------------------------------------------------------###
-print "### BASIC SYNTAX ###########################################################\n";
+print "### BASIC SYNTAX #####################################################\n";
 
 process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "", {tt_config => [SYNTAX => 'garbage']});
 process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237");
@@ -75,6 +75,34 @@ process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2)
 process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar'});
 process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt2']});
 process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt1']});
+
+###----------------------------------------------------------------###
+print "### HTML::Template::Expr SYNTAX ######################################\n";
+
+process_ok("Foo" => "Foo", {tt_config => [SYNTAX => 'ht']});
+process_ok("Foo" => "Foo", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR NAME=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR NAME=\"foo\">" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR NAME='foo'>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR NAME='foo' >" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR foo >" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
+
+process_ok("<TMPL_VAR ESCAPE=html     foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR ESCAPE=HTML     foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR ESCAPE=\"HTML\" foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR ESCAPE='HTML'   foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR ESCAPE=1        foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR ESCAPE=0        foo>" => "<>", {foo => "<>", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR ESCAPE=NONE     foo>" => "<>", {foo => "<>", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR ESCAPE=URL      foo>" => "%3C%3E", {foo => "<>", tt_config => [SYNTAX => 'hte']});
+
+process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "", {foo => "", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "bar", {foo => "1", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_IF foo>bar<TMPL_ELSE>bing</TMPL_IF>" => "bing", {foo => "", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_IF foo>bar<TMPL_ELSE>bing</TMPL_IF>" => "bar", {foo => "1", tt_config => [SYNTAX => 'hte']});
+
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
