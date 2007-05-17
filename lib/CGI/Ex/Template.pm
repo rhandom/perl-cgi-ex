@@ -30,33 +30,46 @@ our $TAGS = {
 
 our $SCALAR_OPS = {
     '0'      => sub { $_[0] },
+    abs      => sub { local $^W; abs shift },
+    atan2    => sub { local $^W; atan2($_[0], $_[1]) },
     chunk    => \&vmethod_chunk,
     collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
+    cos      => sub { local $^W; cos $_[0] },
     defined  => sub { defined $_[0] ? 1 : '' },
-    indent   => \&vmethod_indent,
-    int      => sub { local $^W; int $_[0] },
+    exp      => sub { local $^W; exp $_[0] },
     fmt      => \&vmethod_fmt_scalar,
     'format' => \&vmethod_format,
     hash     => sub { {value => $_[0]} },
+    hex      => sub { local $^W; hex $_[0] },
     html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; s/\'/&apos;/g; $_ },
+    indent   => \&vmethod_indent,
+    int      => sub { local $^W; int $_[0] },
     item     => sub { $_[0] },
+    lc       => sub { lc $_[0] },
     lcfirst  => sub { lcfirst $_[0] },
     length   => sub { defined($_[0]) ? length($_[0]) : 0 },
     list     => sub { [$_[0]] },
+    log      => sub { local $^W; log $_[0] },
     lower    => sub { lc $_[0] },
     match    => \&vmethod_match,
     new      => sub { defined $_[0] ? $_[0] : '' },
     null     => sub { '' },
+    oct      => sub { local $^W; oct $_[0] },
     rand     => sub { local $^W; rand shift },
     remove   => sub { vmethod_replace(shift, shift, '', 1) },
     repeat   => \&vmethod_repeat,
     replace  => \&vmethod_replace,
     search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
+    sin      => sub { local $^W; sin $_[0] },
     size     => sub { 1 },
     split    => \&vmethod_split,
+    sprintf  => \&vmethod_fmt_scalar,
+    sqrt     => sub { local $^W; sqrt $_[0] },
+    srand    => sub { local $^W; srand $_[0] },
     stderr   => sub { print STDERR $_[0]; '' },
     substr   => \&vmethod_substr,
     trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
+    uc       => sub { uc $_[0] },
     ucfirst  => sub { ucfirst $_[0] },
     upper    => sub { uc $_[0] },
     uri      => \&vmethod_uri,
@@ -126,7 +139,7 @@ our $VOBJS = {
     Hash => $HASH_OPS,
 };
 foreach (values %$VOBJS) {
-    $_->{'Text'} = $_->{'as'};
+    $_->{'Text'} = $_->{'fmt'};
     $_->{'Hash'} = $_->{'hash'};
     $_->{'List'} = $_->{'list'};
 }
@@ -206,6 +219,8 @@ our $OPERATORS = [
     ['none',    80,        ['ge'],              sub {     $_[0] ge $_[1]  } ],
     ['none',    75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]  } ],
     ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]  } ],
+    ['none',    75,        ['<=>'],             sub {     $_[0] <=> $_[1] } ],
+    ['none',    75,        ['cmp'],             sub {     $_[0] cmp $_[1] } ],
     ['left',    70,        ['&&'],              undef                       ],
     ['right',   65,        ['||'],              undef                       ],
     ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]  } ],
@@ -577,7 +592,9 @@ sub parse_tree {
                 elsif ($pre_chomp == 3) { $pointer->[-1] =~ s{             (\s+) \z }{}x  }
                 splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
             }
-            if ($$str_ref =~ m{ \G \# }gcx) {       # leading # means to comment the entire section
+
+            ### leading # means to comment the entire section
+            if ($$str_ref =~ m{ \G \# }gcx) {
                 $$str_ref =~ m{ \G (.*?) ([+~=-]?) ($END) }gcxs # brute force - can't comment tags with nested %]
                     || $self->throw('parse', "Missing closing tag", undef, pos($$str_ref));
                 $node->[0] = '#';
