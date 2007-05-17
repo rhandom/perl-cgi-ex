@@ -15,6 +15,14 @@ our $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
 our $PACKAGE_CONTEXT     = 'CGI::Ex::Template::Context';
 our $QR_PRIVATE          = qr/^[_.]/;
 
+our $SYNTAX = {
+    cet => \&parse_tree_tt3,
+    hte => \&parse_tree_hte,
+    tt3 => \&parse_tree_tt3,
+    tt2 => sub { my $self = shift; local $self->{'V2PIPE'} = 1; $self->parse_tree_tt3(@_) },
+    tt1 => sub { my $self = shift; local $self->{'V2PIPE'} = 1; local $self->{'V1DOLLAR'} = 1; $self->parse_tree_tt3(@_) },
+};
+
 our $TAGS = {
     asp       => ['<%',     '%>'    ], # ASP
     default   => ['\[%',    '%\]'   ], # default
@@ -272,7 +280,7 @@ our $MAX_EVAL_RECURSE  = 50;
 our $MAX_MACRO_RECURSE = 50;
 our $STAT_TTL          ||= 1;
 
-our @CONFIG_COMPILETIME = qw(ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
+our @CONFIG_COMPILETIME = qw(SYNTAX ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
 our @CONFIG_RUNTIME     = qw(DUMP VMETHOD_FUNCTIONS);
 
 eval {require Scalar::Util};
@@ -521,6 +529,12 @@ sub load_parsed_tree {
 ###----------------------------------------------------------------###
 
 sub parse_tree {
+    my $syntax = $_[0]->{'SYNTAX'} || 'cet';
+    my $meth   = $SYNTAX->{$syntax} || $_[0]->throw('parse', "Unknown SYNTAX \"$syntax\"");
+    return $meth->(@_);
+}
+
+sub parse_tree_tt3 {
     my $self    = shift;
     my $str_ref = shift;
     if (! $str_ref || ! defined $$str_ref) {
@@ -791,6 +805,11 @@ sub parse_tree {
     }
 
     return \@tree;
+}
+
+sub parse_tree_hte {
+    require CGI::Ex::Template::Extra;
+    &CGI::Ex::Template::Extra::parse_tree_hte;
 }
 
 sub parse_expr {
