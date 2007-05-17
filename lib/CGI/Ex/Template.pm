@@ -63,9 +63,9 @@ our $SCALAR_OPS = {
     sin      => sub { local $^W; sin $_[0] },
     size     => sub { 1 },
     split    => \&vmethod_split,
-    sprintf  => \&vmethod_fmt_scalar,
+    sprintf  => sub { local $^W; my $pat = shift; sprintf($pat, @_) },
     sqrt     => sub { local $^W; sqrt $_[0] },
-    srand    => sub { local $^W; srand $_[0] },
+    srand    => sub { local $^W; srand $_[0]; '' },
     stderr   => sub { print STDERR $_[0]; '' },
     substr   => \&vmethod_substr,
     trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
@@ -1397,7 +1397,10 @@ sub play_expr {
             return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
             return \$self->{'_vars'}->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $self->{'_vars'}->{$name};
             $ref = $self->{'_vars'}->{$name};
-            $ref = ($name eq 'template' || $name eq 'component') ? $self->{"_$name"} : $VOBJS->{$name} if ! defined $ref;
+            if (! defined $ref) {
+                $ref = ($name eq 'template' || $name eq 'component') ? $self->{"_$name"} : $VOBJS->{$name};
+                $ref = $SCALAR_OPS->{$name} if ! $ref && (! defined($self->{'VMETHOD_FUNCTIONS'}) || $self->{'VMETHOD_FUNCTIONS'});
+            }
         }
     }
 
@@ -2237,7 +2240,7 @@ sub play_SET {
     foreach (@$set) {
         my ($op, $set, $val) = @$_;
         if (! defined $val) { # not defined
-            $val = '';
+            # do nothing - allow for setting to undef
         } elsif ($node->[4] && $val == $node->[4]) { # a captured directive
             my $sub_tree = $node->[4];
             $sub_tree = $sub_tree->[0]->[4] if $sub_tree->[0] && $sub_tree->[0]->[0] eq 'BLOCK';

@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 845 : 607;
+use Test::More tests => ! $is_tt ? 852 : 607;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -314,6 +314,7 @@ process_ok("[% n.defined %]" => "1", {n => ''});
 process_ok("[% n.defined %]" => "", {n => undef});
 process_ok("[% n.defined %]" => "1", {n => '1'});
 process_ok("[% n.exp.substr(0,5) %]" => "2.718", {n => 1}) if ! $is_tt;
+process_ok("[% n.exp.log.substr(0,5) %]" => "8", {n => 8}) if ! $is_tt;
 process_ok("[% n.fmt %]" => '7', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('%02d') %]" => '07', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
@@ -369,7 +370,8 @@ process_ok("[% n.split(u,2).join('|') %]" => "a|b c", {n => "a b c", u => undef}
 process_ok("[% n.split(u,2).join('|') %]" => "a| b c", {n => "a b c", u => undef}) if $is_tt;
 process_ok("[% n.split('/').join('|') %]" => "a|b|c", {n => "a/b/c"});
 process_ok("[% n.split('/', 2).join('|') %]" => "a|b/c", {n => "a/b/c"});
-process_ok("[% n.sprintf('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
+process_ok("[% n.sprintf(7) %]" => '7', {n => '%d'}) if ! $is_tt;
+process_ok("[% n.sprintf(3, 7, 12) %]" => '007 12', {n => '%0*d %d'}) if ! $is_tt;
 process_ok("[% n.sqrt %]" => "3", {n => 9}) if ! $is_tt;
 process_ok("[% n.srand; 12 %]" => "12", {n => 9}) if ! $is_tt;
 process_ok("[% n.stderr %]" => "", {n => "# testing stderr ... ok\r"});
@@ -468,6 +470,16 @@ process_ok("[% h.pairs.0.items.sort.join %]" => "1 a key value", {h => {a => 1, 
 process_ok("[% h.size %]" => "2", {h => {a => 1, b=> 2}});
 process_ok("[% h.sort.join %]" => "b a", {h => {a => "BBB", b => "A"}});
 process_ok("[% h.values.sort.join %]" => "1 2", {h => {a => 1, b=> 2}});
+
+###----------------------------------------------------------------###
+print "### vmethods as functions ############################################\n";
+
+process_ok("[% sprintf('%d %d', 7, 8) %] d" => '7 8 d') if ! $is_tt;
+process_ok("[% sprintf('%d %d', 7, 8) %] d" => '7 8 d', {tt_config => [VMETHOD_FUNCTIONS => 1]}) if ! $is_tt;
+process_ok("[% sprintf('%d %d', 7, 8) %] d" => ' d', {tt_config => [VMETHOD_FUNCTIONS => 0]}) if ! $is_tt;
+process_ok("[% int(2.234) %]" => '2') if ! $is_tt;
+
+process_ok("[% int(2.234) ; int = 44; int(2.234) ; SET int; int(2.234) %]" => '2442') if ! $is_tt; # hide and unhide
 
 ###----------------------------------------------------------------###
 print "### more virtual methods / filters ###################################\n";
@@ -1222,8 +1234,8 @@ local $ENV{'REQUEST_METHOD'} = 1;
 process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {header => 0}]});
 process_ok("[% p = DUMP a; p.collapse %]" => 'a = \'s\';', {a => "s", tt_config => [DUMP => {header => 0, html => 0}]});
 local $ENV{'REQUEST_METHOD'} = 0;
-process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1}]});
-process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 1}]});
+process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => undef };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1}]});
+process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => undef };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 1}]});
 process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 0}]});
 }
 
