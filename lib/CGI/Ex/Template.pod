@@ -307,6 +307,25 @@ to virtual methods.
 
     [% hash.fmt("%s => %s", "\n") %]
 
+=item Added HTML::Template::Expr vmethods
+
+The following vmethods were added - they correspond to the
+perl functions of the same name.
+
+    abs
+    atan2
+    cos
+    exp
+    hex
+    lc
+    log
+    oct
+    sin
+    sprintf
+    sqrt
+    srand
+    uc
+
 =item Whitespace is less meaningful. (TT3)
 
     [% 2-1 %] # = 1 (fails in TT2)
@@ -314,6 +333,19 @@ to virtual methods.
 =item Added pow operator.
 
     [% 2 ** 3 %] [% 2 pow 3 %] # = 8 8
+
+=item Added string comparison operators (gt ge lt le cmp)
+
+    [% IF "a" lt "b" %]a is less[% END %]
+
+=item Added numeric comparison operator (<=>)
+
+This can be used to make up for the fact that TT2 made == the
+same as eq (which will hopefully change - use eq when you mean eq).
+
+    [% IF ! (a <=> b) %]a == b[% END %]
+
+    [% IF (a <=> b) %]a != b[% END %]
 
 =item Added self modifiers (+=, -=, *=, /=, %=, **=, ~=). (TT3)
 
@@ -827,6 +859,16 @@ object (except for true filters such as eval and redirect).
 Allows for scalars to mask as arrays (scalars already will, but this
 allows for more direct access).
 
+=item abs
+
+    [% -1.abs %] Returns the absolute value
+
+=item atan2
+
+    [% pi = 4 * 1.atan2(1) %]
+
+Returns the arctangent.  The item itself represents Y, the passed argument represents X.
+
 =item chunk
 
     [% item.chunk(60).join("\n") %] Split string up into a list of chunks of text 60 chars wide.
@@ -835,15 +877,13 @@ allows for more direct access).
 
     [% item.collapse %] Strip leading and trailing whitespace and collapse all other space to one space.
 
+=item cos
+
+    [% item.cos %] Returns the cosine of the item.
+
 =item defined
 
     [% item.defined %] Always true - because the undef sub translates all undefs to ''.
-
-=item indent
-
-    [% item.indent(3) %] Indent that number of spaces.
-
-    [% item.indent("Foo: ") %] Add the string "Foo: " to the beginning of every line.
 
 =item eval
 
@@ -858,6 +898,12 @@ This is a filter and is not available via the Text virtual object.
 =item evaltt
 
     Same as the eval filter.
+
+=item exp
+
+    [% 1.exp %] Something like 2.71828182845905
+
+Returns "e" to the power of the item.
 
 =item file
 
@@ -885,13 +931,31 @@ processed separately.
 
     [% item.hash %] Returns a one item hash with a key of "value" and a value of the item.
 
+
+=item hex
+
+    [% "FF".hex %]
+
+Returns the decimal value of the passed hex numbers.  Note that you
+may also just use [% 0xFF %].
+
 =item html
 
     [% item.html %] Performs a very basic html encoding (swaps out &, <, > and " for the html entities)
 
+=item indent
+
+    [% item.indent(3) %] Indent that number of spaces.
+
+    [% item.indent("Foo: ") %] Add the string "Foo: " to the beginning of every line.
+
 =item int
 
     [% item.int %] Return the integer portion of the value (0 if none).
+
+=item lc
+
+Same as the lower vmethod.  Returns the lower cased version of the item.
 
 =item lcfirst
 
@@ -904,6 +968,12 @@ processed separately.
 =item list
 
     [% item.list %] Returns a list with a single value of the item.
+
+=item log
+
+    [% 8.exp.log %] Equal to 8.
+
+Returns the natural log base "e" of the item.
 
 =item lower
 
@@ -924,6 +994,14 @@ In CGI::Ex::Template and TT3 you can use regular expressions notation as well.
 =item null
 
     [% item.null %] Do nothing.
+
+=item oct
+
+    [% "377".oct %]
+
+Returns the decimal value of the octal string.  On recent versions of perl you
+may also pass numbers starting with 0x which will be interpreted as hexidecimal,
+and starting with 0b which will be interpreted as binary.
 
 =item rand
 
@@ -971,6 +1049,10 @@ In CGI::Ex::Template and TT3 you may also use normal regular expression notation
 
     [% item.search(/(\w+)/, "($1)") %] Same as before.
 
+=item sin
+
+    [% item.sin %] Returns the sine of the item.
+
 =item size
 
     [% item.size %] Always returns 1.
@@ -987,6 +1069,21 @@ In CGI::Ex::Template and TT3 you may also use normal regular expression notation
 
     [% item.split( /\s+/, 3 ) %] Same as before.
 
+=item sprintf
+
+Same as the fmt command.  Sprintfs the item with the passed arguement.
+
+=item sqrt
+
+    [% item.sqrt %]
+
+Returns the square root of the number.
+
+=item srand
+
+Calls the perl srand function to set the interal random seed.  This
+will affect future calls to the rand vmethod.
+
 =item stderr
 
     [% item.stderr %] Print the item to the current STDERR handle.
@@ -1001,13 +1098,17 @@ In CGI::Ex::Template and TT3 you may also use normal regular expression notation
 
     [% item.trim %] Strips leading and trailing whitespace.
 
+=item uc
+
+Same as the upper command.  Returns upper cased string.
+
 =item ucfirst
 
     [% item.ucfirst %] Lower-case the leading letter.
 
 =item upper
 
-    [% item.upper %] Return a upper-casified string.
+    [% item.upper %] Return a upper cased string.
 
 =item uri
 
@@ -2267,12 +2368,24 @@ Non associative binary.  String comparators.
 =item C<==  eq>
 
 Non associative binary.  Equality test.  TT chose to use Perl's eq for both operators.
-There is no test for numeric equality.
+There is no test for numeric equality - well you could use [% ! (a <=> b) %].  This
+may change in the future - I'd suggest using eq wherever you mean string equality.
 
 =item C<!= ne>
 
 Non associative binary.  Non-equality test.  TT chose to use Perl's ne for both
-operators.  There is no test for numeric non-equality.
+operators.  There is no test for numeric non-equality - well you could use [% (a <=> b) %].
+This may change in the future - I'd suggest using ne wherever you mean string non-equality.
+
+=item C<< <=> >>
+
+Non associative binary.  Numeric comparison operator.  Returns -1 if the first argument is
+less than the second, 0 if they are equal, and 1 if the first argument is greater.
+
+=item C<< cmp >>
+
+Non associative binary.  String comparison operator.  Returns -1 if the first argument is
+less than the second, 0 if they are equal, and 1 if the first argument is greater.
 
 =item C<&&>
 
