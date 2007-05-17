@@ -191,26 +191,35 @@ to Template::Stash::define_vmethod.
 
 CET uses the same base template syntax and configuration items as TT2,
 but the internals of CET were written from scratch.  Additionally much
-of the planned TT3 syntax is supported.  The following is a list of
-some of the ways that the configuration and syntax of CET are
-different from that of TT2.  Note: items that are planned to work in
-TT3 are marked with (TT3).
+of the planned TT3 syntax is supported as well as most of that of
+HTML::Template::Expr.  The following is a list of some of the ways
+that the configuration and syntax of CET are different from that of
+TT2.  Note: items that are planned to work in TT3 are marked with
+(TT3).
 
 =over 4
 
-=item Numerical hash keys work
+=item
+
+Numerical hash keys work
 
     [% a = {1 => 2} %]
 
-=item Quoted hash key interpolation is fine
+=item
+
+Quoted hash key interpolation is fine
 
     [% a = {"$foo" => 1} %]
 
-=item Multiple ranges in same constructor
+=item
+
+Multiple ranges in same constructor
 
     [% a = [1..10, 21..30] %]
 
-=item Constructor types can call virtual methods. (TT3)
+=item
+
+Constructor types can call virtual methods. (TT3)
 
     [% a = [1..10].reverse %]
 
@@ -228,7 +237,9 @@ TT3 are marked with (TT3).
 
     [% {a => b}.size %] # = 1
 
-=item The "${" and "}" variable interpolators can contain expressions,
+=item
+
+The "${" and "}" variable interpolators can contain expressions,
 not just variables.
 
     [% [0..10].${ 1 + 2 } %] # = 4
@@ -238,42 +249,58 @@ not just variables.
     [% color = qw/Red Blue/; FOR [1..4] ; color.${ loop.index % color.size } ; END %]
       # = RedBlueRedBlue
 
-=item You can use regular expression quoting.
+=item
+
+You can use regular expression quoting.
 
     [% "foo".match( /(F\w+)/i ).0 %] # = foo
 
-=item Tags can be nested.
+=item
+
+Tags can be nested.
 
     [% f = "[% (1 + 2) %]" %][% f|eval %] # = 3
 
-=item Arrays can be accessed with non-integer numbers.
+=item
+
+Arrays can be accessed with non-integer numbers.
 
     [% [0..10].${ 2.3 } %] # = 3
 
-=item Reserved names are less reserved. (TT3)
+=item
+
+Reserved names are less reserved. (TT3)
 
     [% GET GET %] # gets the variable named "GET"
 
     [% GET $GET %] # gets the variable who's name is stored in "GET"
 
-=item Filters and SCALAR_OPS are interchangeable. (TT3)
+=item
+
+Filters and SCALAR_OPS are interchangeable. (TT3)
 
     [% a | length %]
 
     [% b . lower %]
 
-=item Pipe "|" can be used anywhere dot "." can be and means to call
+=item
+
+Pipe "|" can be used anywhere dot "." can be and means to call
 the virtual method. (TT3)
 
     [% a = {size => "foo"} %][% a.size %] # = foo
 
     [% a = {size => "foo"} %][% a|size %] # = 1 (size of hash)
 
-=item Pipe "|" and "." can be mixed. (TT3)
+=item
+
+Pipe "|" and "." can be mixed. (TT3)
 
     [% "aa" | repeat(2) . length %] # = 4
 
-=item Added V2PIPE configuration item
+=item
+
+Added V2PIPE configuration item
 
 Restores the behavior of the pipe operator to be
 compatible with TT2.
@@ -286,7 +313,9 @@ With V2PIPE = 0 (default)
 
     [% PROCESS a | repeat(2) %] # = process block or file named a ~ a
 
-=item Added Virtual Object Namespaces. (TT3)
+=item
+
+Added Virtual Object Namespaces. (TT3)
 
 The Text, List, and Hash types give direct access
 to virtual methods.
@@ -301,13 +330,17 @@ to virtual methods.
        | Hash.keys
        | List.join(", ") %] # = a, b
 
-=item Added "fmt" scalar, list, and hash virtual methods.
+=item
+
+Added "fmt" scalar, list, and hash virtual methods.
 
     [% list.fmt("%s", ", ") %]
 
     [% hash.fmt("%s => %s", "\n") %]
 
-=item Added HTML::Template::Expr vmethods
+=item
+
+Added HTML::Template::Expr vmethods
 
 The following vmethods were added - they correspond to the
 perl functions of the same name.
@@ -326,19 +359,41 @@ perl functions of the same name.
     srand
     uc
 
-=item Whitespace is less meaningful. (TT3)
+=item
+
+Allow all Scalar vmethods to behave as top level functions.
+
+    [% sprintf("%d %d", 7, 8) %] # = "7 8"
+
+The following are equivalent in CET:
+
+    [% "abc".length %]
+    [% length("abc") %]
+
+This feature may be disabling by setting the
+VMETHOD_FUNCTIONS configuration item to 0.
+
+=item
+
+Whitespace is less meaningful. (TT3)
 
     [% 2-1 %] # = 1 (fails in TT2)
 
-=item Added pow operator.
+=item
+
+Added pow operator.
 
     [% 2 ** 3 %] [% 2 pow 3 %] # = 8 8
 
-=item Added string comparison operators (gt ge lt le cmp)
+=item
+
+Added string comparison operators (gt ge lt le cmp)
 
     [% IF "a" lt "b" %]a is less[% END %]
 
-=item Added numeric comparison operator (<=>)
+=item
+
+Added numeric comparison operator (<=>)
 
 This can be used to make up for the fact that TT2 made == the
 same as eq (which will hopefully change - use eq when you mean eq).
@@ -347,48 +402,64 @@ same as eq (which will hopefully change - use eq when you mean eq).
 
     [% IF (a <=> b) %]a != b[% END %]
 
-=item Added self modifiers (+=, -=, *=, /=, %=, **=, ~=). (TT3)
+=item
+
+Added self modifiers (+=, -=, *=, /=, %=, **=, ~=). (TT3)
 
     [% a = 2;  a *= 3  ; a %] # = 6
     [% a = 2; (a *= 3) ; a %] # = 66
 
-=item Added pre and post increment and decrement (++ --). (TT3)
+=item
+
+Added pre and post increment and decrement (++ --). (TT3)
 
     [% ++a ; ++a %] # = 12
     [% a-- ; a-- %] # = 0-1
 
-=item Added qw// contructor. (TT3)
+=item
+
+Added qw// contructor. (TT3)
 
     [% a = qw(a b c); a.1 %] # = b
 
     [% qw/a b c/.2 %] # = c
 
-=item Added regex contructor. (TT3)
+=item
+
+Added regex contructor. (TT3)
 
     [% "FOO".match(/(foo)/i).0 %] # = FOO
 
     [% a = /(foo)/i; "FOO".match(a).0 %] # = FOO
 
-=item Allow for scientific notation. (TT3)
+=item
+
+Allow for scientific notation. (TT3)
 
     [% a = 1.2e-20 %]
 
     [% 123.fmt('%.3e') %] # = 1.230e+02
 
-=item Allow for hexidecimal input. (TT3)
+=item
+
+Allow for hexidecimal input. (TT3)
 
     [% a = 0xff0000 %][% a %] # = 16711680
 
     [% a = 0xff2 / 0xd; a.fmt('%x') %] # = 13a
 
-=item FOREACH variables can be nested.
+=item
+
+FOREACH variables can be nested.
 
     [% FOREACH f.b = [1..10] ; f.b ; END %]
 
 Note that nested variables are subject to scoping issues.
 f.b will not be reset to its value before the FOREACH.
 
-=item Post operative directives can be nested. (TT3)
+=item
+
+Post operative directives can be nested. (TT3)
 
 Andy Wardley calls this side-by-side effect notation.
 
@@ -401,7 +472,9 @@ Andy Wardley calls this side-by-side effect notation.
 
     [% a = [[1..3], [5..7]] %][% i FOREACH i = j FOREACH j = a %] # = 123567
 
-=item Semi-colons on directives in the same tag are optional. (TT3)
+=item
+
+Semi-colons on directives in the same tag are optional. (TT3)
 
     [% SET a = 1
        GET a
@@ -421,24 +494,32 @@ that can be used as a post-operative directive.
        2
        END %] # prints 1
 
-=item CATCH blocks can be empty.
+=item
+
+CATCH blocks can be empty.
 
 TT2 requires them to contain something.
 
-=item Added a DUMP directive.
+=item
+
+Added a DUMP directive.
 
 Used for Data::Dumpering the passed variable or expression.
 
    [% DUMP a.a %]
 
-=item Added CONFIG directive.
+=item
+
+Added CONFIG directive.
 
    [% CONFIG
         ANYCASE   => 1
         PRE_CHOMP => '-'
    %]
 
-=item Configuration options can use lowercase names instead
+=item
+
+Configuration options can use lowercase names instead
 of the all uppercase names that TT2 uses.
 
     my $t = CGI::Ex::Template->new({
@@ -446,30 +527,40 @@ of the all uppercase names that TT2 uses.
         interpolate => 1,
     });
 
-=item CET does not generate Perl code.
+=item
+
+CET does not generate Perl code.
 
 It generates an "opcode" tree.  The opcode tree is an arrayref
 of scalars and array refs nested as deeply as possible.  This "simple"
 structure could be shared TT implementations in other languages
 via JSON or YAML.
 
-=item CET uses storable for its compiled templates.
+=item
+
+CET uses storable for its compiled templates.
 
 If EVAL_PERL is off, CET will not eval_string on ANY piece of information.
 
-=item There is eval_filter and MACRO recursion protection
+=item
+
+There is eval_filter and MACRO recursion protection
 
 You can control the nested nature of eval_filter and MACRO
 recursion using the MAX_EVAL_RECURSE and MAX_MACRO_RECURSE
 configuration items.
 
-=item There is no context.
+=item
+
+There is no context.
 
 CET provides a context object that mimics the Template::Context
 interface for use by some TT filters, eval perl blocks, views,
 and plugins.
 
-=item There is no stash.
+=item
+
+There is no stash.
 
 Well there is but it isn't an object.
 
@@ -478,11 +569,15 @@ those passed to the process method.  CET provides a stash object that
 mimics the Template::Stash interface for use by some TT filters, eval
 perl blocks, and plugins.
 
-=item There is no provider.
+=item
+
+There is no provider.
 
 CET uses the load_parsed_tree method to get and cache templates.
 
-=item There is no parser/grammar.
+=item
+
+There is no parser/grammar.
 
 CET has its own built-in recursive regex based parser and grammar system.
 
@@ -491,11 +586,15 @@ Template::Grammar in TT by using the Template::Parser::CET module.  This
 module uses the output of parse_tree to generate a TT style compiled perl
 document.
 
-=item The DEBUG directive is more limited.
+=item
+
+The DEBUG directive is more limited.
 
 It only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 
-=item CET has better line information
+=item
+
+CET has better line information
 
 When debug dirs is on, directives on different lines separated
 by colons show the line they are on rather than a general line range.
@@ -850,6 +949,14 @@ is called on it.
 Scalar virtual methods are also available through the "Text" virtual
 object (except for true filters such as eval and redirect).
 
+All scalar virtual methods are available as top level functions as well.
+This is not true of TT2.  In CGI::Ex::Template the following are equivalent:
+
+    [% "abc".length %]
+    [% length("abc") %]
+
+You may set VMETHOD_FUNCTIONS to 0 to disable this behavior.
+
 =over 4
 
 =item '0'
@@ -916,6 +1023,7 @@ Returns "e" to the power of the item.
     [% item.fmt('%*s', 6) %]
 
 Similar to format.  Returns a string formatted with the passed pattern.  Default pattern is %s.
+Opposite from of the sprintf vmethod.
 
 =item format
 
@@ -1071,7 +1179,11 @@ In CGI::Ex::Template and TT3 you may also use normal regular expression notation
 
 =item sprintf
 
-Same as the fmt command.  Sprintfs the item with the passed arguement.
+    [% item = "%d %d" %]
+    [% item.sprintf(7, 8) %]
+
+Uses the pattern stored in self, and passes it to sprintf with the passed arguments.
+Opposite from the fmt vmethod.
 
 =item sqrt
 
@@ -1496,6 +1608,7 @@ The following compile time configuration options may be set:
 The following runtime configuration options may be set:
 
     DUMP
+    VMETHOD_FUNCTIONS
 
 If non-named parameters as passed, they will show the current configuration:
 
@@ -3045,6 +3158,16 @@ With V2PIPE = 0 (default)
 A hashref of variables to initialize the template stash with.  These
 variables are available for use in any of the executed templates.
 See the section on VARIABLES for the types of information that can be passed in.
+
+=item VMETHOD_FUNCTIONS
+
+Defaults to 1.  All scalar virtual methods are available as top level functions as well.
+This is not true of TT2.  In CGI::Ex::Template the following are equivalent:
+
+    [% "abc".length %]
+    [% length("abc") %]
+
+You may set VMETHOD_FUNCTIONS to 0 to disable this behavior.
 
 =item WRAPPER
 
