@@ -17,6 +17,7 @@ our $QR_PRIVATE          = qr/^[_.]/;
 
 our $SYNTAX = {
     cet => \&parse_tree_tt3,
+    ht  => sub { my $self = shift; local $self->{'NO_EXPR'} = 1; $self->parse_tree_hte(@_) },
     hte => \&parse_tree_hte,
     tt3 => \&parse_tree_tt3,
     tt2 => sub { my $self = shift; local $self->{'V2PIPE'} = 1; $self->parse_tree_tt3(@_) },
@@ -576,13 +577,7 @@ sub parse_tree_tt3 {
 
             ### found a text portion - chomp it, interpolate it and store it
             if (length $1) {
-                my $text = $1;
-
-                if ($text =~ m{ ($END) }xs) {
-                    my $char = pos($$str_ref) + $-[1] + 1;
-                    $self->throw('parse', "Found unmatched closing tag \"$1\"", undef, $char);
-                }
-
+                my $text  = $1;
                 my $_last = pos $$str_ref;
                 if ($post_chomp) {
                     if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
@@ -786,12 +781,6 @@ sub parse_tree_tt3 {
     ### pull off the last text portion - if any
     if (pos($$str_ref) != length($$str_ref)) {
         my $text  = substr $$str_ref, pos($$str_ref);
-
-        if ($text =~ m{ ($END) }xs) {
-            my $char = pos($$str_ref) + $-[1] + 1;
-            $self->throw('parse', "Found unmatched closing tag \"$1\"", undef, $char);
-        }
-
         my $_last = pos($$str_ref);
         if ($post_chomp) {
             if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
