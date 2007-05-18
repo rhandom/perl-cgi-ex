@@ -2,17 +2,22 @@
 
 =head1 NAME
 
-7_template_03_syntax.t - Test the ability to parse different syntaxes.
+7_template_03_html_template.t - Test the ability to parse and play html template
 
 =cut
 
-use vars qw($module);
+use vars qw($module $is_ht $is_hte $is_cet);
 BEGIN {
     $module = 'CGI::Ex::Template';
+#    $module = 'HTML::Template';
+#    $module = 'HTML::Template::Expr';
+    $is_hte = $module eq 'HTML::Template::Expr';
+    $is_ht  = $module eq 'HTML::Template';
+    $is_cet = $module eq 'CGI::Ex::Template';
 };
 
 use strict;
-use Test::More tests => 5;
+use Test::More tests => ($is_cet) ? 45 : ($is_hte) ? 31 : 28;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -32,14 +37,20 @@ sub process_ok { # process the value and say if it was ok
     my $test = shift;
     my $vars = shift || {};
     my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
-    my $obj  = shift || $module->new(@$conf, ABSOLUTE => 1, INCLUDE_PATH => $test_dir); # new object each time
-    my $out  = '';
     my $line = (caller)[2];
     delete $vars->{'tt_config'};
 
     Taint::Runtime::taint(\$str) if test_taint;
 
-    $obj->process(\$str, $vars, \$out);
+    my $obj;
+    my $out;
+    eval {
+        $obj = shift || $module->new(scalarref => \$str, @$conf, die_on_bad_params => 0, path => $test_dir); # new object each time
+        $obj->param($vars);
+        $out = $obj->output;
+    };
+    my $err = $@;
+
     my $ok = ref($test) ? $out =~ $test : $out eq $test;
     if ($ok) {
         ok(1, "Line $line   \"$str\" => \"$out\"");
@@ -47,62 +58,90 @@ sub process_ok { # process the value and say if it was ok
     } else {
         ok(0, "Line $line   \"$str\"");
         warn "# Was:\n$out\n# Should've been:\n$test\n";
-        print $obj->error if $obj->can('error');
-        print Dumper $obj->parse_tree(\$str) if $obj->can('parse_tree');
+        print "$err\n";
+        print Dumper $obj->parse_tree(\$str) if $obj && $obj->can('parse_tree');
         exit;
     }
 }
 
 ### create some files to include
-my $foo_template = "$test_dir/foo.tt";
+my $foo_template = "$test_dir/foo.ht";
 END { unlink $foo_template };
 open(my $fh, ">$foo_template") || die "Couldn't open $foo_template: $!";
-print $fh "([% template.foo %][% INCLUDE bar.tt %])";
+print $fh "Good Day!";
 close $fh;
-
-###----------------------------------------------------------------###
-print "### BASIC SYNTAX #####################################################\n";
-
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "", {tt_config => [SYNTAX => 'garbage']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237");
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'cet']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'tt3']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt2']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
-process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
-
-
-process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar'});
-process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt2']});
-process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt1']});
 
 ###----------------------------------------------------------------###
 print "### HTML::Template::Expr SYNTAX ######################################\n";
 
-process_ok("Foo" => "Foo", {tt_config => [SYNTAX => 'ht']});
-process_ok("Foo" => "Foo", {tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR NAME=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR NAME=\"foo\">" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR NAME='foo'>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR NAME='foo' >" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR foo >" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'hte']});
+process_ok("Foo" => "Foo");
 
-process_ok("<TMPL_VAR ESCAPE=html     foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR ESCAPE=HTML     foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR ESCAPE=\"HTML\" foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR ESCAPE='HTML'   foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR ESCAPE=1        foo>" => "&lt;&gt;", {foo => "<>", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR ESCAPE=0        foo>" => "<>", {foo => "<>", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR ESCAPE=NONE     foo>" => "<>", {foo => "<>", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_VAR ESCAPE=URL      foo>" => "%3C%3E", {foo => "<>", tt_config => [SYNTAX => 'hte']});
+###----------------------------------------------------------------###
+print "### VAR ##############################################################\n";
 
-process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "", {foo => "", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "bar", {foo => "1", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_IF foo>bar<TMPL_ELSE>bing</TMPL_IF>" => "bing", {foo => "", tt_config => [SYNTAX => 'hte']});
-process_ok("<TMPL_IF foo>bar<TMPL_ELSE>bing</TMPL_IF>" => "bar", {foo => "1", tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR foo>" => "FOO", {foo => "FOO"});
+process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO"});
+process_ok("<TMPL_VAR NAME=foo>" => "FOO", {foo => "FOO"});
+process_ok("<TMPL_VAR NAME=\"foo\">" => "FOO", {foo => "FOO"});
+process_ok("<TMPL_VAR NAME='foo'>" => "FOO", {foo => "FOO"});
+process_ok("<TMPL_VAR NAME='foo' >" => "FOO", {foo => "FOO"});
+process_ok("<TMPL_VAR foo >" => "FOO", {foo => "FOO"});
 
+process_ok("<TMPL_VAR ESCAPE=html     foo>" => "&lt;&gt;", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE=HTML     foo>" => "&lt;&gt;", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE=\"HTML\" foo>" => "&lt;&gt;", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE='HTML'   foo>" => "&lt;&gt;", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE=1        foo>" => "&lt;&gt;", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE=0        foo>" => "<>", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE=NONE     foo>" => "<>", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE=URL      foo>" => "%3C%3E", {foo => "<>"});
+
+###----------------------------------------------------------------###
+print "### IF / ELSE / UNLESS ###############################################\n";
+
+process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "", {foo => ""});
+process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "bar", {foo => "1"});
+process_ok("<TMPL_IF foo>bar<TMPL_ELSE>bing</TMPL_IF>" => "bing", {foo => ''});
+process_ok("<TMPL_IF foo>bar<TMPL_ELSE>bing</TMPL_IF>" => "bar",  {foo => '1'});
+process_ok("<TMPL_UNLESS foo>bar</TMPL_UNLESS>" => "bar", {foo => ""});
+process_ok("<TMPL_UNLESS foo>bar</TMPL_UNLESS>" => "", {foo => "1"});
+
+###----------------------------------------------------------------###
+print "### TT3 DIRECTIVES ###################################################\n";
+
+process_ok("<TMPL_GET foo>" => "FOO", {foo => "FOO"})    if $is_cet;
+process_ok("<TMPL_GET 1+2+3+4>" => "10", {foo => "FOO"}) if $is_cet;
+
+process_ok("<TMPL_IF foo>bar<TMPL_ELSIF wow>wee<TMPL_ELSE>bing</TMPL_IF>" => "bar", {foo => "1"}) if $is_cet;
+
+process_ok("<TMPL_SET i = 'foo'>(<TMPL_VAR i>)" => "(foo)") if $is_cet;
+process_ok("<TMPL_SET i = 'foo'>(<TMPL_GET i>)" => "(foo)") if $is_cet;
+process_ok("<TMPL_FOR i IN [1..3]>(<TMPL_VAR i>)</TMPL_FOR>" => "(1)(2)(3)") if $is_cet;
+
+process_ok("<TMPL_BLOCK foo>(<TMPL_VAR i>)</TMPL_BLOCK><TMPL_PROCESS foo i='bar'>" => "(bar)") if $is_cet;
+
+process_ok("<TMPL_GET template.foo><TMPL_META foo = 'bar'>" => "bar") if $is_cet;
+
+###----------------------------------------------------------------###
+print "### EXPR #############################################################\n";
+
+process_ok("<TMPL_VAR EXPR=\"sprintf('%d', foo)\">" => "777", {foo => "777"}) if ! $is_ht;
+process_ok("<TMPL_VAR EXPR='sprintf(\"%d\", foo)'>" => "777", {foo => "777"}) if ! $is_ht && ! $is_hte; # odd that HTE can't parse this
+process_ok("<TMPL_VAR EXPR=\"sprintf(\"%d\", foo)\">" => "777", {foo => "777"}) if ! $is_ht;
+process_ok("<TMPL_VAR EXPR=sprintf(\"%d\", foo)>" => "777", {foo => "777"}) if ! $is_ht && ! $is_hte;
+process_ok("<TMPL_VAR EXPR=\"sprintf('%s', foo)\">" => "<>", {foo => "<>"}) if ! $is_ht;
+process_ok("<TMPL_VAR ESCAPE=HTML EXPR=\"sprintf('%s', foo)\">" => "&lt;&gt;", {foo => "<>"}) if ! $is_ht && ! $is_hte;
+
+###----------------------------------------------------------------###
+print "### INCLUDE ##########################################################\n";
+
+process_ok("<TMPL_INCLUDE blah>" => "");
+process_ok("<TMPL_INCLUDE foo.ht>" => "Good Day!");
+process_ok("<TMPL_INCLUDE NAME=foo.ht>" => "Good Day!");
+process_ok("<TMPL_INCLUDE NAME='foo.ht'>" => "Good Day!");
+process_ok("<TMPL_INCLUDE EXPR=\"'foo.ht'\">" => "Good Day!") if $is_cet;
+process_ok("<TMPL_INCLUDE EXPR=\"foo\">" => "Good Day!", {foo => 'foo.ht'}) if $is_cet;
+process_ok("<TMPL_INCLUDE EXPR=\"sprintf('%s', 'foo.ht')\">" => "Good Day!") if $is_cet;
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
