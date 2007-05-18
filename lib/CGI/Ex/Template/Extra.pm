@@ -159,6 +159,36 @@ sub play_FILTER {
     return $CGI::Ex::Template::DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
 }
 
+sub parse_LOOP {
+    my ($self, $str_ref, $node) = @_;
+    return $self->parse_expr($str_ref)
+        || $self->throw('parse', 'Missing variable on LOOP directive', undef, pos($$str_ref));
+}
+
+sub play_LOOP {
+    my ($self, $ref, $node, $out_ref) = @_;
+
+    my $var = $self->play_expr($ref);
+    my $sub_tree = $node->[4];
+
+    for my $ref (ref($var) eq 'ARRAY' ? @$var : $var) {
+
+        local $self->{'_vars'} = ref($ref) eq 'HASH' ? {%{ $self->{'_vars'} }, %$ref} : $self->{'_vars'};
+
+        ### execute the sub tree
+        eval { $self->execute_tree($sub_tree, $out_ref) };
+        if (my $err = $@) {
+            if (UNIVERSAL::isa($err, $CGI::Ex::Template::PACKAGE_EXCEPTION)) {
+                next if $err->type eq 'next';
+                last if $err->type =~ /last|break/;
+            }
+            die $err;
+        }
+    }
+
+    return undef;
+}
+
 sub parse_MACRO {
     my ($self, $str_ref, $node) = @_;
 
@@ -552,7 +582,7 @@ sub parse_tree_hte {
         ### parse remaining tag details
         if (! $is_close) {
             ### handle HT style nodes
-            if ($func =~ /^(IF|ELSIF|UNLESS|LOOP|VAR|WHILE|INCLUDE)$/) {
+            if ($func =~ /^(IF|ELSIF|UNLESS|LOOP|VAR|INCLUDE)$/) {
                 $func = $node->[0] = 'GET' if $func eq 'VAR';
 
                 ### allow for variable escaping (we'll add on a vmethod)
@@ -584,14 +614,25 @@ sub parse_tree_hte {
                 } else {
                     $$str_ref =~ m{ \G ([\w./+_]*) }gcx
                         || $self->throw('parse', 'Error while looking for NAME', undef, pos($$str_ref));
-                    $node->[3] = [$1, 0]; # set the variable
+                    $node->[3] = $func eq 'INCLUDE' ? $1 : [$1, 0]; # set the variable
                     $node->[2] = pos $$str_ref;
                 }
 
-                if ($escape eq 'html' || $escape eq '1') {
-                    push @{ $node->[3] }, '|', 'html', 0;
-                } elsif ($escape eq 'url') {
-                    push @{ $node->[3] }, '|', 'url', 0;
+                ### dress up node before finishing
+                if ($escape) {
+                    $self->throw('parse', "ESCAPE not allowed in TMPL_$func tag") if $func ne 'GET';
+                    if ($escape eq 'html' || $escape eq '1') {
+                        push @{ $node->[3] }, '|', 'html', 0;
+                    } elsif ($escape eq 'url') {
+                        push @{ $node->[3] }, '|', 'url', 0;
+                    } elsif ($escape eq 'js') {
+                        push @{ $node->[3] }, '|', 'js', 0;
+                    }
+                } elsif ($func eq 'INCLUDE') {
+                    $node->[3] = [[[undef, '{}'],0], $node->[3]];
+                } elsif ($func eq 'UNLESS') {
+                    $node->[0] = 'IF';
+                    $node->[3] = [[undef, '!', $node->[3]], 0];
                 }
 
             ### handle TT Directive extensions
@@ -721,12 +762,22 @@ sub parse_tree_hte {
 
 sub param {
     my $self = shift;
-    return $self->{'param'}->{$_[0]} if @_ == 1;
-    $self->throw('param', "Odd number of parameters") if @_ % 2;
-    while (@_) {
-        my $key = shift @_;
+    my $args;
+    if (@_ == 1) {
+        my $key = shift;
+        if (ref($key) ne 'HASH') {
+            $key = lc $key if $self->{'CASE_SENSITIVE'};
+            return $self->{'param'}->{$key};
+        }
+        $args = [%$key];
+    } else {
+        $self->throw('param', "Odd number of parameters") if @_ % 2;
+        $args = \@_;
+    }
+    while (@$args) {
+        my $key = shift @$args;
         $key = lc $key if $self->{'CASE_SENSITIVE'};
-        $self->{'param'}->{$key} = shift @_;
+        $self->{'param'}->{$key} = shift @$args;
     }
     return;
 }
@@ -754,14 +805,39 @@ sub output {
         $self->throw('output', "Unknown input type");
     }
 
+
     my $param = $self->{'param'} || {};
+    if (my $ref = $self->{'ASSOCIATE'}) {
+        foreach my $obj (ref($ref) eq 'ARRAY' ? $ref : @$ref) {
+            foreach my $key ($obj->param) {
+                $self->{'param'}->{$key} = $obj->param($key);
+            }
+        }
+    }
+
+
+    ### override some TT defaults
+    local $self->{'FILE_CACHE'} = $self->{'DOUBLE_FILE_CACHE'} ? 1 : $self->{'FILE_CACHE'};
+    my $cache_size  = ($self->{'CACHE'})         ? undef : 0;
+    my $compile_dir = (! $self->{'FILE_CACHE'})  ? undef : $self->{'FILE_CACHE_DIR'} || $self->throw('output', 'Missing file_cache_dir');
+    my $stat_ttl    = (! $self->{'BLIND_CACHE'}) ? undef : 60; # not sure how high to set the blind cache
+    $cache_size = undef if $self->{'DOUBLE_FILE_CACHE'};
+
+    local $self->{'SYNTAX'}       = $self->{'SYNTAX'} || 'hte';
+    local $self->{'CACHE_SIZE'}   = $cache_size;
+    local $self->{'STAT_TTL'}     = $stat_ttl;
+    local $self->{'COMPILE_DIR'}  = $compile_dir;
+    local $self->{'ABSOLUTE'}     = 1;
+    local $self->{'RELATIVE'}     = 1;
+    local $self->{'INCLUDE_PATH'} = $self->{'PATH'};
+
 
     if ($args->{'print_to'}) {
-        $self->process_simple($content, $param, $args->{'print_to'});
+        $self->process_simple($content, $param, $args->{'print_to'}) || die $self->error;
         return undef;
     } else {
         my $out = '';
-        $self->process_simple($content, $param, \$out);
+        $self->process_simple($content, $param, \$out) || die $self->error;
         return $out;
     }
 }
