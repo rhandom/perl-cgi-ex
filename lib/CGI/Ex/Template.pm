@@ -281,7 +281,7 @@ our $MAX_EVAL_RECURSE  = 50;
 our $MAX_MACRO_RECURSE = 50;
 our $STAT_TTL          ||= 1;
 
-our @CONFIG_COMPILETIME = qw(SYNTAX ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
+our @CONFIG_COMPILETIME = qw(SYNTAX ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP SEMICOLONS V1DOLLAR V2PIPE);
 our @CONFIG_RUNTIME     = qw(DUMP VMETHOD_FUNCTIONS);
 
 eval {require Scalar::Util};
@@ -635,6 +635,10 @@ sub parse_tree_tt3 {
                 @$post_op = @$node;
                 $node = $post_op;
                 $node->[4] = [\@post_op];
+            # if there was not a semi-colon - see if semis were required
+            } elsif ($post_op && $self->{'SEMICOLONS'}) {
+                $self->throw('parse', "Missing semi-colon with SEMICOLONS => 1", undef, $node->[1]);
+
             # handle directive captures for an item like "SET foo = BLOCK"
             } elsif ($capture) {
                 push @{ $capture->[4] }, $node;
@@ -724,6 +728,9 @@ sub parse_tree_tt3 {
 
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_expr($str_ref))) {
+            if ($post_op && $self->{'SEMICOLONS'}) {
+                $self->throw('parse', "Missing semi-colon with SEMICOLONS => 1", undef, $node->[1]);
+            }
             push @$pointer, $node;
             if ($$str_ref =~ m{ \G ($QR_OP_ASSIGN) >? (?! [+=~-]? $END) \s* $QR_COMMENTS }gcx) {
                 $node->[0] = 'SET';
@@ -3098,6 +3105,7 @@ sub vmethod_url {
 
 sub filter_eval {
     my $context = shift;
+    my $syntax  = shift;
 
     return sub {
         ### prevent recursion
@@ -3108,6 +3116,7 @@ sub filter_eval {
 
 
         my $text = shift;
+        local $t->{'SYNTAX'} = $syntax || $t->{'SYNTAX'};
         return $context->process(\$text);
     };
 }
@@ -3149,6 +3158,33 @@ sub dump_parse_expr {
     require Data::Dumper;
     return Data::Dumper::Dumper($obj->parse_expr(\$str));
 }
+
+###----------------------------------------------------------------###
+### support for few HTML::Template and HTML::Template::Expr calling syntax
+
+sub register_function {
+    my ($name, $sub) = @_;
+    $SCALAR_OPS->{$name} = $sub;
+}
+
+sub param {
+    require CGI::Ex::Template::Extra;
+    &CGI::Ex::Template::Extra::param;
+}
+
+sub param {
+    require CGI::Ex::Template::Extra;
+    &CGI::Ex::Template::Extra::output;
+}
+
+sub clear_param { shift->{'param'} = {} }
+
+sub query { shift->throw('query', "Not implemented in CGI::Ex::Template") }
+
+sub new_file       { my $class = shift; my $in = shift; $class->new(source => $in, type => 'filename',   @_) }
+sub new_scalar_ref { my $class = shift; my $in = shift; $class->new(source => $in, type => 'scalarref',  @_) }
+sub new_array_ref  { my $class = shift; my $in = shift; $class->new(source => $in, type => 'arrayref',   @_) }
+sub new_filehandle { my $class = shift; my $in = shift; $class->new(source => $in, type => 'filehandle', @_) }
 
 ###----------------------------------------------------------------###
 

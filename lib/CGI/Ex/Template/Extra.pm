@@ -21,9 +21,7 @@ sub parse_CONFIG {
         my $key = $ref->[$i] = uc $ref->[$i];
         my $val = $ref->[$i + 1];
         if ($ctime{$key}) {
-            splice @$ref, $i, 2, (); # remove the options
             $self->{$key} = $self->play_expr($val);
-            $i -= 2;
         } elsif (! $rtime{$key}) {
             $self->throw('parse', "Unknown CONFIG option \"$key\"", undef, pos($$str_ref));
         }
@@ -489,7 +487,7 @@ sub parse_tree_hte {
         $self->throw('parse.no_string', "No string or undefined during parse");
     }
 
-    my $START = qr{<(|!--\s*)(/?)[Tt][Mm][Pp][Ll]_(\w+)\b\s*};
+    my $START = qr{<(|!--\s*)(/?)[Tt][Mm][Pp][Ll]_(\w+)\b};
     local $self->{'_end_tag'}; # changes over time
 
     #local @{ $self }{@CONFIG_COMPILETIME} = @{ $self }{@CONFIG_COMPILETIME};
@@ -533,11 +531,10 @@ sub parse_tree_hte {
         }
 
         ### make sure we know this directive
-        $func = 'GET' if $func eq 'VAR';
-        if (! $CGI::Ex::Template::DIRECTIVES->{$func}) {
+        if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
             $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
         }
-        $node = [$func, pos($$str_ref), undef];
+        $node = [$func, pos($$str_ref) - length($func), undef];
         push @$pointer, $node;
 
         ### take care of chomping - yes HT now get CHOMP SUPPORT
@@ -550,13 +547,74 @@ sub parse_tree_hte {
             splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
         }
 
+        $$str_ref =~ m{ \G \s+ }gcx;
+
+        ### parse remaining tag details
+        if (! $is_close) {
+            ### handle HT style nodes
+            if ($func =~ /^(IF|ELSIF|UNLESS|LOOP|VAR|WHILE|INCLUDE)$/) {
+                $func = $node->[0] = 'GET' if $func eq 'VAR';
+
+                ### allow for variable escaping (we'll add on a vmethod)
+                my $escape = ($$str_ref =~ m{
+                    \G [Ee][Ss][Cc][Aa][Pp][Ee] \s*=\s* ([\"\']?)
+                        ([Nn][Oo][Nn][Ee] | [Hh][Tt][Mm][Ll] | [Uu][Rr][Ll] | [Jj][Ss] | [01])
+                        \1 \s* }gcx) ? lc($2) : '';
+
+                my $is_expr;
+                my $quote = '';
+                if ($$str_ref =~ m{ \G [Ee][Xx][Pp][Rr] \s*=\s* ([\"\']?) \s* }gcx) {
+                    $is_expr = 1;
+                    $quote = $1;
+                    if (! $allow_expr) {
+                        $self->throw('parse', 'EXPR are not allowed without hte mode', undef, pos($$str_ref));
+                    }
+                } elsif ($$str_ref =~ m{ \G [Nn][Aa][Mm][Ee] \s*=\s* ([\"\']?) \s* }gcx) {
+                    $quote = $1;
+                }
+
+                ### store what we'll find at the end of the tag
+                $self->{'_end_tag'} = $comment ? qr{$quote\s*([+=~-]?)-->} : qr{$quote\s*([+=~-]?)>};
+
+                ### allow for TT style expressions
+                if ($is_expr) {
+                    $node->[3] = $self->parse_expr($str_ref)
+                        || $self->throw('parse', 'Error while looking for EXPR', undef, pos($$str_ref));
+                ### or normal HT style Named variables
+                } else {
+                    $$str_ref =~ m{ \G ([\w./+_]*) }gcx
+                        || $self->throw('parse', 'Error while looking for NAME', undef, pos($$str_ref));
+                    $node->[3] = [$1, 0]; # set the variable
+                    $node->[2] = pos $$str_ref;
+                }
+
+                if ($escape eq 'html' || $escape eq '1') {
+                    push @{ $node->[3] }, '|', 'html', 0;
+                } elsif ($escape eq 'url') {
+                    push @{ $node->[3] }, '|', 'url', 0;
+                }
+
+            ### handle TT Directive extensions
+            } else {
+                $self->{'_end_tag'} = $comment ? qr{\s*([+=~-]?)-->} : qr{\s*([+=~-]?)>};
+                $node->[3] = eval { $CGI::Ex::Template::DIRECTIVES->{$func}->[0]->($self, $str_ref, $node) };
+                if (my $err = $@) {
+                    $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
+                    die $err;
+                }
+                $node->[2] = pos $$str_ref;
+            }
+        }
+
         ### handle ending tags - or continuation blocks
         if ($is_close || $CGI::Ex::Template::DIRECTIVES->{$func}->[4]) {
-
             if (! @state) {
                 $self->throw('parse', "Found an $func tag while not in a block", $node, pos($$str_ref));
             }
             my $parent_node = pop @state;
+
+            ### TODO - check for matching loop close name
+            $func = $node->[0] = 'END' if $is_close;
 
             ### handle continuation blocks such as elsif, else, catch etc
             if ($CGI::Ex::Template::DIRECTIVES->{$func}->[4]) {
@@ -600,40 +658,6 @@ sub parse_tree_hte {
 
         } else {
 
-            ### allow for variable escaping (we'll add on a vmethod)
-            my $escape = ($$str_ref =~ m{
-                \G [Ee][Ss][Cc][Aa][Pp][Ee] \s*=\s* ([\"\']?)
-                ([Nn][Oo][Nn][Ee] | [Hh][Tt][Mm][Ll] | [Uu][Rr][Ll] | [Jj][Ss] | [01])
-                \1 \s* }gcx) ? lc($2) : '';
-
-            my $is_expr;
-            my $quote = '';
-            if ($$str_ref =~ m{ \G [Ee][Xx][Pp][Rr] \s*=\s* ([\"\']?) \s* }gcx) {
-                $is_expr = 1;
-                $quote = $1;
-            } elsif ($$str_ref =~ m{ \G [Nn][Aa][Mm][Ee] \s*=\s* ([\"\']?) \s* }gcx) {
-                $quote = $1;
-            }
-
-            ### store what we'll find at the end of the tag
-            $self->{'_end_tag'} = $comment ? qr{$quote\s*([+=~-]?)-->} : qr{$quote\s*([+=~-]?)>};
-
-            #
-            if ($is_expr) {
-                die;
-            } else {
-                $$str_ref =~ m{ \G ([\w./+_]*) }gcx
-                    || $self->throw('parse', 'Error while looking for NAME', undef, pos($$str_ref));
-                $node->[3] = [$1, 0]; # set the variable
-            }
-
-            if ($escape eq 'html' || $escape eq '1') {
-                push @{ $node->[3] }, '|', 'html', 0;
-            } elsif ($escape eq 'url') {
-                push @{ $node->[3] }, '|', 'url', 0;
-            }
-
-
             ### handle block directives
             if ($CGI::Ex::Template::DIRECTIVES->{$func}->[2]) {
                 push @state, $node;
@@ -644,63 +668,10 @@ sub parse_tree_hte {
                 $node->[3] = undef;             # only let these be defined once - at the front of the tree
             }
         }
-
-
-#        ### look for DIRECTIVES
-#        if ($$str_ref =~ m{ \G $QR_DIRECTIVE }gcxo   # find a word
-#            && ($func = $self->{'ANYCASE'} ? uc($1) : $1)
-#            && ($DIRECTIVES->{$func}
-#                || ((pos($$str_ref) -= length $1) && 0))
-#            ) {                       # is it a directive
-#            $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcx;
-#
-#            $node->[0] = $func;
-#
-#            ### store out this current node level to the appropriate tree location
-#            # on a post operator - replace the original node with the new one - store the old in the new
-#            if ($DIRECTIVES->{$func}->[3] && $post_op) {
-#                my @post_op = @$post_op;
-#                @$post_op = @$node;
-#                $node = $post_op;
-#                $node->[4] = [\@post_op];
-#            # handle directive captures for an item like "SET foo = BLOCK"
 #            } elsif ($capture) {
 #                push @{ $capture->[4] }, $node;
 #                undef $capture;
 #                # normal nodes
-#            } else{
-#                push @$pointer, $node;
-#            }
-#
-#            ### parse any remaining tag details
-#            $node->[3] = eval { $DIRECTIVES->{$func}->[0]->($self, $str_ref, $node) };
-#            if (my $err = $@) {
-#                $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
-#                die $err;
-#            }
-#            $node->[2] = pos $$str_ref;
-#
-#            ### anything that behaves as a block ending
-#            if ($func eq 'END' || $DIRECTIVES->{$func}->[4]) { # [4] means it is a continuation block (ELSE, CATCH, etc)
-
-
-#
-#        ### allow for bare variable getting and setting
-#        } elsif (defined(my $var = $self->parse_expr($str_ref))) {
-#            push @$pointer, $node;
-#            if ($$str_ref =~ m{ \G ($QR_OP_ASSIGN) >? (?! [+=~-]? $END) \s* $QR_COMMENTS }gcx) {
-#                $node->[0] = 'SET';
-#                $node->[3] = eval { $DIRECTIVES->{'SET'}->[0]->($self, $str_ref, $node, $1, $var) };
-#                if (my $err = $@) {
-#                    $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
-#                    die $err;
-#                }
-#            } else {
-#                $node->[0] = 'GET';
-#                $node->[3] = $var;
-#            }
-#            $node->[2] = pos $$str_ref;
-#        }
 
         ### look for the closing tag
         if ($$str_ref =~ m{ \G $self->{'_end_tag'} }gcxs) {
@@ -743,6 +714,56 @@ sub parse_tree_hte {
     }
 
     return \@tree;
+}
+
+###----------------------------------------------------------------###
+### a few HTML::Template and HTML::Template::Expr routines
+
+sub param {
+    my $self = shift;
+    return $self->{'param'}->{$_[0]} if @_ == 1;
+    $self->throw('param', "Odd number of parameters") if @_ % 2;
+    while (@_) {
+        my $key = shift @_;
+        $key = lc $key if $self->{'CASE_SENSITIVE'};
+        $self->{'param'}->{$key} = shift @_;
+    }
+    return;
+}
+
+sub output {
+    my $self = shift;
+    my $args = ref($_[0]) eq 'HASH' ? shift : {@_};
+    my $type = $self->{'TYPE'} || '';
+
+    my $content;
+    if ($type eq 'filehandle' || $self->{'FILEHANDLE'}) {
+        my $in = $self->{'FILEHANDLE'} || $self->{'SOURCE'} || $self->throw('output', 'Missing source for type filehandle');
+        local $/ = undef;
+        $content = <$in>;
+        $content = \$content;
+    } elsif ($type eq 'arrayref' || $self->{'ARRAYREF'}) {
+        my $in = $self->{'ARRAYREF'} || $self->{'SOURCE'} || $self->throw('output', 'Missing source for type arrayref');
+        $content = join "", @$in;
+        $content = \$content;
+    } elsif ($type eq 'filename' || $self->{'FILENAME'}) {
+        $content = $self->{'FILENAME'} || $self->{'SOURCE'} || $self->throw('output', 'Missing source for type filename');
+    } elsif ($type eq 'scalarref' || $self->{'SCALARREF'}) {
+        $content = $self->{'SCALARREF'} || $self->{'SOURCE'} || $self->throw('output', 'Missing source for type scalarref');
+    } else {
+        $self->throw('output', "Unknown input type");
+    }
+
+    my $param = $self->{'param'} || {};
+
+    if ($args->{'print_to'}) {
+        $self->process_simple($content, $param, $args->{'print_to'});
+        return undef;
+    } else {
+        my $out = '';
+        $self->process_simple($content, $param, \$out);
+        return $out;
+    }
 }
 
 ###----------------------------------------------------------------###
