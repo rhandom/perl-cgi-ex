@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 853 : 607;
+use Test::More tests => ! $is_tt ? 866 : 607;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1259,6 +1259,28 @@ process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" 
 process_ok("[% CONFIG DUMP    %]|[% CONFIG DUMP    => 0 %][% DUMP           %]bar" => 'CONFIG DUMP = undef|bar');
 process_ok("[% CONFIG DUMP => {Useqq=>1, header=>0, html=>0} %][% DUMP 'foo' %]" => "'foo' = \"foo\";\n");
 process_ok("[% CONFIG VMETHOD_FUNCTIONS => 0 %][% sprintf('%d %d', 7, 8) %] d" => ' d');
+}
+
+###----------------------------------------------------------------###
+print "### SYNTAX ###########################################################\n";
+
+if (! $is_tt) {
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "", {tt_config => [SYNTAX => 'garbage']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237");
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'cet']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237237", {tt_config => [SYNTAX => 'tt3']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt2']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
+process_ok("[%- BLOCK a %]b is [% b %][% END %][% PROCESS a b => 237 | repeat(2) %]" => "b is 237b is 237", {tt_config => [SYNTAX => 'tt1']});
+
+
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar'});
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|bar|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt2']});
+process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 'A', A => 'bar', tt_config => [SYNTAX => 'tt1']});
+
+process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'ht']});
+process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>" => "7 8", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>d" => "", {tt_config => [SYNTAX => 'ht']});
 }
 
 ###----------------------------------------------------------------###
