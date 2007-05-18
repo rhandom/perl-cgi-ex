@@ -12,6 +12,7 @@ lib/CGI/Ex/md5.js
 lib/CGI/Ex/sha1.js
 lib/CGI/Ex/Template.pm
 lib/CGI/Ex/Template.pod
+lib/CGI/Ex/Template/Extra.pm
 lib/CGI/Ex/validate.js
 lib/CGI/Ex/Validate.pm
 lib/CGI/Ex/yaml_load.js
@@ -83,5 +84,6 @@ t/6_die_00_base.t
 t/7_template_00_base.t
 t/7_template_01_includes.t
 t/7_template_02_view.t
+t/7_template_03_html_template.t
 t/8_auth_00_base.t
 t/9_jsondump_00_base.t
