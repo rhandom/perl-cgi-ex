@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 871 : 607;
+use Test::More tests => ! $is_tt ? 877 : 607;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -270,10 +270,6 @@ process_ok('[% a = "a" %][% (c = (b = a)) %][% a %][% b %][% c %]' => 'aaaa');
 
 process_ok("[% a = qw{Foo Bar Baz} ; a.2 %]" => 'Baz') if ! $is_tt;
 
-process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
-process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '232') if ! $is_tt;
-process_ok("[% a = 1 a = a + 2 a %]" => 3) if ! $is_tt;
-
 process_ok("[% _foo = 1 %][% _foo %]2" => '2');
 process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
 
@@ -283,6 +279,17 @@ print "### multiple statements in same tag ##################################\n"
 process_ok("[% foo; %]" => '1', {foo => 1});
 process_ok("[% GET foo; %]" => '1', {foo => 1});
 process_ok("[% GET foo; GET foo %]" => '11', {foo => 1});
+process_ok("[% GET foo GET foo %]" => '11', {foo => 1});
+process_ok("[% GET foo GET foo %]" => '', {foo => 1, tt_config => [SEMICOLONS => 1]});
+
+process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
+process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '232');
+process_ok("[% a = 1 a = a + 2 a %]" => '3');
+
+process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '', {tt_config => [SEMICOLONS => 1]});
+process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '', {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
+process_ok("[% a = 1 a = a + 2 a %]" => '', {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
+
 
 ###----------------------------------------------------------------###
 print "### CALL / DEFAULT ###################################################\n";
@@ -825,12 +832,12 @@ process_ok("[% WHILE foo %][% foo %][% foo = foo - 1 %][% END %]" => '321', {foo
 process_ok("[% WHILE 1 %][% foo %][% foo = foo - 1 %][% LAST IF foo == 1 %][% END %]" => '32', {foo => 3});
 process_ok("[% f = 10; WHILE f; f = f - 1 ; f ; END %]" => '9876543210');
 process_ok("[% f = 10; WHILE f; f = f - 1 ; f ; END ; f %]" => '98765432100');
-process_ok("[% f = 10 a = 2; WHILE f; f = f - 1 ; f ; a=3; END ; a%]" => '98765432103');
+process_ok("[% f = 10; a = 2; WHILE f; f = f - 1 ; f ; a=3; END ; a%]" => '98765432103');
 
 process_ok("[% f = 10; WHILE (g=f); f = f - 1 ; f ; END %]" => '9876543210');
 process_ok("[% f = 10; WHILE (g=f); f = f - 1 ; f ; END ; f %]" => '98765432100');
-process_ok("[% f = 10 a = 2; WHILE (g=f); f = f - 1 ; f ; a=3; END ; a%]" => '98765432103');
-process_ok("[% f = 10 a = 2; WHILE (a=f); f = f - 1 ; f ; a=3; END ; a%]" => '98765432100');
+process_ok("[% f = 10; a = 2; WHILE (g=f); f = f - 1 ; f ; a=3; END ; a%]" => '98765432103');
+process_ok("[% f = 10; a = 2; WHILE (a=f); f = f - 1 ; f ; a=3; END ; a%]" => '98765432100');
 
 ###----------------------------------------------------------------###
 print "### STOP / RETURN / CLEAR ############################################\n";
@@ -1278,11 +1285,12 @@ process_ok("[% CONFIG BOGUS => 2 %]bar" => '');
 process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
 process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
 
-process_ok("[% \"[% GET 1+2+3 %]\" | eval %] = [% get 6 %]"                         => "6 = Foo6", {get => 'Foo'}) if ! $is_tt;
-process_ok("[% CONFIG ANYCASE => 1 %][% \"[% get 1+2+3 %]\" | eval %] = [% get 6 %]"=> "6 = 6",    {get => 'Foo'}) if ! $is_tt;
-process_ok("[% \"[% CONFIG ANYCASE => 1 %][% get 1+2+3 %]\" | eval %] = [% get 6 %]"=> "6 = Foo6", {get => 'Foo'}) if ! $is_tt;
-process_ok("[% \"[% CONFIG ANYCASE => 1 %][% get 1+2+3 %]\" | eval %] = [% GET 6 %]"=> "6 = 6",    {get => 'Foo'}) if ! $is_tt;
-process_ok("[% CONFIG SYNTAX => 'hte' %][% \"<TMPL_VAR EXPR='1+2+3'>\"|eval %] = [% 6 %]", "6 = 6");
+process_ok("[% \"[% GET 1+2+3 %]\" | eval %] = [% get 6 %]"                          => "",      {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
+process_ok("[% CONFIG ANYCASE => 1 %][% get 6 %]"                                    => "6",     {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
+process_ok("[% CONFIG ANYCASE => 1 %][% \"[% get 1+2+3 %]\" | eval %] = [% get 6 %]" => "6 = 6", {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
+process_ok("[% \"[% CONFIG ANYCASE => 1 %][% get 1+2+3 %]\" | eval %] = [% get 6 %]" => "",      {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
+process_ok("[% \"[% CONFIG ANYCASE => 1 %][% get 1+2+3 %]\" | eval %] = [% GET 6 %]" => "6 = 6", {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
+process_ok("[% CONFIG SYNTAX => 'hte' %][% \"<TMPL_VAR EXPR='1+2+3'>\"|eval %] = [% 6 %]" => "6 = 6");
 
 process_ok("[% CONFIG DUMP    %]|[% CONFIG DUMP    => 0 %][% DUMP           %]bar" => 'CONFIG DUMP = undef|bar');
 process_ok("[% CONFIG DUMP => {Useqq=>1, header=>0, html=>0} %][% DUMP 'foo' %]" => "'foo' = \"foo\";\n");
