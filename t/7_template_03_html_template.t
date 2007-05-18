@@ -17,7 +17,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ($is_cet) ? 45 : ($is_hte) ? 31 : 28;
+use Test::More tests => ($is_cet) ? 55 : ($is_ht) ? 36 : 40;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -72,13 +72,11 @@ print $fh "Good Day!";
 close $fh;
 
 ###----------------------------------------------------------------###
-print "### HTML::Template::Expr SYNTAX ######################################\n";
+print "### VAR ##############################################################\n";
 
 process_ok("Foo" => "Foo");
 
-###----------------------------------------------------------------###
-print "### VAR ##############################################################\n";
-
+process_ok("<TMPL_VAR foo>" => "FOO", {foo => "FOO"});
 process_ok("<TMPL_VAR foo>" => "FOO", {foo => "FOO"});
 process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO"});
 process_ok("<TMPL_VAR NAME=foo>" => "FOO", {foo => "FOO"});
@@ -95,6 +93,10 @@ process_ok("<TMPL_VAR ESCAPE=1        foo>" => "&lt;&gt;", {foo => "<>"});
 process_ok("<TMPL_VAR ESCAPE=0        foo>" => "<>", {foo => "<>"});
 process_ok("<TMPL_VAR ESCAPE=NONE     foo>" => "<>", {foo => "<>"});
 process_ok("<TMPL_VAR ESCAPE=URL      foo>" => "%3C%3E", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE=JS       foo>" => "<>\\n\\r\t\\\"\\\'", {foo => "<>\n\r\t\"\'"});
+
+process_ok("<!--TMPL_VAR foo-->" => "FOO", {foo => "FOO"}) if $is_cet;
+process_ok("<!--TMPL_VAR NAME='foo'-->" => "FOO", {foo => "FOO"});
 
 ###----------------------------------------------------------------###
 print "### IF / ELSE / UNLESS ###############################################\n";
@@ -105,6 +107,8 @@ process_ok("<TMPL_IF foo>bar<TMPL_ELSE>bing</TMPL_IF>" => "bing", {foo => ''});
 process_ok("<TMPL_IF foo>bar<TMPL_ELSE>bing</TMPL_IF>" => "bar",  {foo => '1'});
 process_ok("<TMPL_UNLESS foo>bar</TMPL_UNLESS>" => "bar", {foo => ""});
 process_ok("<TMPL_UNLESS foo>bar</TMPL_UNLESS>" => "", {foo => "1"});
+
+process_ok("<TMPL_IF ESCAPE=HTML foo>bar</TMPL_IF>baz" => "", {foo => "1"});
 
 ###----------------------------------------------------------------###
 print "### TT3 DIRECTIVES ###################################################\n";
@@ -132,6 +136,8 @@ process_ok("<TMPL_VAR EXPR=sprintf(\"%d\", foo)>" => "777", {foo => "777"}) if !
 process_ok("<TMPL_VAR EXPR=\"sprintf('%s', foo)\">" => "<>", {foo => "<>"}) if ! $is_ht;
 process_ok("<TMPL_VAR ESCAPE=HTML EXPR=\"sprintf('%s', foo)\">" => "&lt;&gt;", {foo => "<>"}) if ! $is_ht && ! $is_hte;
 
+process_ok("<!--TMPL_VAR EXPR=\"foo\"-->" => "FOO", {foo => "FOO"}) if ! $is_ht;;
+
 ###----------------------------------------------------------------###
 print "### INCLUDE ##########################################################\n";
 
@@ -139,9 +145,19 @@ process_ok("<TMPL_INCLUDE blah>" => "");
 process_ok("<TMPL_INCLUDE foo.ht>" => "Good Day!");
 process_ok("<TMPL_INCLUDE NAME=foo.ht>" => "Good Day!");
 process_ok("<TMPL_INCLUDE NAME='foo.ht'>" => "Good Day!");
-process_ok("<TMPL_INCLUDE EXPR=\"'foo.ht'\">" => "Good Day!") if $is_cet;
-process_ok("<TMPL_INCLUDE EXPR=\"foo\">" => "Good Day!", {foo => 'foo.ht'}) if $is_cet;
+
+process_ok("<TMPL_INCLUDE ESCAPE=HTML NAME='foo.ht'>" => "");
+
+process_ok("<TMPL_INCLUDE EXPR=\"'foo.ht'\">" => "Good Day!")                if $is_cet;
+process_ok("<TMPL_INCLUDE EXPR=\"foo\">" => "Good Day!", {foo => 'foo.ht'})  if $is_cet;
 process_ok("<TMPL_INCLUDE EXPR=\"sprintf('%s', 'foo.ht')\">" => "Good Day!") if $is_cet;
+
+###----------------------------------------------------------------###
+print "### LOOP #############################################################\n";
+
+process_ok("<TMPL_LOOP blah></TMPL_LOOP>foo" => "foo");
+process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "HiHifoo", {blah => [{}, {}]});
+process_ok("<TMPL_LOOP blah>(<TMPL_VAR i>)</TMPL_LOOP>foo" => "(1)(2)(3)foo", {blah => [{i=>1}, {i=>2}, {i=>3}]});
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
