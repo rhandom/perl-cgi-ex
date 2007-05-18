@@ -9,12 +9,12 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template'; #real    0m0.885s #user    0m0.432s #sys     0m0.004s
-#    $module = 'Template';         #real    0m2.133s #user    0m1.108s #sys     0m0.024s
+    $module = 'Template';         #real    0m2.133s #user    0m1.108s #sys     0m0.024s
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 877 : 607;
+use Test::More tests => ! $is_tt ? 879 : 610;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -279,16 +279,16 @@ print "### multiple statements in same tag ##################################\n"
 process_ok("[% foo; %]" => '1', {foo => 1});
 process_ok("[% GET foo; %]" => '1', {foo => 1});
 process_ok("[% GET foo; GET foo %]" => '11', {foo => 1});
-process_ok("[% GET foo GET foo %]" => '11', {foo => 1});
+process_ok("[% GET foo GET foo %]" => '11', {foo => 1}) if ! $is_tt;
 process_ok("[% GET foo GET foo %]" => '', {foo => 1, tt_config => [SEMICOLONS => 1]});
 
 process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
-process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '232');
-process_ok("[% a = 1 a = a + 2 a %]" => '3');
+process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '232') if ! $is_tt;
+process_ok("[% a = 1 a = a + 2 a %]" => '3') if ! $is_tt;
 
-process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '', {tt_config => [SEMICOLONS => 1]});
-process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '', {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
-process_ok("[% a = 1 a = a + 2 a %]" => '', {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
+process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '', {tt_config => [SEMICOLONS => 1]}) if ! $is_tt;
+process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '', {tt_config => [SEMICOLONS => 1]});
+process_ok("[% a = 1 a = a + 2 a %]" => '', {tt_config => [SEMICOLONS => 1]});
 
 
 ###----------------------------------------------------------------###
@@ -1266,6 +1266,10 @@ process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 
 process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'ht']});
 process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>" => "7 8", {tt_config => [SYNTAX => 'hte']});
 process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>d" => "", {tt_config => [SYNTAX => 'ht']});
+
+process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval('hte') %] = [% 6 %]" => "6 = 6");
+process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval('ht') %] = [% 6 %]" => "");
+
 }
 
 ###----------------------------------------------------------------###
