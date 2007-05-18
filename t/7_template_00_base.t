@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 866 : 607;
+use Test::More tests => ! $is_tt ? 871 : 607;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1240,28 +1240,6 @@ process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\
 }
 
 ###----------------------------------------------------------------###
-print "### CONFIG ############################################################\n";
-
-if (! $is_tt) {
-process_ok("[% CONFIG ANYCASE     => 1   %][% get 234 %]" => 234);
-process_ok("[% CONFIG anycase     => 1   %][% get 234 %]" => 234);
-process_ok("[% CONFIG PRE_CHOMP   => '-' %]\n[% 234 %]" => 234);
-process_ok("[% CONFIG POST_CHOMP  => '-' %][% 234 %]\n" => 234);
-process_ok("[% CONFIG INTERPOLATE => '-' %]\${ 234 }"   => 234);
-process_ok("[% CONFIG V1DOLLAR    => 1   %][% a = 234 %][% \$a %]"   => 234);
-process_ok("[% CONFIG V2PIPE => 1 %][% BLOCK a %]b is [% b %][% END %][% PROCESS a b => 234 | repeat(2) %]"   => "b is 234b is 234");
-
-process_ok("[% CONFIG BOGUS => 2 %]bar" => '');
-
-process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
-process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
-
-process_ok("[% CONFIG DUMP    %]|[% CONFIG DUMP    => 0 %][% DUMP           %]bar" => 'CONFIG DUMP = undef|bar');
-process_ok("[% CONFIG DUMP => {Useqq=>1, header=>0, html=>0} %][% DUMP 'foo' %]" => "'foo' = \"foo\";\n");
-process_ok("[% CONFIG VMETHOD_FUNCTIONS => 0 %][% sprintf('%d %d', 7, 8) %] d" => ' d');
-}
-
-###----------------------------------------------------------------###
 print "### SYNTAX ###########################################################\n";
 
 if (! $is_tt) {
@@ -1281,6 +1259,34 @@ process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 
 process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'ht']});
 process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>" => "7 8", {tt_config => [SYNTAX => 'hte']});
 process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>d" => "", {tt_config => [SYNTAX => 'ht']});
+}
+
+###----------------------------------------------------------------###
+print "### CONFIG ############################################################\n";
+
+if (! $is_tt) {
+process_ok("[% CONFIG ANYCASE     => 1   %][% get 234 %]" => 234);
+process_ok("[% CONFIG anycase     => 1   %][% get 234 %]" => 234);
+process_ok("[% CONFIG PRE_CHOMP   => '-' %]\n[% 234 %]" => 234);
+process_ok("[% CONFIG POST_CHOMP  => '-' %][% 234 %]\n" => 234);
+process_ok("[% CONFIG INTERPOLATE => '-' %]\${ 234 }"   => 234);
+process_ok("[% CONFIG V1DOLLAR    => 1   %][% a = 234 %][% \$a %]"   => 234);
+process_ok("[% CONFIG V2PIPE => 1 %][% BLOCK a %]b is [% b %][% END %][% PROCESS a b => 234 | repeat(2) %]"   => "b is 234b is 234");
+
+process_ok("[% CONFIG BOGUS => 2 %]bar" => '');
+
+process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
+process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
+
+process_ok("[% \"[% GET 1+2+3 %]\" | eval %] = [% get 6 %]"                         => "6 = Foo6", {get => 'Foo'}) if ! $is_tt;
+process_ok("[% CONFIG ANYCASE => 1 %][% \"[% get 1+2+3 %]\" | eval %] = [% get 6 %]"=> "6 = 6",    {get => 'Foo'}) if ! $is_tt;
+process_ok("[% \"[% CONFIG ANYCASE => 1 %][% get 1+2+3 %]\" | eval %] = [% get 6 %]"=> "6 = Foo6", {get => 'Foo'}) if ! $is_tt;
+process_ok("[% \"[% CONFIG ANYCASE => 1 %][% get 1+2+3 %]\" | eval %] = [% GET 6 %]"=> "6 = 6",    {get => 'Foo'}) if ! $is_tt;
+process_ok("[% CONFIG SYNTAX => 'hte' %][% \"<TMPL_VAR EXPR='1+2+3'>\"|eval %] = [% 6 %]", "6 = 6");
+
+process_ok("[% CONFIG DUMP    %]|[% CONFIG DUMP    => 0 %][% DUMP           %]bar" => 'CONFIG DUMP = undef|bar');
+process_ok("[% CONFIG DUMP => {Useqq=>1, header=>0, html=>0} %][% DUMP 'foo' %]" => "'foo' = \"foo\";\n");
+process_ok("[% CONFIG VMETHOD_FUNCTIONS => 0 %][% sprintf('%d %d', 7, 8) %] d" => ' d');
 }
 
 ###----------------------------------------------------------------###
