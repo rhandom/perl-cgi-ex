@@ -2052,11 +2052,11 @@ sub play_INCLUDE {
     my ($self, $str_ref, $node, $out_ref) = @_;
 
     ### localize the swap
-    my $swap = $self->{'_vars'};
+    my $swap = $self->{'_vars'} || {};
     local $self->{'_vars'} = {%$swap};
 
     ### localize the blocks
-    my $blocks = $self->{'BLOCKS'};
+    my $blocks = $self->{'BLOCKS'} || {};
     local $self->{'BLOCKS'} = {%$blocks};
 
     my $str = $DIRECTIVES->{'PROCESS'}->[1]->($self, $str_ref, $node, $out_ref);
