@@ -3172,7 +3172,7 @@ sub param {
     &CGI::Ex::Template::Extra::param;
 }
 
-sub param {
+sub output {
     require CGI::Ex::Template::Extra;
     &CGI::Ex::Template::Extra::output;
 }
