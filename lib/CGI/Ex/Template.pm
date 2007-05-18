@@ -54,6 +54,7 @@ our $SCALAR_OPS = {
     indent   => \&vmethod_indent,
     int      => sub { local $^W; int $_[0] },
     item     => sub { $_[0] },
+    js       => sub { local $_ = $_[0]; return if ! $_; s/\n/\\n/g; s/\r/\\r/g; s/(?<!\\)([\"\'])/\\$1/g; $_ },
     lc       => sub { lc $_[0] },
     lcfirst  => sub { lcfirst $_[0] },
     length   => sub { defined($_[0]) ? length($_[0]) : 0 },
@@ -179,6 +180,7 @@ our $DIRECTIVES = {
     INCLUDE => [\&parse_INCLUDE, \&play_INCLUDE],
     INSERT  => [\&parse_INSERT,  \&play_INSERT],
     LAST    => [sub {},          \&play_control],
+    LOOP    => [\&parse_LOOP,    \&play_LOOP,     1,       1],
     MACRO   => [\&parse_MACRO,   \&play_MACRO],
     META    => [\&parse_META,    \&play_META],
     NEXT    => [sub {},          \&play_control],
@@ -2077,6 +2079,16 @@ sub play_INSERT {
     }
 
     return;
+}
+
+sub parse_LOOP {
+    require CGI::Ex::Template::Extra;
+    &CGI::Ex::Template::Extra::parse_LOOP;
+}
+
+sub play_LOOP {
+    require CGI::Ex::Template::Extra;
+    &CGI::Ex::Template::Extra::play_LOOP;
 }
 
 sub parse_MACRO {
