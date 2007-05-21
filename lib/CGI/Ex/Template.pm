@@ -130,7 +130,7 @@ our $HASH_OPS = {
     fmt     => \&vmethod_fmt_hash,
     hash    => sub { $_[0] },
     import  => sub { my ($a, $b) = @_; @{$a}{keys %$b} = values %$b if ref($b) eq 'HASH'; '' },
-    item    => sub { my ($h, $k) = @_; $k = '' if ! defined $k; $k =~ $QR_PRIVATE ? undef : $h->{$k} },
+    item    => sub { my ($h, $k) = @_; $k = '' if ! defined $k; $QR_PRIVATE && $k =~ $QR_PRIVATE ? undef : $h->{$k} },
     items   => sub { [ %{ $_[0] } ] },
     keys    => sub { [keys %{ $_[0] }] },
     list    => \&vmethod_list_hash,
@@ -1402,7 +1402,7 @@ sub play_expr {
         } else { # a named variable access (ie via $name.foo)
             $name = $self->play_expr($name);
             if (defined $name) {
-                return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
+                return if $QR_PRIVATE && $name =~ $QR_PRIVATE; # don't allow vars that begin with _
                 return \$self->{'_vars'}->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $self->{'_vars'}->{$name};
                 $ref = $self->{'_vars'}->{$name};
             }
@@ -1411,7 +1411,7 @@ sub play_expr {
         if ($ARGS->{'is_namespace_during_compile'}) {
             $ref = $self->{'NAMESPACE'}->{$name};
         } else {
-            return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
+            return if $QR_PRIVATE && $name =~ $QR_PRIVATE; # don't allow vars that begin with _
             return \$self->{'_vars'}->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $self->{'_vars'}->{$name};
             $ref = $self->{'_vars'}->{$name};
             if (! defined $ref) {
@@ -1449,7 +1449,7 @@ sub play_expr {
         if (ref $name) {
             if (ref($name) eq 'ARRAY') {
                 $name = $self->play_expr($name);
-                if (! defined($name) || $name =~ $QR_PRIVATE || $name =~ /^\./) {
+                if (! defined($name) || ($QR_PRIVATE && $name =~ $QR_PRIVATE) || $name =~ /^\./) {
                     $ref = undef;
                     last;
                 }
@@ -1457,7 +1457,7 @@ sub play_expr {
                 die "Shouldn't get a ". ref($name) ." during a vivify on chain";
             }
         }
-        if ($name =~ $QR_PRIVATE) { # don't allow vars that begin with _
+        if ($QR_PRIVATE && $name =~ $QR_PRIVATE) { # don't allow vars that begin with _
             $ref = undef;
             last;
         }
@@ -1605,7 +1605,7 @@ sub set_variable {
 
         # named access (ie via $name.foo)
         $ref = $self->play_expr($ref);
-        if (defined $ref && $ref !~ $QR_PRIVATE) { # don't allow vars that begin with _
+        if (defined $ref && (! $QR_PRIVATE || $ref !~ $QR_PRIVATE)) { # don't allow vars that begin with _
             if ($#$var <= $i) {
                 return $self->{'_vars'}->{$ref} = $val;
             } else {
@@ -1615,7 +1615,7 @@ sub set_variable {
             return;
         }
     } elsif (defined $ref) {
-        return if $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
+        return if $QR_PRIVATE && $ref =~ $QR_PRIVATE; # don't allow vars that begin with _
         if ($#$var <= $i) {
             return $self->{'_vars'}->{$ref} = $val;
         } else {
@@ -1654,7 +1654,7 @@ sub set_variable {
                 die "Shouldn't get a ".ref($name)." during a vivify on chain";
             }
         }
-        if ($name =~ $QR_PRIVATE) { # don't allow vars that begin with _
+        if ($QR_PRIVATE && $name =~ $QR_PRIVATE) { # don't allow vars that begin with _
             return;
         }
 
