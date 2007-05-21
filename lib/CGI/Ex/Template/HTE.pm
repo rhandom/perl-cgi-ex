@@ -21,8 +21,6 @@ This module may be distributed under the same terms as Perl itself.
 
 =cut
 
-=cut
-
 use strict;
 use warnings;
 
