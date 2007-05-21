@@ -318,7 +318,7 @@ sub param {
         my $key = shift;
         if (ref($key) ne 'HASH') {
             $key = lc $key if $self->{'CASE_SENSITIVE'};
-            return $self->{'param'}->{$key};
+            return $self->{'_vars'}->{$key};
         }
         $args = [%$key];
     } else {
@@ -328,7 +328,7 @@ sub param {
     while (@$args) {
         my $key = shift @$args;
         $key = lc $key if $self->{'CASE_SENSITIVE'};
-        $self->{'param'}->{$key} = shift @$args;
+        $self->{'_vars'}->{$key} = shift @$args;
     }
     return;
 }
@@ -357,11 +357,11 @@ sub output {
     }
 
 
-    my $param = $self->{'param'} || {};
+    my $param = $self->{'_vars'} || {};
     if (my $ref = $self->{'ASSOCIATE'}) {
         foreach my $obj (ref($ref) eq 'ARRAY' ? $ref : @$ref) {
             foreach my $key ($obj->param) {
-                $self->{'param'}->{$key} = $obj->param($key);
+                $self->{'_vars'}->{$key} = $obj->param($key);
             }
         }
     }
