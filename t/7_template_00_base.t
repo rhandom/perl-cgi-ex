@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 879 : 610;
+use Test::More tests => ! $is_tt ? 882 : 610;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -819,6 +819,33 @@ process_ok('[% FOREACH f = [1..3]; 1; END %]' => '111');
 process_ok('[% FOREACH f = [1..3]; f; END %]' => '123');
 process_ok('[% FOREACH f = [1..3]; "$f"; END %]' => '123');
 process_ok('[% FOREACH f = [1..3]; f + 1; END %]' => '234');
+
+###----------------------------------------------------------------###
+print "### LOOP #############################################################\n";
+
+process_ok("[% var = [{key => 'a'}, {key => 'b'}] -%]
+[% LOOP var -%]
+  ([% key %])
+[% END %]" => "  (a)\n  (b)\n") if ! $is_tt;
+
+process_ok("[% var = [{key => 'a'}, {key => 'b'}] -%]
+[% LOOP var -%]
+  [%- NEXT IF key eq 'a' -%]
+  ([% key %])
+[% END %]" => "  (b)\n") if ! $is_tt;
+
+for (1) {
+    local $CGI::Ex::Template::QR_PRIVATE = 0;
+    CGI::Ex::Template->define_vmethod('scalar', textjoin => sub {join(shift, @_)});
+
+    process_ok("[% var = [{key => 'a'}, {key => 'b'}, {key => 'c'}] -%]
+[% LOOP var -%]
+([% textjoin('|', key, __first__, __last__, __inner__, __odd__) %])
+[% END -%]" => "(a|1|0|0|1)
+(b|0|0|1|0)
+(c|0|1|0|1)
+", {tt_config => [LOOP_CONTEXT_VARS => 1]}) if ! $is_tt;
+}
 
 ###----------------------------------------------------------------###
 print "### WHILE ############################################################\n";
