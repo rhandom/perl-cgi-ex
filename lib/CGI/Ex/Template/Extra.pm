@@ -530,7 +530,7 @@ sub parse_tree_hte {
         $self->throw('parse.no_string', "No string or undefined during parse");
     }
 
-    my $START = qr{<(|!--\s*)(/?)[Tt][Mm][Pp][Ll]_(\w+)\b};
+    my $START = qr{<(|!--\s*)(/?)([+=~-]?)[Tt][Mm][Pp][Ll]_(\w+)\b};
     local $self->{'_end_tag'}; # changes over time
 
     #local @{ $self }{@CONFIG_COMPILETIME} = @{ $self }{@CONFIG_COMPILETIME};
@@ -556,7 +556,7 @@ sub parse_tree_hte {
         ### find the next opening tag
         $$str_ref =~ m{ \G (.*?) $START }gcxs
             || last;
-        my ($text, $comment, $is_close, $func) = ($1, $2, $3, uc $4);
+        my ($text, $comment, $is_close, $pre_chomp, $func) = ($1, $2, $3, $4, uc $5);
 
         ### found a text portion - chomp it, interpolate it and store it
         if (length $text) {
@@ -572,8 +572,14 @@ sub parse_tree_hte {
             }
         }
 
+        ### make sure we know this directive
+        if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
+            $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
+        }
+        $node = [$func, pos($$str_ref) - length($func) - length($pre_chomp) - 5, undef];
+
         ### take care of chomping - yes HT now get CHOMP SUPPORT
-        my $pre_chomp = $$str_ref =~ m{ \G ([+=~-]) }gcx ? $1 : $self->{'PRE_CHOMP'};
+        $pre_chomp ||= $self->{'PRE_CHOMP'};
         $pre_chomp  =~ y/-=~+/1230/ if $pre_chomp;
         if ($pre_chomp && $pointer->[-1] && ! ref $pointer->[-1]) {
             if    ($pre_chomp == 1) { $pointer->[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{}x  }
@@ -582,11 +588,6 @@ sub parse_tree_hte {
             splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
         }
 
-        ### make sure we know this directive
-        if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
-            $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
-        }
-        $node = [$func, pos($$str_ref) - length($func), undef];
         push @$pointer, $node;
 
         $$str_ref =~ m{ \G \s+ }gcx;
