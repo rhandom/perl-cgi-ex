@@ -171,9 +171,22 @@ sub play_LOOP {
     my $var = $self->play_expr($ref);
     my $sub_tree = $node->[4];
 
-    for my $ref (ref($var) eq 'ARRAY' ? @$var : $var) {
+    my $global = ! $self->{'SYNTAX'} || $self->{'SYNTAX'} ne 'ht' || $self->{'GLOBAL_VARS'};
 
-        local $self->{'_vars'} = ref($ref) eq 'HASH' ? {%{ $self->{'_vars'} }, %$ref} : $self->{'_vars'};
+    my $items = ref($var) eq 'ARRAY' ? $var : ! defined($var) ? [] : [$var];
+
+    my $i = 0;
+    for my $ref (@$items) {
+        ### setup the loop
+        $self->throw('loop', 'Scalar value used in LOOP') if $ref && ref($ref) ne 'HASH';
+        local $self->{'_vars'} = (! $global) ? ($ref || {}) : (ref($ref) eq 'HASH') ? {%{ $self->{'_vars'} }, %$ref} : $self->{'_vars'};
+        if ($self->{'LOOP_CONTEXT_VARS'} && ! $CGI::Ex::Template::QR_PRIVATE) {
+            $self->{'_vars'}->{'__counter__'} = ++$i;
+            $self->{'_vars'}->{'__first__'} = $i == 1 ? 1 : 0;
+            $self->{'_vars'}->{'__last__'}  = $i == @$items ? 1 : 0;
+            $self->{'_vars'}->{'__inner__'} = $i == 1 || $i == @$items ? 0 : 1;
+            $self->{'_vars'}->{'__odd__'}   = ($i % 2) ? 1 : 0;
+        }
 
         ### execute the sub tree
         eval { $self->execute_tree($sub_tree, $out_ref) };
@@ -614,7 +627,7 @@ sub parse_tree_hte {
                 } else {
                     $$str_ref =~ m{ \G ([\w./+_]*) }gcx
                         || $self->throw('parse', 'Error while looking for NAME', undef, pos($$str_ref));
-                    $node->[3] = $func eq 'INCLUDE' ? $1 : [$1, 0]; # set the variable
+                    $node->[3] = $func eq 'INCLUDE' ? $1 : [($self->{'CASE_SENSITIVE'} ? $1 : lc $1), 0]; # set the variable
                     $node->[2] = pos $$str_ref;
                 }
 
@@ -830,7 +843,7 @@ sub output {
     local $self->{'ABSOLUTE'}     = 1;
     local $self->{'RELATIVE'}     = 1;
     local $self->{'INCLUDE_PATH'} = $self->{'PATH'};
-
+    local $CGI::Ex::Template::QR_PRIVATE = undef;
 
     if ($args->{'print_to'}) {
         $self->process_simple($content, $param, $args->{'print_to'}) || die $self->error;
