@@ -598,50 +598,65 @@ sub parse_tree_hte {
             if ($func =~ /^(IF|ELSIF|UNLESS|LOOP|VAR|INCLUDE)$/) {
                 $func = $node->[0] = 'GET' if $func eq 'VAR';
 
-                ### allow for variable escaping (we'll add on a vmethod)
-                my $escape = ($$str_ref =~ m{
-                    \G [Ee][Ss][Cc][Aa][Pp][Ee] \s*=\s* ([\"\']?)
-                        ([Nn][Oo][Nn][Ee] | [Hh][Tt][Mm][Ll] | [Uu][Rr][Ll] | [Jj][Ss] | [01])
-                        \1 \s* }gcx) ? lc($2) : '';
-
-                my $is_expr;
-                my $quote = '';
+                ### handle EXPR attribute
                 if ($$str_ref =~ m{ \G [Ee][Xx][Pp][Rr] \s*=\s* ([\"\']?) \s* }gcx) {
-                    $is_expr = 1;
-                    $quote = $1;
                     if (! $allow_expr) {
                         $self->throw('parse', 'EXPR are not allowed without hte mode', undef, pos($$str_ref));
                     }
-                } elsif ($$str_ref =~ m{ \G [Nn][Aa][Mm][Ee] \s*=\s* ([\"\']?) \s* }gcx) {
-                    $quote = $1;
-                }
-
-                ### store what we'll find at the end of the tag
-                $self->{'_end_tag'} = $comment ? qr{$quote\s*([+=~-]?)-->} : qr{$quote\s*([+=~-]?)>};
-
-                ### allow for TT style expressions
-                if ($is_expr) {
+                    my $quote = $1;
+                    $self->{'_end_tag'} = $comment ? qr{$quote\s*([+=~-]?)-->} : qr{$quote\s*([+=~-]?)>};
                     $node->[3] = $self->parse_expr($str_ref)
                         || $self->throw('parse', 'Error while looking for EXPR', undef, pos($$str_ref));
-                ### or normal HT style Named variables
+
+                ### handle "normal" NAME attributes
                 } else {
-                    $$str_ref =~ m{ \G ([\w./+_]*) }gcx
-                        || $self->throw('parse', 'Error while looking for NAME', undef, pos($$str_ref));
-                    $node->[3] = $func eq 'INCLUDE' ? $1 : [($self->{'CASE_SENSITIVE'} ? $1 : lc $1), 0]; # set the variable
+
+                    ### store what we'll find at the end of the tag
+                    $self->{'_end_tag'} = $comment ? qr{([+=~-]?)-->} : qr{([+=~-]?)>};
+
+                    my ($name, $escape, $default);
+                    while (1) {
+                        if ($$str_ref =~ m{ \G (\w+) \s*=\s* }gcx) {
+                            my $key = lc $1;
+                            my $val = $$str_ref =~ m{ \G ([\"\']) (.*?) (?<!\\) \1 \s* }gcx ? $2
+                                    : $$str_ref =~ m{ \G ([\w./+_]+) \s* }gcx               ? $1
+                                    : $self->throw('parse', "Error while looking for value of \"$key\" attribute", undef, pos($$str_ref));
+                            if ($key eq 'name') {
+                                $name ||= $val;
+                            } else {
+                                $self->throw('parse', uc($key)." not allowed in TMPL_$func tag") if $func ne 'GET';
+                                if    ($key eq 'escape')  { $escape  ||= lc $val }
+                                elsif ($key eq 'default') { $default ||= $val    }
+                                else  { $self->throw('parse', uc($key)." not allowed in TMPL_$func tag") }
+                            }
+                        } elsif ($$str_ref =~ m{ \G ([\w./+_]+) \s* }gcx) {
+                            $name ||= $1;
+                        } else {
+                            last;
+                        }
+                    }
+
+                    $self->throw('parse', 'Error while looking for NAME', undef, pos($$str_ref)) if ! $name;
+                    $node->[3] = $func eq 'INCLUDE' ? $name : [($self->{'CASE_SENSITIVE'} ? $name : lc $name), 0]; # set the variable
+                    $node->[3] = [[undef, '||', $node->[3], $default], 0] if $default;
                     $node->[2] = pos $$str_ref;
+
+                    ### dress up node before finishing
+                    $escape = lc $self->{'DEFAULT_ESCAPE'} if ! $escape && $self->{'DEFAULT_ESCAPE'};
+                    if ($escape) {
+                        $self->throw('parse', "ESCAPE not allowed in TMPL_$func tag") if $func ne 'GET';
+                        if ($escape eq 'html' || $escape eq '1') {
+                            push @{ $node->[3] }, '|', 'html', 0;
+                        } elsif ($escape eq 'url') {
+                            push @{ $node->[3] }, '|', 'url', 0;
+                        } elsif ($escape eq 'js') {
+                            push @{ $node->[3] }, '|', 'js', 0;
+                        }
+                    }
                 }
 
-                ### dress up node before finishing
-                if ($escape) {
-                    $self->throw('parse', "ESCAPE not allowed in TMPL_$func tag") if $func ne 'GET';
-                    if ($escape eq 'html' || $escape eq '1') {
-                        push @{ $node->[3] }, '|', 'html', 0;
-                    } elsif ($escape eq 'url') {
-                        push @{ $node->[3] }, '|', 'url', 0;
-                    } elsif ($escape eq 'js') {
-                        push @{ $node->[3] }, '|', 'js', 0;
-                    }
-                } elsif ($func eq 'INCLUDE') {
+                ### fixup DIRECTIVE storage
+                if ($func eq 'INCLUDE') {
                     $node->[3] = [[[undef, '{}'],0], $node->[3]];
                 } elsif ($func eq 'UNLESS') {
                     $node->[0] = 'IF';
@@ -844,7 +859,7 @@ sub output {
     local $self->{'COMPILE_DIR'}  = $compile_dir;
     local $self->{'ABSOLUTE'}     = 1;
     local $self->{'RELATIVE'}     = 1;
-    local $self->{'INCLUDE_PATH'} = $self->{'PATH'};
+    local $self->{'INCLUDE_PATH'} = $self->{'PATH'} || './';
     local $CGI::Ex::Template::QR_PRIVATE = undef;
 
     if ($args->{'print_to'}) {
