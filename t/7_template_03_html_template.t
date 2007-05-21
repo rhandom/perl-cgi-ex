@@ -17,7 +17,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ($is_cet) ? 55 : ($is_ht) ? 36 : 40;
+use Test::More tests => ($is_cet) ? 86 : ($is_ht) ? 59 : 63;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -45,11 +45,12 @@ sub process_ok { # process the value and say if it was ok
     my $obj;
     my $out;
     eval {
-        $obj = shift || $module->new(scalarref => \$str, @$conf, die_on_bad_params => 0, path => $test_dir); # new object each time
+        $obj = shift || $module->new(scalarref => \$str, die_on_bad_params => 0, path => $test_dir, @$conf); # new object each time
         $obj->param($vars);
         $out = $obj->output;
     };
     my $err = $@;
+    $out = '' if ! defined $out;
 
     my $ok = ref($test) ? $out =~ $test : $out eq $test;
     if ($ok) {
@@ -59,7 +60,10 @@ sub process_ok { # process the value and say if it was ok
         ok(0, "Line $line   \"$str\"");
         warn "# Was:\n$out\n# Should've been:\n$test\n";
         print "$err\n";
-        print Dumper $obj->parse_tree(\$str) if $obj && $obj->can('parse_tree');
+        if ($obj && $obj->can('parse_tree')) {
+            local $obj->{'SYNTAX'} = 'hte';
+            print Dumper $obj->parse_tree(\$str);
+        }
         exit;
     }
 }
@@ -85,6 +89,8 @@ process_ok("<TMPL_VAR NAME='foo'>" => "FOO", {foo => "FOO"});
 process_ok("<TMPL_VAR NAME='foo' >" => "FOO", {foo => "FOO"});
 process_ok("<TMPL_VAR foo >" => "FOO", {foo => "FOO"});
 
+process_ok("<TMPL_VAR                 foo>" => "<>",       {foo => "<>"});
+process_ok("<TMPL_VAR                 foo>" => "&lt;&gt;", {foo => "<>", tt_config => [default_escape => 'html']});
 process_ok("<TMPL_VAR ESCAPE=html     foo>" => "&lt;&gt;", {foo => "<>"});
 process_ok("<TMPL_VAR ESCAPE=HTML     foo>" => "&lt;&gt;", {foo => "<>"});
 process_ok("<TMPL_VAR ESCAPE=\"HTML\" foo>" => "&lt;&gt;", {foo => "<>"});
@@ -94,6 +100,16 @@ process_ok("<TMPL_VAR ESCAPE=0        foo>" => "<>", {foo => "<>"});
 process_ok("<TMPL_VAR ESCAPE=NONE     foo>" => "<>", {foo => "<>"});
 process_ok("<TMPL_VAR ESCAPE=URL      foo>" => "%3C%3E", {foo => "<>"});
 process_ok("<TMPL_VAR ESCAPE=JS       foo>" => "<>\\n\\r\t\\\"\\\'", {foo => "<>\n\r\t\"\'"});
+
+process_ok("<TMPL_VAR foo ESCAPE=html>" => "&lt;&gt;", {foo => "<>"});
+process_ok("<TMPL_VAR NAME=foo ESCAPE=html>" => "&lt;&gt;", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE=html NAME=foo>" => "&lt;&gt;", {foo => "<>"});
+process_ok("<TMPL_VAR ESCAPE=html NAME=foo ESCAPE=js>" => "&lt;&gt;", {foo => "<>"});
+
+process_ok("<TMPL_VAR DEFAULT=bar NAME=foo>" => "FOO", {foo => "FOO", bar => "BAR"});
+process_ok("<TMPL_VAR DEFAULT=bar NAME=foo>d" => "bard", {foo => undef, bar => "BAR"});
+process_ok("<TMPL_VAR NAME=foo DEFAULT=bar>d" => "bard", {foo => undef, bar => "BAR"});
+process_ok("<TMPL_VAR DEFAULT=bar NAME=foo DEFAULT=bing>d" => "bard");
 
 process_ok("<!--TMPL_VAR foo-->" => "FOO", {foo => "FOO"}) if $is_cet;
 process_ok("<!--TMPL_VAR NAME='foo'-->" => "FOO", {foo => "FOO"});
@@ -109,11 +125,45 @@ process_ok("<TMPL_UNLESS foo>bar</TMPL_UNLESS>" => "bar", {foo => ""});
 process_ok("<TMPL_UNLESS foo>bar</TMPL_UNLESS>" => "", {foo => "1"});
 
 process_ok("<TMPL_IF ESCAPE=HTML foo>bar</TMPL_IF>baz" => "", {foo => "1"});
+process_ok("<TMPL_IF DEFAULT=bar foo>bar</TMPL_IF>baz" => "", {foo => "1"});
+
+###----------------------------------------------------------------###
+print "### INCLUDE ##########################################################\n";
+
+process_ok("<TMPL_INCLUDE blah>" => "");
+process_ok("<TMPL_INCLUDE foo.ht>" => "Good Day!");
+process_ok("<TMPL_INCLUDE $test_dir/foo.ht>" => "Good Day!", {tt_config => [path => '']});
+process_ok("<TMPL_INCLUDE NAME=foo.ht>" => "Good Day!");
+process_ok("<TMPL_INCLUDE NAME='foo.ht'>" => "Good Day!");
+process_ok("<TMPL_INCLUDE NAME='foo.ht'>" => "", {tt_config => [no_includes => 1]});
+
+process_ok("<TMPL_INCLUDE ESCAPE=HTML NAME='foo.ht'>" => "");
+process_ok("<TMPL_INCLUDE DEFAULT=bar NAME='foo.ht'>" => "");
+
+process_ok("<TMPL_INCLUDE EXPR=\"'foo.ht'\">" => "Good Day!")                if $is_cet;
+process_ok("<TMPL_INCLUDE EXPR=\"foo\">" => "Good Day!", {foo => 'foo.ht'})  if $is_cet;
+process_ok("<TMPL_INCLUDE EXPR=\"sprintf('%s', 'foo.ht')\">" => "Good Day!") if $is_cet;
+
+###----------------------------------------------------------------###
+print "### EXPR #############################################################\n";
+
+process_ok("<TMPL_VAR EXPR=\"sprintf('%d', foo)\">" => "777", {foo => "777"}) if ! $is_ht;
+process_ok("<TMPL_VAR EXPR=\"sprintf('%d', foo)\">" => "777", {foo => "777"}) if ! $is_ht;
+process_ok("<TMPL_VAR EXPR='sprintf(\"%d\", foo)'>" => "777", {foo => "777"}) if ! $is_ht && ! $is_hte; # odd that HTE can't parse this
+process_ok("<TMPL_VAR EXPR=\"sprintf(\"%d\", foo)\">" => "777", {foo => "777"}) if ! $is_ht;
+process_ok("<TMPL_VAR EXPR=sprintf(\"%d\", foo)>" => "777", {foo => "777"}) if ! $is_ht && ! $is_hte;
+process_ok("<TMPL_VAR EXPR=\"sprintf('%s', foo)\">" => "<>", {foo => "<>"}) if ! $is_ht;
+process_ok("<TMPL_VAR ESCAPE=HTML EXPR=\"sprintf('%s', foo)\">" => "", {foo => "<>"});
+process_ok("<TMPL_VAR DEFAULT=bar EXPR=foo>" => "", {foo => "FOO", bar => "BAR"});
+
+process_ok("<!--TMPL_VAR EXPR=\"foo\"-->" => "FOO", {foo => "FOO"}) if ! $is_ht;;
 
 ###----------------------------------------------------------------###
 print "### TT3 DIRECTIVES ###################################################\n";
 
 process_ok("<TMPL_GET foo>" => "FOO", {foo => "FOO"})    if $is_cet;
+process_ok("<TMPL_GET foo>" => "", {foo => "FOO", tt_config => [NO_TT => 1]}) if $is_cet;
+process_ok("<TMPL_GET foo>" => "", {foo => "FOO", tt_config => [SYNTAX => 'ht']}) if $is_cet;
 process_ok("<TMPL_GET 1+2+3+4>" => "10", {foo => "FOO"}) if $is_cet;
 
 process_ok("<TMPL_IF foo>bar<TMPL_ELSIF wow>wee<TMPL_ELSE>bing</TMPL_IF>" => "bar", {foo => "1"}) if $is_cet;
@@ -127,37 +177,44 @@ process_ok("<TMPL_BLOCK foo>(<TMPL_VAR i>)</TMPL_BLOCK><TMPL_PROCESS foo i='bar'
 process_ok("<TMPL_GET template.foo><TMPL_META foo = 'bar'>" => "bar") if $is_cet;
 
 ###----------------------------------------------------------------###
-print "### EXPR #############################################################\n";
+print "### TT3 CHOMPING #####################################################\n";
 
-process_ok("<TMPL_VAR EXPR=\"sprintf('%d', foo)\">" => "777", {foo => "777"}) if ! $is_ht;
-process_ok("<TMPL_VAR EXPR='sprintf(\"%d\", foo)'>" => "777", {foo => "777"}) if ! $is_ht && ! $is_hte; # odd that HTE can't parse this
-process_ok("<TMPL_VAR EXPR=\"sprintf(\"%d\", foo)\">" => "777", {foo => "777"}) if ! $is_ht;
-process_ok("<TMPL_VAR EXPR=sprintf(\"%d\", foo)>" => "777", {foo => "777"}) if ! $is_ht && ! $is_hte;
-process_ok("<TMPL_VAR EXPR=\"sprintf('%s', foo)\">" => "<>", {foo => "<>"}) if ! $is_ht;
-process_ok("<TMPL_VAR ESCAPE=HTML EXPR=\"sprintf('%s', foo)\">" => "&lt;&gt;", {foo => "<>"}) if ! $is_ht && ! $is_hte;
-
-process_ok("<!--TMPL_VAR EXPR=\"foo\"-->" => "FOO", {foo => "FOO"}) if ! $is_ht;;
-
-###----------------------------------------------------------------###
-print "### INCLUDE ##########################################################\n";
-
-process_ok("<TMPL_INCLUDE blah>" => "");
-process_ok("<TMPL_INCLUDE foo.ht>" => "Good Day!");
-process_ok("<TMPL_INCLUDE NAME=foo.ht>" => "Good Day!");
-process_ok("<TMPL_INCLUDE NAME='foo.ht'>" => "Good Day!");
-
-process_ok("<TMPL_INCLUDE ESCAPE=HTML NAME='foo.ht'>" => "");
-
-process_ok("<TMPL_INCLUDE EXPR=\"'foo.ht'\">" => "Good Day!")                if $is_cet;
-process_ok("<TMPL_INCLUDE EXPR=\"foo\">" => "Good Day!", {foo => 'foo.ht'})  if $is_cet;
-process_ok("<TMPL_INCLUDE EXPR=\"sprintf('%s', 'foo.ht')\">" => "Good Day!") if $is_cet;
+process_ok("\n<TMPL_GET foo>" => "\nFOO", {foo => "FOO"}) if $is_cet;
+process_ok("<TMPL_GET foo->\n" => "FOO", {foo => "FOO"})  if $is_cet;
+process_ok("\n<-TMPL_GET foo>" => "FOO", {foo => "FOO"})  if $is_cet;
 
 ###----------------------------------------------------------------###
 print "### LOOP #############################################################\n";
 
 process_ok("<TMPL_LOOP blah></TMPL_LOOP>foo" => "foo");
+process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "", {blah => 1});
+process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "Hifoo", {blah => {wow => 1}}) if $is_cet;
 process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "HiHifoo", {blah => [{}, {}]});
 process_ok("<TMPL_LOOP blah>(<TMPL_VAR i>)</TMPL_LOOP>foo" => "(1)(2)(3)foo", {blah => [{i=>1}, {i=>2}, {i=>3}]});
+process_ok("<TMPL_LOOP NAME=\"blah\">(<TMPL_VAR i>)</TMPL_LOOP>foo" => "(1)(2)(3)foo", {blah => [{i=>1}, {i=>2}, {i=>3}]});
+process_ok("<TMPL_LOOP EXPR=\"blah\">(<TMPL_VAR i>)</TMPL_LOOP>foo" => "(1)(2)(3)foo", {blah => [{i=>1}, {i=>2}, {i=>3}]}) if $is_cet;
+process_ok("<TMPL_LOOP blah>(<TMPL_VAR i>)(<TMPL_VAR blue>)</TMPL_LOOP>foo" => "(1)()(2)()(3)()foo", {blah => [{i=>1}, {i=>2}, {i=>3}], blue => 'B'}) if $is_ht;
+process_ok("<TMPL_LOOP blah>(<TMPL_VAR i>)(<TMPL_VAR blue>)</TMPL_LOOP>foo" => "(1)(B)(2)(B)(3)(B)foo", {blah => [{i=>1}, {i=>2}, {i=>3}], blue => 'B', tt_config => [GLOBAL_VARS => 1]});
+
+process_ok("<TMPL_LOOP blah>(<TMPL_VAR i>)(<TMPL_VAR blue>)</TMPL_LOOP>foo" => "(1)()(2)()(3)()foo", {blah => [{i=>1}, {i=>2}, {i=>3}], blue => 'B', tt_config => [SYNTAX => 'ht']}) if $is_cet;
+process_ok("<TMPL_LOOP blah>(<TMPL_VAR i>)(<TMPL_VAR blue>)</TMPL_LOOP>foo" => "(1)(B)(2)(B)(3)(B)foo", {blah => [{i=>1}, {i=>2}, {i=>3}], blue => 'B', tt_config => [GLOBAL_VARS => 1, SYNTAX => 'ht']}) if $is_cet;
+
+process_ok("<TMPL_LOOP blah>(<TMPL_VAR i>)</TMPL_LOOP>foo" => "(1)()(3)foo", {blah => [{i=>1}, undef, {i=>3}]});
+
+process_ok("<TMPL_LOOP blah>\n(<TMPL_VAR __first__>|<TMPL_VAR __last__>|<TMPL_VAR __odd__>|<TMPL_VAR __inner__>|<TMPL_VAR __counter__>)</TMPL_LOOP>foo" => "
+(||||)
+(||||)
+(||||)foo", {blah => [undef, undef, undef]});
+
+process_ok("<TMPL_LOOP blah>\n(<TMPL_VAR __first__>|<TMPL_VAR __last__>|<TMPL_VAR __odd__>|<TMPL_VAR __inner__>|<TMPL_VAR __counter__>)</TMPL_LOOP>foo" => "
+(1||1|0|1)
+(0|0||1|2)
+(0|1|1|0|3)foo", {blah => [undef, undef, undef], tt_config => [LOOP_CONTEXT_VARS => 1]}) if ! $is_cet;
+
+process_ok("<TMPL_LOOP blah>\n(<TMPL_VAR __first__>|<TMPL_VAR __last__>|<TMPL_VAR __odd__>|<TMPL_VAR __inner__>|<TMPL_VAR __counter__>)</TMPL_LOOP>foo" => "
+(1|0|1|0|1)
+(0|0|0|1|2)
+(0|1|1|0|3)foo", {blah => [undef, undef, undef], tt_config => [LOOP_CONTEXT_VARS => 1]}) if $is_cet;
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
