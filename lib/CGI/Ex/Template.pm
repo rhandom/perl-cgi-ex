@@ -807,8 +807,8 @@ sub parse_tree_tt3 {
 }
 
 sub parse_tree_hte {
-    require CGI::Ex::Template::Extra;
-    &CGI::Ex::Template::Extra::parse_tree_hte;
+    require CGI::Ex::Template::HTE;
+    &CGI::Ex::Template::HTE::parse_tree_hte;
 }
 
 sub parse_expr {
@@ -2934,7 +2934,7 @@ sub get_line_number_by_index {
 
 sub define_vmethod {
     my ($self, $type, $name, $sub) = @_;
-    if (   $type =~ /scalar|item/i) { $SCALAR_OPS->{$name} = $sub }
+    if (   $type =~ /scalar|item|text/i) { $SCALAR_OPS->{$name} = $sub }
     elsif ($type =~ /array|list/i ) { $LIST_OPS->{  $name} = $sub }
     elsif ($type =~ /hash/i       ) { $HASH_OPS->{  $name} = $sub }
     elsif ($type =~ /filter/i     ) { $FILTER_OPS->{$name} = $sub }
@@ -3184,13 +3184,13 @@ sub register_function {
 }
 
 sub param {
-    require CGI::Ex::Template::Extra;
-    &CGI::Ex::Template::Extra::param;
+    require CGI::Ex::Template::HTE;
+    &CGI::Ex::Template::HTE::param;
 }
 
 sub output {
-    require CGI::Ex::Template::Extra;
-    &CGI::Ex::Template::Extra::output;
+    require CGI::Ex::Template::HTE;
+    &CGI::Ex::Template::HTE::output;
 }
 
 sub clear_param { shift->{'param'} = {} }
