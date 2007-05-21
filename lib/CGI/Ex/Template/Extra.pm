@@ -556,7 +556,6 @@ sub parse_tree_hte {
         ### find the next opening tag
         $$str_ref =~ m{ \G (.*?) $START }gcxs
             || last;
-
         my ($text, $comment, $is_close, $func) = ($1, $2, $3, uc $4);
 
         ### found a text portion - chomp it, interpolate it and store it
@@ -573,13 +572,6 @@ sub parse_tree_hte {
             }
         }
 
-        ### make sure we know this directive
-        if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
-            $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
-        }
-        $node = [$func, pos($$str_ref) - length($func), undef];
-        push @$pointer, $node;
-
         ### take care of chomping - yes HT now get CHOMP SUPPORT
         my $pre_chomp = $$str_ref =~ m{ \G ([+=~-]) }gcx ? $1 : $self->{'PRE_CHOMP'};
         $pre_chomp  =~ y/-=~+/1230/ if $pre_chomp;
@@ -589,6 +581,13 @@ sub parse_tree_hte {
             elsif ($pre_chomp == 3) { $pointer->[-1] =~ s{             (\s+) \z }{}x  }
             splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
         }
+
+        ### make sure we know this directive
+        if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
+            $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
+        }
+        $node = [$func, pos($$str_ref) - length($func), undef];
+        push @$pointer, $node;
 
         $$str_ref =~ m{ \G \s+ }gcx;
 
@@ -650,6 +649,7 @@ sub parse_tree_hte {
 
             ### handle TT Directive extensions
             } else {
+                $self->throw('parse', "Found a TT tag $func with NO_TT enabled", undef, pos($$str_ref)) if $self->{'NO_TT'};
                 $self->{'_end_tag'} = $comment ? qr{\s*([+=~-]?)-->} : qr{\s*([+=~-]?)>};
                 $node->[3] = eval { $CGI::Ex::Template::DIRECTIVES->{$func}->[0]->($self, $str_ref, $node) };
                 if (my $err = $@) {
@@ -837,6 +837,7 @@ sub output {
     $cache_size = undef if $self->{'DOUBLE_FILE_CACHE'};
 
     local $self->{'SYNTAX'}       = $self->{'SYNTAX'} || 'hte';
+    local $self->{'NO_TT'}        = $self->{'NO_TT'} || ($self->{'SYNTAX'} eq 'hte' ? 0 : 1);
     local $self->{'CACHE_SIZE'}   = $cache_size;
     local $self->{'STAT_TTL'}     = $stat_ttl;
     local $self->{'COMPILE_DIR'}  = $compile_dir;
