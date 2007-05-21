@@ -549,46 +549,63 @@ sub parse_tree_hte {
     my $capture;          # flag to start capture
     my $func;
     my $node;
+    my ($comment, $is_close);
     local pos $$str_ref = 0;
     my $allow_expr = ! defined($self->{'EXPR'}) || $self->{'EXPR'}; # default is on
 
     while (1) {
-        ### find the next opening tag
-        $$str_ref =~ m{ \G (.*?) $START }gcxs
-            || last;
-        my ($text, $comment, $is_close, $pre_chomp, $func) = ($1, $2, $3, $4, uc $5);
-
-        ### found a text portion - chomp it, interpolate it and store it
-        if (length $text) {
-            my $_last = pos $$str_ref;
-            if ($post_chomp) {
-                if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
-                elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
-                elsif ($post_chomp == 3) { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
+        ### allow for TMPL_SET foo = PROCESS foo
+        if ($capture) {
+            $func = $$str_ref =~ m{ \G \s* (\w+)\b }gcx
+                ? uc $1 : $self->throw('parse', "Error looking for block in capture DIRECTIVE", undef, pos($$str_ref));
+            if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
+                $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
             }
+
+            $node = [$func, pos($$str_ref) - length($func), undef];
+
+            push @{ $capture->[4] }, $node;
+            undef $capture;
+
+        ### handle all other TMPL tags
+        } else {
+            ### find the next opening tag
+            $$str_ref =~ m{ \G (.*?) $START }gcxs
+                || last;
+            (my $text, $comment, $is_close, my $pre_chomp, $func) = ($1, $2, $3, $4, uc $5);
+
+            ### found a text portion - chomp it, interpolate it and store it
             if (length $text) {
-                push @$pointer, $text;
-                $self->interpolate_node($pointer, $_last) if $self->{'INTERPOLATE'};
+                my $_last = pos $$str_ref;
+                if ($post_chomp) {
+                    if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
+                    elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
+                    elsif ($post_chomp == 3) { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
+                }
+                if (length $text) {
+                    push @$pointer, $text;
+                    $self->interpolate_node($pointer, $_last) if $self->{'INTERPOLATE'};
+                }
             }
-        }
 
-        ### make sure we know this directive
-        if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
-            $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
-        }
-        $node = [$func, pos($$str_ref) - length($func) - length($pre_chomp) - 5, undef];
+            ### make sure we know this directive
+            if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
+                $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
+            }
+            $node = [$func, pos($$str_ref) - length($func) - length($pre_chomp) - 5, undef];
 
-        ### take care of chomping - yes HT now get CHOMP SUPPORT
-        $pre_chomp ||= $self->{'PRE_CHOMP'};
-        $pre_chomp  =~ y/-=~+/1230/ if $pre_chomp;
-        if ($pre_chomp && $pointer->[-1] && ! ref $pointer->[-1]) {
-            if    ($pre_chomp == 1) { $pointer->[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{}x  }
-            elsif ($pre_chomp == 2) { $pointer->[-1] =~ s{             (\s+) \z }{ }x }
-            elsif ($pre_chomp == 3) { $pointer->[-1] =~ s{             (\s+) \z }{}x  }
-            splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
-        }
+            ### take care of chomping - yes HT now get CHOMP SUPPORT
+            $pre_chomp ||= $self->{'PRE_CHOMP'};
+            $pre_chomp  =~ y/-=~+/1230/ if $pre_chomp;
+            if ($pre_chomp && $pointer->[-1] && ! ref $pointer->[-1]) {
+                if    ($pre_chomp == 1) { $pointer->[-1] =~ s{ (?:\n|^) [^\S\n]* \z }{}x  }
+                elsif ($pre_chomp == 2) { $pointer->[-1] =~ s{             (\s+) \z }{ }x }
+                elsif ($pre_chomp == 3) { $pointer->[-1] =~ s{             (\s+) \z }{}x  }
+                splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
+            }
 
-        push @$pointer, $node;
+            push @$pointer, $node;
+        }
 
         $$str_ref =~ m{ \G \s+ }gcx;
 
@@ -738,10 +755,7 @@ sub parse_tree_hte {
                 $node->[3] = undef;             # only let these be defined once - at the front of the tree
             }
         }
-#            } elsif ($capture) {
-#                push @{ $capture->[4] }, $node;
-#                undef $capture;
-#                # normal nodes
+
 
         ### look for the closing tag
         if ($$str_ref =~ m{ \G $self->{'_end_tag'} }gcxs) {
@@ -749,6 +763,11 @@ sub parse_tree_hte {
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
             $continue = 0;
             $post_op  = 0;
+            next;
+
+        ### setup capturing
+        } elsif ($node->[6]) {
+            $capture = $node;
             next;
 
         ### no closing tag
