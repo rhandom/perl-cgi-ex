@@ -570,7 +570,7 @@ sub parse_tree_tt3 {
     while (1) {
         ### continue looking for information in a semi-colon delimited tag
         if ($continue) {
-            $node = [undef, pos($$str_ref), undef];
+            $node = [undef, $continue, undef];
 
         ### find the next opening tag
         } else {
@@ -645,7 +645,8 @@ sub parse_tree_tt3 {
             } elsif ($capture) {
                 push @{ $capture->[4] }, $node;
                 undef $capture;
-                # normal nodes
+
+            # normal nodes
             } else{
                 push @$pointer, $node;
             }
