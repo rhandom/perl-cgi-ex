@@ -9,6 +9,14 @@ CGI::Ex::Template::Extra - load extra and advanced features that aren't as commo
 Provides for extra or extended features that may not be as commonly used.
 This module should not normally be used by itself.
 
+=head1 AUTHOR
+
+Paul Seamons <paul at seamons dot com>
+
+=head1 LICENSE
+
+This module may be distributed under the same terms as Perl itself.
+
 =cut
 
 use strict;

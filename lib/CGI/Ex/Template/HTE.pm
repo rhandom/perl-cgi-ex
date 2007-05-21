@@ -9,6 +9,18 @@ CGI::Ex::Template::HTE - provide HTML::Template and HTML::Template::Expr support
 Provides for extra or extended features that may not be as commonly used.
 This module should not normally be used by itself.
 
+See the CGI::Ex::Template documentation for configuration and other parameters.
+
+=head1 AUTHOR
+
+Paul Seamons <paul at seamons dot com>
+
+=head1 LICENSE
+
+This module may be distributed under the same terms as Perl itself.
+
+=cut
+
 =cut
 
 use strict;
