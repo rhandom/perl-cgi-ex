@@ -37,61 +37,40 @@ features.  One thing led to another and soon CET provided for most of
 the features of TT2 as well as some from TT3.  CGI::Ex::Template is a
 full-featured implementation of the Template::Toolkit language.
 
-CGI::Ex::Template (CET hereafter) is smaller, faster, uses less memory
-and less CPU than TT2.  However, it is most likely less portable, less
-extendable, and probably has many of the bugs that TT2 has already massaged
-out from years of bug reports and patches from a very active community
-and mailing list.  CET does not have a vibrant community behind it.  Fixes
-applied to TT2 will take longer to get into CET, should they get in at all.
-An attempt will be made to follow updates made to TT2 to keep the two
-in sync at a language level.  There already has been, and it is expected that
-there will continue to be code sharing between the two projects.  (Acutally
-I will try and keep applicable fixes in sync with TT).
+As of version 2.13, CGI::Ex::Template also provides near full
+compatibility with HTML::Template (HT) and HTML::Template::Expr (HTE).
+Version 2.13 introduced the SYNTAX configuration allowing for
+inclusion of TT style templates in HT and vice versa.  It also
+provided the HTML::Template output and param methods which allow CET
+to provide the HTML::Template interface.
 
 CGI::Ex::Template uses a recursive regex based grammar (early versions
-before the 2.10 release did not).  This allows for the embedding of opening
-and closing tags inside other tags (as in [% a = "[% 1 + 2 %]" ;  a|eval %]).
-The individual methods such as parse_expr and play_expr may be used by external
-applications to add TT style variable parsing to other applications.
+before the 2.10 release did not).  This allows for the embedding of
+opening and closing tags inside other tags (as in [% a = "[% 1 + 2 %]"
+; a|eval %]).  The individual methods such as parse_expr and play_expr
+may be used by external applications to add TT style variable parsing
+to other applications.
 
-Most of the standard Template::Toolkit documentation covering directives,
-variables, configuration, plugins, filters, syntax, and vmethods should
-apply to CET just fine (This pod tries to explain everything - but there is
-too much).  The section on differences between CET and TT will explain
-what too look out for.
+CGI::Ex::Template is fast but CGI::Ex::Template::XS is even faster.
+If CGI::Ex::Template isn't fast enough for you, the XS version has key
+methods coded in C and provides a noticable improvement over the
+non-XS version.  CET by itself is generally faster than TT, HTE, and
+often HT.  The XS version is nearly always faster.  CET also uses less
+memory than TT and HTE, and only a little more than HT.
 
-Note: A clarification on "faster".  All templates are going to take
-different amounts of time to process.  Different types of DIRECTIVES
-parse and play more quickly than others.  The test script
-samples/benchmark/bench_template.pl was used to obtain sample numbers.
-In general the following statements are true:
+Most of the standard Template::Toolkit documentation covering
+directives, variables, configuration, plugins, filters, syntax, and
+vmethods should apply to CET just fine (This pod tries to explain
+everything - but there is too much).  The section on differences
+between CET and TT will explain what too look out for.
 
-    If you load a new Template object each time and pass a filename, CET
-    is around 3.5 times faster.
+Additionally, most of the standard HTML::Template and
+HTML::Template::Expr documentation covering methods, variables,
+expressions, and syntax will apply to CET just fine as well.
 
-    If you load a new Template object and pass a string ref, CET
-    is around 3 times faster.
-
-    If you load a new Template object and use CACHE_EXT, CET
-    is around 1.5 times faster.
-
-    If you use a cached object with a cached in memory template,
-    then CET is 50% faster.
-
-    If you use Template::Stash::XS with a cached in memory template,
-    then CET is about as fast.  But if you use CGI::Ex::Template::XS,
-    the CETX is faster still (about twice as fast as CET).
-
-It is pretty hard to beat the speed of XS stash with compiled in
-memory templates.  Many systems don't have access to those so
-CET may make more sense.  Hopefully as TT is revised, many of the CET
-speed advantages can be incorporated so that the core TT is just as
-fast or faster.  This was last updated at version 2.10 of CET and
-2.18 of TT.
 
 So should you use CGI::Ex::Template ?  Well, try it out.  It may
 give you no visible improvement.  Or it could.
-
 
 =head1 PUBLIC METHODS
 
@@ -106,19 +85,21 @@ commonly used public methods are listed later in this document.
         INCLUDE_PATH => ['/my/path/to/content', '/my/path/to/content2'],
     });
 
-    Arguments may be passed as a hash or as a hashref.  Returns a CGI::Ex::Template object.
+Arguments may be passed as a hash or as a hashref.  Returns a CGI::Ex::Template object.
 
-    There are currently no errors during CGI::Ex::Template object creation.
+There are currently no errors during CGI::Ex::Template object creation.
 
 =item C<process>
 
 This is the main method call for starting processing.  Any errors that result in the
 template processing being stopped will be stored and available via the ->error method.
+This is the TT compatible method - see the output method for HT compatibility.
 
-Process takes three arguments.
-
+    my $t = CGI::Ex::Template->new;
     $t->process($in, $swap, $out)
         || die $t->error;
+
+Process takes three arguments.
 
 The $in argument can be any one of:
 
@@ -157,6 +138,12 @@ The $out argument can be any one of:
 Additionally - the $out argument can be configured using the OUTPUT configuration
 item.
 
+The process method defaults to using the "cet" syntax which will parse TT3 and most
+TT2 documents.  To parse HT or HTE documents, you must pass the SYNTAX configuration
+item to the "new" method.  All calls to process would then default to HTE syntax.
+
+    my $obj = CGI::Ex::Template->new(SYNTAX => 'hte');
+
 =item C<process_simple>
 
 Similar to the process method but with the following restrictions:
@@ -176,18 +163,65 @@ be retrieved via the error method.
     $obj->process('somefile.html', {a => 'b'}, \$string_ref)
         || die $obj->error;
 
+=item C<output>
+
+HTML::Template way to process a template.  The output method requires that a filename,
+filehandle, scalarref, or arrayref argument was passed to the new method.  All of
+the HT calling conventions for new are supported.  The key difference is that CET will
+not actually process the template until the output method is called.
+
+    my $obj = CGI::Ex::Template->new(filename => 'myfile.html');
+    $obj->param(\%swap);
+    print $obj->output;
+
+See the HTML::Template documentation for more information.
+
+The output method defaults to using the "hte" syntax which will parse HTE and HT documents.
+To parse TT3 or TT2 documents, you must pass the SYNTAX configuration
+item to the "new" method.  All calls to process would then default to TT3 syntax.
+
+    my $obj = CGI::Ex::Template->new(SYNTAX => 'tt3');
+
+=item C<param>
+
+HTML::Template way to get or set variable values that will be used by the output method.
+
+    my $val = $obj->param('key'); # get one value
+
+    $obj->param(key => $val);     # set one value
+
+    $obj->param(key => $val, key2 => $val2);   # set multiple
+
+    $obj->param({key => $val, key2 => $val2}); # set multiple
+
+See the HTML::Template documentation for more information.
+
 =item C<define_vmethod>
 
 This method is available for defining extra Virtual methods or filters.  This method is similar
 to Template::Stash::define_vmethod.
 
+    CGI::Ex::Template->define_vmethod(
+        'text',
+        reverse => sub { my $item = shift; return scalar reverse $item },
+    );
+
+=item C<register_function>
+
+This is the HTML::Template way of defining text vmethods.  It is the same as
+calling define_vmethod with "text" as the first argument.
+
+    CGI::Ex::Template->register_function(
+        reverse => sub { my $item = shift; return scalar reverse $item },
+    );
+
 =back
 
 =head1 TODO
 
-    Add HTML::Template support
+    Move module to its own namespace.
 
-=head1 HOW IS CGI::Ex::Template DIFFERENT
+=head1 HOW IS CGI::Ex::Template DIFFERENT from Template::Toolkit
 
 CET uses the same base template syntax and configuration items as TT2,
 but the internals of CET were written from scratch.  Additionally much
@@ -340,7 +374,7 @@ Added "fmt" scalar, list, and hash virtual methods.
 
 =item
 
-Added HTML::Template::Expr vmethods
+Added missing HTML::Template::Expr vmethods
 
 The following vmethods were added - they correspond to the
 perl functions of the same name.
@@ -372,6 +406,9 @@ The following are equivalent in CET:
 
 This feature may be disabling by setting the
 VMETHOD_FUNCTIONS configuration item to 0.
+
+This is similar to how HTML::Template::Expr operates, but
+now you can use them in TT templates as well.
 
 =item
 
@@ -494,6 +531,11 @@ that can be used as a post-operative directive.
        2
        END %] # prints 1
 
+Note2: This behavior can be disabled by setting the SEMICOLONS
+configuration item to a true value.  If SEMICOLONS is true, then
+a SEMICOLON must be set after any directive that isn't followed
+by a post-operative directive.
+
 =item
 
 CATCH blocks can be empty.
@@ -526,6 +568,35 @@ of the all uppercase names that TT2 uses.
         anycase     => 1,
         interpolate => 1,
     });
+
+=item
+
+Added LOOP directive (works the same as LOOP in HTML::Template.
+
+   [%- var = [{key => 'a'}, {key => 'b'}] %]
+   [%- LOOP var %]
+     ([% key %])
+   [%- END %]
+
+   Prints
+
+     (a)
+     (b)
+
+=item
+
+CET can parse HTML::Template and HTML::Template::Expr documents
+as well as TT2 and TT3 documents.
+
+=item
+
+Added SYNTAX configuration.  The SYNTAX configuration can be
+used to change what template syntax will be used for parsing
+included templates or eval'ed strings.
+
+   [% CONFIG SYNTAX => 'hte' %]
+   [% var = '<TMPL_VAR EXPR="sprintf('%s', 'hello world')">' %]
+   [% var | eval %]
 
 =item
 
@@ -600,6 +671,84 @@ When debug dirs is on, directives on different lines separated
 by colons show the line they are on rather than a general line range.
 
 Parse errors actually know what line and character they occured at.
+
+=back
+
+=head1 HOW IS CGI::Ex::Template DIFFERENT from HTML::Template
+
+CET can use the same base template syntax and configuration items as HTE
+and HT.  The internals of CET were written to support TT3, but were
+general enough to be extended to support HTML::Template as well.  The result
+is HTML::Template::Expr compatible syntax, with CET speed and a wide range
+of additional features.
+
+The TMPL_VAR, TMPL_IF, TMPL_ELSE, TMPL_UNLESS, TMPL_LOOP, and TMPL_INCLUDE
+all work identically to HTML::Template.
+
+=over 4
+
+=item
+
+Added support for other TT3 directives and for TT style "dot notation."
+
+    <TMPL_SET a = "bar">
+    <TMPL_SET b = [1 .. 25]>
+    <TMPL_SET foo = PROCESS 'filename.tt'>
+
+    <TMPL_GET foo>  # similar to <TMPL_VAR NAME="foo">
+    <TMPL_GET b.3>
+    <TMPL_GET my.nested.chained.variable.1>
+    <TMPL_GET my_var | html>
+
+    <TMPL_USE foo = DBI(db => ...)>
+    <TMPL_CALL foo.connect>
+
+Any of the TT directives can be used in HTML::Template documents.
+
+For many die-hard HTML::Template fans, it is probably quite scary to
+be providing all of the TT functionality.  All of the extended
+TT functionality can be disabled by setting the NO_TT configuration
+item.  The NO_TT configuration is automatically set if the SYNTAX is
+set to "ht" and the output method is called.
+
+=item
+
+There is an ELSIF!!!
+
+    <TMPL_IF foo>
+      FOO
+    <TMPL_ELSIF bar>
+      BAR
+    <TMPL_ELSE>
+      Done then
+    </TMPL_IF>
+
+=item
+
+Allow for HTML::Template templates to include TT style templates.
+
+    <TMPL_CONFIG SYNTAX => 'tt3'>
+    <TMPL_INCLUDE "filename.tt">
+
+=item
+
+Allow for Expr parsing to follow proper precedence rules.
+
+   <TMPL_VAR EXPR="1 + 2 * 3">
+
+   Properly prints 7.
+
+=item
+
+Uses all of the caching and opcode tree optimations provided by
+CGI::Ex::Template and CGI::Ex::Template::XS.
+
+=item
+
+CET does not provide the query method from HTML::Template.  This
+is because parsing of the document is delayed until the output
+method is called, and because CET supports TT style chained
+variables which often are not resolvable until run time.
 
 =back
 
@@ -1824,6 +1973,10 @@ expressions were true.
 IF may also be used as a post operative directive.
 
     [% 'A equaled B' IF a == b %]
+
+Note: If you are using HTML::Template style documents, the TMPL_IF
+tag parses using the limited HTML::Template parsing rules.  However,
+you may use EXPR="" to embed a TT3 style expression.
 
 =item C<INCLUDE>
 
@@ -3066,6 +3219,13 @@ can refer to each other in a circular manner.  Be careful about recursion.
 Boolean.  Default false.  If true, allows filenames to be specified
 that are relative to the currently running process.
 
+=item SEMICOLONS
+
+Boolean.  Default fast.  If true, then the syntax will require that
+semi-colons separate multiple directives in the same tag.  This is
+useful for keeping the syntax a little more clean as well as trouble
+shooting some errors.
+
 =item START_TAG
 
 Set a string to use as the opening delimiter for TT.  Default is "[%".
@@ -3190,7 +3350,7 @@ See the WRAPPER direcive for more examples of how wrappers are construted.
 =back
 
 
-=head1 UNSUPPORTED TT CONFIGURATION
+=head1 UNSUPPORTED TT2 CONFIGURATION
 
 =over 4
 
