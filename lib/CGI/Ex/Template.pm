@@ -2145,6 +2145,9 @@ sub parse_PROCESS {
 
 sub play_PROCESS {
     my ($self, $info, $node, $out_ref) = @_;
+    if ($self->{'NO_INCLUDES'}) {
+        $self->throw('file', "NO_INCLUDES was set during a $node->[0] directive");
+    }
 
     my ($args, @files) = @$info;
 
