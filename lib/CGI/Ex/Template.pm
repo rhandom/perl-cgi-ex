@@ -17,8 +17,8 @@ our $QR_PRIVATE          = qr/^[_.]/;
 
 our $SYNTAX = {
     cet => \&parse_tree_tt3,
-    ht  => sub { my $self = shift; local $self->{'EXPR'} = 0; $self->parse_tree_hte(@_) },
-    hte => \&parse_tree_hte,
+    ht  => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; local $self->{'EXPR'} = 0; $self->parse_tree_hte(@_) },
+    hte => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; $self->parse_tree_hte(@_) },
     tt3 => \&parse_tree_tt3,
     tt2 => sub { my $self = shift; local $self->{'V2PIPE'} = 1; $self->parse_tree_tt3(@_) },
     tt1 => sub { my $self = shift; local $self->{'V2PIPE'} = 1; local $self->{'V1DOLLAR'} = 1; $self->parse_tree_tt3(@_) },
@@ -201,10 +201,6 @@ our $DIRECTIVES = {
     WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1,       1],
     #name       parse_sub        play_sub         block    postdir  continue  no_interp
 };
-sub define_directive {
-    my $a = shift;
-    return $DIRECTIVES->{$a->{'name'}} = [@{ $a }{qw(parse_sub play_sub is_block is_postop continues no_interp)}];
-}
 
 ### setup the operator parsing
 our $OPERATORS = [
@@ -232,8 +228,10 @@ our $OPERATORS = [
     ['none',    80,        ['gt'],              sub {     $_[0] gt $_[1]  } ],
     ['none',    80,        ['le'],              sub {     $_[0] le $_[1]  } ],
     ['none',    80,        ['ge'],              sub {     $_[0] ge $_[1]  } ],
-    ['none',    75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]  } ],
-    ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]  } ],
+    ['none',    75,        ['=='],              sub {     $_[0] == $_[1]  } ],
+    ['none',    75,        ['eq'],              sub {     $_[0] eq $_[1]  } ],
+    ['none',    75,        ['!='],              sub {     $_[0] != $_[1]  } ],
+    ['none',    75,        ['ne'],              sub {     $_[0] ne $_[1]  } ],
     ['none',    75,        ['<=>'],             sub {     $_[0] <=> $_[1] } ],
     ['none',    75,        ['cmp'],             sub {     $_[0] cmp $_[1] } ],
     ['left',    70,        ['&&'],              undef                       ],
@@ -287,7 +285,7 @@ our $MAX_EVAL_RECURSE  = 50;
 our $MAX_MACRO_RECURSE = 50;
 our $STAT_TTL          ||= 1;
 
-our @CONFIG_COMPILETIME = qw(SYNTAX ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP SEMICOLONS V1DOLLAR V2PIPE);
+our @CONFIG_COMPILETIME = qw(SYNTAX ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP SEMICOLONS V1DOLLAR V2PIPE V2EQUALS);
 our @CONFIG_RUNTIME     = qw(DUMP VMETHOD_FUNCTIONS);
 
 eval {require Scalar::Util};
@@ -1107,6 +1105,9 @@ sub parse_expr {
             }
             local $self->{'_operator_precedence'} = 1;
             my $op = $1;
+            $op = 'eq' if $op eq '==' && (! defined($self->{'V2EQUALS'}) || $self->{'V2EQUALS'});
+            $op = 'ne' if $op eq '!=' && (! defined($self->{'V2EQUALS'}) || $self->{'V2EQUALS'});
+
             $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
 
             ### allow for postfix - doesn't check precedence - someday we might change - but not today (only affects post ++ and --)
@@ -1739,11 +1740,12 @@ sub play_operator {
         return $val;
 
    } elsif ($op eq '||' || $op eq 'or' || $op eq 'OR') {
-        return $self->play_expr($tree->[2]) || $self->play_expr($tree->[3]) || '';
+        my $val = $self->play_expr($tree->[2]) || $self->play_expr($tree->[3]);
+        return defined($val) ? $val : '';
 
     } elsif ($op eq '&&' || $op eq 'and' || $op eq 'AND') {
-        my $var = $self->play_expr($tree->[2]) && $self->play_expr($tree->[3]);
-        return $var ? $var : 0;
+        my $val = $self->play_expr($tree->[2]) && $self->play_expr($tree->[3]);
+        return defined($val) ? $val : '';
 
     } elsif ($op eq '?') {
         local $^W;
@@ -2935,15 +2937,28 @@ sub get_line_number_by_index {
 ### many of these vmethods have used code from Template/Stash.pm to
 ### assure conformance with the TT spec.
 
+sub define_syntax {
+    my ($self, $name, $sub) = @_;
+    return $SYNTAX->{$name} = $sub;
+}
+
+sub define_operator {
+    my ($self, $name, $args) = @_;
+    return $OPERATORS->{$name} = [@{ $args }{qw(type precedence symbols play_sub)}];
+}
+
+sub define_directive {
+    my ($self, $name, $args) = @_;
+    return $DIRECTIVES->{$name} = [@{ $args }{qw(parse_sub play_sub is_block is_postop continues no_interp)}];
+}
+
 sub define_vmethod {
     my ($self, $type, $name, $sub) = @_;
     if (   $type =~ /scalar|item|text/i) { $SCALAR_OPS->{$name} = $sub }
     elsif ($type =~ /array|list/i ) { $LIST_OPS->{  $name} = $sub }
     elsif ($type =~ /hash/i       ) { $HASH_OPS->{  $name} = $sub }
     elsif ($type =~ /filter/i     ) { $FILTER_OPS->{$name} = $sub }
-    else {
-        die "Invalid type vmethod type $type";
-    }
+    else { die "Invalid type vmethod type $type" }
     return 1;
 }
 
