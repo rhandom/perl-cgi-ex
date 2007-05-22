@@ -2080,6 +2080,9 @@ sub parse_INSERT { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_INSERT {
     my ($self, $args, $node, $out_ref) = @_;
+    if ($self->{'NO_INCLUDES'}) {
+        $self->throw('file', "NO_INCLUDES was set during a $node->[0] directive");
+    }
 
     my ($named, @files) = @$args;
 
