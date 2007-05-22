@@ -836,6 +836,7 @@ process_ok("[% var = [{key => 'a'}, {key => 'b'}] -%]
 
 for (1) {
     local $CGI::Ex::Template::QR_PRIVATE = 0;
+    local $CGI::Ex::Template::QR_PRIVATE = 0; # warn clean
     CGI::Ex::Template->define_vmethod('scalar', textjoin => sub {join(shift, @_)});
 
     process_ok("[% var = [{key => 'a'}, {key => 'b'}, {key => 'c'}] -%]
