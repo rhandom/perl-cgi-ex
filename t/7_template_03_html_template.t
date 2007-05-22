@@ -17,7 +17,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ($is_cet) ? 90 : ($is_ht) ? 60 : 64;
+use Test::More tests => ($is_cet) ? 91 : ($is_ht) ? 60 : 64;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -221,10 +221,11 @@ process_ok("<TMPL_GET foo->\n" => "FOO", {foo => "FOO"})  if $is_cet;
 process_ok("\n<-TMPL_GET foo>" => "FOO", {foo => "FOO"})  if $is_cet;
 
 ###----------------------------------------------------------------###
-print "### TT3 INTERPOLATE###################################################\n";
+print "### TT3 INTERPOLATE ##################################################\n";
 
 process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => '$foo FOO ${ 1 + 2 }', {foo => "FOO"});
 process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO", tt_config => [INTERPOLATE => 1]}) if $is_cet;
+process_ok('<TMPL_CONFIG INTERPOLATE => 1>$foo <TMPL_GET foo> ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO"}) if $is_cet;
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
