@@ -53,7 +53,7 @@ sub parse_CONFIG {
 }
 
 sub play_CONFIG {
-    my ($self, $config) = @_;
+    my ($self, $config, $node, $out_ref) = @_;
 
     my %rtime = map {$_ => 1} @CGI::Ex::Template::CONFIG_RUNTIME;
 
@@ -63,7 +63,8 @@ sub play_CONFIG {
     @{ $self }{keys %$named} = @{ $named }{keys %$named};
 
     ### show what current values are
-    return join("\n", map { $rtime{$_} ? ("CONFIG $_ = ".(defined($self->{$_}) ? $self->{$_} : 'undef')) : $_ } @the_rest);
+    $$out_ref .= join("\n", map { $rtime{$_} ? ("CONFIG $_ = ".(defined($self->{$_}) ? $self->{$_} : 'undef')) : $_ } @the_rest);
+    return;
 }
 
 sub parse_DEBUG {
@@ -88,10 +89,11 @@ sub play_DEBUG {
     } elsif ($ref->[0] eq 'format') {
         $self->{'_debug_format'} = $ref->[1];
     }
+    return;
 }
 
 sub play_DUMP {
-    my ($self, $dump, $node) = @_;
+    my ($self, $dump, $node, $out_ref) = @_;
 
     my $conf = $self->{'DUMP'};
     return if ! $conf && defined $conf; # DUMP => 0
@@ -137,7 +139,8 @@ sub play_DUMP {
         $out = "DUMP: File \"$info->{file}\" line $info->{line}\n    $out" if $conf->{'header'} || ! defined $conf->{'header'};
     }
 
-    return $out;
+    $$out_ref .= $out;
+    return;
 }
 
 sub parse_FILTER {
@@ -169,7 +172,6 @@ sub play_FILTER {
     die $@ if $@ && ref($@) !~ /Template::Exception$/;
 
     my $var = [[undef, '~', $out], 0, '|', @$filter]; # make a temporary var out of it
-
 
     return $CGI::Ex::Template::DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
 }
@@ -214,7 +216,7 @@ sub play_LOOP {
         }
     }
 
-    return undef;
+    return;
 }
 
 sub parse_MACRO {
@@ -507,7 +509,7 @@ sub play_VIEW {
     $self->set_variable(['view', 0], $old_view);
     $view->seal;
 
-    return '';
+    return;
 }
 
 ###----------------------------------------------------------------###
