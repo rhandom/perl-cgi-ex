@@ -23,6 +23,29 @@ use CGI::Ex::Template::XS;
 use POSIX qw(tmpnam);
 use File::Path qw(mkpath rmtree);
 
+###----------------------------------------------------------------###
+
+my $names = {
+  CET          => 'CGI::Ex::Template using TT interface',
+  CETX         => 'CGI::Ex::Template::XS using TT interface',
+  CETH         => 'CGI::Ex::Template using HTML::Template interface',
+  CETXH        => 'CGI::Ex::Template::XS using HTML::Template interface',
+  HT           => 'HTML::Template',
+  HTE          => 'HTML::Template::Expr',
+  HTJ          => 'HTML::Template::JIT - Compiled to C template',
+  TextTemplate => 'Text::Template - Perl code eval based',
+  TT           => 'Template::Toolkit',
+  TTX          => 'Template::Toolkit with Stash::XS',
+  TTXCET       => 'Template::Toolkit with Stash::XS and Template::Parser::CET',
+
+  mem          => 'Compiled in memory',
+  file         => 'Loaded from file',
+  str          => 'From string ref',
+};
+
+###----------------------------------------------------------------###
+### get cache and compile dirs ready
+
 my $dir  = tmpnam;
 my $dir2 = "$dir.cache";
 mkpath($dir);
@@ -30,12 +53,14 @@ mkpath($dir2);
 END {rmtree $dir; rmtree $dir2};
 my @dirs = ($dir);
 
+###----------------------------------------------------------------###
+
 my $form = {
   foo => 'bar',
   pass_in_something => 'what ever you want',
 };
 
-###----------------------------------------------------------------###
+my $filler = ((" foo" x 10)."\n") x 10;
 
 my $stash_t = {
   shell_header => "This is a header",
@@ -64,9 +89,10 @@ $FOO::a_stuff      = [qw(one two three four)];
 ###----------------------------------------------------------------###
 ### TT style template
 
-my $content_tt = <<'DOC';
+my $content_tt = <<"DOC";
 [% shell_header %]
 [% shell_start %]
+$filler
 
 [% IF foo %]
 This is some text.
@@ -75,6 +101,7 @@ This is some text.
 [% FOREACH i IN a_stuff %][% i %][% END %]
 [% pass_in_something %]
 
+$filler
 [% shell_end %]
 [% shell_footer %]
 DOC
@@ -87,9 +114,10 @@ if (open (my $fh, ">$dir/foo.tt")) {
 ###----------------------------------------------------------------###
 ### HTML::Template style
 
-my $content_ht = <<'DOC';
+my $content_ht = <<"DOC";
 <TMPL_VAR NAME=shell_header>
 <TMPL_VAR NAME=shell_start>
+$filler
 
 <TMPL_IF NAME=foo>
 This is some text.
@@ -98,6 +126,7 @@ This is some text.
 <TMPL_LOOP NAME=a_stuff><TMPL_VAR NAME=name></TMPL_LOOP>
 <TMPL_VAR NAME=pass_in_something>
 
+$filler
 <TMPL_VAR NAME=shell_end>
 <TMPL_VAR NAME=shell_footer>
 DOC
@@ -110,22 +139,24 @@ if (open (my $fh, ">$dir/foo.ht")) {
 ###----------------------------------------------------------------###
 ### Text::Template style template
 
-my $content_p = <<'DOC';
-{$shell_header}
-{$shell_start}
+my $content_p = <<"DOC";
+{\$shell_header}
+{\$shell_start}
+$filler
 
-{ if ($foo) {
-    $OUT .= "
+{ if (\$foo) {
+    \$OUT .= "
 This is some text.
 ";
   }
 }
 
-{  $OUT .= $_ foreach @$a_stuff; }
-{$pass_in_something}
+{  \$OUT .= \$_ foreach \@\$a_stuff; }
+{\$pass_in_something}
 
-{$shell_end}
-{$shell_footer}
+$filler
+{\$shell_end}
+{\$shell_footer}
 DOC
 
 ###----------------------------------------------------------------###
@@ -143,32 +174,32 @@ my $tests = {
     ###----------------------------------------------------------------###
     ### compile means item was compiled to optree or perlcode and stored on disk
 
-    TT_compile => sub {
+    TT_file => sub {
         my $tt = Template->new(INCLUDE_PATH => \@dirs, STASH => Template::Stash->new($stash_t), COMPILE_DIR => $dir2);
         my $out = ""; $tt->process('foo.tt', $form, \$out); $out;
     },
-    TTX_compile => sub {
+    TTX_file => sub {
         my $tt = Template->new(INCLUDE_PATH => \@dirs, STASH => Template::Stash::XS->new($stash_t), COMPILE_DIR => $dir2);
         my $out = ""; $tt->process('foo.tt', $form, \$out); $out;
     },
-    CET_compile => sub {
+    CET_file => sub {
         my $t = CGI::Ex::Template->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t, COMPILE_DIR  => $dir2);
         my $out = ''; $t->process('foo.tt', $form, \$out); $out;
     },
-    CTX_compile => sub {
+    CETX_file => sub {
         my $t = CGI::Ex::Template::XS->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t, COMPILE_DIR => $dir2);
         my $out = ''; $t->process('foo.tt', $form, \$out); $out;
     },
 
-    CETH_compile => sub {
+    CETH_file => sub {
         my $ht = CGI::Ex::Template->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
-    CETHX_compile => sub {
+    CETXH_file => sub {
         my $ht = CGI::Ex::Template::XS->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
-    HT_compile => sub {
+    HT_file => sub {
         my $ht = HTML::Template->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
@@ -200,7 +231,7 @@ my $tests = {
         my $t = CGI::Ex::Template->new(VARIABLES => $stash_t);
         my $out = ""; $t->process(\$content_tt, $form, \$out); $out;
     },
-    CTX_str => sub {
+    CETX_str => sub {
         my $t = CGI::Ex::Template::XS->new(VARIABLES => $stash_t);
         my $out = ""; $t->process(\$content_tt, $form, \$out); $out;
     },
@@ -209,7 +240,7 @@ my $tests = {
         my $ht = CGI::Ex::Template->new(    type => 'scalarref', source => \$content_ht);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
-    CETHX_str => sub {
+    CETXH_str => sub {
         my $ht = CGI::Ex::Template::XS->new(type => 'scalarref', source => \$content_ht);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
@@ -234,7 +265,7 @@ my $tests = {
         my $ht = CGI::Ex::Template->new(    filename => "foo.ht", path => \@dirs, cache => 1);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
-    CETHX_mem => sub {
+    CETXH_mem => sub {
         my $ht = CGI::Ex::Template::XS->new(filename => "foo.ht", path => \@dirs, cache => 1);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
@@ -257,14 +288,15 @@ foreach my $name (sort keys %$tests) {
     if ($test ne $tests->{$name}->()) {
         die "$name did not match TT_str output\n";
     }
-    print "$name OK\n";
+    $name =~ /(\w+)_(\w+)/;
+    print "$name - $names->{$1} - ($names->{$2})\n";
 }
 
 ###----------------------------------------------------------------###
 ### and now - the tests - grouped by common capability
 
 my %mem_tests = map {($_ => $tests->{$_})} grep {/_mem$/} keys %$tests;
-my %cpl_tests = map {($_ => $tests->{$_})} grep {/_compile$/} keys %$tests;
+my %cpl_tests = map {($_ => $tests->{$_})} grep {/_file$/} keys %$tests;
 my %str_tests = map {($_ => $tests->{$_})} grep {/_str$/} keys %$tests;
 
 print "------------------------------------------------------------------------\n";
