@@ -25,6 +25,7 @@ use strict;
 use warnings;
 
 our $VERSION = '2.12';
+our %DOCUMENTS; # global cache used with new(cache => 1) and output
 
 sub parse_tree_hte {
     my $self    = shift;
@@ -382,6 +383,7 @@ sub output {
     local $self->{'ABSOLUTE'}     = 1;
     local $self->{'RELATIVE'}     = 1;
     local $self->{'INCLUDE_PATH'} = $self->{'PATH'} || './';
+    local $self->{'_documents'}   = \%DOCUMENTS;
     local $CGI::Ex::Template::QR_PRIVATE = undef;
 
     if ($args->{'print_to'}) {
