@@ -250,12 +250,7 @@ our $OPERATORS = [
     ['left',    45,        ['and', 'AND'],      undef                       ],
     ['right',   40,        ['or', 'OR'],        undef                       ],
 ];
-our $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
-our $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
-our $OP_DISPATCH = {map {my $ref = $_; map {$_ => $ref->[3]} @{$ref->[2]}} grep {$_->[3]             } @$OPERATORS};
-our $OP_ASSIGN   = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'assign' } @$OPERATORS};
-our $OP_POSTFIX  = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'postfix'} @$OPERATORS}; # bool is postfix
-our $OP_TERNARY  = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'ternary'} @$OPERATORS}; # bool is ternary
+our ($QR_OP, $QR_OP_PREFIX, $QR_OP_ASSIGN, $OP, $OP_PREFIX, $OP_DISPATCH, $OP_ASSIGN, $OP_POSTFIX, $OP_TERNARY);
 sub _op_qr { # no mixed \w\W operators
     my %used;
     my $chrs = join '|', reverse sort map {quotemeta $_} grep {++$used{$_} < 2} grep {! /\{\}|\[\]/} grep {/^\W{2,}$/} @_;
@@ -265,12 +260,18 @@ sub _op_qr { # no mixed \w\W operators
     $word = "\\b(?:$word)\\b" if $word;
     return join('|', grep {length} $chrs, $chr, $word) || die "Missing operator regex";
 }
-sub _build_op_qr        { _op_qr(map {@{ $_->[2] }} grep {$_->[0] ne 'prefix'} @$OPERATORS) }
-sub _build_op_qr_prefix { _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'prefix'} @$OPERATORS) }
-sub _build_op_qr_assign { _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'assign'} @$OPERATORS) }
-our $QR_OP        = _build_op_qr();
-our $QR_OP_PREFIX = _build_op_qr_prefix();
-our $QR_OP_ASSIGN = _build_op_qr_assign();
+sub _build_ops {
+    $QR_OP        = _op_qr(map {@{ $_->[2] }} grep {$_->[0] ne 'prefix'} @$OPERATORS);
+    $QR_OP_PREFIX = _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'prefix'} @$OPERATORS);
+    $QR_OP_ASSIGN = _op_qr(map {@{ $_->[2] }} grep {$_->[0] eq 'assign'} @$OPERATORS);
+    $OP           = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
+    $OP_PREFIX    = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
+    $OP_DISPATCH  = {map {my $ref = $_; map {$_ => $ref->[3]} @{$ref->[2]}} grep {$_->[3]             } @$OPERATORS};
+    $OP_ASSIGN    = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'assign' } @$OPERATORS};
+    $OP_POSTFIX   = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'postfix'} @$OPERATORS}; # bool is postfix
+    $OP_TERNARY   = {map {my $ref = $_; map {$_ => 1}         @{$ref->[2]}} grep {$_->[0] eq 'ternary'} @$OPERATORS}; # bool is ternary
+}
+_build_ops();
 
 our $QR_DIRECTIVE = '( [a-zA-Z]+\b | \| )';
 our $QR_COMMENTS  = '(?-s: \# .* \s*)*';
@@ -2939,17 +2940,21 @@ sub get_line_number_by_index {
 
 sub define_syntax {
     my ($self, $name, $sub) = @_;
-    return $SYNTAX->{$name} = $sub;
+    $SYNTAX->{$name} = $sub;
+    return 1;
 }
 
 sub define_operator {
-    my ($self, $name, $args) = @_;
-    return $OPERATORS->{$name} = [@{ $args }{qw(type precedence symbols play_sub)}];
+    my ($self, $args) = @_;
+    push @$OPERATORS, [@{ $args }{qw(type precedence symbols play_sub)}];
+    _build_ops();
+    return 1;
 }
 
 sub define_directive {
     my ($self, $name, $args) = @_;
-    return $DIRECTIVES->{$name} = [@{ $args }{qw(parse_sub play_sub is_block is_postop continues no_interp)}];
+    $DIRECTIVES->{$name} = [@{ $args }{qw(parse_sub play_sub is_block is_postop continues no_interp)}];
+    return 1;
 }
 
 sub define_vmethod {
