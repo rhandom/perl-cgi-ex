@@ -2182,6 +2182,13 @@ method as follows:
         return $t->output;
     }
 
+As of version 2.13 of CGI::Ex::Template you could also simply do the
+following to parse the templates using HTML::Template::Expr syntax.
+
+    sub template_args {
+        return {SYNTAX => 'hte'};
+    }
+
 =item template_args (hook)
 
 Returns a hashref of args that will be passed to the "new" method of CGI::Ex::Template.
