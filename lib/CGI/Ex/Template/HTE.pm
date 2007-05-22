@@ -43,9 +43,9 @@ sub parse_tree_hte {
     my $pointer = \@tree; # pointer to current tree to handle nested blocks
     my @state;            # maintain block levels
     local $self->{'_state'} = \@state; # allow for items to introspect (usually BLOCKS)
-    local $self->{'_in_perl'};         # no interpolation in perl
+    local $self->{'_no_interp'} = 0;   # no interpolation in perl
     my @in_view;          # let us know if we are in a view
-    my @move_to_front;    # items that need to be declared first (usually BLOCKS)
+    my @blocks;           # storage for defined blocks
     my @meta;             # place to store any found meta information (to go into META)
     my $post_chomp = 0;   # previous post_chomp setting
     my $continue   = 0;   # flag for multiple directives in the same tag
@@ -222,22 +222,20 @@ sub parse_tree_hte {
 
             ### normal end block
             if (! $CGI::Ex::Template::DIRECTIVES->{$func}->[4]) {
-                if ($CGI::Ex::Template::DIRECTIVES->{$parent_node->[0]}->[5]) { # move things like BLOCKS to front
-                    if ($parent_node->[0] eq 'BLOCK'
-                        && defined($parent_node->[3])
-                        && @in_view) {
+                if ($parent_node->[0] eq 'BLOCK') { # move BLOCKS to front
+                    if (defined($parent_node->[3]) && @in_view) {
                         push @{ $in_view[-1] }, $parent_node;
                     } else {
-                        push @move_to_front, $parent_node;
+                        push @blocks, $parent_node;
                     }
                     if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
                         splice(@$pointer, -1, 1, ());
                     }
-                } elsif ($parent_node->[0] =~ /PERL$/) {
-                    delete $self->{'_in_perl'};
                 } elsif ($parent_node->[0] eq 'VIEW') {
                     my $ref = { map {($_->[3] => $_->[4])} @{ pop @in_view }};
                     unshift @{ $parent_node->[3] }, $ref;
+                } elsif ($CGI::Ex::Template::DIRECTIVES->{$parent_node->[0]}->[5]) { # allow no_interp to turn on and off
+                    $self->{'_no_interp'}--;
                 }
 
 
@@ -247,17 +245,16 @@ sub parse_tree_hte {
                 $pointer = $node->[4] ||= [];
             }
 
-        } else {
+        ### handle block directives
+        } elsif ($CGI::Ex::Template::DIRECTIVES->{$func}->[2]) {
+            push @state, $node;
+            $pointer = $node->[4] ||= []; # allow future parsed nodes before END tag to end up in current node
+            push @in_view, [] if $func eq 'VIEW';
+            $self->{'_no_interp'}++ if $CGI::Ex::Template::DIRECTIVES->{$node->[0]}->[5] # allow no_interp to turn on and off
 
-            ### handle block directives
-            if ($CGI::Ex::Template::DIRECTIVES->{$func}->[2]) {
-                push @state, $node;
-                $pointer = $node->[4] ||= []; # allow future parsed nodes before END tag to end up in current node
-                push @in_view, [] if $func eq 'VIEW';
-            } elsif ($func eq 'META') {
-                unshift @meta, %{ $node->[3] }; # first defined win
-                $node->[3] = undef;             # only let these be defined once - at the front of the tree
-            }
+        } elsif ($func eq 'META') {
+            unshift @meta, %{ $node->[3] }; # first defined win
+            $node->[3] = undef;             # only let these be defined once - at the front of the tree
         }
 
 
@@ -281,15 +278,9 @@ sub parse_tree_hte {
     }
 
     ### cleanup the tree
-    if (@move_to_front) {
-        unshift @tree, @move_to_front;
-    }
-    if (@meta) {
-        unshift @tree, ['META', 0, 0, {@meta}];
-    }
-    if ($#state > -1) {
-        $self->throw('parse', "Missing END tag", $state[-1], 0);
-    }
+    unshift(@tree, @blocks) if @blocks;
+    unshift(@tree, ['META', 0, 0, {@meta}]) if @meta;
+    $self->throw('parse', "Missing </TMPL_ close tag", $state[-1], pos($$str_ref)) if @state > 0;
 
     ### pull off the last text portion - if any
     if (pos($$str_ref) != length($$str_ref)) {
