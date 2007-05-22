@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 882 : 610;
+use Test::More tests => ! $is_tt ? 894 : 613;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -834,7 +834,7 @@ process_ok("[% var = [{key => 'a'}, {key => 'b'}] -%]
   ([% key %])
 [% END %]" => "  (b)\n") if ! $is_tt;
 
-for (1) {
+if (! $is_tt) {
     local $CGI::Ex::Template::QR_PRIVATE = 0;
     local $CGI::Ex::Template::QR_PRIVATE = 0; # warn clean
     CGI::Ex::Template->define_vmethod('scalar', textjoin => sub {join(shift, @_)});
@@ -845,7 +845,7 @@ for (1) {
 [% END -%]" => "(a|1|0|0|1)
 (b|0|0|1|0)
 (c|0|1|0|1)
-", {tt_config => [LOOP_CONTEXT_VARS => 1]}) if ! $is_tt;
+", {tt_config => [LOOP_CONTEXT_VARS => 1]});
 }
 
 ###----------------------------------------------------------------###
@@ -1112,7 +1112,7 @@ process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => '
 process_ok('[% constants.a %]|[% $constants.a %]|[% constants.$a %]' => 'A|A|A', {tt_config => [V1DOLLAR => 1, CONSTANTS => {a => 'A'}]});
 
 ###----------------------------------------------------------------###
-print "### V2PIPE ###########################################################\n";
+print "### V2PIPE / V2EQUALS ################################################\n";
 
 process_ok("[%- BLOCK a %]b is [% b %]
 [% END %]
@@ -1122,6 +1122,15 @@ b is 237\n", {tt_config => [V2PIPE => 1]});
 process_ok("[%- BLOCK a %]b is [% b %]
 [% END %]
 [%- PROCESS a b => 237 | repeat(2) %]" => "b is 237237\n") if ! $is_tt;
+
+process_ok("[% ('a' == 'b') || 0 %]" => 0);
+process_ok("[% ('a' != 'b') || 0 %]" => 1);
+process_ok("[% ('a' == 'b') || 0 %]" => 0, {tt_config => [V2EQUALS => 1]}) if ! $is_tt;
+process_ok("[% ('a' != 'b') || 0 %]" => 1, {tt_config => [V2EQUALS => 1]}) if ! $is_tt;
+process_ok("[% ('a' == 'b') || 0 %]" => 1, {tt_config => [V2EQUALS => 0]}) if ! $is_tt;
+process_ok("[% ('a' != 'b') || 0 %]" => 0, {tt_config => [V2EQUALS => 0]}) if ! $is_tt;
+process_ok("[% ('7' == '7.0') || 0 %]" => 0);
+process_ok("[% ('7' == '7.0') || 0 %]" => 1, {tt_config => [V2EQUALS => 0]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### configuration ####################################################\n";
@@ -1293,6 +1302,8 @@ process_ok('[% a %]|[% $a %]|[% ${ a } %]|[% ${ "a" } %]' => 'A|A|bar|A', {a => 
 
 process_ok("<TMPL_VAR name=foo>" => "FOO", {foo => "FOO", tt_config => [SYNTAX => 'ht']});
 process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>" => "7 8", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR EXPR='7 == \"7.0\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
+process_ok("<TMPL_VAR EXPR='\"a\" == \"b\"'>" => "1", {tt_config => [SYNTAX => 'hte']});
 process_ok("<TMPL_VAR EXPR='sprintf(\"%d %d\", 7, 8)'>d" => "", {tt_config => [SYNTAX => 'ht']});
 
 process_ok("[% \"<TMPL_VAR EXPR='1+2+3'>\"|eval('hte') %] = [% 6 %]" => "6 = 6");
@@ -1311,6 +1322,8 @@ process_ok("[% CONFIG POST_CHOMP  => '-' %][% 234 %]\n" => 234);
 process_ok("[% CONFIG INTERPOLATE => '-' %]\${ 234 }"   => 234);
 process_ok("[% CONFIG V1DOLLAR    => 1   %][% a = 234 %][% \$a %]"   => 234);
 process_ok("[% CONFIG V2PIPE => 1 %][% BLOCK a %]b is [% b %][% END %][% PROCESS a b => 234 | repeat(2) %]"   => "b is 234b is 234");
+process_ok("[% CONFIG V2EQUALS => 1 %][% ('7' == '7.0') || 0 %]" => 0);
+process_ok("[% CONFIG V2EQUALS => 0 %][% ('7' == '7.0') || 0 %]" => 1);
 
 process_ok("[% CONFIG BOGUS => 2 %]bar" => '');
 
