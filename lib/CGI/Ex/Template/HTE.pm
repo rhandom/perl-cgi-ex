@@ -374,6 +374,7 @@ sub output {
     local $self->{'ABSOLUTE'}     = 1;
     local $self->{'RELATIVE'}     = 1;
     local $self->{'INCLUDE_PATH'} = $self->{'PATH'} || './';
+    local $self->{'V2EQUALS'}     = $self->{'V2EQUALS'} || 0;
     local $self->{'_documents'}   = \%DOCUMENTS;
     local $CGI::Ex::Template::QR_PRIVATE = undef;
 
