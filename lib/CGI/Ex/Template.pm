@@ -1375,8 +1375,7 @@ sub execute_tree {
 
         $$out_ref .= $self->debug_node($node) if $self->{'_debug_dirs'} && ! $self->{'_debug_off'};
 
-        my $val = $DIRECTIVES->{$node->[0]}->[1]->($self, $node->[3], $node, $out_ref);
-        $$out_ref .= $val if defined $val;
+        $DIRECTIVES->{$node->[0]}->[1]->($self, $node->[3], $node, $out_ref);
     }
 }
 
@@ -1834,7 +1833,12 @@ sub play_BLOCK {
 
 sub parse_CALL { $DIRECTIVES->{'GET'}->[0]->(@_) }
 
-sub play_CALL { $DIRECTIVES->{'GET'}->[1]->(@_); return }
+sub play_CALL {
+    my ($self, $ident, $node) = @_;
+    my $var = $self->play_expr($ident);
+    $var = $self->undefined_get($ident, $node) if ! defined $var;
+    return;
+}
 
 sub parse_CASE {
     my ($self, $str_ref) = @_;
@@ -1855,6 +1859,7 @@ sub play_control {
 sub play_CLEAR {
     my ($self, $undef, $node, $out_ref) = @_;
     $$out_ref = '';
+    return;
 }
 
 sub parse_CONFIG {
@@ -1998,7 +2003,7 @@ sub play_FOREACH {
         die $error if $error && $error != 3; # Template::Constants::STATUS_DONE;
     }
 
-    return undef;
+    return;
 }
 
 sub parse_GET {
@@ -2009,9 +2014,15 @@ sub parse_GET {
 }
 
 sub play_GET {
-    my ($self, $ident, $node) = @_;
+    my ($self, $ident, $node, $out_ref) = @_;
     my $var = $self->play_expr($ident);
-    return (! defined $var) ? $self->undefined_get($ident, $node) : $var;
+    if (defined $var) {
+        $$out_ref .= $var;
+    } else {
+        $var = $self->undefined_get($ident, $node);
+        $$out_ref .= $var if defined $var;
+    }
+    return;
 }
 
 sub parse_IF {
@@ -2059,9 +2070,7 @@ sub play_INCLUDE {
     my $blocks = $self->{'BLOCKS'} || {};
     local $self->{'BLOCKS'} = {%$blocks};
 
-    my $str = $DIRECTIVES->{'PROCESS'}->[1]->($self, $str_ref, $node, $out_ref);
-
-    return $str;
+    return $DIRECTIVES->{'PROCESS'}->[1]->($self, $str_ref, $node, $out_ref);
 }
 
 sub parse_INSERT { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
@@ -2369,7 +2378,8 @@ sub play_THROW {
     push @args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
 
     @args = map { $self->play_expr($_) } @args;
-    $self->throw($name, \@args, $node);
+    $self->throw($name, \@args, $node); # dies
+    return; # but return just in case
 }
 
 sub play_TRY {
@@ -2469,7 +2479,7 @@ sub parse_WHILE { $DIRECTIVES->{'IF'}->[0]->(@_) }
 
 sub play_WHILE {
     my ($self, $var, $node, $out_ref) = @_;
-    return '' if ! defined $var;
+    return if ! defined $var;
 
     my $sub_tree = $node->[4];
 
@@ -2491,7 +2501,7 @@ sub play_WHILE {
     }
     die "WHILE loop terminated (> $WHILE_MAX iterations)\n" if ! $count;
 
-    return undef;
+    return;
 }
 
 sub parse_WRAPPER { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
