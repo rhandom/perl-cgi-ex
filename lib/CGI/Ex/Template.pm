@@ -8,7 +8,7 @@ package CGI::Ex::Template;
 
 use strict;
 
-our $VERSION = '2.12';
+our $VERSION = '2.13';
 
 our $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
 our $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';

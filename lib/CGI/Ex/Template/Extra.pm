@@ -22,7 +22,7 @@ This module may be distributed under the same terms as Perl itself.
 use strict;
 use warnings;
 
-our $VERSION = '2.12';
+our $VERSION = '2.13';
 
 sub parse_CONFIG {
     my ($self, $str_ref) = @_;

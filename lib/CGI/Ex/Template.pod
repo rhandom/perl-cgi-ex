@@ -725,6 +725,26 @@ There is an ELSIF!!!
 
 =item
 
+Added CHOMP capabilities (PRE_CHOMP and POST_CHOMP)
+
+    Foo
+    <~TMPL_VAR EXPR="1+2"~>
+    Bar
+
+    Prints Foo3Bar
+
+=item Added INTERPOLATE capability
+
+    <TMPL_SET foo = 'FOO'>
+    <TMPL_CONFIG INTERPOLATE => 1>
+    $foo <TMPL_GET foo> ${ 1 + 2 }
+
+    Prints
+
+    FOO FOO 3
+
+=item
+
 Allow for HTML::Template templates to include TT style templates.
 
     <TMPL_CONFIG SYNTAX => 'tt3'>

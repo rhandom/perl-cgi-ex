@@ -17,7 +17,7 @@ use strict;
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION  = '2.12';
+    $VERSION  = '2.13';
 
     @EXPORT = qw(JSONDump);
     @EXPORT_OK = @EXPORT;

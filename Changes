@@ -1,3 +1,9 @@
+2.13
+      2007-05-21
+        * 
+        * Allow QR_PRIVATE to be false.
+
+
 2.12
       2007-05-11
         * Add STAT_TTL
