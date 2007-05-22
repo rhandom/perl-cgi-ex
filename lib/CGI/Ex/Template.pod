@@ -117,7 +117,9 @@ commonly used public methods are listed later in this document.
 
 Arguments may be passed as a hash or as a hashref.  Returns a CGI::Ex::Template object.
 
-There are currently no errors during CGI::Ex::Template object creation.
+There are currently no errors during CGI::Ex::Template object creation.  If you are
+using the HTML::Template interface, this is different behavior.  The document is
+not parsed until the output or process methods are called.
 
 =item C<process>
 
@@ -211,6 +213,8 @@ To parse TT3 or TT2 documents, you must pass the SYNTAX configuration
 item to the "new" method.  All calls to process would then default to TT3 syntax.
 
     my $obj = CGI::Ex::Template->new(SYNTAX => 'tt3');
+
+Any errors that occur during the output method will die with the error as the die value.
 
 =item C<param>
 
@@ -4120,10 +4124,6 @@ upon operator precedence.
 
 Used to create a "pseudo" context object that allows for portability
 of TT plugins, filters, and perl blocks that need a context object.
-
-=item C<DEBUG>
-
-TT2 Holdover that is used once for binmode setting during a TT2 test.
 
 =item C<debug_node>
 
