@@ -289,8 +289,13 @@ our $STAT_TTL          ||= 1;
 our @CONFIG_COMPILETIME = qw(SYNTAX ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP SEMICOLONS V1DOLLAR V2PIPE V2EQUALS);
 our @CONFIG_RUNTIME     = qw(DUMP VMETHOD_FUNCTIONS);
 
-eval {require Scalar::Util};
-BEGIN {require CGI::Ex::Template::Extra if $ENV{'MOD_PERL'}};
+BEGIN {
+    if ($ENV{'MOD_PERL'}) {
+        eval {require Scalar::Util};
+        require CGI::Ex::Template::Extra;
+        require CGI::Ex::Template::HTE;
+    }
+};
 
 ###----------------------------------------------------------------###
 
@@ -2610,7 +2615,6 @@ sub process {
 
     my $args;
     $args = ($#ARGS == 0 && UNIVERSAL::isa($ARGS[0], 'HASH')) ? {%{$ARGS[0]}} : {@ARGS} if scalar @ARGS;
-    $self->DEBUG("set binmode\n") if $args->{'binmode'}; # holdover for TT2 tests
 
     ### get the content
     my $content;
@@ -2795,11 +2799,6 @@ sub process {
 }
 
 sub error { shift->{'error'} }
-
-sub DEBUG {
-    my $self = shift;
-    print STDERR "DEBUG: ", @_;
-}
 
 sub _load_template_meta {
     my $self = shift;
