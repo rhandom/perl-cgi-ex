@@ -17,7 +17,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ($is_cet) ? 88 : ($is_ht) ? 59 : 63;
+use Test::More tests => ($is_cet) ? 90 : ($is_ht) ? 60 : 64;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -159,32 +159,6 @@ process_ok("<TMPL_VAR DEFAULT=bar EXPR=foo>" => "", {foo => "FOO", bar => "BAR"}
 process_ok("<!--TMPL_VAR EXPR=\"foo\"-->" => "FOO", {foo => "FOO"}) if ! $is_ht;;
 
 ###----------------------------------------------------------------###
-print "### TT3 DIRECTIVES ###################################################\n";
-
-process_ok("<TMPL_GET foo>" => "FOO", {foo => "FOO"})    if $is_cet;
-process_ok("<TMPL_GET foo>" => "", {foo => "FOO", tt_config => [NO_TT => 1]}) if $is_cet;
-process_ok("<TMPL_GET foo>" => "", {foo => "FOO", tt_config => [SYNTAX => 'ht']}) if $is_cet;
-process_ok("<TMPL_GET 1+2+3+4>" => "10", {foo => "FOO"}) if $is_cet;
-
-process_ok("<TMPL_IF foo>bar<TMPL_ELSIF wow>wee<TMPL_ELSE>bing</TMPL_IF>" => "bar", {foo => "1"}) if $is_cet;
-
-process_ok("<TMPL_SET i = 'foo'>(<TMPL_VAR i>)" => "(foo)") if $is_cet;
-process_ok("<TMPL_SET i = 'foo'>(<TMPL_GET i>)" => "(foo)") if $is_cet;
-process_ok("<TMPL_FOR i IN [1..3]>(<TMPL_VAR i>)</TMPL_FOR>" => "(1)(2)(3)") if $is_cet;
-
-process_ok("<TMPL_BLOCK foo>(<TMPL_VAR i>)</TMPL_BLOCK><TMPL_PROCESS foo i='bar'>" => "(bar)") if $is_cet;
-process_ok("<TMPL_BLOCK foo>(<TMPL_VAR i>)</TMPL_BLOCK><TMPL_SET wow = PROCESS foo i='bar'><TMPL_VAR wow>" => "(bar)") if $is_cet;
-
-process_ok("<TMPL_GET template.foo><TMPL_META foo = 'bar'>" => "bar") if $is_cet;
-
-###----------------------------------------------------------------###
-print "### TT3 CHOMPING #####################################################\n";
-
-process_ok("\n<TMPL_GET foo>" => "\nFOO", {foo => "FOO"}) if $is_cet;
-process_ok("<TMPL_GET foo->\n" => "FOO", {foo => "FOO"})  if $is_cet;
-process_ok("\n<-TMPL_GET foo>" => "FOO", {foo => "FOO"})  if $is_cet;
-
-###----------------------------------------------------------------###
 print "### LOOP #############################################################\n";
 
 process_ok("<TMPL_LOOP blah></TMPL_LOOP>foo" => "foo");
@@ -219,6 +193,38 @@ process_ok("<TMPL_LOOP blah>\n(<TMPL_VAR __first__>|<TMPL_VAR __last__>|<TMPL_VA
 
 
 process_ok("<TMPL_LOOP NAME=\"blah\"><TMPL_IF EXPR='i==2'><TMPL_NEXT></TMPL_IF>(<TMPL_VAR i>)</TMPL_LOOP>foo" => "(1)(3)foo", {blah => [{i=>1}, {i=>2}, {i=>3}]}) if $is_cet;
+
+###----------------------------------------------------------------###
+print "### TT3 DIRECTIVES ###################################################\n";
+
+process_ok("<TMPL_GET foo>" => "FOO", {foo => "FOO"})    if $is_cet;
+process_ok("<TMPL_GET foo>" => "", {foo => "FOO", tt_config => [NO_TT => 1]}) if $is_cet;
+process_ok("<TMPL_GET foo>" => "", {foo => "FOO", tt_config => [SYNTAX => 'ht']}) if $is_cet;
+process_ok("<TMPL_GET 1+2+3+4>" => "10", {foo => "FOO"}) if $is_cet;
+
+process_ok("<TMPL_IF foo>bar<TMPL_ELSIF wow>wee<TMPL_ELSE>bing</TMPL_IF>" => "bar", {foo => "1"}) if $is_cet;
+
+process_ok("<TMPL_SET i = 'foo'>(<TMPL_VAR i>)" => "(foo)") if $is_cet;
+process_ok("<TMPL_SET i = 'foo'>(<TMPL_GET i>)" => "(foo)") if $is_cet;
+process_ok("<TMPL_FOR i IN [1..3]>(<TMPL_VAR i>)</TMPL_FOR>" => "(1)(2)(3)") if $is_cet;
+
+process_ok("<TMPL_BLOCK foo>(<TMPL_VAR i>)</TMPL_BLOCK><TMPL_PROCESS foo i='bar'>" => "(bar)") if $is_cet;
+process_ok("<TMPL_BLOCK foo>(<TMPL_VAR i>)</TMPL_BLOCK><TMPL_SET wow = PROCESS foo i='bar'><TMPL_VAR wow>" => "(bar)") if $is_cet;
+
+process_ok("<TMPL_GET template.foo><TMPL_META foo = 'bar'>" => "bar") if $is_cet;
+
+###----------------------------------------------------------------###
+print "### TT3 CHOMPING #####################################################\n";
+
+process_ok("\n<TMPL_GET foo>" => "\nFOO", {foo => "FOO"}) if $is_cet;
+process_ok("<TMPL_GET foo->\n" => "FOO", {foo => "FOO"})  if $is_cet;
+process_ok("\n<-TMPL_GET foo>" => "FOO", {foo => "FOO"})  if $is_cet;
+
+###----------------------------------------------------------------###
+print "### TT3 INTERPOLATE###################################################\n";
+
+process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => '$foo FOO ${ 1 + 2 }', {foo => "FOO"});
+process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO", tt_config => [INTERPOLATE => 1]}) if $is_cet;
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
