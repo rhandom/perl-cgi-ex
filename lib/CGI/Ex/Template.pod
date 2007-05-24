@@ -2399,6 +2399,9 @@ regex begins with a ', ", or / you must quote it.
 
     [% TAGS /**/ /**/ %]        Throws an exception.
 
+You should be sure that the start tag does not include grouping
+parens or INTERPOLATE will not function properly.
+
 =item C<THROW>
 
 Allows for throwing an exception.  If the exception is not caught
@@ -3514,7 +3517,10 @@ shooting some errors.
 
 =item START_TAG
 
-Set a string to use as the opening delimiter for TT.  Default is "[%".
+Set a string or regular expression to use as the opening delimiter
+for TT.  Default is "[%".
+You should be sure that the tag does not include grouping parens or
+INTERPOLATE will not function properly.
 
 =item STAT_TTL
 
