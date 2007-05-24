@@ -285,6 +285,7 @@ our $EXTRA_COMPILE_EXT = '.sto';
 our $MAX_EVAL_RECURSE  = 50;
 our $MAX_MACRO_RECURSE = 50;
 our $STAT_TTL          ||= 1;
+our $_escapes = {n => "\n", r => "\r", t => "\t", '"' => '"', '\\' => '\\', '' => ''};
 
 our @CONFIG_COMPILETIME = qw(SYNTAX ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP SEMICOLONS V1DOLLAR V2PIPE V2EQUALS);
 our @CONFIG_RUNTIME     = qw(DUMP VMETHOD_FUNCTIONS);
@@ -622,6 +623,7 @@ sub parse_tree_tt3 {
                 $self->throw('parse', "Error while parsing for interpolated string", undef, pos($$str_ref))
                     if ! defined $ref;
                 push @$pointer, [$func, $mark, pos($$str_ref), $ref];
+                $post_chomp = 0; # no chomping after dollar vars
                 next;
             }
 
@@ -925,17 +927,14 @@ sub parse_expr {
     ### allow for double quoted strings
     } elsif ($$str_ref =~ m{ \G \" }gcx) {
         my @pieces;
-        while ($$str_ref =~ m{ \G (.*?) ((?<!\\) \" | \$) }gcx) {
+        while ($$str_ref =~ m{ \G (.*?) ((?<!\\) \" | \$) }gcxs) {
             my ($str, $dollar) = ($1, $2 eq '$');
-            $str =~ s/\\n/\n/g;
-            $str =~ s/\\t/\t/g;
-            $str =~ s/\\r/\r/g;
-            $str =~ s/\\"/"/g;
+            my $n = ($str =~ m{ (\\+) $ }x) ? length($1) : 0; # count escapes at the end
+            $str =~ s/ \\ ([ntr\"\\]|) /$_escapes->{$1}/xg;
             push @pieces, $str if length $str;
 
-            my $n = ($str =~ m{ (\\+) $ }x) ? length($1) : 0;
             if ($n % 2) { ### odd escapes
-                substr($pieces[-1], -1, 1, '$');
+                if (defined($pieces[-1]) && ! ref($pieces[-1])) { $pieces[-1] .= '$'; } else { push @pieces, '$' }
                 next;
             }
             last if ! $dollar;
@@ -1042,7 +1041,7 @@ sub parse_expr {
     ### looks for args for the initial
     if ($already_parsed_args) {
         # do nothing
-    } elsif ($$str_ref =~ m{ \G \s* \( }gcxo) {
+    } elsif ($$str_ref =~ m{ \G \( }gcxo) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $args = $self->parse_args($str_ref, {is_parened => 1});
         $$str_ref =~ m{ \G \s* $QR_COMMENTS \) }gcxo
@@ -1082,7 +1081,7 @@ sub parse_expr {
         }
 
         ### looks for args for the nested item
-        if ($$str_ref =~ m{ \G \s* \( }gcx) {
+        if ($$str_ref =~ m{ \G \( }gcx) {
             local $self->{'_operator_precedence'} = 0; # reset precedence
             my $args = $self->parse_args($str_ref, {is_parened => 1});
             $$str_ref =~ m{ \G \s* $QR_COMMENTS \) }gcxo
