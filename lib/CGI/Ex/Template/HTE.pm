@@ -118,6 +118,7 @@ sub parse_tree_hte {
                 $self->throw('parse', "Error while parsing for interpolated string", undef, pos($$str_ref))
                     if ! defined $ref;
                 push @$pointer, [$func, $mark, pos($$str_ref), $ref];
+                $post_chomp = 0; # no chomping after dollar vars
                 next;
             }
 
