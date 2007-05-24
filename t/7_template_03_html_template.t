@@ -63,6 +63,7 @@ sub process_ok { # process the value and say if it was ok
         if ($obj && $obj->can('parse_tree')) {
             local $obj->{'SYNTAX'} = 'hte';
             print Dumper $obj->parse_tree(\$str);
+            print $err;
         }
         exit;
     }
