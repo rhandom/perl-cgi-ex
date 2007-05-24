@@ -38,6 +38,9 @@ sub parse_CONFIG {
         my $val = $ref->[$i + 1];
         if ($ctime{$key}) {
             $self->{$key} = $self->play_expr($val);
+            if ($key eq 'INTERPOLATE') {
+                $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
+            }
         } elsif (! $rtime{$key}) {
             $self->throw('parse', "Unknown CONFIG option \"$key\"", undef, pos($$str_ref));
         }
