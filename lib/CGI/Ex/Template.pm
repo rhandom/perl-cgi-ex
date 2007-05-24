@@ -2345,29 +2345,8 @@ sub play_SWITCH {
 }
 
 sub parse_TAGS {
-    my ($self, $str_ref, $node) = @_;
-
-    my ($start, $end);
-    if ($$str_ref =~ m{ \G (\w+) }gcxs) {
-        my $ref = $TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
-        ($start, $end) = @$ref;
-
-    } else {
-        local $self->{'_operator_precedence'} = 1; # prevent operator matching
-        $start = $$str_ref =~ m{ \G (?= \s* $QR_COMMENTS [\'\"\/]) }gcx
-            ? $self->parse_expr($str_ref)
-            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s+ $QR_COMMENTS"})
-            || $self->throw('parse', "Invalid opening tag in TAGS", undef, pos($$str_ref));
-        $end   = $$str_ref =~ m{ \G (?= \s* $QR_COMMENTS [\'\"\/]) }gcx
-            ? $self->parse_expr($str_ref)
-            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s* $QR_COMMENTS"})
-            || $self->throw('parse', "Invalid closing tag in TAGS", undef, pos($$str_ref));
-        for my $tag ($start, $end) {
-            $tag = $self->play_expr($tag);
-            $tag = quotemeta($tag) if ! ref $tag;
-        }
-    }
-    return [$start, $end];
+    require CGI::Ex::Template::Extra;
+    &CGI::Ex::Template::Extra::parse_TAGS;
 }
 
 sub parse_THROW {
