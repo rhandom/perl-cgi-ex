@@ -93,12 +93,12 @@ sub parse_tree_hte {
             ### handle variable interpolation ($2 eq $)
             if ($dollar) {
                 ### inspect previous text chunk for escape slashes
-                my $prev_text;
-                $prev_text = \$pointer->[-1] if defined($pointer->[-1]) && ! ref($pointer->[-1]);
-                my $n = ($prev_text && $$prev_text =~ m{ (\\+) $ }x) ? length($1) : 0;
+                my $n = ($text =~ m{ (\\+) $ }x) ? length($1) : 0;
                 if ($self->{'_no_interp'} || $n % 2) { # were there odd escapes
+                    my $prev_text;
+                    $prev_text = \$pointer->[-1] if defined($pointer->[-1]) && ! ref($pointer->[-1]);
                     chop($$prev_text) if $n % 2;
-                    if ($prev_text) { $$prev_text .= $dollar } else { push @$pointer, $text }
+                    if ($prev_text) { $$prev_text .= $dollar } else { push @$pointer, $dollar }
                     next;
                 }
 

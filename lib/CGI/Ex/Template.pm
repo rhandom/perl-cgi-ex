@@ -598,12 +598,12 @@ sub parse_tree_tt3 {
             ### handle variable interpolation ($2 eq $)
             if ($dollar) {
                 ### inspect previous text chunk for escape slashes
-                my $prev_text;
-                $prev_text = \$pointer->[-1] if defined($pointer->[-1]) && ! ref($pointer->[-1]);
-                my $n = ($prev_text && $$prev_text =~ m{ (\\+) $ }x) ? length($1) : 0;
+                my $n = ($text =~ m{ (\\+) $ }x) ? length($1) : 0;
                 if ($self->{'_no_interp'} || $n % 2) { # were there odd escapes
+                    my $prev_text;
+                    $prev_text = \$pointer->[-1] if defined($pointer->[-1]) && ! ref($pointer->[-1]);
                     chop($$prev_text) if $n % 2;
-                    if ($prev_text) { $$prev_text .= $dollar } else { push @$pointer, $text }
+                    if ($prev_text) { $$prev_text .= $dollar } else { push @$pointer, $dollar }
                     next;
                 }
 
@@ -612,7 +612,6 @@ sub parse_tree_tt3 {
                 my $ref;
                 if ($$str_ref =~ m{ \G \{ }gcx) {
                     local $self->{'_operator_precedence'} = 0; # allow operators
-                    local $self->{'_end_tag'} = qr{\}};
                     $ref = $self->parse_expr($str_ref);
                     $$str_ref =~ m{ \G \s* $QR_COMMENTS \} }gcxo
                         || $self->throw('parse', 'Missing close }', undef, pos($$str_ref));
@@ -943,7 +942,6 @@ sub parse_expr {
 
             if ($$str_ref =~ m{ \G \{ }gcx) {
                 local $self->{'_operator_precedence'} = 0; # allow operators
-                local $self->{'_end_tag'} = qr{\}};
                 my $ref = $self->parse_expr($str_ref);
                 $$str_ref =~ m{ \G \s* $QR_COMMENTS \} }gcxo
                     || $self->throw('parse', 'Missing close }', undef, pos($$str_ref));
@@ -1283,7 +1281,7 @@ sub parse_args {
         ### look to see if the next thing is a directive or a closing tag
         if (! $ARGS->{'is_parened'}
             && ! $ARGS->{'require_arg'}
-            && $$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$end))) }gcxo
+            && $$str_ref =~ m{ \G \s* $QR_COMMENTS $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$end))) }gcxo
             && ((pos($$str_ref) = $mark) || 1)                  # always revert
             && $DIRECTIVES->{$self->{'ANYCASE'} ? uc($1) : $1}  # looks like a directive - we are done
             ) {
@@ -1305,7 +1303,7 @@ sub parse_args {
                   | \\s+ (?! [\\s=])      # or space not before an =
                 )  \\s* $QR_COMMENTS"});
             # filenames can be separated with a "+" - why a "+" ?
-            if ($$str_ref =~ m{ \G \+ (?! [+=~-]? $end) \s* $QR_COMMENTS }gcxo) {
+            if ($$str_ref =~ m{ \G \+ (?! \s* $QR_COMMENTS [+=~-]? $end) }gcxo) {
                 push @args, $name;
                 $ARGS->{'require_arg'} = 1;
                 next;
@@ -1325,7 +1323,7 @@ sub parse_args {
         $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
 
         ### see if it is named or positional
-        if ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo) {
+        if ($$str_ref =~ m{ \G \s* $QR_COMMENTS = >? }gcxo) {
             $self->throw('parse', 'Named arguments not allowed', undef, $mark) if $ARGS->{'positional_only'};
             my $val = $self->parse_expr($str_ref);
             $name = $name->[0] if ref($name) && @$name == 2 && ! $name->[1]; # strip a level of indirection on named arguments
@@ -1335,7 +1333,7 @@ sub parse_args {
         }
 
         ### look for trailing comma
-        $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo) || 0;
+        $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G \s* $QR_COMMENTS , }gcxo) || 0;
     }
 
     ### allow for named arguments to be added at the front (if asked)
