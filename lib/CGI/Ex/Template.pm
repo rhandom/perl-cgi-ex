@@ -955,18 +955,16 @@ sub parse_expr {
             }
         }
         if (@pieces == 1 && ! ref $pieces[0]) {
+            return $pieces[0] if $is_aq;
             push @var, \ $pieces[0];
             $is_literal = 1;
         } elsif (! @pieces) {
+            return '' if $is_aq;
             push @var, \ '';
             $is_literal = 1;
         } else {
             push @var, [undef, '~', @pieces];
-        }
-        if ($is_aq) {
-            return ${ $var[0] } if $is_literal;
-            push @var, 0;
-            return \@var;
+            return [$var[0], 0] if $is_aq;
         }
 
     ### allow for leading $foo type constructs
