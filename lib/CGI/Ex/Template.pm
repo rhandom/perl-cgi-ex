@@ -854,7 +854,6 @@ sub parse_expr {
         } elsif ($$str_ref =~ m{ \G \$ }gcx) {
             return $self->parse_expr($str_ref)
                 || $self->throw('parse', "Missing variable", undef, pos($$str_ref));
-
         }
     }
 
@@ -896,6 +895,11 @@ sub parse_expr {
         $str =~ s{ \\ \Q$quote\E }{$quote}gx;
         push @var, [undef, '[]', split /\s+/, $str];
 
+    ### looks like a normal variable start
+    } elsif ($$str_ref =~ m{ \G (\w+) }gcx) {
+        push @var, $1;
+        $is_namespace = 1 if $self->{'NAMESPACE'} && $self->{'NAMESPACE'}->{$1};
+
     ### allow for regex constructor
     } elsif (! $is_aq && $$str_ref =~ m{ \G / }gcx) {
         $$str_ref =~ m{ \G (.*?) (?<! \\) / ([msixeg]*) }gcxs
@@ -911,50 +915,53 @@ sub parse_expr {
         $self->throw('parse', "Invalid regex: $@", undef, pos($$str_ref)) if ! eval { "" =~ /$str/; 1 };
         push @var, [undef, 'qr', $str, $opts];
 
-    ### looks like a normal variable start
-    } elsif ($$str_ref =~ m{ \G (\w+) }gcx) {
-        push @var, $1;
-        $is_namespace = 1 if $self->{'NAMESPACE'} && $self->{'NAMESPACE'}->{$1};
-
-    ### allow for literal strings
-    } elsif ($$str_ref =~ m{ \G ([\"\']) }gcx) {
-        my $quote = $1;
-        $$str_ref =~ m{ \G (.*?) (?<! \\) $quote }gcxs
-            || $self->throw('parse', "Unclosed quoted string ($1)", undef, pos($$str_ref));
+    ### allow for single quoted strings
+    } elsif ($$str_ref =~ m{ \G \' (.*?) (?<! \\) \' }gcx) {
         my $str = $1;
-        if ($quote eq "'") { # no interpolation on single quoted strings
-            $str =~ s{ \\\' }{\'}xg;
-            push @var, \ $str;
-            $is_literal = 1;
-        } else {
+        $str =~ s{ \\\' }{\'}xg;
+        return $str if $is_aq;
+        push @var, \ $str;
+        $is_literal = 1;
+
+    ### allow for double quoted strings
+    } elsif ($$str_ref =~ m{ \G \" }gcx) {
+        my @pieces;
+        while ($$str_ref =~ m{ \G (.*?) ((?<!\\) \" | \$) }gcx) {
+            my ($str, $dollar) = ($1, $2 eq '$');
             $str =~ s/\\n/\n/g;
             $str =~ s/\\t/\t/g;
             $str =~ s/\\r/\r/g;
             $str =~ s/\\"/"/g;
-            my @pieces = $is_aq
-                ? split(m{ (?: ^ | (?<!\\)) (\$\w+            | \$\{ .*? (?<!\\) \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
-                : split(m{ (?: ^ | (?<!\\)) (\$\w+ (?:\.\w+)* | \$\{ .*? (?<!\\) \}) }x, $str);
-            my $n = 0;
-            foreach my $piece (@pieces) {
-                $piece =~ s/\\\$/\$/g;
-                $piece =~ s/\\//g;
-                next if ! ($n++ % 2);
-                next if $piece !~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
-                    && $piece !~ m{ ^ \$\{ \s* (.*?) (?<!\\) \} $ }x;
-                my $name = $1;
-                $name =~ s/\\\}/\}/g;
-                $piece = $self->parse_expr(\$name);
-           }
-            @pieces = grep {defined && length} @pieces;
-            if (@pieces == 1 && ! ref $pieces[0]) {
-                push @var, \ $pieces[0];
-                $is_literal = 1;
-            } elsif (! @pieces) {
-                push @var, \ '';
-                $is_literal = 1;
-            } else {
-                push @var, [undef, '~', @pieces];
+            push @pieces, $str if length $str;
+
+            my $n = ($str =~ m{ (\\+) $ }x) ? length($1) : 0;
+            if ($n % 2) { ### odd escapes
+                substr($pieces[-1], -1, 1, '$');
+                next;
             }
+            last if ! $dollar;
+
+            if ($$str_ref =~ m{ \G \{ }gcx) {
+                local $self->{'_operator_precedence'} = 0; # allow operators
+                local $self->{'_end_tag'} = qr{\}};
+                my $ref = $self->parse_expr($str_ref);
+                $$str_ref =~ m{ \G \s* $QR_COMMENTS \} }gcxo
+                    || $self->throw('parse', 'Missing close }', undef, pos($$str_ref));
+                push @pieces, $ref if defined $ref;
+            } else {
+                local $self->{'_operator_precedence'} = 1; # no operators
+                push @pieces, $self->parse_expr($str_ref)
+                    || $self->throw('parse', "Error while parsing for interpolated string", undef, pos($$str_ref));
+            }
+        }
+        if (@pieces == 1 && ! ref $pieces[0]) {
+            push @var, \ $pieces[0];
+            $is_literal = 1;
+        } elsif (! @pieces) {
+            push @var, \ '';
+            $is_literal = 1;
+        } else {
+            push @var, [undef, '~', @pieces];
         }
         if ($is_aq) {
             return ${ $var[0] } if $is_literal;
@@ -1131,8 +1138,6 @@ sub parse_expr {
             my $op = $1;
             $op = 'eq' if $op eq '==' && (! defined($self->{'V2EQUALS'}) || $self->{'V2EQUALS'});
             $op = 'ne' if $op eq '!=' && (! defined($self->{'V2EQUALS'}) || $self->{'V2EQUALS'});
-
-#            $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
 
             ### allow for postfix - doesn't check precedence - someday we might change - but not today (only affects post ++ and --)
             if ($OP_POSTFIX->{$op}) {
