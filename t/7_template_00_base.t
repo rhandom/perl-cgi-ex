@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 894 : 613;
+use Test::More tests => ! $is_tt ? 909 : 624;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -84,23 +84,6 @@ sub process_ok { # process the value and say if it was ok
 
 my $obj = Foo2->new;
 my $vars;
-
-
-#
-#
-#
-#my $slash = '\\';
-#process_ok("Foo $slash Bar"        => "Foo $slash Bar",       {tt_config => ['INTERPOLATE' => 1]});
-#process_ok("Foo $slash$slash Bar"  => "Foo $slash$slash Bar", {tt_config => ['INTERPOLATE' => 1]});
-#process_ok("Foo ${slash}n Bar"     => "Foo ${slash}n Bar",    {tt_config => ['INTERPOLATE' => 1]});
-#process_ok("Foo $slash\$a Bar"             => "Foo \$a Bar",             {a=>7, tt_config => ['INTERPOLATE' => 1]});
-#process_ok("Foo $slash$slash\$a Bar"       => "Foo $slash${slash}7 Bar", {a=>7, tt_config => ['INTERPOLATE' => 1]});
-#process_ok("Foo $slash$slash$slash\$a Bar" => "Foo $slash$slash\$a Bar", {a=>7, tt_config => ['INTERPOLATE' => 1]});
-process_ok("Foo \$a.B Bar"         => 'Foo 7 Bar', {a=>{B=>7,b=>{c=>sub{"(@_)"}}}, tt_config => ['INTERPOLATE' => 1]});
-process_ok("Foo \${ a.B } Bar"     => 'Foo 7 Bar', {a=>{B=>7,b=>{c=>sub{"(@_)"}}}, tt_config => ['INTERPOLATE' => 1]});
-process_ok("Foo \$a.b.c('hi') Bar" => "Foo <>('hi') Bar", {a=>{B=>7,b=>{c=>sub{"<@_>"}}}, tt_config => ['INTERPOLATE' => 1]});
-process_ok("Foo \${a.b.c('hi')} Bar" => "Foo <hi> Bar", {a=>{B=>7,b=>{c=>sub{"<@_>"}}}, tt_config => ['INTERPOLATE' => 1]});
-#exit;
 
 ###----------------------------------------------------------------###
 print "### GET ##############################################################\n";
@@ -932,7 +915,8 @@ print "### capturing ########################################################\n"
 process_ok("[% foo = BLOCK %]Hi[% END %][% foo %][% foo %]" => 'HiHi');
 process_ok("[% BLOCK foo %]Hi[% END %][% bar = PROCESS foo %]-[% bar %]" => '-Hi');
 process_ok("[% foo = IF 1 %]Hi[% END %][% foo %]" => 'Hi');
-process_ok("[% BLOCK foo %]([% i %])[% END %][% SET wow = PROCESS foo i='bar' %][% wow %]" => "(bar)");
+process_ok("[% BLOCK foo %]([% i %])[% END %][% wow = PROCESS foo i='bar' %][% wow %]" => "(bar)");
+process_ok("[% BLOCK foo %]([% i %])[% END %][% SET wow = PROCESS foo i='bar' %][% wow %]" => "(bar)") if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### TAGS #############################################################\n";
@@ -1093,13 +1077,30 @@ process_ok('[% ${"constants"}.harry %]' => 'do_this_once', {constants => {harry 
 process_ok('[% ${"con${\\"s\\"}tants"}.harry %]' => 'foo', {constants => {harry => 'foo'}, tt_config => \@config_c}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-print "### INTERPOLATE / ANYCASE / TRIM #####################################\n";
+print "### INTERPOLATE ######################################################\n";
 
 process_ok("Foo \$one Bar" => 'Foo ONE Bar', {one => 'ONE', tt_config => ['INTERPOLATE' => 1]});
-
-
 process_ok("[% PERL %] my \$n=7; print \$n [% END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
 process_ok("[% TRY ; PERL %] my \$n=7; print \$n [% END ; END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
+
+my $slash = '\\';
+my $interp_i = 0;
+process_ok("Foo $slash Bar"        => "Foo $slash Bar",       {tt_config => ['INTERPOLATE' => 1]});
+process_ok("Foo $slash$slash Bar"  => "Foo $slash$slash Bar", {tt_config => ['INTERPOLATE' => 1]});
+process_ok("Foo ${slash}n Bar"     => "Foo ${slash}n Bar",    {tt_config => ['INTERPOLATE' => 1]});
+process_ok("Foo $slash\$a Bar"             => "Foo \$a Bar",             {a=>7, tt_config => ['INTERPOLATE' => 1]});
+process_ok("Foo $slash$slash\$a Bar"       => "Foo $slash${slash}7 Bar", {a=>7, tt_config => ['INTERPOLATE' => 1]});
+process_ok("Foo $slash$slash$slash\$a Bar" => "Foo $slash$slash\$a Bar", {a=>7, tt_config => ['INTERPOLATE' => 1]});
+process_ok('Foo $a.B Bar'           => 'Foo 7 Bar', {a=>{B=>7,b=>{c=>sub{"(@_)"}}}, tt_config => ['INTERPOLATE' => 1]});
+process_ok('Foo ${ a.B } Bar'       => 'Foo 7 Bar', {a=>{B=>7,b=>{c=>sub{"(@_)"}}}, tt_config => ['INTERPOLATE' => 1]});
+process_ok('Foo $a.b.c("hi") Bar'   => "Foo <hi> Bar",     {a=>{B=>7,b=>{c=>sub{"<@_>"}}}, tt_config => ['INTERPOLATE' => 1]}) if ! $is_tt;
+process_ok('Foo $a.b.c("hi") Bar'   => "Foo <>(\"hi\") Bar", {a=>{B=>7,b=>{c=>sub{"<@_>"}}}, tt_config => ['INTERPOLATE' => 1]}) if $is_tt;
+process_ok('Foo ${a.b.c("hi")} Bar' => "Foo <hi> Bar", {a=>{B=>7,b=>{c=>sub{"<@_>"}}}, tt_config => ['INTERPOLATE' => 1]});
+process_ok('Foo $a Bar $!a Baz $!a Bing $a'     => "Foo 1 Bar  Baz  Bing 4", {a => sub{++$interp_i}, tt_config => ['INTERPOLATE' => 1]}) if ! $is_tt;
+process_ok('Foo $a Bar $!{a} Baz $!{a} Bing $a' => "Foo 5 Bar  Baz  Bing 8", {a => sub{++$interp_i}, tt_config => ['INTERPOLATE' => 1]}) if ! $is_tt;
+
+###----------------------------------------------------------------###
+print "### ANYCASE / TRIM ###################################################\n";
 
 process_ok("[% GET %]" => '', {GET => 'ONE'});
 process_ok("[% GET GET %]" => 'ONE', {GET => 'ONE'}) if ! $is_tt;
@@ -1126,10 +1127,10 @@ $vars = {a => {b => {c=>'Cb'}, B => {c=>'CB'}}, b => 'B', Cb => 'bar', CB => 'Ba
 process_ok('[% a.b.c %]|[% $a.b.c %]|[% a.$b.c %]|[% ${ a.b.c } %]' => 'Cb||CB|bar', $vars);
 process_ok('[% a.b.c %]|[% $a.b.c %]|[% a.$b.c %]|[% ${ a.b.c } %]' => 'Cb|Cb|Cb|bar', {%$vars, tt_config => [V1DOLLAR => 1]});
 
-process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|$a|A|${a}', {a => 'A', A => 'bar'});
-process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|$a|A|${a}', {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1]});
-process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => 'bar', tt_config => [INTERPOLATE => 1]});
-process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1, INTERPOLATE => 1]});
+process_ok('[% "$a" %]/$a/[% "${a}" %]/${a}' => 'A/$a/A/${a}', {a => 'A', A => 'bar'});
+process_ok('[% "$a" %]/$a/[% "${a}" %]/${a}' => 'A/$a/A/${a}', {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1]});
+process_ok('[% "$a" %]/$a/[% "${a}" %]/${a}' => 'A/A/A/A',     {a => 'A', A => 'bar', tt_config => [INTERPOLATE => 1]});
+process_ok('[% "$a" %]/$a/[% "${a}" %]/${a}' => 'A/A/A/A',     {a => 'A', A => 'bar', tt_config => [V1DOLLAR => 1, INTERPOLATE => 1]});
 
 process_ok('[% constants.a %]|[% $constants.a %]|[% constants.$a %]' => 'A|A|A', {tt_config => [V1DOLLAR => 1, CONSTANTS => {a => 'A'}]});
 
@@ -1260,8 +1261,8 @@ process_ok('[% A = "bar" ; "(${ A })" %]' => '(bar)');
 process_ok('[% A = "bar" ; ${ {a => "A"}.a } %]' => 'bar') if ! $is_tt;
 process_ok('[% A = "bar" ; "(${ {a => \"A\"\\}.a })" %]' => '(A)') if ! $is_tt;
 process_ok('[% A = "bar" ; "(${ \\${ {a => \"A\"\\}.a \\} })" %]' => '(bar)') if ! $is_tt;
-process_ok('[% A = "bar" %](${ {a => \"A\"\\}.a })' => '(A)', {tt_config => [INTERPOLATE => 1]}) if ! $is_tt;
-process_ok('[% A = "bar" %](${ \\${ {a => \"A\"\\}.a \\} })' => '(bar)', {tt_config => [INTERPOLATE => 1]}) if ! $is_tt;
+process_ok('[% A = "bar" %](${ {a => "A"}.a })' => '(A)', {tt_config => [INTERPOLATE => 1]}) if ! $is_tt;
+process_ok('[% A = "bar" %](${ ${ {a => "A"}.a } })' => '(bar)', {tt_config => [INTERPOLATE => 1]}) if ! $is_tt;
 
 process_ok('[% "[%" %]' => '[%') if ! $is_tt;
 process_ok('[% "%]" %]' => '%]') if ! $is_tt;
@@ -1341,7 +1342,7 @@ process_ok("[% CONFIG ANYCASE     => 1   %][% get 234 %]" => 234);
 process_ok("[% CONFIG anycase     => 1   %][% get 234 %]" => 234);
 process_ok("[% CONFIG PRE_CHOMP   => '-' %]\n[% 234 %]" => 234);
 process_ok("[% CONFIG POST_CHOMP  => '-' %][% 234 %]\n" => 234);
-process_ok("[% CONFIG INTERPOLATE => '-' %]\${ 234 }"   => 234);
+process_ok("[% CONFIG INTERPOLATE => 1 %]\${ 234 }"   => 234);
 process_ok("[% CONFIG V1DOLLAR    => 1   %][% a = 234 %][% \$a %]"   => 234);
 process_ok("[% CONFIG V2PIPE => 1 %][% BLOCK a %]b is [% b %][% END %][% PROCESS a b => 234 | repeat(2) %]"   => "b is 234b is 234");
 process_ok("[% CONFIG V2EQUALS => 1 %][% ('7' == '7.0') || 0 %]" => 0);
