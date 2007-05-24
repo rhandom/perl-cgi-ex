@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => (! $is_tt) ? 93 : 83;
+use Test::More tests => (! $is_tt) ? 93 : 86;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -125,7 +125,7 @@ process_ok("([% INSERT bar.tt %])" => '([% blue %]BAR)');
 process_ok("([% SET file = 'bar.tt' %][% INSERT \$file %])"     => '([% blue %]BAR)');
 process_ok("([% SET file = 'bar.tt' %][% INSERT \${file} %])"   => '([% blue %]BAR)') if ! $is_tt;
 process_ok("([% SET file = 'bar.tt' %][% INSERT \"\$file\" %])" => '([% blue %]BAR)');
-process_ok("([% SET file = 'bar' %][% INSERT \"\$file.tt\" %])" => '([% blue %]BAR)') if ! $is_tt;
+process_ok("([% SET file = 'bar' %][% INSERT \"\${file}.tt\" %])" => '([% blue %]BAR)');
 
 ###----------------------------------------------------------------###
 print "### INCLUDE ##########################################################\n";
@@ -139,7 +139,7 @@ process_ok("[% META foo = 'meta'; PROCESS foo.tt %]" => '(metaBAR)');
 process_ok("([% SET file = 'bar.tt' %][% INCLUDE \$file %])" => '(BAR)');
 process_ok("([% SET file = 'bar.tt' %][% INCLUDE \${file} %])" => '(BAR)') if ! $is_tt;
 process_ok("([% SET file = 'bar.tt' %][% INCLUDE \"\$file\" %])" => '(BAR)');
-process_ok("([% SET file = 'bar' %][% INCLUDE \"\$file.tt\" %])" => '(BAR)') if ! $is_tt;
+process_ok("([% SET file = 'bar' %][% INCLUDE \"\${file}.tt\" %])" => '(BAR)');
 
 process_ok("([% INCLUDE baz.tt %])" => '(42)');
 process_ok("([% INCLUDE baz.tt %])[% baz %]" => '(42)');
@@ -157,7 +157,7 @@ process_ok("[% META foo = 'meta'; PROCESS foo.tt %]" => '(metaBAR)');
 process_ok("([% SET file = 'bar.tt' %][% PROCESS \$file %])" => '(BAR)');
 process_ok("([% SET file = 'bar.tt' %][% PROCESS \${file} %])" => '(BAR)') if ! $is_tt;
 process_ok("([% SET file = 'bar.tt' %][% PROCESS \"\$file\" %])" => '(BAR)');
-process_ok("([% SET file = 'bar' %][% PROCESS \"\$file.tt\" %])" => '(BAR)') if ! $is_tt;
+process_ok("([% SET file = 'bar' %][% PROCESS \"\${file}.tt\" %])" => '(BAR)');
 
 process_ok("([% PROCESS baz.tt %])" => '(42)');
 process_ok("([% PROCESS baz.tt %])[% baz %]" => '(42)42');
