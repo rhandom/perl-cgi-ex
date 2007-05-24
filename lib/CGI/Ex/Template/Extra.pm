@@ -30,6 +30,7 @@ sub parse_CONFIG {
     my %ctime = map {$_ => 1} @CGI::Ex::Template::CONFIG_COMPILETIME;
     my %rtime = map {$_ => 1} @CGI::Ex::Template::CONFIG_RUNTIME;
 
+    my $mark   = pos($$str_ref);
     my $config = $self->parse_args($str_ref, {named_at_front => 1, is_parened => 1});
     my $ref = $config->[0]->[0];
     for (my $i = 2; $i < @$ref; $i += 2) {
@@ -358,6 +359,32 @@ sub play_RAWPERL {
     }
 
     return;
+}
+
+sub parse_TAGS {
+    my ($self, $str_ref, $node) = @_;
+
+    my ($start, $end);
+    if ($$str_ref =~ m{ \G (\w+) }gcxs) {
+        my $ref = $CGI::Ex::Template::TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
+        ($start, $end) = @$ref;
+
+    } else {
+        local $self->{'_operator_precedence'} = 1; # prevent operator matching
+        $start = $$str_ref =~ m{ \G (?= \s* $CGI::Ex::Template::QR_COMMENTS [\'\"\/]) }gcx
+            ? $self->parse_expr($str_ref)
+            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s+ $CGI::Ex::Template::QR_COMMENTS"})
+            || $self->throw('parse', "Invalid opening tag in TAGS", undef, pos($$str_ref));
+        $end   = $$str_ref =~ m{ \G (?= \s* $CGI::Ex::Template::QR_COMMENTS [\'\"\/]) }gcx
+            ? $self->parse_expr($str_ref)
+            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s* $CGI::Ex::Template::QR_COMMENTS"})
+            || $self->throw('parse', "Invalid closing tag in TAGS", undef, pos($$str_ref));
+        for my $tag ($start, $end) {
+            $tag = $self->play_expr($tag);
+            $tag = quotemeta($tag) if ! ref $tag;
+        }
+    }
+    return [$start, $end];
 }
 
 sub parse_USE {
