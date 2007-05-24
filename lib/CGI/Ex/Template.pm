@@ -1412,6 +1412,7 @@ sub play_expr {
             }
         }
     } elsif (defined $name) {
+        $name = lc($name) if $self->{'CASE_SENSITIVE'};
         if ($ARGS->{'is_namespace_during_compile'}) {
             $ref = $self->{'NAMESPACE'}->{$name};
         } else {
