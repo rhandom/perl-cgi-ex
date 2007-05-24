@@ -34,7 +34,8 @@ sub parse_tree_hte {
         $self->throw('parse.no_string', "No string or undefined during parse");
     }
 
-    local $self->{'_start_tag'} = qr{<(|!--\s*)(/?)([+=~-]?)[Tt][Mm][Pp][Ll]_(\w+)\b};
+    local $self->{'START_TAG'}  = qr{<(|!--\s*)(/?)([+=~-]?)[Tt][Mm][Pp][Ll]_(\w+)\b};
+    local $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
     local $self->{'_end_tag'}; # changes over time
 
     local @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME} = @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME};
@@ -52,6 +53,7 @@ sub parse_tree_hte {
     my $post_op    = 0;   # found a post-operative DIRECTIVE
     my $capture;          # flag to start capture
     my $func;
+    my $pre_chomp;
     my $node;
     my ($comment, $is_close);
     local pos $$str_ref = 0;
@@ -76,20 +78,47 @@ sub parse_tree_hte {
             ### find the next opening tag
             $$str_ref =~ m{ \G (.*?) $self->{'_start_tag'} }gcxs
                 || last;
-            (my $text, $comment, $is_close, my $pre_chomp, $func) = ($1, $2, $3, $4, uc $5);
+            my ($text, $dollar) = ($1, $6);
+            ($comment, $is_close, $pre_chomp, $func) = ($2, $3, $4, uc $5) if ! $dollar;
 
-            ### found a text portion - chomp it, interpolate it and store it
+            ### found a text portion - chomp it and store it
             if (length $text) {
-                my $_last = pos $$str_ref;
-                if ($post_chomp) {
-                    if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
-                    elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
-                    elsif ($post_chomp == 3) { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
+                if (! $post_chomp) { }
+                elsif ($post_chomp == 1) { $text =~ s{ ^ [^\S\n]* \n }{}x  }
+                elsif ($post_chomp == 2) { $text =~ s{ ^ \s+         }{ }x }
+                elsif ($post_chomp == 3) { $text =~ s{ ^ \s+         }{}x  }
+                push @$pointer, $text if length $text;
+            }
+
+            ### handle variable interpolation ($2 eq $)
+            if ($dollar) {
+                ### inspect previous text chunk for escape slashes
+                my $prev_text;
+                $prev_text = \$pointer->[-1] if defined($pointer->[-1]) && ! ref($pointer->[-1]);
+                my $n = ($prev_text && $$prev_text =~ m{ (\\+) $ }x) ? length($1) : 0;
+                if ($self->{'_no_interp'} || $n % 2) { # were there odd escapes
+                    chop($$prev_text) if $n % 2;
+                    if ($prev_text) { $$prev_text .= $dollar } else { push @$pointer, $text }
+                    next;
                 }
-                if (length $text) {
-                    push @$pointer, $text;
-                    $self->interpolate_node($pointer, $_last) if $self->{'INTERPOLATE'};
+
+                my $func = ($$str_ref =~ m{ \G ! }gcx) ? 'CALL' : 'GET';
+                my $mark = pos($$str_ref);
+                my $ref;
+                if ($$str_ref =~ m{ \G \{ }gcx) {
+                    local $self->{'_operator_precedence'} = 0; # allow operators
+                    local $self->{'_end_tag'} = qr{\}};
+                    $ref = $self->parse_expr($str_ref);
+                    $$str_ref =~ m{ \G \s* $CGI::Ex::Template::QR_COMMENTS \} }gcxo
+                        || $self->throw('parse', 'Missing close }', undef, pos($$str_ref));
+                } else {
+                    local $self->{'_operator_precedence'} = 1; # no operators
+                    $ref = $self->parse_expr($str_ref);
                 }
+                $self->throw('parse', "Error while parsing for interpolated string", undef, pos($$str_ref))
+                    if ! defined $ref;
+                push @$pointer, [$func, $mark, pos($$str_ref), $ref];
+                next;
             }
 
             ### make sure we know this directive
@@ -285,16 +314,11 @@ sub parse_tree_hte {
     ### pull off the last text portion - if any
     if (pos($$str_ref) != length($$str_ref)) {
         my $text  = substr $$str_ref, pos($$str_ref);
-        my $_last = pos($$str_ref);
-        if ($post_chomp) {
-            if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
-            elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
-            elsif ($post_chomp == 3) { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
-        }
-        if (length $text) {
-            push @$pointer, $text;
-            $self->interpolate_node($pointer, $_last) if $self->{'INTERPOLATE'};
-        }
+        if (! $post_chomp) { }
+        elsif ($post_chomp == 1) { $text =~ s{ ^ [^\S\n]* \n }{}x  }
+        elsif ($post_chomp == 2) { $text =~ s{ ^ \s+         }{ }x }
+        elsif ($post_chomp == 3) { $text =~ s{ ^ \s+         }{}x  }
+        push @$pointer, $text if length $text;
     }
 
     return \@tree;
