@@ -553,8 +553,9 @@ sub parse_tree_tt3 {
     }
 
     my $STYLE = $self->{'TAG_STYLE'} || 'default';
-    local $self->{'_start_tag'} = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
     local $self->{'_end_tag'}   = $self->{'END_TAG'}   || $TAGS->{$STYLE}->[1];
+    local $self->{'START_TAG'}  = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
+    local $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
 
     local @{ $self }{@CONFIG_COMPILETIME} = @{ $self }{@CONFIG_COMPILETIME};
 
@@ -583,10 +584,10 @@ sub parse_tree_tt3 {
         } else {
             $$str_ref =~ m{ \G (.*?) $self->{'_start_tag'} }gcxs
                 || last;
+            my ($text, $dollar) = ($1, $2); # dollar is set only on an interpolated var
 
             ### found a text portion - chomp it, interpolate it and store it
-            if (length $1) {
-                my $text  = $1;
+            if (length $text) {
                 my $_last = pos $$str_ref;
                 if ($post_chomp) {
                     if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
@@ -595,8 +596,37 @@ sub parse_tree_tt3 {
                 }
                 if (length $text) {
                     push @$pointer, $text;
-                    $self->interpolate_node($pointer, $_last) if $self->{'INTERPOLATE'};
                 }
+            }
+
+            ### handle variable interpolation ($2 eq $)
+            if ($dollar) {
+                ### inspect previous text chunk for escape slashes
+                my $prev_text;
+                $prev_text = \$pointer->[-1] if defined($pointer->[-1]) && ! ref($pointer->[-1]);
+                my $n = ($prev_text && $$prev_text =~ m{ (\\+) $ }x) ? length($1) : 0;
+                if ($self->{'_no_interp'} || $n % 2) { # were there odd escapes
+                    chop($$prev_text) if $n % 2;
+                    if ($prev_text) { $$prev_text .= $dollar } else { push @$pointer, $text }
+                    next;
+                }
+
+                my $func = ($$str_ref =~ m{ \G ! }gcx) ? 'CALL' : 'GET';
+                my $mark = pos($$str_ref);
+                my $ref;
+                local $self->{'_operator_precedence'} = 1; # reset precedence
+                if ($$str_ref =~ m{ \G \{ }gcx) {
+                    local $self->{'_end_tag'} = qr{\}};
+                    $ref = $self->parse_expr($str_ref);
+                    $$str_ref =~ m{ \G \s* $QR_COMMENTS \} }gcxo
+                        || $self->throw('parse', 'Missing close }', undef, pos($$str_ref));
+                } else {
+                    $ref = $self->parse_expr($str_ref);
+                }
+                $self->throw('parse', "Error while parsing for interpolated string", undef, pos($$str_ref))
+                    if ! defined $ref;
+                push @$pointer, [$func, $mark, pos($$str_ref), $ref];
+                next;
             }
 
             $node = [undef, pos($$str_ref), undef];
@@ -795,10 +825,7 @@ sub parse_tree_tt3 {
             elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
             elsif ($post_chomp == 3) { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
         }
-        if (length $text) {
-            push @$pointer, $text;
-            $self->interpolate_node($pointer, $_last) if $self->{'INTERPOLATE'};
-        }
+        push @$pointer, $text if length $text;
     }
 
     return \@tree;
@@ -1327,40 +1354,6 @@ sub parse_args {
     }
 
     return \@args;
-}
-
-### allow for looking for $foo or ${foo.bar} in TEXT "nodes" of the parse tree.
-sub interpolate_node {
-    my ($self, $tree, $offset) = @_;
-    return if $self->{'_no_interp'};
-
-    ### split on variables while keeping the variables
-    my @pieces = split m{ (?: ^ | (?<! \\)) (\$\w+ (?:\.\w+)* | \$\{ .*? (?<!\\) \}) }x, $tree->[-1];
-    if ($#pieces <= 0) {
-        $tree->[-1] =~ s{ \\ ([\"\$]) }{$1}xg;
-        return;
-    }
-
-    my @sub_tree;
-    my $n = 0;
-    foreach my $piece (@pieces) {
-        $offset += length $piece; # we track the offset to make sure DEBUG has the right location
-        $piece =~ s{ \\ ([\"\$]) }{$1}xg;
-        if (! ($n++ % 2)) { # odds will always be text chunks
-            next if ! length $piece;
-            push @sub_tree, $piece;
-        } elsif ($piece =~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
-                 || $piece =~ m{ ^ \$\{ \s* (.*?) (?<!\\) \} $ }x) {
-            my $name = $1;
-            $name =~ s/\\\}/\}/g;
-            push @sub_tree, ['GET', $offset - length($piece), $offset, $self->parse_expr(\$name)];
-        } else {
-            $self->throw('parse', "Parse error during interpolate node");
-        }
-    }
-
-    ### replace the tree
-    splice @$tree, -1, 1, @sub_tree;
 }
 
 ###----------------------------------------------------------------###
