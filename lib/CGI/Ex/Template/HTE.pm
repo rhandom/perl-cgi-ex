@@ -34,7 +34,7 @@ sub parse_tree_hte {
         $self->throw('parse.no_string', "No string or undefined during parse");
     }
 
-    my $START = qr{<(|!--\s*)(/?)([+=~-]?)[Tt][Mm][Pp][Ll]_(\w+)\b};
+    local $self->{'_start_tag'} = qr{<(|!--\s*)(/?)([+=~-]?)[Tt][Mm][Pp][Ll]_(\w+)\b};
     local $self->{'_end_tag'}; # changes over time
 
     local @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME} = @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME};
@@ -74,7 +74,7 @@ sub parse_tree_hte {
         ### handle all other TMPL tags
         } else {
             ### find the next opening tag
-            $$str_ref =~ m{ \G (.*?) $START }gcxs
+            $$str_ref =~ m{ \G (.*?) $self->{'_start_tag'} }gcxs
                 || last;
             (my $text, $comment, $is_close, my $pre_chomp, $func) = ($1, $2, $3, $4, uc $5);
 

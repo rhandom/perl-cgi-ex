@@ -8,7 +8,7 @@ package CGI::Ex::Template;
 
 use strict;
 
-our $VERSION = '2.13';
+our $VERSION = '2.14';
 
 our $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
 our $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
@@ -553,9 +553,8 @@ sub parse_tree_tt3 {
     }
 
     my $STYLE = $self->{'TAG_STYLE'} || 'default';
-    my $START = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
-    my $END   = $self->{'END_TAG'}   || $TAGS->{$STYLE}->[1];
-    local $self->{'_end_tag'} = $END;
+    local $self->{'_start_tag'} = $self->{'START_TAG'} || $TAGS->{$STYLE}->[0];
+    local $self->{'_end_tag'}   = $self->{'END_TAG'}   || $TAGS->{$STYLE}->[1];
 
     local @{ $self }{@CONFIG_COMPILETIME} = @{ $self }{@CONFIG_COMPILETIME};
 
@@ -582,7 +581,7 @@ sub parse_tree_tt3 {
 
         ### find the next opening tag
         } else {
-            $$str_ref =~ m{ \G (.*?) $START }gcxs
+            $$str_ref =~ m{ \G (.*?) $self->{'_start_tag'} }gcxs
                 || last;
 
             ### found a text portion - chomp it, interpolate it and store it
@@ -614,10 +613,10 @@ sub parse_tree_tt3 {
 
             ### leading # means to comment the entire section
             if ($$str_ref =~ m{ \G \# }gcx) {
-                $$str_ref =~ m{ \G (.*?) ([+~=-]?) ($END) }gcxs # brute force - can't comment tags with nested %]
+                $$str_ref =~ m{ \G (.*?) ([+~=-]?) ($self->{'_end_tag'}) }gcxs # brute force - can't comment tags with nested %]
                     || $self->throw('parse', "Missing closing tag", undef, pos($$str_ref));
                 $node->[0] = '#';
-                $node->[2] = pos($$str_ref) - length($3);
+                $node->[2] = pos($$str_ref) - length($3) - length($2);
                 push @$pointer, $node;
 
                 $post_chomp = $2;
@@ -718,18 +717,16 @@ sub parse_tree_tt3 {
                     $self->{'_no_interp'}++ if $DIRECTIVES->{$node->[0]}->[5] # allow no_interp to turn on and off
 
             } elsif ($func eq 'TAGS') {
-                ($START, $END) = @{ $node->[3] };
+                ($self->{'_start_tag'}, $self->{'_end_tag'}, my $old_end) = (@{ $node->[3] }[0,1], $self->{'_end_tag'});
 
                 ### allow for one more closing tag of the old style
-                if ($$str_ref =~ m{ \G \s* $QR_COMMENTS ([+~=-]?) $self->{'_end_tag'} }gcxs) {
+                if ($$str_ref =~ m{ \G \s* $QR_COMMENTS ([+~=-]?) $old_end }gcxs) {
                     $post_chomp = $1 || $self->{'POST_CHOMP'};
                     $post_chomp =~ y/-=~+/1230/ if $post_chomp;
                     $continue = 0;
                     $post_op  = 0;
-                    $self->{'_end_tag'} = $END; # need to keep track so parse_expr knows when to stop
                     next;
                 }
-                $self->{'_end_tag'} = $END;
 
             } elsif ($func eq 'META') {
                 unshift @meta, %{ $node->[3] }; # first defined win
@@ -742,7 +739,7 @@ sub parse_tree_tt3 {
                 $self->throw('parse', "Missing semi-colon with SEMICOLONS => 1", undef, $node->[1]);
             }
             push @$pointer, $node;
-            if ($$str_ref =~ m{ \G \s* $QR_COMMENTS ($QR_OP_ASSIGN) >? (?! [+=~-]? $END) \s* $QR_COMMENTS }gcx) {
+            if ($$str_ref =~ m{ \G \s* $QR_COMMENTS ($QR_OP_ASSIGN) >? (?! [+=~-]? $self->{'_end_tag'}) \s* $QR_COMMENTS }gcx) {
                 $node->[0] = 'SET';
                 $node->[3] = eval { $DIRECTIVES->{'SET'}->[0]->($self, $str_ref, $node, $1, $var) };
                 if (my $err = $@) {
@@ -757,7 +754,7 @@ sub parse_tree_tt3 {
         }
 
         ### look for the closing tag
-        if ($$str_ref =~ m{ \G \s* $QR_COMMENTS (?: ; \s* $QR_COMMENTS)? ([+=~-]?) $END }gcxs) {
+        if ($$str_ref =~ m{ \G \s* $QR_COMMENTS (?: ; \s* $QR_COMMENTS)? ([+=~-]?) $self->{'_end_tag'} }gcxs) {
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
             $continue = 0;
