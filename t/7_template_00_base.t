@@ -85,6 +85,23 @@ sub process_ok { # process the value and say if it was ok
 my $obj = Foo2->new;
 my $vars;
 
+
+#
+#
+#
+#my $slash = '\\';
+#process_ok("Foo $slash Bar"        => "Foo $slash Bar",       {tt_config => ['INTERPOLATE' => 1]});
+#process_ok("Foo $slash$slash Bar"  => "Foo $slash$slash Bar", {tt_config => ['INTERPOLATE' => 1]});
+#process_ok("Foo ${slash}n Bar"     => "Foo ${slash}n Bar",    {tt_config => ['INTERPOLATE' => 1]});
+#process_ok("Foo $slash\$a Bar"             => "Foo \$a Bar",             {a=>7, tt_config => ['INTERPOLATE' => 1]});
+#process_ok("Foo $slash$slash\$a Bar"       => "Foo $slash${slash}7 Bar", {a=>7, tt_config => ['INTERPOLATE' => 1]});
+#process_ok("Foo $slash$slash$slash\$a Bar" => "Foo $slash$slash\$a Bar", {a=>7, tt_config => ['INTERPOLATE' => 1]});
+process_ok("Foo \$a.B Bar"         => 'Foo 7 Bar', {a=>{B=>7,b=>{c=>sub{"(@_)"}}}, tt_config => ['INTERPOLATE' => 1]});
+process_ok("Foo \${ a.B } Bar"     => 'Foo 7 Bar', {a=>{B=>7,b=>{c=>sub{"(@_)"}}}, tt_config => ['INTERPOLATE' => 1]});
+process_ok("Foo \$a.b.c('hi') Bar" => "Foo <>('hi') Bar", {a=>{B=>7,b=>{c=>sub{"<@_>"}}}, tt_config => ['INTERPOLATE' => 1]});
+process_ok("Foo \${a.b.c('hi')} Bar" => "Foo <hi> Bar", {a=>{B=>7,b=>{c=>sub{"<@_>"}}}, tt_config => ['INTERPOLATE' => 1]});
+#exit;
+
 ###----------------------------------------------------------------###
 print "### GET ##############################################################\n";
 
@@ -915,6 +932,7 @@ print "### capturing ########################################################\n"
 process_ok("[% foo = BLOCK %]Hi[% END %][% foo %][% foo %]" => 'HiHi');
 process_ok("[% BLOCK foo %]Hi[% END %][% bar = PROCESS foo %]-[% bar %]" => '-Hi');
 process_ok("[% foo = IF 1 %]Hi[% END %][% foo %]" => 'Hi');
+process_ok("[% BLOCK foo %]([% i %])[% END %][% SET wow = PROCESS foo i='bar' %][% wow %]" => "(bar)");
 
 ###----------------------------------------------------------------###
 print "### TAGS #############################################################\n";
@@ -1078,6 +1096,8 @@ process_ok('[% ${"con${\\"s\\"}tants"}.harry %]' => 'foo', {constants => {harry 
 print "### INTERPOLATE / ANYCASE / TRIM #####################################\n";
 
 process_ok("Foo \$one Bar" => 'Foo ONE Bar', {one => 'ONE', tt_config => ['INTERPOLATE' => 1]});
+
+
 process_ok("[% PERL %] my \$n=7; print \$n [% END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
 process_ok("[% TRY ; PERL %] my \$n=7; print \$n [% END ; END %]" => '7', {tt_config => ['INTERPOLATE' => 1, 'EVAL_PERL' => 1]});
 
@@ -1093,6 +1113,8 @@ process_ok("[% BLOCK foo %]hi\n[% END %][% PROCESS foo %]" => "hi", {tt_config =
 process_ok("[% BLOCK foo %]hi[% nl %][% END %][% PROCESS foo %]" => "hi", {nl => "\n", tt_config => [TRIM => 1]});
 process_ok("[% BLOCK foo %][% nl %]hi[% END %][% PROCESS foo %]" => "hi", {nl => "\n", tt_config => [TRIM => 1]});
 process_ok("A[% TRY %]\nhi\n[% END %]" => "A\nhi", {tt_config => [TRIM => 1]});
+
+process_ok("[% FOO %]" => 'foo', {foo => 'foo', tt_config => [LOWER_CASE_VAR_FALLBACK => 1]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### V1DOLLAR #########################################################\n";
