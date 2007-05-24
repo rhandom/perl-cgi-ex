@@ -843,24 +843,18 @@ sub parse_expr {
         if ($$str_ref =~ m{ \G \s* $QR_COMMENTS $ARGS->{'auto_quote'} }gcx) {
             return $1;
 
-        ### allow for auto-quoted $foo
-        } elsif ($$str_ref =~ m{ \G \$ (\w+\b (?:\.\w+\b)*) \s* $QR_COMMENTS }gcxo) {
-            my $name = $1;
-            if ($$str_ref !~ m{ \G \( }gcx || $name =~ /^(?:qw|m|\d)/) {
-                return $self->parse_expr(\$name);
-            }
-            ### this is a little cryptic/odd - but TT allows items in
-            ### autoquote position to only be prefixed by a $ - gross
-            ### so we will defer to the regular parsing - but after the $
-            pos($$str_ref) = $mark + 1;
-            $is_aq = undef; # but don't allow operators - false flag handed down
-
         ### allow for ${foo.bar} type constructs
         } elsif ($$str_ref =~ m{ \G \$\{ }gcx) {
             my $var = $self->parse_expr($str_ref);
-            $$str_ref =~ m{ \G \s* \} \s* $QR_COMMENTS }gcxo
+            $$str_ref =~ m{ \G \s* $QR_COMMENTS \} }gcxo
                 || $self->throw('parse', 'Missing close "}" from "${"', undef, pos($$str_ref));
             return $var;
+
+        ### allow for auto-quoted $foo
+        } elsif ($$str_ref =~ m{ \G \$ }gcx) {
+            return $self->parse_expr($str_ref)
+                || $self->throw('parse', "Missing variable", undef, pos($$str_ref));
+
         }
     }
 
