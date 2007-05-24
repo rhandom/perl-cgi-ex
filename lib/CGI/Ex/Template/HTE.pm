@@ -376,6 +376,7 @@ sub output {
     local $self->{'INCLUDE_PATH'} = $self->{'PATH'} || './';
     local $self->{'V2EQUALS'}     = $self->{'V2EQUALS'} || 0;
     local $self->{'_documents'}   = \%DOCUMENTS;
+    local $self->{'LOWER_CASE_VAR_FALLBACK'} = ! $self->{'CASE_SENSITIVE'}; # un-smart HTML::Template default
     local $CGI::Ex::Template::QR_PRIVATE = undef;
 
     if ($args->{'print_to'}) {
