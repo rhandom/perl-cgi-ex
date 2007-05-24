@@ -1087,6 +1087,8 @@ sub parse_expr {
             $var = \@var;
         }
     } elsif ($is_namespace) {
+        my $name = $var[0];
+        local $self->{'_vars'}->{$name} = $self->{'NAMESPACE'}->{$name};
         $var = $self->play_expr(\@var, {is_namespace_during_compile => 1});
     } else {
         $var = \@var;
@@ -1415,17 +1417,13 @@ sub play_expr {
             }
         }
     } elsif (defined $name) {
-        $name = lc($name) if $self->{'CASE_SENSITIVE'};
-        if ($ARGS->{'is_namespace_during_compile'}) {
-            $ref = $self->{'NAMESPACE'}->{$name};
-        } else {
-            return if $QR_PRIVATE && $name =~ $QR_PRIVATE; # don't allow vars that begin with _
-            return \$self->{'_vars'}->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $self->{'_vars'}->{$name};
-            $ref = $self->{'_vars'}->{$name};
-            if (! defined $ref) {
-                $ref = ($name eq 'template' || $name eq 'component') ? $self->{"_$name"} : $VOBJS->{$name};
-                $ref = $SCALAR_OPS->{$name} if ! $ref && (! defined($self->{'VMETHOD_FUNCTIONS'}) || $self->{'VMETHOD_FUNCTIONS'});
-            }
+        return if $QR_PRIVATE && $name =~ $QR_PRIVATE; # don't allow vars that begin with _
+        return \$self->{'_vars'}->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $self->{'_vars'}->{$name};
+        $ref = $self->{'_vars'}->{$name};
+        if (! defined $ref) {
+            $ref = ($name eq 'template' || $name eq 'component') ? $self->{"_$name"} : $VOBJS->{$name};
+            $ref = $SCALAR_OPS->{$name} if ! $ref && (! defined($self->{'VMETHOD_FUNCTIONS'}) || $self->{'VMETHOD_FUNCTIONS'});
+            $ref = $self->{'_vars'}->{lc $name} if ! defined $ref && $self->{'LOWER_CASE_VAR_FALLBACK'};
         }
     }
 
