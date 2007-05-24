@@ -610,13 +610,14 @@ sub parse_tree_tt3 {
                 my $func = ($$str_ref =~ m{ \G ! }gcx) ? 'CALL' : 'GET';
                 my $mark = pos($$str_ref);
                 my $ref;
-                local $self->{'_operator_precedence'} = 1; # reset precedence
                 if ($$str_ref =~ m{ \G \{ }gcx) {
+                    local $self->{'_operator_precedence'} = 0; # allow operators
                     local $self->{'_end_tag'} = qr{\}};
                     $ref = $self->parse_expr($str_ref);
                     $$str_ref =~ m{ \G \s* $QR_COMMENTS \} }gcxo
                         || $self->throw('parse', 'Missing close }', undef, pos($$str_ref));
                 } else {
+                    local $self->{'_operator_precedence'} = 1; # no operators
                     $ref = $self->parse_expr($str_ref);
                 }
                 $self->throw('parse', "Error while parsing for interpolated string", undef, pos($$str_ref))
