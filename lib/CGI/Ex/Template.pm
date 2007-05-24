@@ -586,17 +586,13 @@ sub parse_tree_tt3 {
                 || last;
             my ($text, $dollar) = ($1, $2); # dollar is set only on an interpolated var
 
-            ### found a text portion - chomp it, interpolate it and store it
+            ### found a text portion - chomp it and store it
             if (length $text) {
-                my $_last = pos $$str_ref;
-                if ($post_chomp) {
-                    if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
-                    elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
-                    elsif ($post_chomp == 3) { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
-                }
-                if (length $text) {
-                    push @$pointer, $text;
-                }
+                if (! $post_chomp) { }
+                elsif ($post_chomp == 1) { $text =~ s{ ^ [^\S\n]* \n }{}x  }
+                elsif ($post_chomp == 2) { $text =~ s{ ^ \s+         }{ }x }
+                elsif ($post_chomp == 3) { $text =~ s{ ^ \s+         }{}x  }
+                push @$pointer, $text if length $text;
             }
 
             ### handle variable interpolation ($2 eq $)
@@ -819,12 +815,10 @@ sub parse_tree_tt3 {
     ### pull off the last text portion - if any
     if (pos($$str_ref) != length($$str_ref)) {
         my $text  = substr $$str_ref, pos($$str_ref);
-        my $_last = pos($$str_ref);
-        if ($post_chomp) {
-            if    ($post_chomp == 1) { $_last += length($1)     if $text =~ s{ ^ ([^\S\n]* \n) }{}x  }
-            elsif ($post_chomp == 2) { $_last += length($1) + 1 if $text =~ s{ ^ (\s+)         }{ }x }
-            elsif ($post_chomp == 3) { $_last += length($1)     if $text =~ s{ ^ (\s+)         }{}x  }
-        }
+        if (! $post_chomp) { }
+        elsif ($post_chomp == 1) { $text =~ s{ ^ [^\S\n]* \n }{}x  }
+        elsif ($post_chomp == 2) { $text =~ s{ ^ \s+         }{ }x }
+        elsif ($post_chomp == 3) { $text =~ s{ ^ \s+         }{}x  }
         push @$pointer, $text if length $text;
     }
 
