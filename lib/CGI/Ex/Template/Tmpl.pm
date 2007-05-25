@@ -25,12 +25,13 @@ use strict;
 use warnings;
 
 our $VERSION = '2.13';
+our $error;
 
 sub parse_tree_tmpl {
     my $self = shift;
 
-    local @{ $CGI::Ex::Template::ALIASES }{qw(ECHO INCLUDE IFN    LOOP   ENDCOMMENT ENDIF ENDIFN ENDLOOP)}
-                                         = qw(GET  PROCESS UNLESS REPEAT END        END   END    END);
+    local @{ $CGI::Ex::Template::ALIASES }{qw(ECHO INCLUDE IFN    ENDCOMMENT ENDIF ENDIFN ENDLOOP)}
+                                         = qw(GET  PROCESS UNLESS END        END   END    END);
     local $self->{'ABSOLUTE'}   = 1;
     local $self->{'RELATIVE'}   = 1;
     local $self->{'ANYCASE'}    = 1;
@@ -41,46 +42,43 @@ sub parse_tree_tmpl {
 }
 
 ###----------------------------------------------------------------###
-### a few HTML::Template and HTML::Template::Expr routines
 
 sub set_dir {
     my $self = shift;
     $self->{'INCLUDE_PATHS'} = [shift, './'];
 }
 
-sub set_values {
-    my $self = shift;
-    my $args;
-    if (@_ == 1) {
-        my $key = shift;
-        if (ref($key) ne 'HASH') {
-            return $self->{'_vars'}->{$key};
-        }
-        $args = [%$key];
-    } else {
-        $self->throw('param', "Odd number of parameters") if @_ % 2;
-        $args = \@_;
-    }
-    while (@$args) {
-        my $key = shift @$args;
-        $self->{'_vars'}->{$key} = shift @$args;
-    }
-    return;
-}
-
-sub parse_string {
-    my $self = shift;
-
-    my $content = \ $_[0];
+sub parse_file {
+    my ($self, $content) = @_;
 
     my $vars = $self->{'_vars'} || {};
 
     local $self->{'SYNTAX'} = $self->{'SYNTAX'} || 'tmpl';
     local $CGI::Ex::Template::QR_PRIVATE = undef;
 
+    $error = undef;
+
     my $out = '';
-    $self->process_simple($content, $vars, \$out) || die $self->error;
+    $self->process_simple($content, $vars, \$out)
+        || ($error = $self->error);
     return $out;
+}
+
+sub loop_iteration {
+    my $self = shift;
+    my $name = shift;
+    my $ref  = $self->{'_vars'}->{$name} ||= [];
+    my $vars;
+
+    $self->throw('loop', "Variable $name is not an arrayref during loop_iteration") if ref($ref) ne 'ARRAY';
+    if (defined(my $index = shift)) {
+        $vars = $ref->[$index] || $self->throw('loop', "Index $index is not yet defined on loop $name");
+    } else {
+        $vars = {};
+        push @$ref, $vars;
+    }
+
+    return ref($self)->new('_vars' => $vars);
 }
 
 ###----------------------------------------------------------------###
