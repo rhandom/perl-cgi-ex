@@ -31,6 +31,8 @@ if (! fork) {
 } elsif (! fork) {
     $module = 'HTML::Template::Expr';
 } elsif (! fork) {
+    $module = 'HTML::Template::Compiled';
+} elsif (! fork) {
     $module = 'Text::Tmpl';
 } elsif (! fork) {
     $module = 'Template';
