@@ -213,6 +213,7 @@ sub parse_tree_hte {
 
                 ### fixup DIRECTIVE storage
                 if ($func eq 'INCLUDE') {
+                    $node->[0] = 'PROCESS'; # no need to localize the stash
                     $node->[3] = [[[undef, '{}'],0], $node->[3]];
                 } elsif ($func eq 'UNLESS') {
                     $node->[0] = 'IF';
