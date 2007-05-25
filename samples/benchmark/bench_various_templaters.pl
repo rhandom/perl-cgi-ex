@@ -14,6 +14,7 @@ use Template::Stash;
 use Template::Stash::XS;
 use Template::Parser::CET;
 use Text::Template;
+use Text::Tmpl;
 use HTML::Template;
 use HTML::Template::Expr;
 use HTML::Template::JIT;
@@ -30,6 +31,7 @@ my $names = {
   CETX         => 'CGI::Ex::Template::XS using TT interface',
   CETH         => 'CGI::Ex::Template using HTML::Template interface',
   CETXH        => 'CGI::Ex::Template::XS using HTML::Template interface',
+  CETXTMPL     => 'CGI::Ex::Temmplate::XS using Text::Tmpl interface',
   HT           => 'HTML::Template',
   HTE          => 'HTML::Template::Expr',
   HTJ          => 'HTML::Template::JIT - Compiled to C template',
@@ -37,6 +39,7 @@ my $names = {
   TT           => 'Template::Toolkit',
   TTX          => 'Template::Toolkit with Stash::XS',
   TTXCET       => 'Template::Toolkit with Stash::XS and Template::Parser::CET',
+  TMPL         => 'Text::Tmpl',
 
   mem          => 'Compiled in memory',
   file         => 'Loaded from file',
@@ -160,6 +163,31 @@ $filler
 DOC
 
 ###----------------------------------------------------------------###
+### Tmpl style template
+
+my $content_tmpl = <<"DOC";
+<!--echo \$shell_header-->
+<!--echo \$shell_start-->
+$filler
+
+<!-- if \$foo -->
+This is some text.
+<!-- endif -->
+
+<!-- loop "a_stuff" --><!-- echo \$name --><!-- endloop -->
+<!-- echo \$pass_in_something -->
+
+$filler
+<!-- echo \$shell_end -->
+<!-- echo \$shell_footer -->
+DOC
+
+if (open (my $fh, ">$dir/foo.tmpl")) {
+    print $fh $content_tmpl;
+    close $fh;
+}
+
+###----------------------------------------------------------------###
 ### The TT interface allows for a single object to be cached and reused.
 
 my $tt  = Template->new(             INCLUDE_PATH => \@dirs, STASH => Template::Stash->new($stash_t));
@@ -202,6 +230,30 @@ my $tests = {
     HT_file => sub {
         my $ht = HTML::Template->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
+    },
+    TMPL_file => sub {
+        my $tt = Text::Tmpl->new;
+        for my $ref (@{ $stash_ht->{'a_stuff'} }) {
+            $tt->loop_iteration('a_stuff')->set_values($ref);
+        }
+        $tt->set_values($stash_ht);
+        $tt->set_values($form);
+        $tt->set_delimiters('<!--','-->');
+        $tt->set_dir("$dir/");
+        $tt->set_strip(0);
+        my $out = $tt->parse_file("foo.tmpl");
+    },
+    CETXTMPL_file => sub {
+        my $tt = CGI::Ex::Template::XS->new;
+        for my $ref (@{ $stash_ht->{'a_stuff'} }) {
+            $tt->loop_iteration('a_stuff')->set_values($ref);
+        }
+        $tt->set_values($stash_ht);
+        $tt->set_values($form);
+        $tt->set_delimiters('<!--','-->');
+        $tt->set_dir("$dir/");
+        $tt->set_strip(0);
+        my $out = $tt->parse_file("foo.tmpl");
     },
 
     ###----------------------------------------------------------------###
@@ -252,6 +304,18 @@ my $tests = {
         my $ht = HTML::Template::Expr->new( type => 'scalarref', source => \$content_ht);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
+    TMPL_str => sub {
+        my $tt = Text::Tmpl->new;
+        for my $ref (@{ $stash_ht->{'a_stuff'} }) {
+            $tt->loop_iteration('a_stuff')->set_values($ref);
+        }
+        $tt->set_values($stash_ht);
+        $tt->set_values($form);
+        $tt->set_delimiters('<!--','-->');
+        $tt->set_dir("$dir/");
+        $tt->set_strip(0);
+        my $out = $tt->parse_string($content_tmpl);
+    },
 
     ###----------------------------------------------------------------###
     ### mem indicates that the compiled form is stored in memory
@@ -286,6 +350,10 @@ my $tests = {
 my $test = $tests->{'TT_str'}->();
 foreach my $name (sort keys %$tests) {
     if ($test ne $tests->{$name}->()) {
+        print "--------------------------TT_str-------\n";
+        print $test;
+        print "--------------------------$name--------\n";
+        print $tests->{$name}->();
         die "$name did not match TT_str output\n";
     }
     $name =~ /(\w+)_(\w+)/;
