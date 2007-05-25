@@ -15,6 +15,7 @@ lib/CGI/Ex/Template.pod
 lib/CGI/Ex/Template/Extra.pm
 lib/CGI/Ex/Template/HTE.pm
 lib/CGI/Ex/Template/Tmpl.pm
+lib/CGI/Ex/Template/Velocity.pm
 lib/CGI/Ex/validate.js
 lib/CGI/Ex/Validate.pm
 lib/CGI/Ex/yaml_load.js
