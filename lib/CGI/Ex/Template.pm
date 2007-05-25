@@ -164,6 +164,7 @@ our $DIRECTIVES = {
     CATCH   => [\&parse_CATCH,   undef,           0,       0,       {TRY => 1, CATCH => 1}],
     CLEAR   => [sub {},          \&play_CLEAR],
     '#'     => [sub {},          sub {}],
+    COMMENT => [sub {},          sub {},          1],
     CONFIG  => [\&parse_CONFIG,  \&play_CONFIG],
     DEBUG   => [\&parse_DEBUG,   \&play_DEBUG],
     DEFAULT => [\&parse_DEFAULT, \&play_DEFAULT],
@@ -561,7 +562,7 @@ sub parse_tree_tt3 {
     local $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
 
     local @{ $self }{@CONFIG_COMPILETIME} = @{ $self }{@CONFIG_COMPILETIME};
-    local @{ $DIRECTIVES }{ keys %$ALIASES } = @{ $DIRECTIVES}{ values %$ALIASES }; # temporarily add to the table
+    local @{ $DIRECTIVES }{ keys %$ALIASES } = values %$ALIASES; # temporarily add to the table
 
     my @tree;             # the parsed tree
     my $pointer = \@tree; # pointer to current tree to handle nested blocks
@@ -666,7 +667,8 @@ sub parse_tree_tt3 {
             ) {                       # is it a directive
             $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcx;
 
-            $node->[0] = $ALIASES->{$func} || $func;
+            $func = $ALIASES->{$func} if $ALIASES->{$func};
+            $node->[0] = $func;
 
             ### store out this current node level to the appropriate tree location
             # on a post operator - replace the original node with the new one - store the old in the new
@@ -3204,17 +3206,32 @@ sub set_delimiters {
     $self->{'END_TAG'}   = quotemeta(shift || $self->throw('set', 'missing end_tag'));
 }
 
-sub set_strip { my $self = shift; $self->{'POST_CHOMP'} = $_[0] ? '-' : '+' }
+sub strerror { $CGI::Ex::Template::Tmpl::error }
 
-sub set_values {
+sub set_strip { my $self = shift; $self->{'POST_CHOMP'} = $_[0] ? '-' : '+'; 1 }
+
+sub set_value { my $self = shift; $self->{'_vars'}->{$_[0]} = $_[1]; 1 }
+
+sub set_values { my ($self, $hash) = @_; @{ $self->{'_vars'} ||= {} }{keys %$hash} = values %$hash; 1 }
+
+sub parse_string { my $self = shift; return $self->parse_file(\$_[0]) }
+
+sub set_dir {
     require CGI::Ex::Template::Tmpl;
-    &CGI::Ex::Template::Tmpl::set_values;
+    &CGI::Ex::Template::Tmpl::set_dir;
 }
 
-sub parse_string {
+sub parse_file {
     require CGI::Ex::Template::Tmpl;
-    &CGI::Ex::Template::Tmpl::parse_string;
+    &CGI::Ex::Template::Tmpl::parse_file;
 }
+
+sub loop_iteration {
+    require CGI::Ex::Template::Tmpl;
+    &CGI::Ex::Template::Tmpl::loop_iteration;
+}
+
+sub fetch_loop_iteration { shift->loop_iteration(@_) }
 
 ###----------------------------------------------------------------###
 
