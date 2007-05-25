@@ -189,7 +189,7 @@ sub parse_LOOP {
 sub play_LOOP {
     my ($self, $ref, $node, $out_ref) = @_;
 
-    my $var = $self->play_expr($ref);
+    my $var = $self->play_expr(ref($ref) ? $ref : [$ref,0]); # allow for "string" identified loops
     my $sub_tree = $node->[4];
 
     my $global = ! $self->{'SYNTAX'} || $self->{'SYNTAX'} ne 'ht' || $self->{'GLOBAL_VARS'};
