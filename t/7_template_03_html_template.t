@@ -79,7 +79,7 @@ close $fh;
 ### create some files to include
 my $bar_template = "$test_dir/bar.ht";
 END { unlink $bar_template };
-open(my $fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
+open($fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
 print $fh "(<TMPL_VAR bar>)";
 close $fh;
 
