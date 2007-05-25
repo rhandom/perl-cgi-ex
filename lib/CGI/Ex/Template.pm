@@ -16,12 +16,13 @@ our $PACKAGE_CONTEXT     = 'CGI::Ex::Template::Context';
 our $QR_PRIVATE          = qr/^[_.]/;
 
 our $SYNTAX = {
-    cet => \&parse_tree_tt3,
-    ht  => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; local $self->{'EXPR'} = 0; $self->parse_tree_hte(@_) },
-    hte => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; $self->parse_tree_hte(@_) },
-    tt3 => \&parse_tree_tt3,
-    tt2 => sub { my $self = shift; local $self->{'V2PIPE'} = 1; $self->parse_tree_tt3(@_) },
-    tt1 => sub { my $self = shift; local $self->{'V2PIPE'} = 1; local $self->{'V1DOLLAR'} = 1; $self->parse_tree_tt3(@_) },
+    cet  => \&parse_tree_tt3,
+    ht   => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; local $self->{'EXPR'} = 0; $self->parse_tree_hte(@_) },
+    hte  => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; $self->parse_tree_hte(@_) },
+    tt3  => \&parse_tree_tt3,
+    tt2  => sub { my $self = shift; local $self->{'V2PIPE'} = 1; $self->parse_tree_tt3(@_) },
+    tt1  => sub { my $self = shift; local $self->{'V2PIPE'} = 1; local $self->{'V1DOLLAR'} = 1; $self->parse_tree_tt3(@_) },
+    tmpl => \&parse_tree_tmpl,
 };
 
 our $TAGS = {
@@ -201,6 +202,7 @@ our $DIRECTIVES = {
     WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1,       1],
     #name       parse_sub        play_sub         block    postdir  continue  no_interp
 };
+our $ALIASES = {};
 
 ### setup the operator parsing
 our $OPERATORS = [
@@ -559,6 +561,7 @@ sub parse_tree_tt3 {
     local $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
 
     local @{ $self }{@CONFIG_COMPILETIME} = @{ $self }{@CONFIG_COMPILETIME};
+    local @{ $DIRECTIVES }{ keys %$ALIASES } = @{ $DIRECTIVES}{ values %$ALIASES }; # temporarily add to the table
 
     my @tree;             # the parsed tree
     my $pointer = \@tree; # pointer to current tree to handle nested blocks
@@ -663,7 +666,7 @@ sub parse_tree_tt3 {
             ) {                       # is it a directive
             $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcx;
 
-            $node->[0] = $func;
+            $node->[0] = $ALIASES->{$func} || $func;
 
             ### store out this current node level to the appropriate tree location
             # on a post operator - replace the original node with the new one - store the old in the new
@@ -825,11 +828,6 @@ sub parse_tree_tt3 {
     }
 
     return \@tree;
-}
-
-sub parse_tree_hte {
-    require CGI::Ex::Template::HTE;
-    &CGI::Ex::Template::HTE::parse_tree_hte;
 }
 
 sub parse_expr {
@@ -3163,6 +3161,11 @@ sub dump_parse_expr {
 ###----------------------------------------------------------------###
 ### support for few HTML::Template and HTML::Template::Expr calling syntax
 
+sub parse_tree_hte {
+    require CGI::Ex::Template::HTE;
+    &CGI::Ex::Template::HTE::parse_tree_hte;
+}
+
 sub register_function {
     my ($name, $sub) = @_;
     $SCALAR_OPS->{$name} = $sub;
@@ -3186,6 +3189,32 @@ sub new_file       { my $class = shift; my $in = shift; $class->new(source => $i
 sub new_scalar_ref { my $class = shift; my $in = shift; $class->new(source => $in, type => 'scalarref',  @_) }
 sub new_array_ref  { my $class = shift; my $in = shift; $class->new(source => $in, type => 'arrayref',   @_) }
 sub new_filehandle { my $class = shift; my $in = shift; $class->new(source => $in, type => 'filehandle', @_) }
+
+###----------------------------------------------------------------###
+### support for few Text::Tmpl calling syntax
+
+sub parse_tree_tmpl {
+    require CGI::Ex::Template::Tmpl;
+    &CGI::Ex::Template::Tmpl::parse_tree_tmpl;
+}
+
+sub set_delimiters {
+    my $self = shift;
+    $self->{'START_TAG'} = quotemeta(shift || $self->throw('set', 'missing start_tag'));
+    $self->{'END_TAG'}   = quotemeta(shift || $self->throw('set', 'missing end_tag'));
+}
+
+sub set_strip { my $self = shift; $self->{'POST_CHOMP'} = $_[0] ? '-' : '+' }
+
+sub set_values {
+    require CGI::Ex::Template::Tmpl;
+    &CGI::Ex::Template::Tmpl::set_values;
+}
+
+sub parse_string {
+    require CGI::Ex::Template::Tmpl;
+    &CGI::Ex::Template::Tmpl::parse_string;
+}
 
 ###----------------------------------------------------------------###
 
