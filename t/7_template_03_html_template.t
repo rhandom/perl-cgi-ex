@@ -17,7 +17,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ($is_cet) ? 92 : ($is_ht) ? 60 : 64;
+use Test::More tests => ($is_cet) ? 94 : ($is_ht) ? 61 : 65;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -74,6 +74,13 @@ my $foo_template = "$test_dir/foo.ht";
 END { unlink $foo_template };
 open(my $fh, ">$foo_template") || die "Couldn't open $foo_template: $!";
 print $fh "Good Day!";
+close $fh;
+
+### create some files to include
+my $bar_template = "$test_dir/bar.ht";
+END { unlink $bar_template };
+open(my $fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
+print $fh "(<TMPL_VAR bar>)";
 close $fh;
 
 ###----------------------------------------------------------------###
@@ -144,6 +151,9 @@ process_ok("<TMPL_INCLUDE DEFAULT=bar NAME='foo.ht'>" => "");
 process_ok("<TMPL_INCLUDE EXPR=\"'foo.ht'\">" => "Good Day!")                if $is_cet;
 process_ok("<TMPL_INCLUDE EXPR=\"foo\">" => "Good Day!", {foo => 'foo.ht'})  if $is_cet;
 process_ok("<TMPL_INCLUDE EXPR=\"sprintf('%s', 'foo.ht')\">" => "Good Day!") if $is_cet;
+
+process_ok("<TMPL_INCLUDE bar.ht>" => "()");
+process_ok("<TMPL_INCLUDE bar.ht>" => "(hi)", {bar => 'hi'});
 
 ###----------------------------------------------------------------###
 print "### EXPR #############################################################\n";
@@ -226,7 +236,7 @@ process_ok("\n<-TMPL_GET foo>" => "FOO", {foo => "FOO"})  if $is_cet;
 ###----------------------------------------------------------------###
 print "### TT3 INTERPOLATE ##################################################\n";
 
-process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => '$foo FOO ${ 1 + 2 }', {foo => "FOO"});
+process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => '$foo FOO ${ 1 + 2 }', {foo => "FOO"}) if $is_cet;
 process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO", tt_config => [INTERPOLATE => 1]}) if $is_cet;
 process_ok('<TMPL_CONFIG INTERPOLATE => 1>$foo <TMPL_GET foo> ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO"}) if $is_cet;
 
