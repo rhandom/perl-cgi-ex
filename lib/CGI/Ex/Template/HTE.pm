@@ -38,6 +38,9 @@ sub parse_tree_hte {
     local $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
     local $self->{'_end_tag'}; # changes over time
 
+    my $dirs    = $CGI::Ex::Template::DIRECTIVES;
+    my $aliases = $CGI::Ex::Template::ALIASES;
+    local @{ $dirs }{ keys %$aliases } = @{ $dirs }{ values %$aliases }; # temporarily add to the table
     local @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME} = @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME};
 
     my @tree;             # the parsed tree
@@ -64,7 +67,8 @@ sub parse_tree_hte {
         if ($capture) {
             $func = $$str_ref =~ m{ \G \s* (\w+)\b }gcx
                 ? uc $1 : $self->throw('parse', "Error looking for block in capture DIRECTIVE", undef, pos($$str_ref));
-            if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
+            $func = $aliases->{$func} if $aliases->{$func};
+            if ($func ne 'VAR' && ! $dirs->{$func}) {
                 $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
             }
 
@@ -123,7 +127,8 @@ sub parse_tree_hte {
             }
 
             ### make sure we know this directive
-            if ($func ne 'VAR' && ! $CGI::Ex::Template::DIRECTIVES->{$func}) {
+            $func = $aliases->{$func} if $aliases->{$func};
+            if ($func ne 'VAR' && ! $dirs->{$func}) {
                 $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
             }
             $node = [$func, pos($$str_ref) - length($func) - length($pre_chomp) - 5, undef];
@@ -218,7 +223,7 @@ sub parse_tree_hte {
             } else {
                 $self->throw('parse', "Found a TT tag $func with NO_TT enabled", undef, pos($$str_ref)) if $self->{'NO_TT'};
                 $self->{'_end_tag'} = $comment ? qr{\s*([+=~-]?)-->} : qr{\s*([+=~-]?)>};
-                $node->[3] = eval { $CGI::Ex::Template::DIRECTIVES->{$func}->[0]->($self, $str_ref, $node) };
+                $node->[3] = eval { $dirs->{$func}->[0]->($self, $str_ref, $node) };
                 if (my $err = $@) {
                     $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
                     die $err;
@@ -228,7 +233,7 @@ sub parse_tree_hte {
         }
 
         ### handle ending tags - or continuation blocks
-        if ($is_close || $CGI::Ex::Template::DIRECTIVES->{$func}->[4]) {
+        if ($is_close || $dirs->{$func}->[4]) {
             if (! @state) {
                 $self->throw('parse', "Found an $func tag while not in a block", $node, pos($$str_ref));
             }
@@ -238,11 +243,11 @@ sub parse_tree_hte {
             $func = $node->[0] = 'END' if $is_close;
 
             ### handle continuation blocks such as elsif, else, catch etc
-            if ($CGI::Ex::Template::DIRECTIVES->{$func}->[4]) {
+            if ($dirs->{$func}->[4]) {
                 pop @$pointer; # we will store the node in the parent instead
                 $parent_node->[5] = $node;
                 my $parent_type = $parent_node->[0];
-                if (! $CGI::Ex::Template::DIRECTIVES->{$func}->[4]->{$parent_type}) {
+                if (! $dirs->{$func}->[4]->{$parent_type}) {
                     $self->throw('parse', "Found unmatched nested block", $node, pos($$str_ref));
                 }
             }
@@ -251,7 +256,7 @@ sub parse_tree_hte {
             $pointer = (! @state) ? \@tree : $state[-1]->[4];
 
             ### normal end block
-            if (! $CGI::Ex::Template::DIRECTIVES->{$func}->[4]) {
+            if (! $dirs->{$func}->[4]) {
                 if ($parent_node->[0] eq 'BLOCK') { # move BLOCKS to front
                     if (defined($parent_node->[3]) && @in_view) {
                         push @{ $in_view[-1] }, $parent_node;
@@ -264,7 +269,7 @@ sub parse_tree_hte {
                 } elsif ($parent_node->[0] eq 'VIEW') {
                     my $ref = { map {($_->[3] => $_->[4])} @{ pop @in_view }};
                     unshift @{ $parent_node->[3] }, $ref;
-                } elsif ($CGI::Ex::Template::DIRECTIVES->{$parent_node->[0]}->[5]) { # allow no_interp to turn on and off
+                } elsif ($dirs->{$parent_node->[0]}->[5]) { # allow no_interp to turn on and off
                     $self->{'_no_interp'}--;
                 }
 
@@ -276,11 +281,11 @@ sub parse_tree_hte {
             }
 
         ### handle block directives
-        } elsif ($CGI::Ex::Template::DIRECTIVES->{$func}->[2]) {
+        } elsif ($dirs->{$func}->[2]) {
             push @state, $node;
             $pointer = $node->[4] ||= []; # allow future parsed nodes before END tag to end up in current node
             push @in_view, [] if $func eq 'VIEW';
-            $self->{'_no_interp'}++ if $CGI::Ex::Template::DIRECTIVES->{$node->[0]}->[5] # allow no_interp to turn on and off
+            $self->{'_no_interp'}++ if $dirs->{$node->[0]}->[5] # allow no_interp to turn on and off
 
         } elsif ($func eq 'META') {
             unshift @meta, %{ $node->[3] }; # first defined win
