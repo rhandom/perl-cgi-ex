@@ -17,7 +17,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ($is_cet) ? 94 : ($is_ht) ? 61 : 65;
+use Test::More tests => ($is_cet) ? 94 : ($is_ht) ? 60 : 64;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -173,7 +173,7 @@ process_ok("<!--TMPL_VAR EXPR=\"foo\"-->" => "FOO", {foo => "FOO"}) if ! $is_ht;
 print "### LOOP #############################################################\n";
 
 process_ok("<TMPL_LOOP blah></TMPL_LOOP>foo" => "foo");
-process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "", {blah => 1});
+process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "foo", {blah => 1}) if $is_cet;
 process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "Hifoo", {blah => {wow => 1}}) if $is_cet;
 process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "HiHifoo", {blah => [{}, {}]});
 process_ok("<TMPL_LOOP blah>(<TMPL_VAR i>)</TMPL_LOOP>foo" => "(1)(2)(3)foo", {blah => [{i=>1}, {i=>2}, {i=>3}]});
