@@ -194,7 +194,7 @@ sub play_LOOP {
 
     my $global = ! $self->{'SYNTAX'} || $self->{'SYNTAX'} ne 'ht' || $self->{'GLOBAL_VARS'};
 
-    my $items = ref($var) eq 'ARRAY' ? $var : ! defined($var) ? [] : [$var];
+    my $items = ref($var) eq 'ARRAY' ? $var : ref($var) eq 'HASH' ? [$var] : [];
 
     my $i = 0;
     for my $ref (@$items) {
