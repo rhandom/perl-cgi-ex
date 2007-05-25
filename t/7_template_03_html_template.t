@@ -138,7 +138,7 @@ process_ok("<TMPL_IF DEFAULT=bar foo>bar</TMPL_IF>baz" => "", {foo => "1"});
 ###----------------------------------------------------------------###
 print "### INCLUDE ##########################################################\n";
 
-process_ok("<TMPL_INCLUDE blah>" => "");
+process_ok("<TMPL_INCLUDE blah>bar" => "");
 process_ok("<TMPL_INCLUDE foo.ht>" => "Good Day!");
 process_ok("<TMPL_INCLUDE $test_dir/foo.ht>" => "Good Day!", {tt_config => [path => '']});
 process_ok("<TMPL_INCLUDE NAME=foo.ht>" => "Good Day!");
