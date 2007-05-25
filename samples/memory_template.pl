@@ -31,6 +31,8 @@ if (! fork) {
 } elsif (! fork) {
     $module = 'HTML::Template::Expr';
 } elsif (! fork) {
+    $module = 'Text::Tmpl';
+} elsif (! fork) {
     $module = 'Template';
     $name   = 'Template::Parser::CET';
     require Template::Parser::CET;
@@ -47,7 +49,8 @@ if ($module) {
 
     if ($module =~ /HTML::Template/) {
         my $t = eval { $module->new };
-
+    } elsif ($module eq 'Text::Tmpl') {
+        my $t = eval { $module->new->parse_string($txt) };
     } else {
 
         my $t = $module->new(ABSOLUTE => 1);
