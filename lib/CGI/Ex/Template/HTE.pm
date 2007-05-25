@@ -40,7 +40,7 @@ sub parse_tree_hte {
 
     my $dirs    = $CGI::Ex::Template::DIRECTIVES;
     my $aliases = $CGI::Ex::Template::ALIASES;
-    local @{ $dirs }{ keys %$aliases } = @{ $dirs }{ values %$aliases }; # temporarily add to the table
+    local @{ $dirs }{ keys %$aliases } = values %$aliases; # temporarily add to the table
     local @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME} = @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME};
 
     my @tree;             # the parsed tree
