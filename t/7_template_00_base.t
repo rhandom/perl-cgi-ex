@@ -1074,7 +1074,7 @@ process_ok("[% bam = 'somethingelse' %][% constants.foo.\$bam.\${constants.bing}
 process_ok('[% constants.${"harry"} %]' => 'do_this_once', {constants => {harry => 'foo'}, tt_config => \@config_c});
 process_ok('[% ${"constants"}.harry %]' => 'foo', {constants => {harry => 'foo'}, tt_config => \@config_c}) if ! $is_tt;
 process_ok('[% ${"constants"}.harry %]' => 'do_this_once', {constants => {harry => 'foo'}, tt_config => \@config_c}) if $is_tt;
-process_ok('[% ${"con${\\"s\\"}tants"}.harry %]' => 'foo', {constants => {harry => 'foo'}, tt_config => \@config_c}) if ! $is_tt;
+process_ok('[% ${"con${"s"}tants"}.harry %]' => 'foo', {constants => {harry => 'foo'}, tt_config => \@config_c}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### INTERPOLATE ######################################################\n";
@@ -1259,8 +1259,8 @@ process_ok("[% ' \$foo ' %]" => ' $foo ');
 process_ok('[% A = "bar" ; ${ "A" } %]' => 'bar');
 process_ok('[% A = "bar" ; "(${ A })" %]' => '(bar)');
 process_ok('[% A = "bar" ; ${ {a => "A"}.a } %]' => 'bar') if ! $is_tt;
-process_ok('[% A = "bar" ; "(${ {a => \"A\"\\}.a })" %]' => '(A)') if ! $is_tt;
-process_ok('[% A = "bar" ; "(${ \\${ {a => \"A\"\\}.a \\} })" %]' => '(bar)') if ! $is_tt;
+process_ok('[% A = "bar" ; "(${ {a => "A"}.a })" %]' => '(A)') if ! $is_tt;
+process_ok('[% A = "bar" ; "(${ ${ {a => "A"}.a } })" %]' => '(bar)') if ! $is_tt;
 process_ok('[% A = "bar" %](${ {a => "A"}.a })' => '(A)', {tt_config => [INTERPOLATE => 1]}) if ! $is_tt;
 process_ok('[% A = "bar" %](${ ${ {a => "A"}.a } })' => '(bar)', {tt_config => [INTERPOLATE => 1]}) if ! $is_tt;
 
