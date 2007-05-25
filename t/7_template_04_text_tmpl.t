@@ -9,7 +9,7 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template';
-    $module = 'Text::Tmpl';
+#    $module = 'Text::Tmpl';
     $is_tt = $module eq 'Text::Tmpl';
 };
 
@@ -81,7 +81,7 @@ process_ok("Foo" => "Foo");
 process_ok("#[echo \$foo]#" => "FOO", {foo => "FOO"});
 process_ok("#[echo \"hi\"]#" => "hi", {foo => "FOO"});
 process_ok("#[echo 'hi']#" => "hi", {foo => "FOO"}) if ! $is_tt;
-process_ok("#[echo foo]#" => "", {foo => "FOO"});
+process_ok("#[echo foo]#" => "FOO", {foo => "FOO"}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 #print "### IF / ELSE / UNLESS ###############################################\n";
