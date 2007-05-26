@@ -21,6 +21,7 @@ use warnings;
 use base qw(Exporter);
 
 our $VERSION   = '2.13';
+our $QR_NUM    = '(?:\d*\.\d+ | \d+)';
 
 ###----------------------------------------------------------------###
 
@@ -844,7 +845,7 @@ sub play_WHILE {
     my $sub_tree = $node->[4];
 
     ### iterate use the iterator object
-    my $count = $WHILE_MAX;
+    my $count = $CGI::Ex::Template::WHILE_MAX;
     while (--$count > 0) {
 
         $self->play_expr($var) || last;
@@ -859,7 +860,7 @@ sub play_WHILE {
             die $err;
         }
     }
-    die "WHILE loop terminated (> $WHILE_MAX iterations)\n" if ! $count;
+    die "WHILE loop terminated (> $CGI::Ex::Template::WHILE_MAX iterations)\n" if ! $count;
 
     return;
 }
