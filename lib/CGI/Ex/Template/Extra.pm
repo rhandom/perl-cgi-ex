@@ -585,7 +585,7 @@ sub _template { shift->{'_template'} || die "Missing _template" }
 
 sub template {
     my ($self, $name) = @_;
-    return $self->_template->{'BLOCKS'}->{$name} || $self->_template->load_parsed_tree($name);
+    return $self->_template->{'BLOCKS'}->{$name} || $self->_template->load_template($name);
 }
 
 sub config { shift->_template }

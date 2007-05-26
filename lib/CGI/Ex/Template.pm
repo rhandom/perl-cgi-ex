@@ -342,21 +342,22 @@ sub _process {
 
         ### load the document
         } else {
-            $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");;
+            $doc = $self->load_template($file) || $self->throw('undef', "Zero length content");;
         }
 
         ### prevent recursion
         $self->throw('file', "recursion into '$doc->{name}'")
             if ! $self->{'RECURSION'} && $self->{'_in'}->{$doc->{'name'}} && $doc->{'name'} ne 'input text';
+
         local $self->{'_in'}->{$doc->{'name'}} = 1;
+        local $self->{'_component'} = $doc;
+        local $self->{'_template'}  = $self->{'_top_level'} ? $doc : $self->{'_template'};
+        local @{ $self }{@CONFIG_RUNTIME} = @{ $self }{@CONFIG_RUNTIME};
 
         ### execute the document
         if (! @{ $doc->{'_tree'} }) { # no tags found - just return the content
-            $$out_ref = ${ $doc->{'_content'} };
+            $$out_ref .= ${ $doc->{'_content'} };
         } else {
-            local $self->{'_component'} = $doc;
-            local $self->{'_template'}  = $self->{'_top_level'} ? $doc : $self->{'_template'};
-            local @{ $self }{@CONFIG_RUNTIME} = @{ $self }{@CONFIG_RUNTIME};
             $self->execute_tree($doc->{'_tree'}, $out_ref);
         }
 
@@ -379,7 +380,7 @@ sub _process {
 
 ###----------------------------------------------------------------###
 
-sub load_parsed_tree {
+sub load_template {
     my $self = shift;
     my $file = shift;
     return if ! defined $file;
@@ -404,16 +405,10 @@ sub load_parsed_tree {
     ### looks like a block name of some sort
     } elsif ($self->{'BLOCKS'}->{$file}) {
         my $block = $self->{'BLOCKS'}->{$file};
-
-        ### allow for predefined blocks that are a code or a string
-        if (UNIVERSAL::isa($block, 'CODE')) {
-            $block = $block->();
-        }
+        $block = $block->() if UNIVERSAL::isa($block, 'CODE');
         if (! UNIVERSAL::isa($block, 'HASH')) {
             $self->throw('block', "Unsupported BLOCK type \"$block\"") if ref $block;
-            my $copy = $block;
-            $block = eval { $self->load_parsed_tree(\$copy) }
-                || $self->throw('block', 'Parse error on predefined block');
+            $block = eval { $self->load_template(\$block) } || $self->throw('block', 'Parse error on predefined block');
         }
         $doc->{'_tree'} = $block->{'_tree'} || $self->throw('block', "Invalid block definition (missing tree)");
         return $doc;
@@ -431,13 +426,12 @@ sub load_parsed_tree {
         $doc->{'_filename'} = eval { $self->include_filename($file) };
         if (my $err = $@) {
             ### allow for blocks in other files
-            if ($self->{'EXPOSE_BLOCKS'}
-                && ! $self->{'_looking_in_block_file'}) {
+            if ($self->{'EXPOSE_BLOCKS'} && ! $self->{'_looking_in_block_file'}) {
                 local $self->{'_looking_in_block_file'} = 1;
                 my $block_name = '';
                 while ($file =~ s|/([^/.]+)$||) {
                     $block_name = length($block_name) ? "$1/$block_name" : $1;
-                    my $ref = eval { $self->load_parsed_tree($file) } || next;
+                    my $ref = eval { $self->load_template($file) } || next;
                     my $_tree = $ref->{'_tree'};
                     foreach my $node (@$_tree) {
                         next if ! ref $node;
@@ -2768,7 +2762,7 @@ sub _load_template_meta {
         ### load the meta data for the top document
         ### this is needed by some of the custom handlers such as PRE_PROCESS and POST_PROCESS
         my $content = shift;
-        my $doc     = $self->{'_template'} = $self->load_parsed_tree($content) || {};
+        my $doc     = $self->{'_template'} = $self->load_template($content) || {};
         my $meta    = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
             ? $doc->{'_tree'}->[0]->[3] : {};
 
