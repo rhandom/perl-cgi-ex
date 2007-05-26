@@ -43,6 +43,27 @@ sub parse_tree_tmpl {
 
 ###----------------------------------------------------------------###
 
+
+
+###----------------------------------------------------------------###
+### support for few Text::Tmpl calling syntax
+
+sub set_delimiters {
+    my $self = shift;
+    $self->{'START_TAG'} = quotemeta(shift || $self->throw('set', 'missing start_tag'));
+    $self->{'END_TAG'}   = quotemeta(shift || $self->throw('set', 'missing end_tag'));
+}
+
+sub strerror { $CGI::Ex::Template::Tmpl::error }
+
+sub set_strip { my $self = shift; $self->{'POST_CHOMP'} = $_[0] ? '-' : '+'; 1 }
+
+sub set_value { my $self = shift; $self->{'_vars'}->{$_[0]} = $_[1]; 1 }
+
+sub set_values { my ($self, $hash) = @_; @{ $self->{'_vars'} ||= {} }{keys %$hash} = values %$hash; 1 }
+
+sub parse_string { my $self = shift; return $self->parse_file(\$_[0]) }
+
 sub set_dir {
     my $self = shift;
     $self->{'INCLUDE_PATHS'} = [shift, './'];
@@ -80,6 +101,8 @@ sub loop_iteration {
 
     return ref($self)->new('_vars' => $vars);
 }
+
+sub fetch_loop_iteration { shift->loop_iteration(@_) }
 
 ###----------------------------------------------------------------###
 
