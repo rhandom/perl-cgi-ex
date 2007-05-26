@@ -27,6 +27,25 @@ use warnings;
 our $VERSION = '2.13';
 our %DOCUMENTS; # global cache used with new(cache => 1) and output
 
+###----------------------------------------------------------------###
+### support for few HTML::Template and HTML::Template::Expr calling syntax
+
+sub register_function {
+    my ($name, $sub) = @_;
+    $CGI::Ex::Template::SCALAR_OPS->{$name} = $sub;
+}
+
+sub clear_param { shift->{'param'} = {} }
+
+sub query { shift->throw('query', "Not implemented in CGI::Ex::Template") }
+
+sub new_file       { my $class = shift; my $in = shift; $class->new(source => $in, type => 'filename',   @_) }
+sub new_scalar_ref { my $class = shift; my $in = shift; $class->new(source => $in, type => 'scalarref',  @_) }
+sub new_array_ref  { my $class = shift; my $in = shift; $class->new(source => $in, type => 'arrayref',   @_) }
+sub new_filehandle { my $class = shift; my $in = shift; $class->new(source => $in, type => 'filehandle', @_) }
+
+###----------------------------------------------------------------###
+
 sub parse_tree_hte {
     my $self    = shift;
     my $str_ref = shift;

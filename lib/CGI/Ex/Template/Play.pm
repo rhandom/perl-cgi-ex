@@ -48,6 +48,12 @@ sub play_tree {
     }
 }
 
+sub is_empty_named_args {
+    my ($self, $hash_ident) = @_;
+    # [[undef, '{}', 'key1', 'val1', 'key2, 'val2'], 0]
+    return @{ $hash_ident->[0] } <= 2;
+}
+
 ###----------------------------------------------------------------###
 
 sub play_BLOCK {

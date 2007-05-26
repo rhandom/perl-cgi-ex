@@ -23,7 +23,9 @@ This module may be distributed under the same terms as Perl itself.
 
 use strict;
 use warnings;
-use CGI::Ex::Template qw($ALIASES $DIRECTIVES $TAGS @CONFIG_COMPILETIME $QR_COMMENTS $QR_DIRECTIVE $QR_OP_ASSIGN);
+
+use CGI::Ex::Template::Parse qw($ALIASES $DIRECTIVES $TAGS $QR_DIRECTIVE $QR_COMMENTS);
+use CGI::Ex::Template qw(@CONFIG_COMPILETIME $QR_OP_ASSIGN);
 
 our $VERSION = '2.13';
 
@@ -310,6 +312,216 @@ sub parse_tree_tt3 {
     }
 
     return \@tree;
+}
+
+###----------------------------------------------------------------###
+
+sub process {
+    my ($self, $in, $swap, $out, @ARGS) = @_;
+    delete $self->{'error'};
+
+    my $args;
+    $args = ($#ARGS == 0 && UNIVERSAL::isa($ARGS[0], 'HASH')) ? {%{$ARGS[0]}} : {@ARGS} if scalar @ARGS;
+
+    ### get the content
+    my $content;
+    if (ref $in) {
+        if (UNIVERSAL::isa($in, 'SCALAR')) { # reference to a string
+            $content = $in;
+        } elsif (UNIVERSAL::isa($in, 'CODE')) {
+            $content = $in->();
+            $content = \$content;
+        } else { # should be a file handle
+            local $/ = undef;
+            $content = <$in>;
+            $content = \$content;
+        }
+    } else {
+        ### should be a filename
+        $content = $in;
+    }
+
+
+    ### prepare block localization
+    my $blocks = $self->{'BLOCKS'} ||= {};
+
+
+    ### do the swap
+    my $output = '';
+    eval {
+
+        ### localize the stash
+        $swap ||= {};
+        my $var1 = $self->{'_vars'} ||= {};
+        my $var2 = $self->{'VARIABLES'} || $self->{'PRE_DEFINE'} || {};
+        $var1->{'global'} ||= {}; # allow for the "global" namespace - that continues in between processing
+        my $copy = {%$var2, %$var1, %$swap};
+
+        local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
+        local $self->{'_template'};
+
+        delete $self->{'_debug_off'};
+        delete $self->{'_debug_format'};
+
+        ### handle pre process items that go before every document
+        my $pre = '';
+        if ($self->{'PRE_PROCESS'}) {
+            $self->_load_template_meta($content);
+            foreach my $name (@{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
+                $self->_process($name, $copy, \$pre);
+            }
+        }
+
+        ### process the central file now - catching errors to allow for the ERROR config
+        eval {
+            ### handle the PROCESS config - which loads another template in place of the real one
+            if (exists $self->{'PROCESS'}) {
+                $self->_load_template_meta($content);
+                foreach my $name (@{ $self->split_paths($self->{'PROCESS'}) }) {
+                    next if ! length $name;
+                    $self->_process($name, $copy, \$output);
+                }
+
+                ### handle "normal" content
+            } else {
+                local $self->{'_start_top_level'} = 1;
+                $self->_process($content, $copy, \$output);
+            }
+        };
+
+        ### catch errors with ERROR config
+        if (my $err = $@) {
+            $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+            die $err if $err->type =~ /stop|return/;
+            my $catch = $self->{'ERRORS'} || $self->{'ERROR'} || die $err;
+            $catch = {default => $catch} if ! ref $catch;
+            my $type = $err->type;
+            my $last_found;
+            my $file;
+            foreach my $name (keys %$catch) {
+                my $_name = (! defined $name || lc($name) eq 'default') ? '' : $name;
+                if ($type =~ / ^ \Q$_name\E \b /x
+                    && (! defined($last_found) || length($last_found) < length($_name))) { # more specific wins
+                    $last_found = $_name;
+                    $file       = $catch->{$name};
+                }
+            }
+
+            ### found error handler - try it out
+            if (defined $file) {
+                $output = '';
+                local $copy->{'error'} = local $copy->{'e'} = $err;
+                $self->_process($file, $copy, \$output);
+            }
+        }
+
+        ### handle wrapper directives
+        if (exists $self->{'WRAPPER'}) {
+            $self->_load_template_meta($content);
+            foreach my $name (reverse @{ $self->split_paths($self->{'WRAPPER'}) }) {
+                next if ! length $name;
+                local $copy->{'content'} = $output;
+                my $out = '';
+                $self->_process($name, $copy, \$out);
+                $output = $out;
+            }
+        }
+
+        $output = $pre . $output if length $pre;
+
+        ### handle post process items that go after every document
+        if ($self->{'POST_PROCESS'}) {
+            $self->_load_template_meta($content);
+            foreach my $name (@{ $self->split_paths($self->{'POST_PROCESS'}) }) {
+                $self->_process($name, $copy, \$output);
+            }
+        }
+
+    };
+    if (my $err = $@) {
+        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+        if ($err->type !~ /stop|return|next|last|break/) {
+            $self->{'error'} = $err;
+            return;
+        }
+    }
+
+
+
+    ### clear blocks as asked (AUTO_RESET) defaults to on
+    $self->{'BLOCKS'} = $blocks if exists($self->{'AUTO_RESET'}) && ! $self->{'AUTO_RESET'};
+
+    ### send the content back out
+    $out ||= $self->{'OUTPUT'};
+    if (ref $out) {
+        if (UNIVERSAL::isa($out, 'CODE')) {
+            $out->($output);
+        } elsif (UNIVERSAL::can($out, 'print')) {
+            $out->print($output);
+        } elsif (UNIVERSAL::isa($out, 'SCALAR')) { # reference to a string
+            $$out = $output;
+        } elsif (UNIVERSAL::isa($out, 'ARRAY')) {
+            push @$out, $output;
+        } else { # should be a file handle
+            print $out $output;
+        }
+    } elsif ($out) { # should be a filename
+        my $file;
+        if ($out =~ m|^/|) {
+            if (! $self->{'ABSOLUTE'}) {
+                $self->{'error'} = $self->throw('file', "ABSOLUTE paths disabled");
+            } else {
+                $file = $out;
+            }
+        } elsif ($out =~ m|^\.\.?/|) {
+            if (! $self->{'RELATIVE'}) {
+                $self->{'error'} = $self->throw('file', "RELATIVE paths disabled");
+            } else {
+                $file = $out;
+            }
+        } else {
+            if (! $self->{'OUTPUT_PATH'}) {
+                $self->{'error'} = $self->throw('file', "OUTPUT_PATH not set");
+            } else {
+                $file = $self->{'OUTPUT_PATH'} . '/' . $out;
+            }
+        }
+        if ($file) {
+            if (open my $fh, '>', $file) {
+                if (my $bm = $args->{'binmode'}) {
+                    if (+$bm == 1) { binmode $fh }
+                    else           { binmode $fh, $bm }
+                }
+                print $fh $output;
+            } else {
+                $self->{'error'} = $self->throw('file', "$out couldn't be opened for writing: $!");
+            }
+        }
+    } else {
+        print $output;
+    }
+
+    return if $self->{'error'};
+    return 1;
+}
+
+sub _load_template_meta {
+    my $self = shift;
+    return if $self->{'_template'}; # only do once as need
+
+    eval {
+        ### load the meta data for the top document
+        ### this is needed by some of the custom handlers such as PRE_PROCESS and POST_PROCESS
+        my $content = shift;
+        my $doc     = $self->{'_template'} = $self->load_template($content) || {};
+        my $meta    = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
+            ? $doc->{'_tree'}->[0]->[3] : {};
+
+        $self->{'_template'} = $doc;
+        @{ $doc }{keys %$meta} = values %$meta;
+    };
+
+    return;
 }
 
 ###----------------------------------------------------------------###
