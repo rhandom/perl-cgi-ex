@@ -280,6 +280,7 @@ sub parse_tree_hte {
                 push @state, $node;
                 $pointer = $node->[4] ||= [];
             }
+            $node->[2] = pos $$str_ref;
 
         ### handle block directives
         } elsif ($dirs->{$func}->[2]) {
