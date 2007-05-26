@@ -1,5 +1,11 @@
 package CGI::Ex::Template::Iterator;
 
+=head1 NAME
+
+CGI::Ex::Template::Iterator - Handle foreach iterations
+
+=cut
+
 sub new {
     my ($class, $items) = @_;
     $items = [] if ! defined $items;
