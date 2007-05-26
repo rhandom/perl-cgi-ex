@@ -210,14 +210,7 @@ sub play_LOOP {
         }
 
         ### execute the sub tree
-        eval { $self->execute_tree($sub_tree, $out_ref) };
-        if (my $err = $@) {
-            if (UNIVERSAL::isa($err, $CGI::Ex::Template::PACKAGE_EXCEPTION)) {
-                next if $err->type eq 'next';
-                last if $err->type =~ /last|break/;
-            }
-            die $err;
-        }
+        $self->execute_tree($sub_tree, $out_ref);
     }
 
     return;
