@@ -34,7 +34,7 @@ sub load_perl {
     compile_tree($self, $doc->{'_tree'}, \$str, $INDENT);
 
     $str .= "${INDENT}return 1;\n};\n";
-    print $str;
+#    print $str;
     return eval $str;
 }
 
@@ -96,11 +96,13 @@ sub compile_expr {
     }
 
     ### determine the top level of this particular variable access
-    $$str_ref .= '$self->play_expr([';
+
     my $i = 0;
     my $name = $var->[$i++];
     my $args = $var->[$i++];
-    my $use_temp_varname;
+
+    my $simple_lookup = (! $args && @$var == 2);
+    $$str_ref .= $simple_lookup ? '$self->{_vars}->{' : '$self->play_expr([';
     if (ref $name) {
         if (! defined $name->[0]) { # operator
             die;
@@ -121,6 +123,10 @@ sub compile_expr {
         }
     } else {
         $$str_ref .= "''"; # not sure we can get here
+    }
+    if ($simple_lookup) {
+        $$str_ref .= '}';
+        return;
     }
 
     ### add args
