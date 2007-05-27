@@ -17,7 +17,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ($is_cet) ? 94 : ($is_ht) ? 60 : 64;
+use Test::More tests => ($is_cet) ? 93 : ($is_ht) ? 60 : 64;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -202,8 +202,6 @@ process_ok("<TMPL_LOOP blah>\n(<TMPL_VAR __first__>|<TMPL_VAR __last__>|<TMPL_VA
 (0|0|0|1|2)
 (0|1|1|0|3)foo", {blah => [undef, undef, undef], tt_config => [LOOP_CONTEXT_VARS => 1]}) if $is_cet;
 
-
-process_ok("<TMPL_LOOP NAME=\"blah\"><TMPL_IF EXPR='i==2'><TMPL_NEXT></TMPL_IF>(<TMPL_VAR i>)</TMPL_LOOP>foo" => "(1)(3)foo", {blah => [{i=>1}, {i=>2}, {i=>3}]}) if $is_cet;
 
 ###----------------------------------------------------------------###
 print "### TT3 DIRECTIVES ###################################################\n";
