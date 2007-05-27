@@ -19,9 +19,57 @@ This module may be distributed under the same terms as Perl itself.
 use strict;
 use warnings;
 use base qw(Exporter);
+use CGI::Ex::Template qw(@CONFIG_RUNTIME);
 
-our $VERSION   = '2.13';
-our $QR_NUM    = '(?:\d*\.\d+ | \d+)';
+our $VERSION    = '2.13';
+our $QR_NUM     = '(?:\d*\.\d+ | \d+)';
+our $DIRECTIVES = {
+    BLOCK   => \&play_BLOCK,
+    BREAK   => \&play_control,
+    CALL    => \&play_CALL,
+    CASE    => undef,
+    CATCH   => undef,
+    CLEAR   => \&play_CLEAR,
+    '#'     => sub {},
+    COMMENT => sub {},
+    CONFIG  => \&play_CONFIG,
+    DEBUG   => \&play_DEBUG,
+    DEFAULT => \&play_DEFAULT,
+    DUMP    => \&play_DUMP,
+    ELSE    => undef,
+    ELSIF   => undef,
+    END     => sub {},
+    FILTER  => \&play_FILTER,
+    '|'     => \&play_FILTER,
+    FINAL   => undef,
+    FOR     => \&play_FOR,
+    FOREACH => \&play_FOR,
+    GET     => \&play_GET,
+    IF      => \&play_IF,
+    INCLUDE => \&play_INCLUDE,
+    INSERT  => \&play_INSERT,
+    LAST    => \&play_control,
+    LOOP    => \&play_LOOP,
+    MACRO   => \&play_MACRO,
+    META    => \&play_META,
+    NEXT    => \&play_control,
+    PERL    => \&play_PERL,
+    PROCESS => \&play_PROCESS,
+    RAWPERL => \&play_RAWPERL,
+    RETURN  => \&play_control,
+    SET     => \&play_SET,
+    STOP    => \&play_control,
+    SWITCH  => \&play_SWITCH,
+    TAGS    => sub {},
+    THROW   => \&play_THROW,
+    TRY     => \&play_TRY,
+    UNLESS  => \&play_UNLESS,
+    USE     => \&play_USE,
+    VIEW    => \&play_VIEW,
+    WHILE   => \&play_WHILE,
+    WRAPPER => \&play_WRAPPER,
+};
+
 
 ###----------------------------------------------------------------###
 
@@ -44,12 +92,12 @@ sub play_tree {
 
         $$out_ref .= $self->debug_node($node) if $self->{'_debug_dirs'} && ! $self->{'_debug_off'};
 
-        $DIRECTIVES->{$node->[0]}->[1]->($self, $node->[3], $node, $out_ref);
+        $DIRECTIVES->{$node->[0]}->($self, $node->[3], $node, $out_ref);
     }
 }
 
-sub is_empty_named_args {
-    my ($self, $hash_ident) = @_;
+sub _is_empty_named_args {
+    my ($hash_ident) = @_;
     # [[undef, '{}', 'key1', 'val1', 'key2, 'val2'], 0]
     return @{ $hash_ident->[0] } <= 2;
 }
@@ -89,7 +137,7 @@ sub play_CLEAR {
 sub play_CONFIG {
     my ($self, $config, $node, $out_ref) = @_;
 
-    my %rtime = map {$_ => 1} @CGI::Ex::Template::CONFIG_RUNTIME;
+    my %rtime = map {$_ => 1} @CONFIG_RUNTIME;
 
     ### do runtime config - not many options get these
     my ($named, @the_rest) = @$config;
@@ -147,7 +195,7 @@ sub play_DUMP {
     }
 
     my ($named, @dump) = @$dump;
-    push @dump, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+    push @dump, $named if ! _is_empty_named_args($named); # add named args back on at end - if there are some
     $_ = $self->play_expr($_) foreach @dump;
 
     ### look for the text describing what to dump
@@ -195,10 +243,10 @@ sub play_FILTER {
 
     my $var = [[undef, '~', $out], 0, '|', @$filter]; # make a temporary var out of it
 
-    return $CGI::Ex::Template::DIRECTIVES->{'GET'}->[1]->($self, $var, $node, $out_ref);
+    return $DIRECTIVES->{'GET'}->($self, $var, $node, $out_ref);
 }
 
-sub play_FOREACH {
+sub play_FOR {
     my ($self, $ref, $node, $out_ref) = @_;
 
     ### get the items - make sure it is an arrayref
@@ -325,7 +373,7 @@ sub play_INCLUDE {
     my $blocks = $self->{'BLOCKS'} || {};
     local $self->{'BLOCKS'} = {%$blocks};
 
-    return $DIRECTIVES->{'PROCESS'}->[1]->($self, $str_ref, $node, $out_ref);
+    return $DIRECTIVES->{'PROCESS'}->($self, $str_ref, $node, $out_ref);
 }
 
 sub play_INSERT {
@@ -601,9 +649,9 @@ sub play_SET {
             $val = $self->play_expr($val);
         }
 
-        if ($OP_DISPATCH->{$op}) {
+        if ($CGI::Ex::Template::OP_DISPATCH->{$op}) {
             local $^W;
-            $val = $OP_DISPATCH->{$op}->($self->play_expr($set), $val);
+            $val = $CGI::Ex::Template::OP_DISPATCH->{$op}->($self->play_expr($set), $val);
         }
 
         $self->set_variable($set, $val);
@@ -657,7 +705,7 @@ sub play_THROW {
     $name = $self->play_expr($name);
 
     my ($named, @args) = @$args;
-    push @args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+    push @args, $named if ! _is_empty_named_args($named); # add named args back on at end - if there are some
 
     @args = map { $self->play_expr($_) } @args;
     $self->throw($name, \@args, $node); # dies
@@ -730,7 +778,7 @@ sub play_TRY {
     return;
 }
 
-sub play_UNLESS { return $DIRECTIVES->{'IF'}->[1]->(@_) }
+sub play_UNLESS { return $DIRECTIVES->{'IF'}->(@_) }
 
 sub play_USE {
     my ($self, $ref, $node, $out_ref) = @_;
@@ -742,7 +790,7 @@ sub play_USE {
     pop @var; # remove the trailing '.'
 
     my ($named, @args) = @$args;
-    push @args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+    push @args, $named if ! _is_empty_named_args($named); # add named args back on at end - if there are some
 
     ### look for a plugin_base
     my $BASE = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
@@ -883,7 +931,7 @@ sub play_WRAPPER {
     foreach my $name (reverse @files) {
         local $self->{'_vars'}->{'content'} = $out;
         $out = '';
-        $DIRECTIVES->{'INCLUDE'}->[1]->($self, [$named, $name], $node, \$out);
+        $DIRECTIVES->{'INCLUDE'}->($self, [$named, $name], $node, \$out);
     }
 
     $$out_ref .= $out;
