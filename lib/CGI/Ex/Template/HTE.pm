@@ -57,8 +57,8 @@ sub parse_tree_hte {
     local $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
     local $self->{'_end_tag'}; # changes over time
 
-    my $dirs    = $CGI::Ex::Template::DIRECTIVES;
-    my $aliases = $CGI::Ex::Template::ALIASES;
+    my $dirs    = $CGI::Ex::Template::Parse::DIRECTIVES;
+    my $aliases = $CGI::Ex::Template::Parse::ALIASES;
     local @{ $dirs }{ keys %$aliases } = values %$aliases; # temporarily add to the table
     local @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME} = @{ $self }{@CGI::Ex::Template::CONFIG_COMPILETIME};
 
@@ -88,7 +88,7 @@ sub parse_tree_hte {
                 ? uc $1 : $self->throw('parse', "Error looking for block in capture DIRECTIVE", undef, pos($$str_ref));
             $func = $aliases->{$func} if $aliases->{$func};
             if ($func ne 'VAR' && ! $dirs->{$func}) {
-                $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
+                $self->throw('parse', "Found unknown DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
             }
 
             $node = [$func, pos($$str_ref) - length($func), undef];
@@ -132,7 +132,7 @@ sub parse_tree_hte {
                     local $self->{'_operator_precedence'} = 0; # allow operators
                     local $self->{'_end_tag'} = qr{\}};
                     $ref = $self->parse_expr($str_ref);
-                    $$str_ref =~ m{ \G \s* $CGI::Ex::Template::QR_COMMENTS \} }gcxo
+                    $$str_ref =~ m{ \G \s* $CGI::Ex::Template::Parse::QR_COMMENTS \} }gcxo
                         || $self->throw('parse', 'Missing close }', undef, pos($$str_ref));
                 } else {
                     local $self->{'_operator_precedence'} = 1; # no operators
