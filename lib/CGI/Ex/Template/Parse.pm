@@ -62,8 +62,8 @@ our $DIRECTIVES = {
     FILTER  => [\&parse_FILTER,  \&play_FILTER,   1,       1],
     '|'     => [\&parse_FILTER,  \&play_FILTER,   1,       1],
     FINAL   => [sub {},          undef,           0,       0,       {TRY => 1, CATCH => 1}],
-    FOR     => [\&parse_FOREACH, \&play_FOREACH,  1,       1],
-    FOREACH => [\&parse_FOREACH, \&play_FOREACH,  1,       1],
+    FOR     => [\&parse_FOR,     \&play_FOR,      1,       1],
+    FOREACH => [\&parse_FOR,     \&play_FOR,      1,       1],
     GET     => [\&parse_GET,     \&play_GET],
     IF      => [\&parse_IF,      \&play_IF,       1,       1],
     INCLUDE => [\&parse_INCLUDE, \&play_INCLUDE],
@@ -737,7 +737,7 @@ sub parse_FILTER {
     return [$name, $filter];
 }
 
-sub parse_FOREACH {
+sub parse_FOR {
     my ($self, $str_ref) = @_;
     my $items = $self->parse_expr($str_ref);
     my $var;
@@ -855,7 +855,7 @@ sub parse_TAGS {
 
     my ($start, $end);
     if ($$str_ref =~ m{ \G (\w+) }gcxs) {
-        my $ref = $CGI::Ex::Template::TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
+        my $ref = $TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
         ($start, $end) = @$ref;
 
     } else {

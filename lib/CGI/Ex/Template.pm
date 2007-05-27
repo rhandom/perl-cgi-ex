@@ -13,8 +13,8 @@ use CGI::Ex::Template::Exception;
 
 our $VERSION   = '2.14';
 our @EXPORT_OK = qw(@CONFIG_COMPILETIME @CONFIG_RUNTIME
-                    $QR_OP $QR_OP_ASSIGN $QR_OP_PREFIX
-                    $OP $OP_ASSIGN $OP_PREFIX $OP_POSTFIX);
+                    $QR_OP $QR_OP_ASSIGN $QR_OP_PREFIX $QR_PRIVATE
+                    $OP $OP_ASSIGN $OP_PREFIX $OP_POSTFIX $OP_DISPATCH);
 
 ###----------------------------------------------------------------###
 
@@ -22,12 +22,8 @@ our $AUTOLOAD;
 our $AUTOIMPORT = {
     TT      => [qw(parse_tree_tt3 process)],
     Compile => [qw(load_perl)],
-    HTE     => [qw(register_function clear_param query new_file new_scalar_ref new_array_ref new_filehandle parse_tree_hte)],
-    Parse   => [qw(dump_parse dump_parse_expr parse_expr apply_precedence parse_args
-                   parse_BLOCK parse_CALL   parse_CASE parse_CATCH   parse_CONFIG parse_DEBUG   parse_DEFAULT
-                   parse_DUMP  parse_FILTER parse_FOR  parse_GET     parse_IF     parse_INCLUDE parse_INSERT
-                   parse_LOOP  parse_MACRO  parse_META parse_PROCESS parse_SET    parse_SWITCH  parse_TAGS
-                   parse_THROW parse_UNLESS parse_USE  parse_VIEW    parse_WHILE  parse_WRAPPER)],
+    HTE     => [qw(parse_tree_hte param output register_function clear_param query new_file new_scalar_ref new_array_ref new_filehandle)],
+    Parse   => [qw(parse_tree parse_expr apply_precedence parse_args dump_parse dump_parse_expr)],
     Play    => [qw(play_tree)],
     Tmpl    => [qw(parse_tree_tmpl set_delimiters set_strip set_value set_values parse_string set_dir parse_file loop_iteration fetch_loop_iteration)],
 };
@@ -54,7 +50,7 @@ sub AUTOLOAD {
 
 ###----------------------------------------------------------------###
 
-our $QR_PRIVATE          = qr/^[_.]/;
+our $QR_PRIVATE = qr/^[_.]/;
 
 our $SYNTAX = {
     cet  => sub { shift->parse_tree_tt3(@_) },
@@ -503,12 +499,6 @@ sub load_template {
     return $doc;
 }
 
-sub parse_tree {
-    my $syntax = $_[0]->{'SYNTAX'} || 'cet';
-    my $meth   = $SYNTAX->{$syntax} || $_[0]->throw('parse', "Unknown SYNTAX \"$syntax\"");
-    return $meth->(@_);
-}
-
 ###----------------------------------------------------------------###
 
 sub play_expr {
@@ -706,12 +696,6 @@ sub play_expr {
     }
 
     return $ref;
-}
-
-sub is_empty_named_args {
-    my ($self, $hash_ident) = @_;
-    # [[undef, '{}', 'key1', 'val1', 'key2, 'val2'], 0]
-    return @{ $hash_ident->[0] } <= 2;
 }
 
 sub set_variable {

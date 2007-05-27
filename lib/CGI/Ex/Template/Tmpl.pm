@@ -30,8 +30,8 @@ our $error;
 sub parse_tree_tmpl {
     my $self = shift;
 
-    local @{ $CGI::Ex::Template::ALIASES }{qw(ECHO INCLUDE IFN    ENDCOMMENT ENDIF ENDIFN ENDLOOP)}
-                                         = qw(GET  PROCESS UNLESS END        END   END    END);
+    local @{ $CGI::Ex::Template::Parse::ALIASES }{qw(ECHO INCLUDE IFN    ENDCOMMENT ENDIF ENDIFN ENDLOOP)}
+                                                = qw(GET  PROCESS UNLESS END        END   END    END);
     local $self->{'ABSOLUTE'}   = 1;
     local $self->{'RELATIVE'}   = 1;
     local $self->{'ANYCASE'}    = 1;
