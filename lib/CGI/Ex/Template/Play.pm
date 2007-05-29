@@ -650,7 +650,7 @@ sub play_SET {
         }
 
         if ($CGI::Ex::Template::OP_DISPATCH->{$op}) {
-            local $^W;
+            no warnings;
             $val = $CGI::Ex::Template::OP_DISPATCH->{$op}->($self->play_expr($set), $val);
         }
 
