@@ -446,7 +446,7 @@ sub load_template {
     ### cache parsed_tree in memory unless asked not to do so
     if (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'} || $self->{'COMPILE_PERL'}) {
         $doc->{'cache_time'} = time;
-        if (! ref $file) {
+        if (ref $file) {
             $self->{'_documents'}->{$doc->{'_filename'}} = $doc if $doc->{'_filename'};
         } else {
             $self->{'_documents'}->{$file} ||= $doc;
@@ -474,7 +474,6 @@ sub load_tree {
     my ($self, $doc) = @_;
 
     ### first look for a compiled optree
-    my $tree;
     if ($doc->{'_filename'}) {
         $doc->{'modtime'} ||= (stat $doc->{'_filename'})[9];
         if ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'}) {
@@ -485,26 +484,23 @@ sub load_tree {
 
             if (-e $file && ($doc->{'_is_str_ref'} || (stat $file)[9] == $doc->{'modtime'})) {
                 require Storable;
-                $tree = Storable::retrieve($file);
-            } else {
-                $doc->{'_storable_filename'} = $file;
+                return Storable::retrieve($file);
             }
+            $doc->{'_storable_filename'} = $file;
         }
     }
 
     ### no cached tree - we will need to load our own
-    if (! $tree) {
-        $doc->{'_content'} ||= $self->slurp($doc->{'_filename'});
+    $doc->{'_content'} ||= $self->slurp($doc->{'_filename'});
 
-        if ($self->{'CONSTANTS'}) {
-            my $key = $self->{'CONSTANT_NAMESPACE'} || 'constants';
-            $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
-        }
-
-        local $self->{'_component'} = $doc;
-        $tree = eval { $self->parse_tree($doc->{'_content'}) }
-            || do { my $e = $@; $e->doc($doc) if UNIVERSAL::can($e, 'doc') && ! $e->doc; die $e }; # errors die
+    if ($self->{'CONSTANTS'}) {
+        my $key = $self->{'CONSTANT_NAMESPACE'} || 'constants';
+        $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
     }
+
+    local $self->{'_component'} = $doc;
+    my $tree = eval { $self->parse_tree($doc->{'_content'}) }
+        || do { my $e = $@; $e->doc($doc) if UNIVERSAL::can($e, 'doc') && ! $e->doc; die $e }; # errors die
 
     ### save a cache on the fileside as asked
     if ($doc->{'_storable_filename'}) {
