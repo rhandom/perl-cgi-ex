@@ -370,15 +370,18 @@ sub load_template {
     ### looks like a previously cached document
     } elsif ($self->{'_documents'}->{$file}) {
         $doc = $self->{'_documents'}->{$file};
-        return $doc
-            if time - $doc->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL) # don't stat more than once a second
-            || $doc->{'modtime'} == (stat $doc->{'_filename'})[9];              # otherwise see if the file was modified
+        if (time - $doc->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL) # don't stat more than once a second
+            || $doc->{'modtime'} == (stat $doc->{'_filename'})[9]) {         # otherwise see if the file was modified
+            $doc->{'_perl'} = $self->load_perl($doc) if ! $doc->{'_perl'} && $self->{'COMPILE_PERL'};
+            return $doc;
+        }
 
     ### looks like a previously cached not-found
     } elsif ($self->{'_not_found'}->{$file}) {
         $doc = $self->{'_not_found'}->{$file};
-        die $doc->{'exception'}
-            if time - $doc->{'cache_time'} < ($self->{'NEGATIVE_STAT_TTL'} || $self->{'STAT_TTL'} || $STAT_TTL); # negative cache for a second
+        if (time - $doc->{'cache_time'} < ($self->{'NEGATIVE_STAT_TTL'} || $self->{'STAT_TTL'} || $STAT_TTL)) { # negative cache for a second
+            die $doc->{'exception'};
+        }
         delete $self->{'_not_found'}->{$file}; # clear cache on failure
 
     ### looks like a block passed in at runtime
@@ -444,7 +447,7 @@ sub load_template {
     }
 
     ### cache parsed_tree in memory unless asked not to do so
-    if (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'} || $self->{'COMPILE_PERL'}) {
+    if (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'}) {
         $doc->{'cache_time'} = time;
         if (ref $file) {
             $self->{'_documents'}->{$doc->{'_filename'}} = $doc if $doc->{'_filename'};
