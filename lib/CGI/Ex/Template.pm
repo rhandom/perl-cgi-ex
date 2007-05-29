@@ -296,7 +296,7 @@ sub _process {
     my $doc;
     eval {
         ### handed us a precompiled document
-        if (ref($file) eq 'HASH' && $file->{'_tree'}) {
+        if (ref($file) eq 'HASH') {
             $doc = $file;
 
         ### load the document
@@ -313,13 +313,12 @@ sub _process {
         local $self->{'_template'}  = $self->{'_top_level'} ? $doc : $self->{'_template'};
         local @{ $self }{@CONFIG_RUNTIME} = @{ $self }{@CONFIG_RUNTIME};
 
-        #if (! $doc->{'_perl'}) {
-        #    $doc->{'_perl'} = $self->load_perl($doc);
-        #}
-        #$doc->{'_perl'}->($self, $out_ref);
-
-        ### execute the document
-        if (! @{ $doc->{'_tree'} }) { # no tags found - just return the content
+        ### run the document however we can
+        if ($doc->{'_perl'}) {
+            $doc->{'_perl'}->($self, $out_ref);
+        } elsif (! $doc->{'_tree'}) {
+            $self->throw('process', 'No _perl and no _tree found');
+        } elsif (! @{ $doc->{'_tree'} }) { # no tags found - just return the content
             $$out_ref .= ${ $doc->{'_content'} };
         } else {
             $self->play_tree($doc->{'_tree'}, $out_ref);
@@ -345,130 +344,148 @@ sub _process {
 ###----------------------------------------------------------------###
 
 sub load_template {
-    my $self = shift;
-    my $file = shift;
-    return if ! defined $file;
+    my ($self, $file) = @_;
 
-    my $doc = {name => $file};
-    my $ref = $self->{'_documents'}->{$file};
-
-    ### looks like a string reference
-    if (ref $file) {
-        $doc->{'_content'}    = $file;
-        $doc->{'name'}        = 'input text';
-        $doc->{'_is_str_ref'} = 1;
-
-    ### looks like a previously cached-in-memory document
-    } elsif ($ref
-             && (   time - $ref->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL) # don't stat more than once a second
-                 || $ref->{'modtime'} == (stat $ref->{'_filename'})[9]               # otherwise see if the file was modified
-                    )) {
-        $doc = $self->{'_documents'}->{$file};
-        return $doc;
-
-    ### looks like a block name of some sort
-    } elsif ($self->{'BLOCKS'}->{$file}) {
-        my $block = $self->{'BLOCKS'}->{$file};
-        $block = $block->() if UNIVERSAL::isa($block, 'CODE');
-        if (! UNIVERSAL::isa($block, 'HASH')) {
-            $self->throw('block', "Unsupported BLOCK type \"$block\"") if ref $block;
-            $block = eval { $self->load_template(\$block) } || $self->throw('block', 'Parse error on predefined block');
-        }
-        $doc->{'_tree'} = $block->{'_tree'} || $self->throw('block', "Invalid block definition (missing tree)");
-        return $doc;
-
-    ### handle cached not_founds
-    } elsif ($self->{'_not_found'}->{$file}
-             && ((time - $self->{'_not_found'}->{$file}->{'cache_time'}
-                  < ($self->{'NEGATIVE_STAT_TTL'} || $self->{'STAT_TTL'} || $STAT_TTL))  # negative cache for a second
-                 || do { delete $self->{'_not_found'}->{$file}; 0 } # clear cache on failure
-                 )) {
-        die $self->{'_not_found'}->{$file}->{'exception'};
-
-    ### go and look on the file system
-    } else {
-        $doc->{'_filename'} = eval { $self->include_filename($file) };
-        if (my $err = $@) {
-            ### allow for blocks in other files
-            if ($self->{'EXPOSE_BLOCKS'} && ! $self->{'_looking_in_block_file'}) {
-                local $self->{'_looking_in_block_file'} = 1;
-                my $block_name = '';
-                while ($file =~ s|/([^/.]+)$||) {
-                    $block_name = length($block_name) ? "$1/$block_name" : $1;
-                    my $ref = eval { $self->load_template($file) } || next;
-                    my $_tree = $ref->{'_tree'};
-                    foreach my $node (@$_tree) {
-                        next if ! ref $node;
-                        next if $node->[0] eq 'META';
-                        last if $node->[0] ne 'BLOCK';
-                        next if $block_name ne $node->[3];
-                        $doc->{'_content'} = $ref->{'_content'};
-                        $doc->{'_tree'}    = $node->[4];
-                        $doc->{'modtime'} = $ref->{'modtime'};
-                        $file = $ref->{'name'};
-                        last;
-                    }
-                }
-                $err = '' if ! $doc->{'_tree'};
-            } elsif ($self->{'DEFAULT'}) {
-                $err = '' if ($doc->{'_filename'} = eval { $self->include_filename($self->{'DEFAULT'}) });
-            }
-            if ($err) {
-                ### cache the negative error
-                if (! defined($self->{'NEGATIVE_STAT_TTL'}) || $self->{'NEGATIVE_STAT_TTL'}) {
-                    $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
-                    $self->{'_not_found'}->{$file} = {
-                        cache_time => time,
-                        exception  => $self->exception($err->type, $err->info." (cached)"),
-                    };
-                }
-                die $err;
-            }
-        }
-
-        ### no tree yet - look for a file cache
-        if (! $doc->{'_tree'}) {
-            $doc->{'modtime'} = (stat $doc->{'_filename'})[9];
-            if  ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'}) {
-                if ($self->{'COMPILE_DIR'}) {
-                    $doc->{'_compile_filename'} = $self->{'COMPILE_DIR'} .'/'. $file;
-                } else {
-                    $doc->{'_compile_filename'} = $doc->{'_filename'};
-                }
-                $doc->{'_compile_filename'} .= $self->{'COMPILE_EXT'} if defined($self->{'COMPILE_EXT'});
-                $doc->{'_compile_filename'} .= $EXTRA_COMPILE_EXT       if defined $EXTRA_COMPILE_EXT;
-
-                if (-e $doc->{'_compile_filename'} && (stat _)[9] == $doc->{'modtime'}) {
-                    require Storable;
-                    $doc->{'_tree'} = Storable::retrieve($doc->{'_compile_filename'});
-                    $doc->{'compile_was_used'} = 1;
-                } else {
-                    my $str = $self->slurp($doc->{'_filename'});
-                    $doc->{'_content'}  = \$str;
-                }
+    my $doc;
+    if (! defined $file) {
+        return;
+    } elsif (ref $file) {
+        if (ref $file eq 'HASH') {
+            $doc = $file;
+        } else {
+            $doc->{'_content'} = $file;
+            $doc->{'name'}     = 'input text';
+            if (0) {#! defined('CACHE_STR_REFS') || $self->{'CACHE_STR_REFS'}) {
+                require Digest::MD5;
+                $doc->{'_filename'} = $file = 'str_ref_cache/'.Digest::MD5::md5_sum($$file);
             } else {
-                my $str = $self->slurp($doc->{'_filename'});
-                $doc->{'_content'}  = \$str;
+                $file                 = undef;
+                $doc->{'modtime'}     = time;
+                $doc->{'_is_str_ref'} = 1;
             }
         }
-
     }
 
-    ### haven't found a parsed tree yet - parse the content into a tree
-    if (! $doc->{'_tree'}) {
+    if (defined $file) {
+        ### looks like a previously cached document
+        if ($self->{'_documents'}->{$file}) {
+            $doc = $self->{'_documents'}->{$file};
+            return $doc
+                if time - $doc->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL)                  # don't stat more than once a second
+                || (! $self->{'_is_str_ref'} && $doc->{'modtime'} == (stat $doc->{'_filename'})[9]); # otherwise see if the file was modified
+
+        ### looks like a previously cached not-found
+        } elsif ($self->{'_not_found'}->{$file}) {
+            $doc = $self->{'_not_found'}->{$file};
+            die $doc->{'exception'}
+                if time - $doc->{'cache_time'} < ($self->{'NEGATIVE_STAT_TTL'} || $self->{'STAT_TTL'} || $STAT_TTL); # negative cache for a second
+            delete $self->{'_not_found'}->{$file}; # clear cache on failure
+
+        ### looks like a block passed in at runtime
+        } elsif ($self->{'BLOCKS'}->{$file}) {
+            my $block = $self->{'BLOCKS'}->{$file};
+            $block = $block->() if UNIVERSAL::isa($block, 'CODE');
+            if (! UNIVERSAL::isa($block, 'HASH')) {
+                $self->throw('block', "Unsupported BLOCK type \"$block\"") if ref $block;
+                $block = eval { $self->load_template(\$block) } || $self->throw('block', 'Parse error on predefined block');
+            }
+            $doc->{'name'}  = $file;
+            $doc->{'_tree'} = $block->{'_tree'} || $self->throw('block', "Invalid block definition (missing tree)");
+            return $doc;
+        }
+
+        ### lookup the filename
+        if (! $doc->{'_filename'}) {
+            $doc->{'name'} = $file;
+            $doc->{'_filename'} = eval { $self->include_filename($file) };
+            if (my $err = $@) {
+                ### allow for blocks in other files
+                if ($self->{'EXPOSE_BLOCKS'} && ! $self->{'_looking_in_block_file'}) {
+                    local $self->{'_looking_in_block_file'} = 1;
+                    my $block_name = '';
+                    OUTER: while ($file =~ s|/([^/.]+)$||) {
+                        $block_name = length($block_name) ? "$1/$block_name" : $1;
+                        my $ref = eval { $self->load_template($file) } || next;
+                        my $_tree = $ref->{'_tree'};
+                        foreach my $node (@$_tree) {
+                            last if ! ref $node;
+                            next if $node->[0] eq 'META';
+                            last if $node->[0] ne 'BLOCK';
+                            next if $block_name ne $node->[3];
+                            $doc->{'_tree'} = $node->[4];
+                            @{$doc}{qw(modtime _content _perl)} = @{$ref}{qw(modtime _content _perl)};
+                            return $doc;
+                        }
+                    }
+                } elsif ($self->{'DEFAULT'}) {
+                    $err = '' if ($doc->{'_filename'} = eval { $self->include_filename($self->{'DEFAULT'}) });
+                }
+                if ($err) {
+                    ### cache the negative error
+                    if (! defined($self->{'NEGATIVE_STAT_TTL'}) || $self->{'NEGATIVE_STAT_TTL'}) {
+                        $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+                        $self->{'_not_found'}->{$file} = {
+                            cache_time => time,
+                            exception  => $self->exception($err->type, $err->info." (cached)"),
+                        };
+                    }
+                    die $err;
+                }
+            }
+        }
+    }
+
+    ### return perl - if they want perl - otherwise - the ast
+    if (0) {#! $doc->{'_is_str_ref'} && (! defined($doc->{'COMPILE_PERL'}) || $doc->{'COMPILE_PERL'})) {
+        $doc->{'_perl'} = $self->load_perl($doc);
+    } else {
+        $doc->{'_tree'} = $self->load_tree($doc);
+    }
+
+    return $doc;
+}
+
+sub load_tree {
+    my ($self, $doc) = @_;
+
+    ### first look for a compiled optree
+    my $tree;
+    if (! $doc->{'_is_str_ref'}) {
+        $doc->{'modtime'} = (stat $doc->{'_filename'})[9];
+        if  ($self->{'COMPILE_DIR'} || $self->{'COMPILE_EXT'}) {
+            if ($self->{'COMPILE_DIR'}) {
+                $doc->{'_compile_filename'} = $self->{'COMPILE_DIR'} .'/'. $doc->{'name'};
+            } else {
+                $doc->{'_compile_filename'} = $doc->{'_filename'};
+            }
+            $doc->{'_compile_filename'} .= $self->{'COMPILE_EXT'} if defined($self->{'COMPILE_EXT'});
+            $doc->{'_compile_filename'} .= $EXTRA_COMPILE_EXT     if defined $EXTRA_COMPILE_EXT;
+
+            if (-e $doc->{'_compile_filename'} && (stat $doc->{'_compile_filename'})[9] == $doc->{'modtime'}) {
+                require Storable;
+                $tree = Storable::retrieve($doc->{'_compile_filename'});
+                $doc->{'compiled_tree_was_used'} = 1;
+            }
+        }
+    }
+
+    ### no cached tree - we will need to load our own
+    if (! $tree) {
+        $doc->{'_content'} ||= do { my $str = $self->slurp($doc->{'_filename'}); \$str };
+
         if ($self->{'CONSTANTS'}) {
             my $key = $self->{'CONSTANT_NAMESPACE'} || 'constants';
             $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
         }
 
         local $self->{'_component'} = $doc;
-        $doc->{'_tree'} = eval { $self->parse_tree($doc->{'_content'}) }
+        $tree = eval { $self->parse_tree($doc->{'_content'}) }
             || do { my $e = $@; $e->doc($doc) if UNIVERSAL::can($e, 'doc') && ! $e->doc; die $e }; # errors die
     }
 
     ### cache parsed_tree in memory unless asked not to do so
     if (! $doc->{'_is_str_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
-        $self->{'_documents'}->{$file} ||= $doc;
+        $self->{'_documents'}->{$doc->{'name'}} ||= $doc;
         $doc->{'cache_time'} = time;
 
         ### allow for config option to keep the cache size down
@@ -484,7 +501,7 @@ sub load_template {
     }
 
     ### save a cache on the fileside as asked
-    if ($doc->{'_compile_filename'} && ! $doc->{'compile_was_used'}) {
+    if ($doc->{'_compile_filename'} && ! $doc->{'compiled_tree_was_used'}) {
         my $dir = $doc->{'_compile_filename'};
         $dir =~ s|/[^/]+$||;
         if (! -d $dir) {
@@ -496,7 +513,7 @@ sub load_template {
         utime $doc->{'modtime'}, $doc->{'modtime'}, $doc->{'_compile_filename'};
     }
 
-    return $doc;
+    return $tree;
 }
 
 ###----------------------------------------------------------------###
