@@ -773,7 +773,7 @@ sub parse_LOOP {
 sub parse_MACRO {
     my ($self, $str_ref, $node) = @_;
 
-    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $CGI::Ex::Template::QR_COMMENTS"});
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"});
     $self->throw('parse', "Missing macro name", undef, pos($$str_ref)) if ! defined $name;
     if (! ref $name) {
         $name = [ $name, 0 ];
@@ -860,13 +860,13 @@ sub parse_TAGS {
 
     } else {
         local $self->{'_operator_precedence'} = 1; # prevent operator matching
-        $start = $$str_ref =~ m{ \G (?= \s* $CGI::Ex::Template::QR_COMMENTS [\'\"\/]) }gcx
+        $start = $$str_ref =~ m{ \G (?= \s* $QR_COMMENTS [\'\"\/]) }gcx
             ? $self->parse_expr($str_ref)
-            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s+ $CGI::Ex::Template::QR_COMMENTS"})
+            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s+ $QR_COMMENTS"})
             || $self->throw('parse', "Invalid opening tag in TAGS", undef, pos($$str_ref));
-        $end   = $$str_ref =~ m{ \G (?= \s* $CGI::Ex::Template::QR_COMMENTS [\'\"\/]) }gcx
+        $end   = $$str_ref =~ m{ \G (?= \s* $QR_COMMENTS [\'\"\/]) }gcx
             ? $self->parse_expr($str_ref)
-            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s* $CGI::Ex::Template::QR_COMMENTS"})
+            : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s* $QR_COMMENTS"})
             || $self->throw('parse', "Invalid closing tag in TAGS", undef, pos($$str_ref));
         for my $tag ($start, $end) {
             $tag = $self->play_expr($tag);
@@ -891,8 +891,6 @@ sub parse_UNLESS {
 
 sub parse_USE {
     my ($self, $str_ref) = @_;
-
-    my $QR_COMMENTS = $CGI::Ex::Template::QR_COMMENTS;
 
     my $var;
     my $mark = pos $$str_ref;
