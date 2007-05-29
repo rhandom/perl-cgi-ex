@@ -430,12 +430,13 @@ sub output {
     local $self->{'LOWER_CASE_VAR_FALLBACK'} = ! $self->{'CASE_SENSITIVE'}; # un-smart HTML::Template default
     local $CGI::Ex::Template::QR_PRIVATE = undef;
 
+    my $out = '';
+    $self->process_simple($content, $param, \$out) || die $self->error;
+
     if ($args->{'print_to'}) {
-        $self->process_simple($content, $param, $args->{'print_to'}) || die $self->error;
+        print {$args->{'print_to'}} $out;
         return undef;
     } else {
-        my $out = '';
-        $self->process_simple($content, $param, \$out) || die $self->error;
         return $out;
     }
 }
