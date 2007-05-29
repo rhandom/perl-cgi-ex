@@ -467,9 +467,6 @@ sub load_template {
         }
     }
 
-#    use CGI::Ex::Dump qw(debug);
-#    debug $self, $doc;
-#    exit;
     return $doc;
 }
 
@@ -977,7 +974,8 @@ sub split_paths {
 
 sub _insert {
     my ($self, $file) = @_;
-    return $self->slurp($self->include_filename($file));
+    my $ref = $self->slurp($self->include_filename($file));
+    return $$ref;
 }
 
 sub slurp {
@@ -1376,7 +1374,6 @@ sub filter_redirect {
     };
 }
 
-###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 
 1;
