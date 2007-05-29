@@ -64,43 +64,43 @@ our $SYNTAX = {
 
 our $SCALAR_OPS = {
     '0'      => sub { $_[0] },
-    abs      => sub { local $^W; abs shift },
-    atan2    => sub { local $^W; atan2($_[0], $_[1]) },
+    abs      => sub { no warnings; abs shift },
+    atan2    => sub { no warnings; atan2($_[0], $_[1]) },
     chunk    => \&vmethod_chunk,
     collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
-    cos      => sub { local $^W; cos $_[0] },
+    cos      => sub { no warnings; cos $_[0] },
     defined  => sub { defined $_[0] ? 1 : '' },
-    exp      => sub { local $^W; exp $_[0] },
+    exp      => sub { no warnings; exp $_[0] },
     fmt      => \&vmethod_fmt_scalar,
     'format' => \&vmethod_format,
     hash     => sub { {value => $_[0]} },
-    hex      => sub { local $^W; hex $_[0] },
+    hex      => sub { no warnings; hex $_[0] },
     html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; s/\'/&apos;/g; $_ },
     indent   => \&vmethod_indent,
-    int      => sub { local $^W; int $_[0] },
+    int      => sub { no warnings; int $_[0] },
     item     => sub { $_[0] },
     js       => sub { local $_ = $_[0]; return if ! $_; s/\n/\\n/g; s/\r/\\r/g; s/(?<!\\)([\"\'])/\\$1/g; $_ },
     lc       => sub { lc $_[0] },
     lcfirst  => sub { lcfirst $_[0] },
     length   => sub { defined($_[0]) ? length($_[0]) : 0 },
     list     => sub { [$_[0]] },
-    log      => sub { local $^W; log $_[0] },
+    log      => sub { no warnings; log $_[0] },
     lower    => sub { lc $_[0] },
     match    => \&vmethod_match,
     new      => sub { defined $_[0] ? $_[0] : '' },
     null     => sub { '' },
-    oct      => sub { local $^W; oct $_[0] },
-    rand     => sub { local $^W; rand shift },
+    oct      => sub { no warnings; oct $_[0] },
+    rand     => sub { no warnings; rand shift },
     remove   => sub { vmethod_replace(shift, shift, '', 1) },
     repeat   => \&vmethod_repeat,
     replace  => \&vmethod_replace,
     search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
-    sin      => sub { local $^W; sin $_[0] },
+    sin      => sub { no warnings; sin $_[0] },
     size     => sub { 1 },
     split    => \&vmethod_split,
-    sprintf  => sub { local $^W; my $pat = shift; sprintf($pat, @_) },
-    sqrt     => sub { local $^W; sqrt $_[0] },
-    srand    => sub { local $^W; srand $_[0]; '' },
+    sprintf  => sub { no warnings; my $pat = shift; sprintf($pat, @_) },
+    sqrt     => sub { no warnings; sqrt $_[0] },
+    srand    => sub { no warnings; srand $_[0]; '' },
     stderr   => sub { print STDERR $_[0]; '' },
     substr   => \&vmethod_substr,
     trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
@@ -122,16 +122,16 @@ our $LIST_OPS = {
     defined => sub { return 1 if @_ == 1; defined $_[0]->[ defined($_[1]) ? $_[1] : 0 ] },
     first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
     fmt     => \&vmethod_fmt_list,
-    grep    => sub { local $^W; my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
-    hash    => sub { local $^W; my $list = shift; return {@$list} if ! @_; my $i = shift || 0; return {map {$i++ => $_} @$list} },
+    grep    => sub { no warnings; my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
+    hash    => sub { no warnings; my $list = shift; return {@$list} if ! @_; my $i = shift || 0; return {map {$i++ => $_} @$list} },
     import  => sub { my $ref = shift; push @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_; '' },
     item    => sub { $_[0]->[ $_[1] || 0 ] },
-    join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
+    join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; no warnings; return join $join, @$ref },
     last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
     list    => sub { $_[0] },
-    max     => sub { local $^W; $#{ $_[0] } },
+    max     => sub { no warnings; $#{ $_[0] } },
     merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
-    new     => sub { local $^W; return [@_] },
+    new     => sub { no warnings; return [@_] },
     null    => sub { '' },
     nsort   => \&vmethod_nsort,
     pick    => \&vmethod_pick,
@@ -139,7 +139,7 @@ our $LIST_OPS = {
     push    => sub { my $ref = shift; push @$ref, @_; return '' },
     reverse => sub { [ reverse @{ $_[0] } ] },
     shift   => sub { shift  @{ $_[0] } },
-    size    => sub { local $^W; scalar @{ $_[0] } },
+    size    => sub { no warnings; scalar @{ $_[0] } },
     slice   => sub { my ($ref, $a, $b) = @_; $a ||= 0; $b = $#$ref if ! defined $b; return [@{$ref}[$a .. $b]] },
     sort    => \&vmethod_sort,
     splice  => \&vmethod_splice,
@@ -159,7 +159,7 @@ our $HASH_OPS = {
     items   => sub { [ %{ $_[0] } ] },
     keys    => sub { [keys %{ $_[0] }] },
     list    => \&vmethod_list_hash,
-    new     => sub { local $^W; return (@_ == 1 && ref $_[-1] eq 'HASH') ? $_[-1] : {@_} },
+    new     => sub { no warnings; return (@_ == 1 && ref $_[-1] eq 'HASH') ? $_[-1] : {@_} },
     null    => sub { '' },
     nsort   => sub { my $ref = shift; [sort {   $ref->{$a} <=>    $ref->{$b}} keys %$ref] },
     pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } sort keys %{ $_[0] } ] },
@@ -852,7 +852,7 @@ sub play_operator {
     ### $tree looks like [undef, '+', 4, 5]
 
     if ($OP_DISPATCH->{$tree->[1]}) {
-        local $^W;
+        no warnings;
         if ($OP_ASSIGN->{$tree->[1]}) {
             my $val = $OP_DISPATCH->{$tree->[1]}->($self->play_expr($tree->[2]), $self->play_expr($tree->[3]));
             $self->set_variable($tree->[2], $val);
@@ -879,11 +879,11 @@ sub play_operator {
         return defined($val) ? $val : '';
 
     } elsif ($op eq '?') {
-        local $^W;
+        no warnings;
         return $self->play_expr($tree->[2]) ? $self->play_expr($tree->[3]) : $self->play_expr($tree->[4]);
 
     } elsif ($op eq '~' || $op eq '_') {
-        local $^W;
+        no warnings;
         my $s = '';
         $s .= $self->play_expr($tree->[$_]) for 2 .. $#$tree;
         return $s;
@@ -892,19 +892,19 @@ sub play_operator {
         return [map {$self->play_expr($tree->[$_])} 2 .. $#$tree];
 
     } elsif ($op eq '{}') {
-        local $^W;
+        no warnings;
         my @e;
         push @e, $self->play_expr($tree->[$_]) for 2 .. $#$tree;
         return {@e};
 
     } elsif ($op eq '++') {
-        local $^W;
+        no warnings;
         my $val = 0 + $self->play_expr($tree->[2]);
         $self->set_variable($tree->[2], $val + 1);
         return $tree->[3] ? $val : $val + 1; # ->[3] is set to 1 during parsing of postfix ops
 
     } elsif ($op eq '--') {
-        local $^W;
+        no warnings;
         my $val = 0 + $self->play_expr($tree->[2]);
         $self->set_variable($tree->[2], $val - 1);
         return $tree->[3] ? $val : $val - 1; # ->[3] is set to 1 during parsing of postfix ops
@@ -1162,7 +1162,7 @@ sub define_vmethod {
 sub vmethod_fmt_scalar {
     my $str = shift; $str = ''   if ! defined $str;
     my $pat = shift; $pat = '%s' if ! defined $pat;
-    local $^W;
+    no warnings;
     return @_ ? sprintf($pat, $_[0], $str)
               : sprintf($pat, $str);
 }
@@ -1171,7 +1171,7 @@ sub vmethod_fmt_list {
     my $ref = shift || return '';
     my $pat = shift; $pat = '%s' if ! defined $pat;
     my $sep = shift; $sep = ' '  if ! defined $sep;
-    local $^W;
+    no warnings;
     return @_ ? join($sep, map {sprintf $pat, $_[0], $_} @$ref)
               : join($sep, map {sprintf $pat, $_} @$ref);
 }
@@ -1180,7 +1180,7 @@ sub vmethod_fmt_hash {
     my $ref = shift || return '';
     my $pat = shift; $pat = "%s\t%s" if ! defined $pat;
     my $sep = shift; $sep = "\n"     if ! defined $sep;
-    local $^W;
+    no warnings;
     return ! @_    ? join($sep, map {sprintf $pat, $_, $ref->{$_}} sort keys %$ref)
          : @_ == 1 ? join($sep, map {sprintf $pat, $_[0], $_, $ref->{$_}} sort keys %$ref) # don't get to pick - it applies to the key
          :           join($sep, map {sprintf $pat, $_[0], $_, $_[1], $ref->{$_}} sort keys %$ref);
