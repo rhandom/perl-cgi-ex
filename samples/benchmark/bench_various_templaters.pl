@@ -239,7 +239,7 @@ my $tests = {
     },
     CETXHp_file => sub {
         my $ht = CGI::Ex::Template::XS->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2,
-                                            CASE_SENSITVE=>1, compile_perl => 1);
+                                            CASE_SENSITVE=>1, compile_perl => 1, cache => 1);
         $ht->{'_documents'} = \%CETXHp_DOCUMENTS;
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
@@ -319,7 +319,7 @@ my $tests = {
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     CETXHp_str => sub {
-        my $ht = CGI::Ex::Template::XS->new(type => 'scalarref', source => \$content_ht, CASE_SENSITVE=>1, compile_perl => 1);
+        my $ht = CGI::Ex::Template::XS->new(type => 'scalarref', source => \$content_ht, CASE_SENSITVE=>1, compile_perl => 1, cache => 1);
         $ht->{'_documents'} = \%CETXHp_DOCUMENTS;
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
@@ -367,7 +367,7 @@ my $tests = {
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     CETXHp_mem => sub {
-        my $ht = CGI::Ex::Template::XS->new(filename => "foo.ht", path => \@dirs, cache => 1, CASE_SENSITVE=>1, compile_perl => 1);
+        my $ht = CGI::Ex::Template::XS->new(filename => "foo.ht", path => \@dirs, cache => 1, CASE_SENSITVE=>1, compile_perl => 1, cache => 1);
         $ht->{'_documents'} = \%CETXHp_DOCUMENTS;
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
