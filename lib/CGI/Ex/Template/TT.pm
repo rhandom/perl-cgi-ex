@@ -366,7 +366,7 @@ sub process {
         ### handle pre process items that go before every document
         my $pre = '';
         if ($self->{'PRE_PROCESS'}) {
-            $self->_load_template_meta($content);
+            _load_template_meta($self, $content);
             foreach my $name (@{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
                 $self->_process($name, $copy, \$pre);
             }
@@ -376,7 +376,7 @@ sub process {
         eval {
             ### handle the PROCESS config - which loads another template in place of the real one
             if (exists $self->{'PROCESS'}) {
-                $self->_load_template_meta($content);
+                _load_template_meta($self, $content);
                 foreach my $name (@{ $self->split_paths($self->{'PROCESS'}) }) {
                     next if ! length $name;
                     $self->_process($name, $copy, \$output);
@@ -417,7 +417,7 @@ sub process {
 
         ### handle wrapper directives
         if (exists $self->{'WRAPPER'}) {
-            $self->_load_template_meta($content);
+            _load_template_meta($self, $content);
             foreach my $name (reverse @{ $self->split_paths($self->{'WRAPPER'}) }) {
                 next if ! length $name;
                 local $copy->{'content'} = $output;
@@ -431,7 +431,7 @@ sub process {
 
         ### handle post process items that go after every document
         if ($self->{'POST_PROCESS'}) {
-            $self->_load_template_meta($content);
+            _load_template_meta($self, $content);
             foreach my $name (@{ $self->split_paths($self->{'POST_PROCESS'}) }) {
                 $self->_process($name, $copy, \$output);
             }
