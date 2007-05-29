@@ -16,6 +16,7 @@ use Template::Parser::CET;
 use Text::Template;
 use Text::Tmpl;
 use HTML::Template;
+use HTML::Template::Compiled;
 use HTML::Template::Expr;
 use HTML::Template::JIT;
 use CGI::Ex::Dump qw(debug);
@@ -31,15 +32,17 @@ my $names = {
   CETX         => 'CGI::Ex::Template::XS using TT interface',
   CETH         => 'CGI::Ex::Template using HTML::Template interface',
   CETXH        => 'CGI::Ex::Template::XS using HTML::Template interface',
+  CETXHp       => 'CGI::Ex::Template::XS using HTML::Template interface - Perl code eval based',
   CETXTMPL     => 'CGI::Ex::Temmplate::XS using Text::Tmpl interface',
   HT           => 'HTML::Template',
   HTE          => 'HTML::Template::Expr',
   HTJ          => 'HTML::Template::JIT - Compiled to C template',
+  HTC          => 'HTML::Template::Compiled',
   TextTemplate => 'Text::Template - Perl code eval based',
   TT           => 'Template::Toolkit',
   TTX          => 'Template::Toolkit with Stash::XS',
   TTXCET       => 'Template::Toolkit with Stash::XS and Template::Parser::CET',
-  TMPL         => 'Text::Tmpl',
+  TMPL         => 'Text::Tmpl - Engine is C based',
 
   mem          => 'Compiled in memory',
   file         => 'Loaded from file',
@@ -196,6 +199,10 @@ my $ct  = CGI::Ex::Template->new(    INCLUDE_PATH => \@dirs, VARIABLES => $stash
 my $ctx = CGI::Ex::Template::XS->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t);
 
 ###----------------------------------------------------------------###
+my %CETH_DOCUMENTS;
+my %CETXH_DOCUMENTS;
+my %CETXHp_DOCUMENTS;
+
 
 my $tests = {
 
@@ -210,25 +217,38 @@ my $tests = {
         my $tt = Template->new(INCLUDE_PATH => \@dirs, STASH => Template::Stash::XS->new($stash_t), COMPILE_DIR => $dir2);
         my $out = ""; $tt->process('foo.tt', $form, \$out); $out;
     },
-    CET_file => sub {
-        my $t = CGI::Ex::Template->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t, COMPILE_DIR  => $dir2);
-        my $out = ''; $t->process('foo.tt', $form, \$out); $out;
-    },
-    CETX_file => sub {
-        my $t = CGI::Ex::Template::XS->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t, COMPILE_DIR => $dir2);
-        my $out = ''; $t->process('foo.tt', $form, \$out); $out;
-    },
+#    CET_file => sub {
+#        my $t = CGI::Ex::Template->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t, COMPILE_DIR  => $dir2);
+#        my $out = ''; $t->process('foo.tt', $form, \$out); $out;
+#    },
+#    CETX_file => sub {
+#        my $t = CGI::Ex::Template::XS->new(INCLUDE_PATH => \@dirs, VARIABLES => $stash_t, COMPILE_DIR => $dir2);
+#        my $out = ''; $t->process('foo.tt', $form, \$out); $out;
+#    },
 
     CETH_file => sub {
-        my $ht = CGI::Ex::Template->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2);
+        my $ht = CGI::Ex::Template->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2, CASE_SENSITVE=>1);
+        $ht->{'_documents'} = \%CETH_DOCUMENTS;
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     CETXH_file => sub {
-        my $ht = CGI::Ex::Template::XS->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2);
+        my $ht = CGI::Ex::Template::XS->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2,
+                                            CASE_SENSITVE=>1);
+        $ht->{'_documents'} = \%CETXH_DOCUMENTS;
+        $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
+    },
+    CETXHp_file => sub {
+        my $ht = CGI::Ex::Template::XS->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2,
+                                            CASE_SENSITVE=>1, compile_perl => 1);
+        $ht->{'_documents'} = \%CETXHp_DOCUMENTS;
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     HT_file => sub {
-        my $ht = HTML::Template->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2);
+        my $ht = HTML::Template->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2, CASE_SENSITVE=>1);
+        $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
+    },
+    HTC_file => sub {
+        my $ht = HTML::Template::Compiled->new(type => 'filename', source => "foo.ht", file_cache => 1, path => \@dirs, file_cache_dir => $dir2, CASE_SENSITVE=>1);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     TMPL_file => sub {
@@ -243,18 +263,18 @@ my $tests = {
         $tt->set_strip(0);
         my $out = $tt->parse_file("foo.tmpl");
     },
-    CETXTMPL_file => sub {
-        my $tt = CGI::Ex::Template::XS->new;
-        for my $ref (@{ $stash_ht->{'a_stuff'} }) {
-            $tt->loop_iteration('a_stuff')->set_values($ref);
-        }
-        $tt->set_values($stash_ht);
-        $tt->set_values($form);
-        $tt->set_delimiters('<!--','-->');
-        $tt->set_dir("$dir/");
-        $tt->set_strip(0);
-        my $out = $tt->parse_file("foo.tmpl");
-    },
+#    CETXTMPL_file => sub {
+#        my $tt = CGI::Ex::Template::XS->new;
+#        for my $ref (@{ $stash_ht->{'a_stuff'} }) {
+#            $tt->loop_iteration('a_stuff')->set_values($ref);
+#        }
+#        $tt->set_values($stash_ht);
+#        $tt->set_values($form);
+#        $tt->set_delimiters('<!--','-->');
+#        $tt->set_dir("$dir/");
+#        $tt->set_strip(0);
+#        my $out = $tt->parse_file("foo.tmpl");
+#    },
 
     ###----------------------------------------------------------------###
     ### str infers that we are pulling from a string reference
@@ -279,29 +299,40 @@ my $tests = {
         my $t = Template->new(STASH => Template::Stash::XS->new($stash_t), PARSER => Template::Parser::CET->new);
         my $out = ""; $t->process(\$content_tt, $form, \$out); $out;
     },
-    CET_str => sub {
-        my $t = CGI::Ex::Template->new(VARIABLES => $stash_t);
-        my $out = ""; $t->process(\$content_tt, $form, \$out); $out;
-    },
-    CETX_str => sub {
-        my $t = CGI::Ex::Template::XS->new(VARIABLES => $stash_t);
-        my $out = ""; $t->process(\$content_tt, $form, \$out); $out;
-    },
+#    CET_str => sub {
+#        my $t = CGI::Ex::Template->new(VARIABLES => $stash_t);
+#        my $out = ""; $t->process(\$content_tt, $form, \$out); $out;
+#    },
+#    CETX_str => sub {
+#        my $t = CGI::Ex::Template::XS->new(VARIABLES => $stash_t);
+#        my $out = ""; $t->process(\$content_tt, $form, \$out); $out;
+#    },
 
     CETH_str => sub {
-        my $ht = CGI::Ex::Template->new(    type => 'scalarref', source => \$content_ht);
+        my $ht = CGI::Ex::Template->new(    type => 'scalarref', source => \$content_ht, CASE_SENSITVE=>1);
+        $ht->{'_documents'} = \%CETH_DOCUMENTS;
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     CETXH_str => sub {
-        my $ht = CGI::Ex::Template::XS->new(type => 'scalarref', source => \$content_ht);
+        my $ht = CGI::Ex::Template::XS->new(type => 'scalarref', source => \$content_ht, CASE_SENSITVE=>1);
+        $ht->{'_documents'} = \%CETXH_DOCUMENTS;
+        $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
+    },
+    CETXHp_str => sub {
+        my $ht = CGI::Ex::Template::XS->new(type => 'scalarref', source => \$content_ht, CASE_SENSITVE=>1, compile_perl => 1);
+        $ht->{'_documents'} = \%CETXHp_DOCUMENTS;
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     HT_str => sub {
-        my $ht = HTML::Template->new(       type => 'scalarref', source => \$content_ht);
+        my $ht = HTML::Template->new(       type => 'scalarref', source => \$content_ht, CASE_SENSITVE=>1);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     HTE_str => sub {
-        my $ht = HTML::Template::Expr->new( type => 'scalarref', source => \$content_ht);
+        my $ht = HTML::Template::Expr->new( type => 'scalarref', source => \$content_ht, CASE_SENSITVE=>1);
+        $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
+    },
+    HTC_str => sub {
+        my $ht = HTML::Template::Compiled->new(type => 'scalarref', source => \$content_ht, CASE_SENSITVE=>1);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     TMPL_str => sub {
@@ -322,27 +353,38 @@ my $tests = {
 
     TT_mem   => sub { my $out = ""; $tt->process( 'foo.tt', $form, \$out); $out },
     TTX_mem  => sub { my $out = ""; $ttx->process('foo.tt', $form, \$out); $out },
-    CET_mem  => sub { my $out = ""; $ct->process( 'foo.tt', $form, \$out); $out },
-    CETX_mem => sub { my $out = ""; $ctx->process('foo.tt', $form, \$out); $out },
+#    CET_mem  => sub { my $out = ""; $ct->process( 'foo.tt', $form, \$out); $out },
+#    CETX_mem => sub { my $out = ""; $ctx->process('foo.tt', $form, \$out); $out },
 
     CETH_mem => sub {
-        my $ht = CGI::Ex::Template->new(    filename => "foo.ht", path => \@dirs, cache => 1);
+        my $ht = CGI::Ex::Template->new(    filename => "foo.ht", path => \@dirs, cache => 1, CASE_SENSITVE=>1);
+        $ht->{'_documents'} = \%CETH_DOCUMENTS;
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     CETXH_mem => sub {
-        my $ht = CGI::Ex::Template::XS->new(filename => "foo.ht", path => \@dirs, cache => 1);
+        my $ht = CGI::Ex::Template::XS->new(filename => "foo.ht", path => \@dirs, cache => 1, CASE_SENSITVE=>1);
+        $ht->{'_documents'} = \%CETXH_DOCUMENTS;
+        $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
+    },
+    CETXHp_mem => sub {
+        my $ht = CGI::Ex::Template::XS->new(filename => "foo.ht", path => \@dirs, cache => 1, CASE_SENSITVE=>1, compile_perl => 1);
+        $ht->{'_documents'} = \%CETXHp_DOCUMENTS;
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     HT_mem => sub {
-        my $ht = HTML::Template->new(       filename => "foo.ht", path => \@dirs, cache => 1);
+        my $ht = HTML::Template->new(       filename => "foo.ht", path => \@dirs, cache => 1, CASE_SENSITVE=>1);
+        $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
+    },
+    HTC_mem => sub {
+        my $ht = HTML::Template::Compiled->new(       filename => "foo.ht", path => \@dirs, cache => 1, CASE_SENSITVE=>1);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     HTE_mem => sub {
-        my $ht = HTML::Template::Expr->new( filename => "foo.ht", path => \@dirs, cache => 1);
+        my $ht = HTML::Template::Expr->new( filename => "foo.ht", path => \@dirs, cache => 1, CASE_SENSITVE=>1);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
     HTJ_mem => sub { # this is interesting - it is compiled - but it is pulled into memory just once
-        my $ht = HTML::Template::JIT->new(  filename => "foo.ht", path => \@dirs, jit_path => $dir2);
+        my $ht = HTML::Template::JIT->new(  filename => "foo.ht", path => \@dirs, jit_path => $dir2, CASE_SENSITVE=>1);
         $ht->param($stash_ht); $ht->param($form); my $out = $ht->output;
     },
 };
