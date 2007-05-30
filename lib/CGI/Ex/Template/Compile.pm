@@ -423,6 +423,8 @@ sub compile_GET {
     $$str_ref .= "$indent\$\$out_ref .= defined(\$var) ? \$var : '';\n"; # TODO - undefined_get
 }
 
+sub compile_END {}
+
 sub compile_FILTER {
     my ($class, $self, $node, $str_ref, $indent) = @_;
     my ($name, $filter) = @{ $node->[3] };
@@ -457,6 +459,63 @@ ${indent}};
 
 }
 
+sub compile_FOR {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+
+    my ($name, $items) = @{ $node->[3] };
+
+    $$str_ref .= "${indent}do {
+${indent}my \$loop = ";
+    compile_expr($self, $items, $str_ref, $indent);
+    $$str_ref .= ";
+${indent}\$loop = [] if ! defined \$loop;
+${indent}\$loop = \$self->iterator(\$loop) if ref(\$loop) !~ /Iterator\$/;
+${indent}local \$self->{'_vars'}->{'loop'} = \$loop;
+";
+    if (! defined $name) {
+        $$str_ref .= "
+${indent}my \$swap = \$self->{'_vars'};
+${indent}local \$self->{'_vars'} = my \$copy = {%\$swap};
+";
+    }
+
+    $$str_ref .= "
+${indent}my (\$item, \$error) = \$loop->get_first;
+${indent}while (! \$error) {
+";
+
+    if (defined $name) {
+        $name =~ s/\'/\\\'/g;
+        $$str_ref .= "$indent$INDENT\$self->set_variable('$name', \$item);
+";
+    } else {
+        $$str_ref .= "$indent$INDENT\@\$copy{keys %\$item} = values %\$item if ref(\$item) eq 'HASH';
+";
+    }
+
+    $$str_ref .= "${indent}${INDENT}eval {
+";
+    compile_tree($self, $node->[4], $str_ref, "$indent$INDENT");
+    $$str_ref .= "
+${indent}${INDENT}};
+${indent}${INDENT}if (my \$err = \$\@) {
+${indent}${INDENT}${INDENT}if (UNIVERSAL::can(\$err, 'type')) {
+${indent}${INDENT}${INDENT}${INDENT}if (\$err->type eq 'next') {
+${indent}${INDENT}${INDENT}${INDENT}${INDENT}(\$item, \$error) = \$loop->get_next;
+${indent}${INDENT}${INDENT}${INDENT}${INDENT}next;
+${indent}${INDENT}${INDENT}${INDENT}}
+${indent}${INDENT}${INDENT}${INDENT}last if \$err->type =~ /last|break/;
+${indent}${INDENT}${INDENT}}
+${indent}${INDENT}${INDENT}die \$err;
+${indent}${INDENT}}
+
+${indent}${INDENT}(\$item, \$error) = \$loop->get_next;
+${indent}}
+${indent}};
+";
+    return;
+}
+
 sub compile_IF {
     my ($class, $self, $node, $str_ref, $indent, $unless) = @_;
 
@@ -480,8 +539,6 @@ sub compile_IF {
     }
     $$str_ref .= "${indent}}\n";
 }
-
-sub compile_END {}
 
 sub compile_LOOP {
     my ($class, $self, $node, $str_ref, $indent) = @_;
