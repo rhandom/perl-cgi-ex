@@ -33,7 +33,8 @@ sub DESTROY {}
 sub AUTOLOAD {
     my $self = shift;
     my $meth = ($AUTOLOAD && $AUTOLOAD =~ /::(\w+)$/) ? $1 : $self->throw('autoload', "Invalid method $AUTOLOAD");
-    my $type = delete($AUTOLOOKUP->{$meth}) || do { $meth = "SUPER::$meth"; $self->$meth(@_) };
+    my $type = delete($AUTOLOOKUP->{$meth})
+        || do { require Carp; Carp::croak("Can't locate object method \"$meth\" via package ".ref($self)) };
 
     my $pkg  = __PACKAGE__."::$type";
     my $file = "$pkg.pm";
