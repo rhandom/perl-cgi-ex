@@ -1,6 +1,18 @@
+2.14
+      2007
+        * Added strref cache support
+        * Added compile_perl support.
+        * Added support of Text::Tmpl style templates
+
 2.13
       2007-05-21
-        * 
+        * Added full support for HTML::Template and HTML::Template::Expr.
+        * Added missing HTML::Template::Expr vmethods.
+        * Added support for using Text vmethods as top level items.
+        * Added SYNTAX configuration item.
+        * Added V2EQUALS configuration item.
+        * Broke Extra and HTE out to its own area.
+        * Added many more tests.
         * Allow QR_PRIVATE to be false.
 
 
