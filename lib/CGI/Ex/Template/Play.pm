@@ -273,14 +273,9 @@ sub play_FOR {
             ### execute the sub tree
             eval { $self->play_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
-                if (UNIVERSAL::can($err, 'type')) {
-                    if ($err->type eq 'next') {
-                        ($item, $error) = $items->get_next;
-                        next;
-                    }
-                    last if $err->type =~ /last|break/;
-                }
-                die $err;
+                die $err if ! UNIVERSAL::can($err, 'type');
+                last if $err->type =~ /last|break/;
+                die  if $err->type ne 'next';
             }
 
             ($item, $error) = $items->get_next;
@@ -305,14 +300,9 @@ sub play_FOR {
             ### execute the sub tree
             eval { $self->play_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
-                if (UNIVERSAL::can($err, 'type')) {
-                    if ($err->type eq 'next') {
-                        ($item, $error) = $items->get_next;
-                        next;
-                    }
-                    last if $err->type =~ /last|break/;
-                }
-                die $err;
+                die $err if ! UNIVERSAL::can($err, 'type');
+                last if $err->type =~ /last|break/;
+                die  if $err->type ne 'next';
             }
 
             ($item, $error) = $items->get_next;
