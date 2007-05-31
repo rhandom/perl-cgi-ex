@@ -423,7 +423,7 @@ sub compile_play_named_args {
         $$str_ref .= ', ';
         compile_expr($self, $args->[$_], $str_ref, $indent);
     }
-    $$str_ref .= "], ['$node->[0]', $node->[1], $node->[2]], \$out_ref);\n";
+    $$str_ref .= "], ['$node->[0]', $node->[1], $node->[2]], \$out_ref);";
 
     return;
 }
@@ -452,6 +452,14 @@ ${INDENT}${INDENT}}},
 ${INDENT}},";
 
     return;
+}
+
+sub compile_BREAK { shift->compile_LAST(@_) }
+
+sub compile_CLEAR {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    $$str_ref .= "
+${indent}\$\$out_ref = '';";
 }
 
 sub compile_DEFAULT {
@@ -511,6 +519,7 @@ sub compile_FOR {
     my ($class, $self, $node, $str_ref, $indent) = @_;
 
     my ($name, $items) = @{ $node->[3] };
+    local $self->{'_in_loop'} = 'FOREACH';
     my $code = compile_tree($self, $node->[4], "$indent$INDENT");
 
     $$str_ref .= "\n${indent}do {
@@ -519,71 +528,66 @@ ${indent}my \$loop = ";
     $$str_ref .= ";
 ${indent}\$loop = [] if ! defined \$loop;
 ${indent}\$loop = \$self->iterator(\$loop) if ref(\$loop) !~ /Iterator\$/;
-${indent}local \$self->{'_vars'}->{'loop'} = \$loop;
-";
+${indent}local \$self->{'_vars'}->{'loop'} = \$loop;";
     if (! defined $name) {
         $$str_ref .= "
 ${indent}my \$swap = \$self->{'_vars'};
-${indent}local \$self->{'_vars'} = my \$copy = {%\$swap};
-";
+${indent}local \$self->{'_vars'} = my \$copy = {%\$swap};";
     }
 
     $$str_ref .= "
-${indent}my (\$item, \$error) = \$loop->get_first;
-${indent}while (! \$error) {
-";
+${indent}my (\$var, \$error) = \$loop->get_first;
+${indent}FOREACH: while (! \$error) {";
 
     if (defined $name) {
-        $name =~ s/\'/\\\'/g;
-        $$str_ref .= "$indent$INDENT\$self->set_variable('$name', \$item);
-";
+        $$str_ref .= "\n$indent$INDENT";
+        local $self->{'_is_set'} = 1;
+        compile_expr($self, $name, $str_ref, $indent);
+        $$str_ref .= ";";
     } else {
-        $$str_ref .= "$indent$INDENT\@\$copy{keys %\$item} = values %\$item if ref(\$item) eq 'HASH';
-";
+        $$str_ref .= "\n$indent$INDENT\@\$copy{keys %\$var} = values %\$var if ref(\$var) eq 'HASH';";
     }
 
-    $$str_ref .= "${indent}${INDENT}eval {
-$code
-${indent}${INDENT}};
-${indent}${INDENT}if (my \$err = \$\@) {
-${indent}${INDENT}${INDENT}if (UNIVERSAL::can(\$err, 'type')) {
-${indent}${INDENT}${INDENT}${INDENT}if (\$err->type eq 'next') {
-${indent}${INDENT}${INDENT}${INDENT}${INDENT}(\$item, \$error) = \$loop->get_next;
-${indent}${INDENT}${INDENT}${INDENT}${INDENT}next;
-${indent}${INDENT}${INDENT}${INDENT}}
-${indent}${INDENT}${INDENT}${INDENT}last if \$err->type =~ /last|break/;
-${indent}${INDENT}${INDENT}}
-${indent}${INDENT}${INDENT}die \$err;
-${indent}${INDENT}}
-
-${indent}${INDENT}(\$item, \$error) = \$loop->get_next;
+    $$str_ref .= "$code
+${indent}${INDENT}(\$var, \$error) = \$loop->get_next;
 ${indent}}
 ${indent}};";
     return;
 }
+
+sub compile_FOREACH { shift->compile_FOR(@_) }
 
 sub compile_IF {
     my ($class, $self, $node, $str_ref, $indent, $unless) = @_;
 
     $$str_ref .= "\n$indent" .($unless ? 'unless' : 'if'). ' (';
     compile_expr($self, $node->[3], $str_ref, $indent);
-    $$str_ref .= ") {\n";
+    $$str_ref .= ") {";
     $$str_ref .= compile_tree($self, $node->[4], "$indent$INDENT");
 
     while ($node = $node->[5]) { # ELSE, ELSIF's
         $$str_ref .= _node_info($self, $node, $indent);
         if ($node->[0] eq 'ELSE') {
-            $$str_ref .= "\n${indent}} else {\n";
+            $$str_ref .= "\n${indent}} else {";
             $$str_ref .= compile_tree($self, $node->[4], "$indent$INDENT");
             last;
         } else {
             $$str_ref .= "\n${indent}} elsif (";
             compile_expr($self, $node->[3], $str_ref, $indent);
-            $$str_ref .= ") {\n";
+            $$str_ref .= ") {";
             $$str_ref .= compile_tree($self, $node->[4], "$indent$INDENT");
         }
     }
     $$str_ref .= "\n${indent}}";
+}
+
+sub compile_INCLUDE { shift->compile_PROCESS(@_) }
+
+sub compile_LAST {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my $type = $self->{'_in_loop'} || die "Found LAST while not in FOR, FOREACH or WHILE";
+    $$str_ref .= "\n${indent}last $type;";
+    return;
 }
 
 sub compile_LOOP {
@@ -627,9 +631,23 @@ ${indent}${INDENT}}
 ${indent}}";
 }
 
+sub compile_NEXT {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my $type = $self->{'_in_loop'} || die "Found next while not in FOR, FOREACH or WHILE";
+    $$str_ref .= "\n${indent}(\$var, \$error) = \$loop->get_next;" if $type eq 'FOREACH';
+    $$str_ref .= "\n${indent}next $type;";
+    return;
+}
+
 sub compile_PROCESS {
     my ($class, $self, $node, $str_ref, $indent) = @_;
     compile_play_named_args($self, $node, $str_ref, $indent);
+}
+
+sub compile_RETURN {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    $$str_ref .= "
+${indent}\$self->throw('return', 'Control Exception');";
 }
 
 sub compile_SET {
@@ -681,6 +699,31 @@ sub compile_SET {
     }
 
     return $out;
+}
+
+sub compile_STOP {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    $$str_ref .= "
+${indent}\$self->throw('stop', 'Control Exception');";
+}
+
+sub compile_UNLESS { shift->compile_IF(@_) }
+
+sub compile_WHILE {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+
+    local $self->{'_in_loop'} = 'WHILE';
+    my $code = compile_tree($self, $node->[4], "$indent$INDENT");
+
+    $$str_ref .= "
+${indent}my \$count = \$CGI::Ex::Template::WHILE_MAX;
+${indent}WHILE: while (--\$count > 0) {
+${indent}my \$var = ";
+    compile_expr($self, $node->[3], $str_ref, $indent);
+    $$str_ref .= ";
+${indent}last if ! \$var;$code
+${indent}}";
+    return;
 }
 
 ###----------------------------------------------------------------###
