@@ -561,22 +561,21 @@ sub play_PROCESS {
 
         ### allow for $template which is used in some odd instances
         } else {
-            my $doc;
-            if ($ref->[0] eq 'template') {
-                $doc = $filename;
-            } else {
-                $doc = $self->play_expr($ref);
-                if (ref($doc) ne 'HASH' || ! $doc->{'_tree'}) {
-                    $self->throw('process', "Passed item doesn't appear to be a valid document");
-                }
-            }
+            my $doc = $filename;
+
             $self->throw('process', "Recursion detected in $node->[0] \$template") if $self->{'_process_dollar_template'};
             local $self->{'_process_dollar_template'} = 1;
-            local $self->{'_component'} = $filename;
-            return if ! $doc->{'_tree'};
+            local $self->{'_component'} = $doc;
 
-            ### execute and trim
-            eval { $self->play_tree($doc->{'_tree'}, \$out) };
+            ### run the document however we can
+            if (ref($doc) ne 'HASH' || (! $doc->{'_perl'} && ! $doc->{'_tree'})) {
+                $self->throw('process', "Passed item doesn't appear to be a valid document");
+            } elsif ($doc->{'_perl'}) {
+                eval { $doc->{'_perl'}->{'code'}->($self, \$out) };
+            } else {
+                eval { $self->play_tree($doc->{'_tree'}, \$out) };
+            }
+
             if ($self->{'TRIM'}) {
                 $out =~ s{ \s+ $ }{}x;
                 $out =~ s{ ^ \s+ }{}x;
