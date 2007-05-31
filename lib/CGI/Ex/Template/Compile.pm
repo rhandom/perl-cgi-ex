@@ -840,6 +840,59 @@ ${indent}};";
 
 sub compile_UNLESS { shift->compile_IF(@_) }
 
+sub compile_USE {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+
+    my ($var, $module, $args) = @{ $node->[3] };
+
+    $$str_ref .= "\n$indent\$self->play_USE([";
+    if (! defined $var) {
+        $$str_ref .= 'undef';
+    } elsif (! ref $var) {
+        $var =~ s/\'/\\\'/g;
+        $$str_ref .= "'$var'";
+    } else {
+        $$str_ref .= '[';
+        local $self->{'_is_bare'} = 1;
+        compile_expr($self, $var, $str_ref, $indent);
+        $$str_ref .= ']';
+    }
+
+    if (! defined $module) {
+        die;
+    } elsif (! ref $module) {
+        $module =~ s/\'/\\\'/g;
+        $$str_ref .= ", '$module'";
+    } else {
+        $$str_ref .= ', [';
+        local $self->{'_is_bare'} = 1;
+        compile_expr($self, $module, $str_ref, $indent);
+        $$str_ref .= ']';
+    }
+
+    ### add on args
+    $$str_ref .= ", [[[undef, '{}'";
+    for (2 .. $#{ $args->[0]->[0] }) {
+        $$str_ref .= ', ';
+        if (ref $args->[0]->[0]->[$_]) {
+            local $self->{'_is_bare'} = 1;
+            $$str_ref .= '[';
+            compile_expr($self, $args->[0]->[0]->[$_], $str_ref, $indent);
+            $$str_ref .= ']';
+        } else {
+            compile_expr($self, $args->[0]->[0]->[$_], $str_ref, $indent);
+        }
+    }
+    $$str_ref .= '], 0]';
+    for (1 .. $#$args) {
+        $$str_ref .= ', ';
+        compile_expr($self, $args->[$_], $str_ref, $indent);
+    }
+    $$str_ref .= "]], ['$node->[0]', $node->[1], $node->[2]], \$out_ref);";
+
+    return;
+}
+
 sub compile_WHILE {
     my ($class, $self, $node, $str_ref, $indent) = @_;
 
