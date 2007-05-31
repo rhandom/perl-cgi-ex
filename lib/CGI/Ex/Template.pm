@@ -24,7 +24,7 @@ our $AUTOIMPORT = {
     Compile => [qw(load_perl compile_template)],
     HTE     => [qw(parse_tree_hte param output register_function clear_param query new_file new_scalar_ref new_array_ref new_filehandle)],
     Parse   => [qw(parse_tree parse_expr apply_precedence parse_args dump_parse dump_parse_expr)],
-    Play    => [qw(play_tree play_DUMP)],
+    Play    => [qw(play_tree play_DUMP play_PROCESS)],
     Tmpl    => [qw(parse_tree_tmpl set_delimiters set_strip set_value set_values parse_string set_dir parse_file loop_iteration fetch_loop_iteration)],
 };
 our $AUTOLOOKUP = { map { my $type = $_; map { ($_ => $type) } @{ $AUTOIMPORT->{$type} } } keys %$AUTOIMPORT };
@@ -391,8 +391,14 @@ sub load_template {
             $self->throw('block', "Unsupported BLOCK type \"$block\"") if ref $block;
             $block = eval { $self->load_template(\$block) } || $self->throw('block', 'Parse error on predefined block');
         }
-        $doc->{'name'}  = $file;
-        $doc->{'_tree'} = $block->{'_tree'} || $self->throw('block', "Invalid block definition (missing tree)");
+        $doc->{'name'} = $file;
+        if ($block->{'_perl'}) {
+            $doc->{'_perl'} = $block->{'_perl'};
+        } elsif ($doc->{'_tree'}) {
+            $doc->{'_tree'} = $block->{'_tree'};
+        } else {
+            $self->throw('block', "Invalid block definition (missing tree)");
+        }
         return $doc;
     }
 
