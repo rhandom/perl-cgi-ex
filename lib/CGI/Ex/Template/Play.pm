@@ -267,17 +267,14 @@ sub play_FOR {
     if (defined $var) {
         my ($item, $error) = $items->get_first;
         while (! $error) {
-
             $self->set_variable($var, $item);
 
-            ### execute the sub tree
             eval { $self->play_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
                 die $err if ! UNIVERSAL::can($err, 'type');
                 last if $err->type =~ /last|break/;
                 die  if $err->type ne 'next';
             }
-
             ($item, $error) = $items->get_next;
         }
         die $error if $error && $error != 3; # Template::Constants::STATUS_DONE;
@@ -292,19 +289,14 @@ sub play_FOR {
         #foreach (my $i = $items->index; $i <= $#$vals; $items->index(++ $i)) {
         my ($item, $error) = $items->get_first;
         while (! $error) {
+            @$copy{keys %$item} = values %$item if ref($item) eq 'HASH';
 
-            if (ref($item) eq 'HASH') {
-                @$copy{keys %$item} = values %$item;
-            }
-
-            ### execute the sub tree
             eval { $self->play_tree($sub_tree, $out_ref) };
             if (my $err = $@) {
                 die $err if ! UNIVERSAL::can($err, 'type');
                 last if $err->type =~ /last|break/;
                 die  if $err->type ne 'next';
             }
-
             ($item, $error) = $items->get_next;
         }
         die $error if $error && $error != 3; # Template::Constants::STATUS_DONE;
