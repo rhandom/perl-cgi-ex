@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => (! $is_tt) ? 93 : 86;
+use Test::More tests => (! $is_tt) ? 97 : 90;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -117,6 +117,12 @@ open($fh, ">$config_template") || die "Couldn't open $config_template: $!";
 print $fh "[% CONFIG DUMP => {html => 1} %][% DUMP foo %]";
 close $fh;
 
+###
+my $template_template = "$test_dir/template.tt";
+END { unlink $template_template };
+open($fh, ">$template_template") || die "Couldn't open $template_template: $!";
+print $fh "<<[% PROCESS \$template %][% content %]>>";
+close $fh;
 
 ###----------------------------------------------------------------###
 print "### INSERT ###########################################################\n";
@@ -184,6 +190,8 @@ process_ok("Foo[% blue='Blue' %]" => "BARFoo", {tt_config => [PRE_PROCESS => 'ba
 process_ok("Foo[% META foo='meta' %]" => "(metaBAR)Foo", {tt_config => [PRE_PROCESS => 'foo.tt']});
 process_ok("([% WRAPPER wrap.tt %] one [% END %])" => 'BAR(Hi one there)', {tt_config => [PRE_PROCESS => 'bar.tt']});
 
+process_ok("Foo" => "<<Foo>>Foo",  {tt_config => [PRE_PROCESS => 'template.tt']});
+
 ###----------------------------------------------------------------###
 print "### CONFIG POST_PROCESS ##############################################\n";
 
@@ -195,6 +203,8 @@ process_ok("Foo[% blue='Blue' %]" => "FooBlueBAR", {tt_config => [POST_PROCESS =
 process_ok("Foo[% META foo='meta' %]" => "Foo(metaBAR)", {tt_config => [POST_PROCESS => 'foo.tt']});
 process_ok("([% WRAPPER wrap.tt %] one [% END %])" => '(Hi one there)BAR', {tt_config => [POST_PROCESS => 'bar.tt']});
 
+process_ok("Foo" => "Foo<<Foo>>",  {tt_config => [POST_PROCESS => 'template.tt']});
+
 ###----------------------------------------------------------------###
 print "### CONFIG PROCESS ###################################################\n";
 
@@ -205,6 +215,8 @@ process_ok("Foo" => "BlueBAR",  {tt_config => [PROCESS => 'bar.tt'], blue => 'Bl
 process_ok("Foo[% META foo='meta' %]" => "(metaBAR)", {tt_config => [PROCESS => 'foo.tt']});
 process_ok("Foo[% META foo='meta' %]" => "BAR(metaBAR)", {tt_config => [PRE_PROCESS => 'bar.tt', PROCESS => 'foo.tt']});
 process_ok("Foo[% META foo='meta' %]" => "(metaBAR)BAR", {tt_config => [POST_PROCESS => 'bar.tt', PROCESS => 'foo.tt']});
+
+process_ok("Foo" => "<<Foo>>",  {tt_config => [PROCESS => 'template.tt']});
 
 ###----------------------------------------------------------------###
 print "### CONFIG WRAPPER ###################################################\n";
@@ -220,6 +232,8 @@ process_ok("[% META foo='BLAM' %] " => 'HiBLAM there', {tt_config => [WRAPPER =>
 process_ok(" one " => 'BARHi one there', {tt_config => [WRAPPER => 'wrap.tt', PRE_PROCESS => 'bar.tt']});
 process_ok(" one " => 'HiBARthere', {tt_config => [WRAPPER => 'wrap.tt', PROCESS => 'bar.tt']});
 process_ok(" one " => 'Hi one thereBAR', {tt_config => [WRAPPER => 'wrap.tt', POST_PROCESS => 'bar.tt']});
+
+process_ok("Foo" => "<<FooFoo>>",  {tt_config => [WRAPPER => 'template.tt']});
 
 ###----------------------------------------------------------------###
 print "### CONFIG ERRORS ####################################################\n";
