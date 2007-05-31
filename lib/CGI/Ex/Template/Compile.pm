@@ -428,6 +428,12 @@ sub compile_play_named_args {
     return;
 }
 
+sub _is_empty_named_args {
+    my ($hash_ident) = @_;
+    # [[undef, '{}', 'key1', 'val1', 'key2, 'val2'], 0]
+    return @{ $hash_ident->[0] } <= 2;
+}
+
 ###----------------------------------------------------------------###
 
 sub compile_BLOCK {
@@ -558,9 +564,9 @@ ${indent}};";
 sub compile_FOREACH { shift->compile_FOR(@_) }
 
 sub compile_IF {
-    my ($class, $self, $node, $str_ref, $indent, $unless) = @_;
+    my ($class, $self, $node, $str_ref, $indent) = @_;
 
-    $$str_ref .= "\n$indent" .($unless ? 'unless' : 'if'). ' (';
+    $$str_ref .= "\n${indent}if (";
     compile_expr($self, $node->[3], $str_ref, $indent);
     $$str_ref .= ") {";
     $$str_ref .= compile_tree($self, $node->[4], "$indent$INDENT");
@@ -596,37 +602,22 @@ sub compile_LOOP {
     $ref = [$ref, 0] if ! ref $ref;
 
     $$str_ref .= "
-${indent}my \$var = ";
+${indent}\$var = ";
     compile_expr($self, $ref, $str_ref, $indent);
 
     my $code = compile_tree($self, $node->[4], "$indent$INDENT$INDENT");
 
     $$str_ref .= ";
-${indent}my \$global = ! \$self->{'SYNTAX'} || \$self->{'SYNTAX'} ne 'ht' || \$self->{'GLOBAL_VARS'};
-${indent}my \$items  = ref(\$var) eq 'ARRAY' ? \$var : ref(\$var) eq 'HASH' ? [\$var] : [];
-
-${indent}my \$i = 0;
-${indent}for my \$ref (\@\$items) {
-${indent}${INDENT}\$self->throw('loop', 'Scalar value used in LOOP') if \$ref && ref(\$ref) ne 'HASH';
-${indent}${INDENT}local \$self->{'_vars'} = (! \$global) ? (\$ref || {}) : (ref(\$ref) eq 'HASH') ? {%{ \$self->{'_vars'} }, %\$ref} : \$self->{'_vars'};
-${indent}${INDENT}if (\$self->{'LOOP_CONTEXT_VARS'} && ! \$CGI::Ex::Template::QR_PRIVATE) {
-${indent}${INDENT}${INDENT}\$self->{'_vars'}->{'__counter__'} = ++\$i;
-${indent}${INDENT}${INDENT}\$self->{'_vars'}->{'__first__'} = \$i == 1 ? 1 : 0;
-${indent}${INDENT}${INDENT}\$self->{'_vars'}->{'__last__'}  = \$i == \@\$items ? 1 : 0;
-${indent}${INDENT}${INDENT}\$self->{'_vars'}->{'__inner__'} = \$i == 1 || \$i == \@\$items ? 0 : 1;
-${indent}${INDENT}${INDENT}\$self->{'_vars'}->{'__odd__'}   = (\$i % 2) ? 1 : 0;
-${indent}${INDENT}}
-${indent}${INDENT}
-${indent}${INDENT}### execute the sub tree
-${indent}${INDENT}eval {
-$code
-${indent}${INDENT}};
-${indent}${INDENT}if (my \$err = \$\@) {
-${indent}${INDENT}${INDENT}if (UNIVERSAL::isa(\$err, \$CGI::Ex::Template::PACKAGE_EXCEPTION)) {
-${indent}${INDENT}${INDENT}${INDENT}next if \$err->type eq 'next';
-${indent}${INDENT}${INDENT}${INDENT}last if \$err->type =~ /last|break/;
-${indent}${INDENT}${INDENT}}
-${indent}${INDENT}${INDENT}die \$err;
+${indent}if (\$var) {
+${indent}${INDENT}my \$global = ! \$self->{'SYNTAX'} || \$self->{'SYNTAX'} ne 'ht' || \$self->{'GLOBAL_VARS'};
+${indent}${INDENT}my \$items  = ref(\$var) eq 'ARRAY' ? \$var : ref(\$var) eq 'HASH' ? [\$var] : [];
+${indent}${INDENT}my \$i = 0;
+${indent}${INDENT}for my \$ref (\@\$items) {
+${indent}${INDENT}${INDENT}\$self->throw('loop', 'Scalar value used in LOOP') if \$ref && ref(\$ref) ne 'HASH';
+${indent}${INDENT}${INDENT}local \$self->{'_vars'} = (! \$global) ? (\$ref || {}) : (ref(\$ref) eq 'HASH') ? {%{ \$self->{'_vars'} }, %\$ref} : \$self->{'_vars'};
+${indent}${INDENT}${INDENT}\@{ \$self->{'_vars'} }{qw(__counter__ __first__ __last__ __inner__ __odd__)}
+${indent}${INDENT}${INDENT}${INDENT}= (++\$i, (\$i == 1 ? 1 : 0), (\$i == \@\$items ? 1 : 0), (\$i == 1 || \$i == \@\$items ? 0 : 1), (\$i % 2) ? 1 : 0)
+${indent}${INDENT}${INDENT}${INDENT}${INDENT}if \$self->{'LOOP_CONTEXT_VARS'} && ! \$CGI::Ex::Template::QR_PRIVATE;$code
 ${indent}${INDENT}}
 ${indent}}";
 }
@@ -671,12 +662,14 @@ sub compile_SET {
         if (! defined $val) { # not defined
             $$str_ref .= 'undef';
         } elsif ($node->[4] && $val == $node->[4]) { # a captured directive
-            die;
             my $sub_tree = $node->[4];
             $sub_tree = $sub_tree->[0]->[4] if $sub_tree->[0] && $sub_tree->[0]->[0] eq 'BLOCK';
-            $set = do { local $self->{'_return_capture_ident'} = 1; $self->compile_expr($set) };
-            $out .= $self->{'FACTORY'}->capture($set, $self->compile_tree($sub_tree));
-            next;
+            my $code = compile_tree($self, $sub_tree, "$indent$INDENT");
+            $$str_ref .= "${indent}do {
+${indent}${indent}my \$out = '';
+${indent}${indent}my \$out_ref = \\\$out;$code
+${indent}${indent}\$out
+${indent}}"
         } else { # normal var
             compile_expr($self, $val, $str_ref, $indent);
         }
@@ -705,6 +698,144 @@ sub compile_STOP {
     my ($class, $self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "
 ${indent}\$self->throw('stop', 'Control Exception');";
+}
+
+sub compile_SWITCH {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+
+    $$str_ref .= "
+${indent}\$var = ";
+    compile_expr($self, $node->[3], $str_ref, $indent);
+    $$str_ref .= ";";
+
+    my $default;
+    my $i = 0;
+    while ($node = $node->[5]) { # CASES
+        if (! defined $node->[3]) {
+            $default = $node->[4];
+            next;
+        }
+
+        $$str_ref .= _node_info($self, $node, $indent);
+        $$str_ref .= "\n$indent" .($i++ ? "} els" : ""). "if (do {
+${indent}${INDENT}no warnings;
+${indent}${INDENT}my \$var2 = ";
+        compile_expr($self, $node->[3], $str_ref, "$indent$INDENT");
+        $$str_ref .= ";
+${indent}${INDENT}scalar grep {\$_ eq \$var} (UNIVERSAL::isa(\$var2, 'ARRAY') ? \@\$var2 : \$var2);
+${indent}${INDENT}}) {
+${indent}${INDENT}my \$var;";
+
+        $$str_ref .= compile_tree($self, $node->[4], "$indent$INDENT");
+    }
+
+    if ($default) {
+        $$str_ref .= _node_info($self, $node, $indent);
+        $$str_ref .= "\n$indent" .($i++ ? "} else {" : "if (1) {");
+        $$str_ref .= compile_tree($self, $default, "$indent$INDENT");
+    }
+
+    $$str_ref .= "\n$indent}" if $i;
+
+    return;
+}
+
+sub compile_TAGS {}
+
+sub compile_THROW {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+
+    my ($name, $args) = @{ $node->[3] };
+
+    my ($named, @args) = @$args;
+    push @args, $named if ! _is_empty_named_args($named); # add named args back on at end - if there are some
+
+    $$str_ref .= "
+${indent}\$self->throw(";
+    compile_expr($self, $name, $str_ref, $indent);
+    $$str_ref .= ", [";
+    foreach (0 .. $#args) {
+        compile_expr($self, $args[$_], $str_ref, $indent);
+        $$str_ref .= ", " if $_ != $#args;
+    }
+    $$str_ref .= "]);";
+    return;
+}
+
+
+sub compile_TRY {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+
+    $$str_ref .= "
+${indent}do {
+${indent}my \$out = '';
+${indent}eval {
+${indent}${INDENT}my \$out_ref = \\\$out;"
+    . compile_tree($self, $node->[4], "$indent$INDENT") ."
+${indent}};
+${indent}my \$err = \$\@;
+${indent}\$\$out_ref .= \$out;
+${indent}if (\$err) {";
+
+    my $final;
+    my $i = 0;
+    my $catches_str = '';
+    my @names;
+    while ($node = $node->[5]) { # CATCHES
+        if ($node->[0] eq 'FINAL') {
+            $final = $node->[4];
+            next;
+        }
+        $catches_str .= _node_info($self, $node, "$indent$INDENT");
+        $catches_str .= "\n${indent}${INDENT}} elsif (\$index == ".(scalar @names).") {";
+        $catches_str .= compile_tree($self, $node->[4], "$indent$INDENT$INDENT");
+        push @names, $node->[3];
+    }
+    if (@names) {
+        $$str_ref .= "
+${indent}${INDENT}\$err = \$self->exception('undef', \$err) if ref(\$err) !~ /Template::Exception\$/;
+${indent}${INDENT}my \$type = \$err->type;
+${indent}${INDENT}die \$err if \$type =~ /stop|return/;
+${indent}${INDENT}local \$self->{'_vars'}->{'error'} = \$err;
+${indent}${INDENT}local \$self->{'_vars'}->{'e'}     = \$err;
+
+${indent}${INDENT}my \$index;
+${indent}${INDENT}my \@names = (";
+        $i = 0;
+        foreach $i (0 .. $#names) {
+            if (defined $names[$i]) {
+                $$str_ref .= "\n${indent}${INDENT}${INDENT}scalar(";
+                compile_expr($self, $names[$i], $str_ref, "$indent$INDENT$INDENT");
+                $$str_ref .= "), # $i;";
+            } else {
+                $$str_ref .= "\n${indent}${INDENT}${INDENT}undef, # $i";
+            }
+        }
+        $$str_ref .= "
+${indent}${INDENT});
+${indent}${INDENT}for my \$i (0 .. \$#names) {
+${indent}${INDENT}${INDENT}my \$name = (! defined(\$names[\$i]) || lc(\$names[\$i]) eq 'default') ? '' : \$names[\$i];
+${indent}${INDENT}${INDENT}\$index = \$i if \$type =~ m{^ \\Q\$name\\E \\b}x && (! defined(\$index) || length(\$names[\$index]) < length(\$name));
+${indent}${INDENT}}
+${indent}${INDENT}if (! defined \$index) {
+${indent}${INDENT}${INDENT}die \$err;"
+.$catches_str."
+${indent}${INDENT}}";
+
+    } else {
+        $$str_ref .= "
+${indent}\$self->throw('throw', 'Missing CATCH block');";
+    }
+    $$str_ref .= "
+${indent}}";
+    if ($final) {
+        $$str_ref .= _node_info($self, $node, $indent);
+        $$str_ref .= compile_tree($self, $final, "$indent");
+    }
+    $$str_ref .="
+${indent}};";
+
+    return;
 }
 
 sub compile_UNLESS { shift->compile_IF(@_) }
