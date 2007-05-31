@@ -135,6 +135,19 @@ sub compile_tree {
             next;
         }
 
+        if ($self->{'_debug_dirs'} && ! $self->{'_debug_off'}) {
+            my $info = $self->node_info($node);
+            my ($file, $line, $text) = @{ $info }{qw(file line text)};
+            s/\'/\\\'/g foreach $file, $line, $text;
+            $code .= "\n
+${indent}if (\$self->{'_debug_dirs'} && ! \$self->{'_debug_off'}) { # DEBUG
+${indent}${INDENT}my \$info = {file => '$file', line => '$line', text => '$text'};
+${indent}${INDENT}my \$format = \$self->{'_debug_format'} || \$self->{'DEBUG_FORMAT'} || \"\\n## \\\$file line \\\$line : [% \\\$text %] ##\\n\";
+${indent}${INDENT}\$format =~ s{\\\$(file|line|text)}{\$info->{\$1}}g;
+${indent}${INDENT}\$\$out_ref .= \$format;
+${indent}}";
+        }
+
         $code .= _node_info($self, $node, $indent);
 
         # get method to call
@@ -466,6 +479,23 @@ sub compile_CLEAR {
     my ($class, $self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "
 ${indent}\$\$out_ref = '';";
+}
+
+sub compile_DEBUG {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+
+    my $text = $node->[3]->[0];
+
+    if ($text eq 'on') {
+        $$str_ref .= "\n${indent}delete \$self->{'_debug_off'};";
+    } elsif ($text eq 'off') {
+        $$str_ref .= "\n${indent}\$self->{'_debug_off'} = 1;";
+    } elsif ($text eq 'format') {
+        my $format = $node->[3]->[1];
+        $format =~ s/\'/\\\'/g;
+        $$str_ref .= "\n${indent}\$self->{'_debug_format'} = '$format';";
+    }
+    return;
 }
 
 sub compile_DEFAULT {
