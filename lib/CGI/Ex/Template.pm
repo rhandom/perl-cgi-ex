@@ -24,7 +24,7 @@ our $AUTOIMPORT = {
     Compile => [qw(load_perl compile_template)],
     HTE     => [qw(parse_tree_hte param output register_function clear_param query new_file new_scalar_ref new_array_ref new_filehandle)],
     Parse   => [qw(parse_tree parse_expr apply_precedence parse_args dump_parse dump_parse_expr)],
-    Play    => [qw(play_tree)],
+    Play    => [qw(play_tree play_DUMP)],
     Tmpl    => [qw(parse_tree_tmpl set_delimiters set_strip set_value set_values parse_string set_dir parse_file loop_iteration fetch_loop_iteration)],
 };
 our $AUTOLOOKUP = { map { my $type = $_; map { ($_ => $type) } @{ $AUTOIMPORT->{$type} } } keys %$AUTOIMPORT };
@@ -319,8 +319,6 @@ sub _process {
             $doc->{'_perl'}->{'code'}->($self, $out_ref);
         } elsif (! $doc->{'_tree'}) {
             $self->throw('process', 'No _perl and no _tree found');
-        } elsif (! @{ $doc->{'_tree'} }) { # no tags found - just return the content
-            $$out_ref .= ${ $doc->{'_content'} };
         } else {
             $self->play_tree($doc->{'_tree'}, $out_ref);
         }
@@ -696,6 +694,175 @@ sub play_expr {
                     $ref = $ref->[$name];
                 } elsif ($LIST_OPS->{$name}) {
                     $ref = $LIST_OPS->{$name}->($ref, $args ? map { $self->play_expr($_) } @$args : ());
+                } else {
+                    $ref = undef;
+                }
+            }
+        }
+
+    } # end of while
+
+    ### allow for undefinedness
+    if (! defined $ref) {
+        if ($self->{'_debug_undef'}) {
+            my $chunk = $var->[$i - 2];
+            $chunk = $self->play_expr($chunk) if ref($chunk) eq 'ARRAY';
+            die "$chunk is undefined\n";
+        } else {
+            $ref = $self->undefined_any($var);
+        }
+    }
+
+    return $ref;
+}
+
+### similar to play_expr - but optimized for variable lookup
+sub play_variable {
+    my $self = shift;
+    my $i = 0;
+
+    ### $self->play_variable('bar', [undef, 0, '|', 'fmt', []]); # operates on string containing bar
+    my ($var, $name, $ref);
+    if (@_ == 2) {
+        $ref = shift;
+        $var = shift;
+        $i++;
+    ### $self->play_variable(['foo', 0, '|', 'fmt', []]); # operates on variable foo
+    } elsif (@_ == 1) {
+        $var  = shift;
+        $name = $var->[$i++];
+
+        return if $QR_PRIVATE && $name =~ $QR_PRIVATE; # don't allow vars that begin with _
+        $ref = $self->{'_vars'}->{$name};
+        if (! defined $ref) {
+            $ref = ($name eq 'template' || $name eq 'component') ? $self->{"_$name"} : $VOBJS->{$name};
+            $ref = $SCALAR_OPS->{$name} if ! $ref && (! defined($self->{'VMETHOD_FUNCTIONS'}) || $self->{'VMETHOD_FUNCTIONS'});
+            $ref = $self->{'_vars'}->{lc $name} if ! defined $ref && $self->{'LOWER_CASE_VAR_FALLBACK'};
+        }
+    } else {
+        $self->throw('play_variable', "Wrong number of args");
+    }
+    my $args = $var->[$i++];
+
+
+    my %seen_filters;
+    while (defined $ref) {
+
+        ### check at each point if the rurned thing was a code
+        if (UNIVERSAL::isa($ref, 'CODE')) {
+            my @results = $ref->($args ? @$args : ());
+            if (defined $results[0]) {
+                $ref = ($#results > 0) ? \@results : $results[0];
+            } elsif (defined $results[1]) {
+                die $results[1]; # TT behavior - why not just throw ?
+            } else {
+                $ref = undef;
+                last;
+            }
+        }
+
+        ### descend one chained level
+        last if $i >= $#$var;
+        my $was_dot_call = $var->[$i++] eq '.';
+        $name            = $var->[$i++];
+        $args            = $var->[$i++];
+        if ($QR_PRIVATE && $name =~ $QR_PRIVATE) { # don't allow vars that begin with _
+            $ref = undef;
+            last;
+        }
+
+        ### allow for scalar and filter access (this happens for every non virtual method call)
+        if (! ref $ref) {
+            if ($SCALAR_OPS->{$name}) {                        # normal scalar op
+                $ref = $SCALAR_OPS->{$name}->($ref, $args ? @$args : ());
+
+            } elsif ($LIST_OPS->{$name}) {                     # auto-promote to list and use list op
+                $ref = $LIST_OPS->{$name}->([$ref], $args ? @$args : ());
+
+            } elsif (my $filter = $self->{'FILTERS'}->{$name}    # filter configured in Template args
+                     || $FILTER_OPS->{$name}                     # predefined filters in CET
+                     || (UNIVERSAL::isa($name, 'CODE') && $name) # looks like a filter sub passed in the stash
+                     || $self->list_filters->{$name}) {          # filter defined in Template::Filters
+
+                if (UNIVERSAL::isa($filter, 'CODE')) {
+                    $ref = eval { $filter->($ref) }; # non-dynamic filter - no args
+                    if (my $err = $@) {
+                        $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
+                        die $err;
+                    }
+                } elsif (! UNIVERSAL::isa($filter, 'ARRAY')) {
+                    $self->throw('filter', "invalid FILTER entry for '$name' (not a CODE ref)");
+
+                } elsif (@$filter == 2 && UNIVERSAL::isa($filter->[0], 'CODE')) { # these are the TT style filters
+                    eval {
+                        my $sub = $filter->[0];
+                        if ($filter->[1]) { # it is a "dynamic filter" that will return a sub
+                            ($sub, my $err) = $sub->($self->context, $args ? @$args : ());
+                            if (! $sub && $err) {
+                                $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
+                                die $err;
+                            } elsif (! UNIVERSAL::isa($sub, 'CODE')) {
+                                $self->throw('filter', "invalid FILTER for '$name' (not a CODE ref)")
+                                    if ref($sub) !~ /Template::Exception$/;
+                                die $sub;
+                            }
+                        }
+                        $ref = $sub->($ref);
+                    };
+                    if (my $err = $@) {
+                        $self->throw('filter', $err) if ref($err) !~ /Template::Exception$/;
+                        die $err;
+                    }
+                } else { # this looks like our vmethods turned into "filters" (a filter stored under a name)
+                    $self->throw('filter', 'Recursive filter alias \"$name\"') if $seen_filters{$name} ++;
+                    $var = [$name, 0, '|', @$filter, @{$var}[$i..$#$var]]; # splice the filter into our current tree
+                    $i = 2;
+                }
+                if (scalar keys %seen_filters
+                    && $seen_filters{$var->[$i - 5] || ''}) {
+                    $self->throw('filter', "invalid FILTER entry for '".$var->[$i - 5]."' (not a CODE ref)");
+                }
+            } else {
+                $ref = undef;
+            }
+
+        } else {
+
+            ### method calls on objects
+            if ($was_dot_call && UNIVERSAL::can($ref, 'can')) {
+                my @args = $args ? @$args : ();
+                my @results = eval { $ref->$name(@args) };
+                if ($@) {
+                    my $class = ref $ref;
+                    die $@ if ref $@ || $@ !~ /Can\'t locate object method "\Q$name\E" via package "\Q$class\E"/;
+                } elsif (defined $results[0]) {
+                    $ref = ($#results > 0) ? \@results : $results[0];
+                    next;
+                } elsif (defined $results[1]) {
+                    die $results[1]; # TT behavior - why not just throw ?
+                } else {
+                    $ref = undef;
+                    last;
+                }
+                # didn't find a method by that name - so fail down to hash and array access
+            }
+
+            ### hash member access
+            if (UNIVERSAL::isa($ref, 'HASH')) {
+                if ($was_dot_call && exists($ref->{$name}) ) {
+                    $ref = $ref->{$name};
+                } elsif ($HASH_OPS->{$name}) {
+                    $ref = $HASH_OPS->{$name}->($ref, $args ? @$args : ());
+                } else {
+                    $ref = undef;
+                }
+
+            ### array access
+            } elsif (UNIVERSAL::isa($ref, 'ARRAY')) {
+                if ($name =~ m{ ^ -? $QR_INDEX $ }ox) {
+                    $ref = $ref->[$name];
+                } elsif ($LIST_OPS->{$name}) {
+                    $ref = $LIST_OPS->{$name}->($ref, $args ? @$args : ());
                 } else {
                     $ref = undef;
                 }
