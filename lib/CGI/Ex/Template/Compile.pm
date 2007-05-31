@@ -622,6 +622,67 @@ ${indent}${INDENT}}
 ${indent}}";
 }
 
+sub compile_MACRO {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($name, $args) = @{ $node->[3] };
+
+    ### get the sub tree
+    my $sub_tree = $node->[4];
+    if (! $sub_tree || ! $sub_tree->[0]) {
+        $$str_ref .= "
+${indent}\$var = undef;
+${indent}";
+        local $self->{'_is_set'} = 1;
+        compile_expr($self, $name, $str_ref, $indent);
+        $$str_ref .= ";";
+        return;
+    } elsif ($sub_tree->[0]->[0] eq 'BLOCK') {
+        $sub_tree = $sub_tree->[0]->[4];
+    }
+
+    my $code = compile_tree($self, $sub_tree, "$indent$INDENT");
+
+    $$str_ref .= "
+${indent}my \$self_copy = \$self;
+${indent}eval {require Scalar::Util; Scalar::Util::weaken(\$self_copy)};
+${indent}\$var = sub {
+${indent}${INDENT}my \$copy = \$self_copy->{'_vars'};
+${indent}${INDENT}local \$self_copy->{'_vars'}= {%\$copy};
+
+${indent}${INDENT}local \$self_copy->{'_macro_recurse'} = \$self_copy->{'_macro_recurse'} || 0;
+${indent}${INDENT}my \$max = \$self_copy->{'MAX_MACRO_RECURSE'} || \$CGI::Ex::Template::MAX_MACRO_RECURSE;
+${indent}${INDENT}\$self_copy->throw('macro_recurse', \"MAX_MACRO_RECURSE \$max reached\")
+${indent}${INDENT}${INDENT}if ++\$self_copy->{'_macro_recurse'} > \$max;
+";
+
+    foreach my $var (@$args) {
+        $$str_ref .= "
+${indent}${INDENT}\$self_copy->set_variable([";
+        local $self->{'_is_bare'} = 1;
+        compile_expr($self, $var, $str_ref, $indent);
+        $$str_ref .= "], shift(\@_));";
+    }
+    $$str_ref .= "
+${indent}${INDENT}if (\@_ && \$_[-1] && UNIVERSAL::isa(\$_[-1],'HASH')) {
+${indent}${INDENT}${INDENT}my \$named = pop \@_;
+${indent}${INDENT}${INDENT}foreach my \$name (sort keys %\$named) {
+${indent}${INDENT}${INDENT}${INDENT}\$self_copy->set_variable([\$name, 0], \$named->{\$name});
+${indent}${INDENT}${INDENT}}
+${indent}${INDENT}}
+
+${indent}${INDENT}my \$out = '';
+${indent}${INDENT}my \$out_ref = \\\$out;$code
+${indent}${INDENT}return \$out;
+${indent}};
+${indent}";
+
+    local $self->{'_is_set'} = 1;
+    compile_expr($self, $name, $str_ref, $indent);
+    $$str_ref .= ";";
+
+    return;
+}
+
 sub compile_NEXT {
     my ($class, $self, $node, $str_ref, $indent) = @_;
     my $type = $self->{'_in_loop'} || die "Found next while not in FOR, FOREACH or WHILE";
