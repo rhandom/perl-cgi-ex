@@ -45,7 +45,12 @@ sub stash {
     return $self->{'stash'} ||= bless {_template => $self->_template}, 'CGI::Ex::Template::_Stash';
 }
 
-sub insert { shift->_template->_insert(@_) }
+sub insert {
+    my ($self, $file) = @_;;
+    my $t = $self->_template;
+    my $ref = $t->slurp($t->include_filename($file));
+    return $$ref;
+}
 
 sub eval_perl { shift->_template->{'EVAL_PERL'} }
 
