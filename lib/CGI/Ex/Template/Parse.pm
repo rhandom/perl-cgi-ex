@@ -174,7 +174,7 @@ sub parse_expr {
 
     ### allow for numbers
     } elsif ($$str_ref =~ m{ \G ( $QR_NUM ) }gcx) {
-        my $number = $1;
+        my $number = 0 + $1;
         push @var, \ $number;
         $is_literal = 1;
 
