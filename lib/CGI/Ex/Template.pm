@@ -21,7 +21,7 @@ our @EXPORT_OK = qw(@CONFIG_COMPILETIME @CONFIG_RUNTIME
 our $AUTOLOAD;
 our $AUTOROLE = {
     TT      => [qw(parse_tree_tt3 process)],
-    Compile => [qw(load_perl compile_template)],
+    Compile => [qw(load_perl compile_template compile_tree compile_expr compile_expr_flat compile_operator)],
     HTE     => [qw(parse_tree_hte param output register_function clear_param query new_file new_scalar_ref new_array_ref new_filehandle)],
     Parse   => [qw(parse_tree parse_expr apply_precedence parse_args dump_parse dump_parse_expr)],
     Play    => [qw(play_tree list_plugins)],
