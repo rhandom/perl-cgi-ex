@@ -24,7 +24,7 @@ our $AUTOROLE = {
     Compile => [qw(load_perl compile_template)],
     HTE     => [qw(parse_tree_hte param output register_function clear_param query new_file new_scalar_ref new_array_ref new_filehandle)],
     Parse   => [qw(parse_tree parse_expr apply_precedence parse_args dump_parse dump_parse_expr)],
-    Play    => [qw(play_tree play_CONFIG play_DUMP play_PROCESS play_INCLUDE play_USE list_plugins)],
+    Play    => [qw(play_tree list_plugins)],
     Tmpl    => [qw(parse_tree_tmpl set_delimiters set_strip set_value set_values parse_string set_dir parse_file loop_iteration fetch_loop_iteration)],
 };
 our $AUTOLOOKUP = { map { my $type = $_; map { ($_ => $type) } @{ $AUTOROLE->{$type} } } keys %$AUTOROLE };
@@ -377,7 +377,7 @@ sub load_template {
         if (! defined($self->{'CACHE_STR_REFS'}) || $self->{'CACHE_STR_REFS'}) {
             require Digest::MD5;
             my $sum   = Digest::MD5::md5_hex($$file);
-            my $_file = '/CET_str_ref_cache/'.substr($sum,0,3).'/'.$sum;
+            my $_file = 'CET_str_ref_cache/'.substr($sum,0,3).'/'.$sum;
             return $self->{'_documents'}->{$_file} if $self->{'_documents'}->{$_file}; # no-ttl necessary
             $doc->{'_filename'} = $_file;
         } else {
