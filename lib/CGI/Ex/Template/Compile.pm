@@ -175,17 +175,15 @@ sub compile_expr {
 
     ### return literals
     if (! ref $var) {
-        #if ($val) { # allow for bare literal setting [% 'foo' = 'bar' %]
-        #    $var = [$var, 0];
-        #} else {
-        if ($var =~ /^-?[1-9]\d{0,13}\b(?:|\.0|\.\d{0,13}[1-9])$/) { # return unquoted numbers if it is simple
+        if (! defined $var) {
+            $$str_ref .= 'undef';
+        } elsif ($var =~ /^-?[1-9]\d{0,13}\b(?:|\.0|\.\d{0,13}[1-9])$/ && ! $self->{'_no_bare_numbers'}) { # return unquoted numbers if it is simple
             $$str_ref .= $var;
         } else {
-            $var =~ s/\'/\\\'/g;
+            $var =~ s/([\'\\])/\\$1/g;
             $$str_ref .= "'$var'";  # return quoted items - if they are simple
         }
         return;
-        #}
     }
 
     ### determine the top level of this particular variable access
@@ -194,28 +192,24 @@ sub compile_expr {
     my $name = $var->[$i++];
     my $args = $var->[$i++];
     my $is_set   = delete($self->{'_is_set'});
-    my $is_bare  = delete($self->{'_is_bare'});
     my $is_undef = delete($self->{'_is_undef'});
-    my $open = $is_bare ? '' : $is_set ? '$self->set_variable([' : $is_undef ? '$self->undefined_get([' : '$self->play_variable([';
+    my $open = '$self->'.($is_set ? 'set_variable' : $is_undef ? 'undefined_get' : 'play_variable').'([';
 
     if (ref $name) {
         if (! defined $name->[0]) { # operator
-            if ($i >= @$var && ! $is_set && ! $is_bare) {
+            if ($is_set) {
+                $$str_ref .= "\$var = 'null op set of complex string'";
+                return;
+            } elsif ($i >= @$var) {
                 compile_operator($self, $name, $str_ref, $indent);
                 return;
-            } elsif ($is_set) {
-                $$str_ref .= "\n# null op set of complex string";
-                return;
-            } elsif ($is_bare) {
-                debug $var;
-                print $$str_ref;
-                die ;
             }
 
             $$str_ref .= "\$self->play_variable(";
             compile_operator($self, $name, $str_ref, $indent);
             $$str_ref .= ", [undef";
         } else { # a named variable access (ie via $name.foo)
+            ### TODO - there are edge cases when doing SET ${ $foo } = 1 that we "may" want to investigate
             $$str_ref .= $open;
             compile_expr($self, $name, $str_ref, $indent);
         }
@@ -229,7 +223,7 @@ sub compile_expr {
             $$str_ref .= "'$name'";
         }
     } else {
-        die "Parsed tree error - found an anomaly" if $is_set || $is_bare;
+        die "Parsed tree error - found an anomaly" if $is_set;
         $$str_ref .= "''"; # not sure we can get here
     }
 
@@ -286,8 +280,23 @@ sub compile_expr {
         }
     }
 
-    $$str_ref .= $is_bare ? '' : $is_set ? '], $var)' : '])';
+    $$str_ref .= $is_set ? '], $var)' : '])';
 }
+
+### same as compile_expr - but without play_variable escaping - this is essentially a Dumper
+sub compile_expr_flat {
+    my ($self, $var) = @_;
+
+    if (! ref $var) {
+        return 'undef' if ! defined $var;
+        return $var if $var =~ /^(-?[1-9]\d{0,13}|0)$/;
+        $var =~ s/([\'\\])/\\$1/g;
+        return "'$var'";
+    }
+
+    return '['.join(', ', map { compile_expr_flat($self, $_) } @$var).']';
+}
+
 
 ### plays operators
 ### [[undef, '+', 1, 2], 0]  : do { no warnings; 1 + 2 }
@@ -411,16 +420,9 @@ ${indent}}";
         $$str_ref .= ')';
 
     } elsif ($op eq '\\') {
-        $$str_ref .= "do { my \$var = \$self->play_operator([undef, '\\\\', [";
-        if (! ref $the_rest[0]) {
-            $the_rest[0] = '' if ! defined $the_rest[0];
-            $the_rest[0] =~ s/([\'\\])/\\$1/g;
-            $$str_ref .= "[undef, '~', '$the_rest[0]'], 0";
-        } else {
-            local $self->{'_is_bare'} = 1;
-            compile_expr($self, $the_rest[0], $str_ref, $indent);
-        }
-        $$str_ref .= "]]); \$var = \$var->() if UNIVERSAL::isa(\$var, 'CODE'); \$var }";
+        $$str_ref .= "do { my \$var = \$self->play_operator([undef, '\\\\', ";
+        $$str_ref .= compile_expr_flat($self, $the_rest[0]);
+        $$str_ref .= "]); \$var = \$var->() if UNIVERSAL::isa(\$var, 'CODE'); \$var }";
     } elsif ($op eq 'qr') {
         $$str_ref .= $the_rest[1] ? "qr{(?$the_rest[1]:$the_rest[0])}" : "qr{$the_rest[0]}";
 
@@ -435,23 +437,11 @@ ${indent}}";
         compile_expr($self, $the_rest[1], $str_ref, $indent);
         $$str_ref .= ')';
     } else {
-        my $strop = $op =~ /^(eq|ne|gt|ge|lt|le|cmp)$/;
+        local $self->{'_no_bare_numbers'} = 1; # allow for == vs eq distinction on strings
         $$str_ref .= 'do { no warnings; ';
-        if (ref $the_rest[0] || ! $strop) {
-            compile_expr($self, $the_rest[0], $str_ref, $indent);
-        } else {
-            $the_rest[0] = '' if ! defined $the_rest[0];
-            $the_rest[0] =~ s/\'/\\\'/g;
-            $$str_ref .= "'$the_rest[0]'";
-        }
+        compile_expr($self, $the_rest[0], $str_ref, $indent);
         $$str_ref .= " $op ";
-        if (ref $the_rest[1] || ! $strop) {
-            compile_expr($self, $the_rest[1], $str_ref, $indent);
-        } else {
-            $the_rest[1] = '' if ! defined $the_rest[1];
-            $the_rest[1] =~ s/\'/\\\'/g;
-            $$str_ref .= "'$the_rest[1]'";
-        }
+        compile_expr($self, $the_rest[1], $str_ref, $indent);
         $$str_ref .= ' }';
     }
 }
@@ -461,26 +451,9 @@ sub compile_play_named_args {
     my $directive = $node->[0];
     die "Invalid node name \"$directive\"" if $directive !~ /^\w+$/;
 
-    my $args = $node->[3];
-    $$str_ref .= "\n$indent\$self->play_$directive([[[undef, '{}'";
-    debug $args;
-    for (2 .. $#{ $args->[0]->[0] }) {
-        $$str_ref .= ', ';
-        if (!($_ % 2) && ref $args->[0]->[0]->[$_]) {
-            local $self->{'_is_bare'} = 1;
-            $$str_ref .= '[';
-            compile_expr($self, $args->[0]->[0]->[$_], $str_ref, $indent);
-            $$str_ref .= ']';
-        } else {
-            compile_expr($self, $args->[0]->[0]->[$_], $str_ref, $indent);
-        }
-    }
-    $$str_ref .= '], 0]';
-    for (1 .. $#$args) {
-        $$str_ref .= ', ';
-        compile_expr($self, $args->[$_], $str_ref, $indent);
-    }
-    $$str_ref .= "], ['$node->[0]', $node->[1], $node->[2]], \$out_ref);";
+    $$str_ref .= "
+${indent}\$var = ".compile_expr_flat($self, $node->[3]).";
+${indent}\$self->play_$directive(\$var, ['$node->[0]', $node->[1], $node->[2]], \$out_ref);";
 
     return;
 }
@@ -533,6 +506,11 @@ sub compile_CLEAR {
 ${indent}\$\$out_ref = '';";
 }
 
+sub compile_CONFIG {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    compile_play_named_args($self, $node, $str_ref, $indent);
+}
+
 sub compile_DEBUG {
     my ($class, $self, $node, $str_ref, $indent) = @_;
 
@@ -579,9 +557,17 @@ sub compile_FILTER {
     my ($name, $filter) = @{ $node->[3] };
     return if ! @$filter;
 
-    my $_filter = '';
-    local $self->{'_is_bare'} = 1;
-    compile_expr($self, $filter, \$_filter, $indent);
+    my $_filter = compile_expr_flat($self, $filter);
+    $_filter =~ s/^\[//;
+    $_filter =~ s/\]$//;
+    if (ref $filter->[0]) {
+        if (@$filter == 2) { # [% n FILTER $foo %]
+            $_filter =~ s/,\s*0$//;
+            $_filter = "\$self->play_expr($_filter)";
+        } else {
+            $_filter = "'', 0"; # if the filter name is too complex - install null filter
+        }
+    }
 
     ### allow for alias
     if (length $name) {
@@ -591,6 +577,7 @@ sub compile_FILTER {
 
     my $code = compile_tree($self, $node->[4], "$indent$INDENT");
 
+
     $$str_ref .= "
 ${indent}\$var = do {
 ${indent}${INDENT}my \$out = '';
@@ -599,7 +586,8 @@ $code
 
 ${indent}${INDENT}\$out;
 ${indent}};
-${indent}\$\$out_ref .= \$self->play_variable(\$var, [undef, 0, '|', $_filter]);";
+${indent}\$var = \$self->play_variable(\$var, [undef, 0, '|', $_filter]);
+${indent}\$\$out_ref .= \$var if defined \$var;";
 
 }
 
@@ -739,10 +727,9 @@ ${indent}${INDENT}${INDENT}if ++\$self_copy->{'_macro_recurse'} > \$max;
 
     foreach my $var (@$args) {
         $$str_ref .= "
-${indent}${INDENT}\$self_copy->set_variable([";
-        local $self->{'_is_bare'} = 1;
-        compile_expr($self, $var, $str_ref, $indent);
-        $$str_ref .= "], shift(\@_));";
+${indent}${INDENT}\$self_copy->set_variable(";
+        $$str_ref .= compile_expr_flat($self, $var);
+        $$str_ref .= ", shift(\@_));";
     }
     $$str_ref .= "
 ${indent}${INDENT}if (\@_ && \$_[-1] && UNIVERSAL::isa(\$_[-1],'HASH')) {
@@ -861,7 +848,7 @@ sub compile_SET {
             $$str_ref .= "${indent}do {
 ${indent}${indent}my \$out = '';
 ${indent}${indent}my \$out_ref = \\\$out;$code
-${indent}${indent}\$out
+${indent}${indent}\$out;
 ${indent}}"
         } else { # normal var
             compile_expr($self, $val, $str_ref, $indent);
@@ -1035,55 +1022,7 @@ sub compile_UNLESS { shift->compile_IF(@_) }
 
 sub compile_USE {
     my ($class, $self, $node, $str_ref, $indent) = @_;
-
-    my ($var, $module, $args) = @{ $node->[3] };
-
-    $$str_ref .= "\n$indent\$self->play_USE([";
-    if (! defined $var) {
-        $$str_ref .= 'undef';
-    } elsif (! ref $var) {
-        $var =~ s/\'/\\\'/g;
-        $$str_ref .= "'$var'";
-    } else {
-        $$str_ref .= '[';
-        local $self->{'_is_bare'} = 1;
-        compile_expr($self, $var, $str_ref, $indent);
-        $$str_ref .= ']';
-    }
-
-    if (! defined $module) {
-        die;
-    } elsif (! ref $module) {
-        $module =~ s/\'/\\\'/g;
-        $$str_ref .= ", '$module'";
-    } else {
-        $$str_ref .= ', [';
-        local $self->{'_is_bare'} = 1;
-        compile_expr($self, $module, $str_ref, $indent);
-        $$str_ref .= ']';
-    }
-
-    ### add on args
-    $$str_ref .= ", [[[undef, '{}'";
-    for (2 .. $#{ $args->[0]->[0] }) {
-        $$str_ref .= ', ';
-        if (!($_ % 2) && ref $args->[0]->[0]->[$_]) {
-            local $self->{'_is_bare'} = 1;
-            $$str_ref .= '[';
-            compile_expr($self, $args->[0]->[0]->[$_], $str_ref, $indent);
-            $$str_ref .= ']';
-        } else {
-            compile_expr($self, $args->[0]->[0]->[$_], $str_ref, $indent);
-        }
-    }
-    $$str_ref .= '], 0]';
-    for (1 .. $#$args) {
-        $$str_ref .= ', ';
-        compile_expr($self, $args->[$_], $str_ref, $indent);
-    }
-    $$str_ref .= "]], ['$node->[0]', $node->[1], $node->[2]], \$out_ref);";
-
-    return;
+    compile_play_named_args($self, $node, $str_ref, $indent);
 }
 
 sub compile_WHILE {
