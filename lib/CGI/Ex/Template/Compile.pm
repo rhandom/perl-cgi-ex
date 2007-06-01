@@ -87,10 +87,11 @@ sub compile_template {
 # From file ".($doc->{'_filename'} || $doc->{'name'})."
 
 my \$blocks = {$self->{'_blocks'}};
-my \$meta   = {};
+my \$meta   = {$self->{'_meta'}};
 my \$code   = sub {
 ${INDENT}my (\$self, \$out_ref, \$var) = \@_;"
 .($self->{'_blocks'} ? "\n${INDENT}\@{ \$self->{'BLOCKS'} }{ keys %\$blocks } = values %\$blocks;" : "")
+.($self->{'_meta'}   ? "\n${INDENT}\@{ \$self->{'_template'} }{ keys %\$meta } = values %\$meta;" : "")
 ."$code
 
 ${INDENT}return 1;
@@ -130,6 +131,7 @@ sub compile_tree {
 
         # text nodes are just the bare text
         if (! ref $node) {
+            $node =~ s/\\/\\\\/g;
             $node =~ s/\'/\\\'/g;
             $code .= "\n\n${indent}\$\$out_ref .= '$node';";
             next;
@@ -201,8 +203,14 @@ sub compile_expr {
             if ($i >= @$var && ! $is_set && ! $is_bare) {
                 compile_operator($self, $name, $str_ref, $indent);
                 return;
+            } elsif ($is_set) {
+                $$str_ref .= "\n# null op set of complex string";
+                return;
+            } elsif ($is_bare) {
+                debug $var;
+                print $$str_ref;
+                die ;
             }
-            die if $is_set || $is_bare;
 
             $$str_ref .= "\$self->play_variable(";
             compile_operator($self, $name, $str_ref, $indent);
@@ -319,6 +327,14 @@ sub compile_operator {
         }
         $$str_ref .= "]";
     } elsif ($op eq '~' || $op eq '_') {
+        if (@the_rest == 1 && ! ref $the_rest[0]) {
+            if (defined $the_rest[0]) {
+                compile_expr($self, $the_rest[0], $str_ref, $indent);
+            } else {
+                $$str_ref .= "''";
+            }
+            return;
+        }
         $$str_ref .=  "do { no warnings; ''";
         foreach (@the_rest) {
             $$str_ref .= ' . ';
@@ -395,8 +411,16 @@ ${indent}}";
         $$str_ref .= ')';
 
     } elsif ($op eq '\\') {
-        return do { local $self->{'_return_ref_ident'} = 1; $self->compile_expr($the_rest[0]) };
-
+        $$str_ref .= "do { my \$var = \$self->play_operator([undef, '\\\\', [";
+        if (! ref $the_rest[0]) {
+            $the_rest[0] = '' if ! defined $the_rest[0];
+            $the_rest[0] =~ s/([\'\\])/\\$1/g;
+            $$str_ref .= "[undef, '~', '$the_rest[0]'], 0";
+        } else {
+            local $self->{'_is_bare'} = 1;
+            compile_expr($self, $the_rest[0], $str_ref, $indent);
+        }
+        $$str_ref .= "]]); \$var = \$var->() if UNIVERSAL::isa(\$var, 'CODE'); \$var }";
     } elsif ($op eq 'qr') {
         $$str_ref .= $the_rest[1] ? "qr{(?$the_rest[1]:$the_rest[0])}" : "qr{$the_rest[0]}";
 
@@ -404,11 +428,30 @@ ${indent}}";
         $$str_ref .= "do { no warnings; $op";
         compile_expr($self, $the_rest[0], $str_ref, $indent);
         $$str_ref .= ' }';
-    } else {
-        $$str_ref .= 'do { no warnings; ';
+    } elsif ($op eq '||' || $op eq '&&') {
+        $$str_ref .= '(';
         compile_expr($self, $the_rest[0], $str_ref, $indent);
         $$str_ref .= " $op ";
         compile_expr($self, $the_rest[1], $str_ref, $indent);
+        $$str_ref .= ')';
+    } else {
+        my $strop = $op =~ /^(eq|ne|gt|ge|lt|le|cmp)$/;
+        $$str_ref .= 'do { no warnings; ';
+        if (ref $the_rest[0] || ! $strop) {
+            compile_expr($self, $the_rest[0], $str_ref, $indent);
+        } else {
+            $the_rest[0] = '' if ! defined $the_rest[0];
+            $the_rest[0] =~ s/\'/\\\'/g;
+            $$str_ref .= "'$the_rest[0]'";
+        }
+        $$str_ref .= " $op ";
+        if (ref $the_rest[1] || ! $strop) {
+            compile_expr($self, $the_rest[1], $str_ref, $indent);
+        } else {
+            $the_rest[1] = '' if ! defined $the_rest[1];
+            $the_rest[1] =~ s/\'/\\\'/g;
+            $$str_ref .= "'$the_rest[1]'";
+        }
         $$str_ref .= ' }';
     }
 }
@@ -420,9 +463,10 @@ sub compile_play_named_args {
 
     my $args = $node->[3];
     $$str_ref .= "\n$indent\$self->play_$directive([[[undef, '{}'";
+    debug $args;
     for (2 .. $#{ $args->[0]->[0] }) {
         $$str_ref .= ', ';
-        if (ref $args->[0]->[0]->[$_]) {
+        if (!($_ % 2) && ref $args->[0]->[0]->[$_]) {
             local $self->{'_is_bare'} = 1;
             $$str_ref .= '[';
             compile_expr($self, $args->[0]->[0]->[$_], $str_ref, $indent);
@@ -474,6 +518,14 @@ ${INDENT}},";
 }
 
 sub compile_BREAK { shift->compile_LAST(@_) }
+
+sub compile_CALL {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    $$str_ref .= "\n${indent}scalar ";
+    compile_expr($self, $node->[3], $str_ref, $indent);
+    $$str_ref .= ";";
+    return;
+}
 
 sub compile_CLEAR {
     my ($class, $self, $node, $str_ref, $indent) = @_;
@@ -713,6 +765,17 @@ ${indent}";
     return;
 }
 
+sub compile_META {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    if ($node->[3]) {
+        while (my($key, $val) = each %{ $node->[3] }) {
+            s/\'/\\\'/g foreach $key, $val;
+            $self->{'_meta'} .= "\n${indent}'$key' => '$val',";
+        }
+    }
+    return;
+}
+
 sub compile_NEXT {
     my ($class, $self, $node, $str_ref, $indent) = @_;
     my $type = $self->{'_in_loop'} || die "Found next while not in FOR, FOREACH or WHILE";
@@ -720,6 +783,45 @@ sub compile_NEXT {
     $$str_ref .= "\n${indent}next $type;";
     return;
 }
+
+sub compile_PERL{
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+
+    ### fill in any variables
+    my $perl = $node->[4] || return;
+    my $code = compile_tree($self, $perl, "$indent$INDENT");
+
+    $$str_ref .= "
+${indent}\$self->throw('perl', 'EVAL_PERL not set') if ! \$self->{'EVAL_PERL'};
+${indent}require CGI::Ex::Template::Play;
+${indent}\$var = do {
+${indent}${INDENT}my \$out = '';
+${indent}${INDENT}my \$out_ref = \\\$out;$code
+${indent}${INDENT}\$out;
+${indent}};
+${indent}#\$var = \$1 if \$var =~ /^(.+)\$/s; # blatant untaint
+
+${indent}my \$err;
+${indent}eval {
+${indent}${INDENT}package CGI::Ex::Template::Perl;
+${indent}${INDENT}my \$context = \$self->context;
+${indent}${INDENT}my \$stash   = \$context->stash;
+${indent}${INDENT}local *PERLOUT;
+${indent}${INDENT}tie *PERLOUT, 'CGI::Ex::Template::EvalPerlHandle', \$out_ref;
+${indent}${INDENT}my \$old_fh = select PERLOUT;
+${indent}${INDENT}eval \$var;
+${indent}${INDENT}\$err = \$\@;
+${indent}${INDENT}select \$old_fh;
+${indent}};
+${indent}\$err ||= \$\@;
+${indent}if (\$err) {
+${indent}${INDENT}\$self->throw('undef', \$err) if ref(\$err) !~ /Template::Exception\$/;
+${indent}${INDENT}die \$err;
+${indent}}";
+
+    return;
+}
+
 
 sub compile_PROCESS {
     my ($class, $self, $node, $str_ref, $indent) = @_;
@@ -965,7 +1067,7 @@ sub compile_USE {
     $$str_ref .= ", [[[undef, '{}'";
     for (2 .. $#{ $args->[0]->[0] }) {
         $$str_ref .= ', ';
-        if (ref $args->[0]->[0]->[$_]) {
+        if (!($_ % 2) && ref $args->[0]->[0]->[$_]) {
             local $self->{'_is_bare'} = 1;
             $$str_ref .= '[';
             compile_expr($self, $args->[0]->[0]->[$_], $str_ref, $indent);
