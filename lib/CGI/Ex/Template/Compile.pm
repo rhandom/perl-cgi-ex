@@ -91,7 +91,7 @@ my \$meta   = {$self->{'_meta'}};
 my \$code   = sub {
 ${INDENT}my (\$self, \$out_ref, \$var) = \@_;"
 .($self->{'_blocks'} ? "\n${INDENT}\@{ \$self->{'BLOCKS'} }{ keys %\$blocks } = values %\$blocks;" : "")
-.($self->{'_meta'}   ? "\n${INDENT}\@{ \$self->{'_template'} }{ keys %\$meta } = values %\$meta;" : "")
+.($self->{'_meta'}   ? "\n${INDENT}\@{ \$self->{'_component'} }{ keys %\$meta } = values %\$meta;" : "")
 ."$code
 
 ${INDENT}return 1;
@@ -453,7 +453,7 @@ sub compile_play_named_args {
 
     $$str_ref .= "
 ${indent}\$var = ".compile_expr_flat($self, $node->[3]).";
-${indent}\$self->play_$directive(\$var, ['$node->[0]', $node->[1], $node->[2]], \$out_ref);";
+${indent}\$self->play_$directive(\$var, ['$directive', $node->[1], $node->[2]], \$out_ref);";
 
     return;
 }
@@ -657,7 +657,15 @@ sub compile_IF {
     $$str_ref .= "\n${indent}}";
 }
 
-sub compile_INCLUDE { shift->compile_PROCESS(@_) }
+sub compile_INCLUDE {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    compile_play_named_args($self, $node, $str_ref, $indent);
+}
+
+sub compile_INSERT {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+    compile_play_named_args($self, $node, $str_ref, $indent);
+}
 
 sub compile_LAST {
     my ($class, $self, $node, $str_ref, $indent) = @_;
@@ -1041,6 +1049,31 @@ ${indent}last if ! \$var;$code
 ${indent}}";
     return;
 }
+
+sub compile_WRAPPER {
+    my ($class, $self, $node, $str_ref, $indent) = @_;
+
+    my ($named, @files) = @{ $node->[3] };
+    $named = compile_expr_flat($self, $named);
+
+    $$str_ref .= "
+${indent}\$var = do {
+${indent}${INDENT}my \$out = '';
+${indent}${INDENT}my \$out_ref = \\\$out;"
+.compile_tree($self, $node->[4], "$indent$INDENT")."
+${indent}${INDENT}\$out;
+${indent}};
+${indent}for my \$file (reverse("
+.join(",${indent}${INDENT}", map {"\$self->play_expr(".compile_expr_flat($self, $_).")"} @files).")) {
+${indent}${INDENT}local \$self->{'_vars'}->{'content'} = \$var;
+${indent}${INDENT}\$var = '';
+${indent}${INDENT}\$self->play_INCLUDE([$named, \$file], ['$node->[0]', $node->[1], $node->[2]], \\\$var);
+${indent}}
+${indent}\$\$out_ref .= \$var if defined \$var;";
+
+    return;
+}
+
 
 ###----------------------------------------------------------------###
 
