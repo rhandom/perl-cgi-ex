@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 909 : 624;
+use Test::More tests => ! $is_tt ? 910 : 625;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -29,7 +29,7 @@ sub process_ok { # process the value and say if it was ok
     my $test = shift;
     my $vars = shift || {};
     my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
-    my $obj  = shift || $module->new(@$conf); # new object each time
+    my $obj  = shift || $module->new(@$conf, COMPILE_PERL => 1); # new object each time
     my $out  = '';
     my $line = (caller)[2];
     delete $vars->{'tt_config'};
@@ -828,12 +828,6 @@ process_ok("[% var = [{key => 'a'}, {key => 'b'}] -%]
   ([% key %])
 [% END %]" => "  (a)\n  (b)\n") if ! $is_tt;
 
-process_ok("[% var = [{key => 'a'}, {key => 'b'}] -%]
-[% LOOP var -%]
-  [%- NEXT IF key eq 'a' -%]
-  ([% key %])
-[% END %]" => "  (b)\n") if ! $is_tt;
-
 if (! $is_tt) {
     local $CGI::Ex::Template::QR_PRIVATE = 0;
     local $CGI::Ex::Template::QR_PRIVATE = 0; # warn clean
@@ -1154,6 +1148,8 @@ process_ok("[% ('a' == 'b') || 0 %]" => 1, {tt_config => [V2EQUALS => 0]}) if ! 
 process_ok("[% ('a' != 'b') || 0 %]" => 0, {tt_config => [V2EQUALS => 0]}) if ! $is_tt;
 process_ok("[% ('7' == '7.0') || 0 %]" => 0);
 process_ok("[% ('7' == '7.0') || 0 %]" => 1, {tt_config => [V2EQUALS => 0]}) if ! $is_tt;
+process_ok("[% (7 == 7.0) || 0 %]" => 1);
+process_ok("[% (7 == 7.0) || 0 %]" => 1, {tt_config => [V2EQUALS => 0]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### configuration ####################################################\n";
