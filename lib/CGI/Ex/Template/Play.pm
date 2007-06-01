@@ -920,4 +920,45 @@ sub play_WRAPPER {
 
 ###----------------------------------------------------------------###
 
+sub list_plugins {
+    my $self = shift;
+    my $args = shift || {};
+    my $base = $args->{'base'} || '';
+
+    return $self->{'_plugins'}->{$base} ||= do {
+        my @plugins;
+
+        $base =~ s|::|/|g;
+        my @dirs = grep {-d $_} map {"$_/$base"} @INC;
+
+        foreach my $dir (@dirs) {
+            require File::Find;
+            File::Find::find(sub {
+                my $mod = $base .'/'. ($File::Find::name =~ m|^ $dir / (.*\w) \.pm $|x ? $1 : return);
+                $mod =~ s|/|::|g;
+                push @plugins, $mod;
+            }, $dir);
+        }
+
+        \@plugins; # return of the do
+    };
+}
+
+###----------------------------------------------------------------###
+
+package CGI::Ex::Template::EvalPerlHandle;
+
+sub TIEHANDLE {
+    my ($class, $out_ref) = @_;
+    return bless [$out_ref], $class;
+}
+
+sub PRINT {
+    my $self = shift;
+    ${ $self->[0] } .= $_ for grep {defined && length} @_;
+    return 1;
+}
+
+###----------------------------------------------------------------###
+
 1;
