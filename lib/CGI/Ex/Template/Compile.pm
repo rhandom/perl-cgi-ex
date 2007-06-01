@@ -23,6 +23,52 @@ use CGI::Ex::Dump qw(debug);
 our $VERSION = '2.13';
 our $INDENT  = ' ' x 4;
 our $PERL_COMPILE_EXT = '.pl';
+our $DIRECTIVES = {
+    BLOCK   => \&compile_BLOCK,
+    BREAK   => \&compile_LAST,
+    CALL    => \&compile_CALL,
+    CASE    => undef,
+    CATCH   => undef,
+    CLEAR   => \&compile_CLEAR,
+    '#'     => sub {},
+    COMMENT => sub {},
+    CONFIG  => \&compile_CONFIG,
+    DEBUG   => \&compile_DEBUG,
+    DEFAULT => \&compile_DEFAULT,
+    DUMP    => \&compile_DUMP,
+    ELSE    => undef,
+    ELSIF   => undef,
+    END     => sub {},
+    FILTER  => \&compile_FILTER,
+    '|'     => \&compile_FILTER,
+    FINAL   => undef,
+    FOR     => \&compile_FOR,
+    FOREACH => \&compile_FOR,
+    GET     => \&compile_GET,
+    IF      => \&compile_IF,
+    INCLUDE => \&compile_INCLUDE,
+    INSERT  => \&compile_INSERT,
+    LAST    => \&compile_LAST,
+    LOOP    => \&compile_LOOP,
+    MACRO   => \&compile_MACRO,
+    META    => \&compile_META,
+    NEXT    => \&compile_NEXT,
+    PERL    => \&compile_PERL,
+    PROCESS => \&compile_PROCESS,
+    RAWPERL => \&compile_RAWPERL,
+    RETURN  => \&compile_RETURN,
+    SET     => \&compile_SET,
+    STOP    => \&compile_STOP,
+    SWITCH  => \&compile_SWITCH,
+    TAGS    => sub {},
+    THROW   => \&compile_THROW,
+    TRY     => \&compile_TRY,
+    UNLESS  => \&compile_UNLESS,
+    USE     => \&compile_USE,
+    VIEW    => \&compile_VIEW,
+    WHILE   => \&compile_WHILE,
+    WRAPPER => \&compile_WRAPPER,
+};
 
 ###----------------------------------------------------------------###
 
@@ -69,6 +115,8 @@ sub load_perl {
 
     return $perl;
 }
+
+###----------------------------------------------------------------###
 
 sub compile_template {
     my ($self, $doc) = @_;
@@ -152,13 +200,7 @@ ${indent}}";
 
         $code .= _node_info($self, $node, $indent);
 
-        # get method to call
-        my $directive = $node->[0];
-        $directive = 'FILTER' if $directive eq '|';
-        next if $directive eq '#';
-
-        my $method = "compile_$directive";
-        __PACKAGE__->$method($self, $node, \$code, $indent);
+        $DIRECTIVES->{$node->[0]}->($self, $node, \$code, $indent);
     }
     return $code;
 }
@@ -294,6 +336,7 @@ sub compile_expr_flat {
         return "'$var'";
     }
 
+    return '{'.join(', ', map { compile_expr_flat($self, $_) } %$var).'}' if ref $var eq 'HASH';
     return '['.join(', ', map { compile_expr_flat($self, $_) } @$var).']';
 }
 
@@ -452,8 +495,9 @@ sub compile_play_named_args {
     die "Invalid node name \"$directive\"" if $directive !~ /^\w+$/;
 
     $$str_ref .= "
+${indent}require CGI::Ex::Template::Play;
 ${indent}\$var = ".compile_expr_flat($self, $node->[3]).";
-${indent}\$self->play_$directive(\$var, ['$directive', $node->[1], $node->[2]], \$out_ref);";
+${indent}\$CGI::Ex::Template::Play::DIRECTIVES->{'$directive'}->(\$self, \$var, ['$directive', $node->[1], $node->[2]], \$out_ref);";
 
     return;
 }
@@ -467,7 +511,7 @@ sub _is_empty_named_args {
 ###----------------------------------------------------------------###
 
 sub compile_BLOCK {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     my $ref  = \ $self->{'_blocks'};
     my $name = $node->[3];
@@ -490,10 +534,8 @@ ${INDENT}},";
     return;
 }
 
-sub compile_BREAK { shift->compile_LAST(@_) }
-
 sub compile_CALL {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "\n${indent}scalar ";
     compile_expr($self, $node->[3], $str_ref, $indent);
     $$str_ref .= ";";
@@ -501,18 +543,18 @@ sub compile_CALL {
 }
 
 sub compile_CLEAR {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "
 ${indent}\$\$out_ref = '';";
 }
 
 sub compile_CONFIG {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     compile_play_named_args($self, $node, $str_ref, $indent);
 }
 
 sub compile_DEBUG {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     my $text = $node->[3]->[0];
 
@@ -529,18 +571,18 @@ sub compile_DEBUG {
 }
 
 sub compile_DEFAULT {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     local $self->{'_is_default'} = 1;
-    $class->compile_SET($self, $node, $str_ref, $indent);
+    $DIRECTIVES->{'SET'}->($self, $node, $str_ref, $indent);
 }
 
 sub compile_DUMP {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     compile_play_named_args($self, $node, $str_ref, $indent);
 }
 
 sub compile_GET {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "\n$indent\$var = ";
     compile_expr($self, $node->[3], $str_ref, $indent);
     $$str_ref .= ";\n$indent\$\$out_ref .= defined(\$var) ? \$var : \$self->undefined_get([";
@@ -550,10 +592,8 @@ sub compile_GET {
     return;
 }
 
-sub compile_END {}
-
 sub compile_FILTER {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     my ($name, $filter) = @{ $node->[3] };
     return if ! @$filter;
 
@@ -592,7 +632,7 @@ ${indent}\$\$out_ref .= \$var if defined \$var;";
 }
 
 sub compile_FOR {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     my ($name, $items) = @{ $node->[3] };
     local $self->{'_in_loop'} = 'FOREACH';
@@ -634,7 +674,7 @@ ${indent}};";
 sub compile_FOREACH { shift->compile_FOR(@_) }
 
 sub compile_IF {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     $$str_ref .= "\n${indent}if (";
     compile_expr($self, $node->[3], $str_ref, $indent);
@@ -658,24 +698,24 @@ sub compile_IF {
 }
 
 sub compile_INCLUDE {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     compile_play_named_args($self, $node, $str_ref, $indent);
 }
 
 sub compile_INSERT {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     compile_play_named_args($self, $node, $str_ref, $indent);
 }
 
 sub compile_LAST {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     my $type = $self->{'_in_loop'} || die "Found LAST while not in FOR, FOREACH or WHILE";
     $$str_ref .= "\n${indent}last $type;";
     return;
 }
 
 sub compile_LOOP {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     my $ref = $node->[3];
     $ref = [$ref, 0] if ! ref $ref;
 
@@ -701,7 +741,7 @@ ${indent}}";
 }
 
 sub compile_MACRO {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     my ($name, $args) = @{ $node->[3] };
 
     ### get the sub tree
@@ -761,7 +801,7 @@ ${indent}";
 }
 
 sub compile_META {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     if ($node->[3]) {
         while (my($key, $val) = each %{ $node->[3] }) {
             s/\'/\\\'/g foreach $key, $val;
@@ -772,7 +812,7 @@ sub compile_META {
 }
 
 sub compile_NEXT {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     my $type = $self->{'_in_loop'} || die "Found next while not in FOR, FOREACH or WHILE";
     $$str_ref .= "\n${indent}(\$var, \$error) = \$loop->get_next;" if $type eq 'FOREACH';
     $$str_ref .= "\n${indent}next $type;";
@@ -780,7 +820,7 @@ sub compile_NEXT {
 }
 
 sub compile_PERL{
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     ### fill in any variables
     my $perl = $node->[4] || return;
@@ -819,18 +859,18 @@ ${indent}}";
 
 
 sub compile_PROCESS {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     compile_play_named_args($self, $node, $str_ref, $indent);
 }
 
 sub compile_RETURN {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "
 ${indent}\$self->throw('return', 'Control Exception');";
 }
 
 sub compile_SET {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     my $sets = $node->[3];
 
     my $out = '';
@@ -883,13 +923,13 @@ ${indent}}"
 }
 
 sub compile_STOP {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     $$str_ref .= "
 ${indent}\$self->throw('stop', 'Control Exception');";
 }
 
 sub compile_SWITCH {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     $$str_ref .= "
 ${indent}\$var = ";
@@ -928,10 +968,8 @@ ${indent}${INDENT}my \$var;";
     return;
 }
 
-sub compile_TAGS {}
-
 sub compile_THROW {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     my ($name, $args) = @{ $node->[3] };
 
@@ -952,7 +990,7 @@ ${indent}\$self->throw(";
 
 
 sub compile_TRY {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     $$str_ref .= "
 ${indent}do {
@@ -1026,15 +1064,90 @@ ${indent}};";
     return;
 }
 
-sub compile_UNLESS { shift->compile_IF(@_) }
+sub compile_UNLESS { $DIRECTIVES->{'IF'}->(@_) }
 
 sub compile_USE {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
     compile_play_named_args($self, $node, $str_ref, $indent);
 }
 
+sub compile_VIEW {
+    my ($self, $node, $str_ref, $indent) = @_;
+    my ($blocks, $args, $name) = @{ $node->[3] };
+
+    my $_name = compile_expr_flat($self, $name);
+
+    # [[undef, '{}', 'key1', 'val1', 'key2', 'val2'], 0]
+    $args = $args->[0];
+    $$str_ref .= "
+${indent}do {
+${indent}${INDENT}my \$name = $_name;
+${indent}${INDENT}my \$hash = {};";
+    foreach (my $i = 2; $i < @$args; $i+=2) {
+        $$str_ref .= "
+${indent}${INDENT}\$var = ";
+        compile_expr($self, $args->[$i+1], $str_ref, $indent);
+        $$str_ref .= ";
+${indent}${INDENT}";
+        my $key = $args->[$i];
+        if (ref $key) {
+            if (@$key == 2 && ! ref($key->[0]) && ! $key->[1]) {
+                $key = $key->[0];
+            } else {
+                local $self->{'_is_set'} = 1;
+                compile_expr($self, $key, $str_ref, $indent);
+                $$str_ref .= ';';
+                next;
+            }
+        }
+        $key =~ s/([\'\\])/\\$1/g;
+        $$str_ref .= "\$hash->{'$key'} = \$var;";
+    }
+
+    $$str_ref .= "
+${indent}${INDENT}my \$prefix = \$hash->{'prefix'} || (ref(\$name) && \@\$name == 2 && ! \$name->[1] && ! ref(\$name->[0])) ? \"\$name->[0]/\" : '';
+${indent}${INDENT}my \$blocks = \$hash->{'blocks'} = {};";
+    foreach my $key (keys %$blocks) {
+        my $code = compile_tree($self, $blocks->{$key}, "$indent$INDENT$INDENT$INDENT");
+        $key =~ s/([\'\\])/\\$1/g;
+        $$str_ref .= "
+${indent}${INDENT}\$blocks->{'$key'} = {
+${indent}${INDENT}${INDENT}name  => \$prefix . '$key',
+${indent}${INDENT}${INDENT}_perl => {code => sub {
+${indent}${INDENT}${INDENT}${INDENT}my \$out = '';
+${indent}${INDENT}${INDENT}${INDENT}my \$out_ref = \\\$out;$code
+${indent}${INDENT}${INDENT}${INDENT}return \$out;
+${indent}${INDENT}${INDENT}} },
+${indent}${INDENT}};";
+    }
+
+    $$str_ref .= "
+${indent}${INDENT}\$self->throw('view', 'Could not load Template::View library')
+${indent}${INDENT}${INDENT} if ! eval { require Template::View };
+${indent}${INDENT}my \$view = Template::View->new(\$self->context, \$hash)
+${indent}${INDENT}${INDENT}|| \$self->throw('view', \$Template::View::ERROR);
+${indent}${INDENT}my \$old_view = \$self->play_variable(['view', 0]);
+${indent}${INDENT}\$self->set_variable(\$name, \$view);
+${indent}${INDENT}\$self->set_variable(['view', 0], \$view);";
+
+    if ($node->[4]) {
+        $$str_ref .= "
+${indent}${INDENT}my \$out = '';
+${indent}${INDENT}my \$out_ref = \\\$out;"
+    .compile_tree($self, $node->[4], "$indent$INDENT");
+    }
+
+    $$str_ref .= "
+${indent}${INDENT}\$self->set_variable(['view', 0], \$old_view);
+${indent}${INDENT}\$view->seal;
+${indent}};";
+
+
+    return;
+}
+
 sub compile_WHILE {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     local $self->{'_in_loop'} = 'WHILE';
     my $code = compile_tree($self, $node->[4], "$indent$INDENT");
@@ -1051,7 +1164,7 @@ ${indent}}";
 }
 
 sub compile_WRAPPER {
-    my ($class, $self, $node, $str_ref, $indent) = @_;
+    my ($self, $node, $str_ref, $indent) = @_;
 
     my ($named, @files) = @{ $node->[3] };
     $named = compile_expr_flat($self, $named);
