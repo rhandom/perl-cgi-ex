@@ -367,8 +367,8 @@ sub play_INSERT {
     my ($named, @files) = @$args;
 
     foreach my $name (@files) {
-        my $filename = $self->play_expr($name);
-        my $ref = $self->slurp($self->include_filename($file));
+        my $file = $self->play_expr($name);
+        my $ref  = $self->slurp($self->include_filename($file));
         $$out_ref .= $$ref;
     }
 
