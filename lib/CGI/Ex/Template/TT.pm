@@ -298,7 +298,7 @@ sub parse_tree_tt3 {
 
     ### cleanup the tree
     unshift(@tree, @blocks) if @blocks;
-    unshift(@tree, ['META', 0, 0, {@meta}]) if @meta;
+    unshift(@tree, ['META', 1, 1, {@meta}]) if @meta;
     $self->throw('parse', "Missing END directive", $state[-1], pos($$str_ref)) if @state > 0;
 
     ### pull off the last text portion - if any

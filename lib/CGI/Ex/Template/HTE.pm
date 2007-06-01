@@ -335,7 +335,7 @@ sub parse_tree_hte {
 
     ### cleanup the tree
     unshift(@tree, @blocks) if @blocks;
-    unshift(@tree, ['META', 0, 0, {@meta}]) if @meta;
+    unshift(@tree, ['META', 1, 1, {@meta}]) if @meta;
     $self->throw('parse', "Missing </TMPL_ close tag", $state[-1], pos($$str_ref)) if @state > 0;
 
     ### pull off the last text portion - if any
