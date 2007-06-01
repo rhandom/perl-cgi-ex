@@ -24,7 +24,7 @@ our $AUTOROLE = {
     Compile => [qw(load_perl compile_template)],
     HTE     => [qw(parse_tree_hte param output register_function clear_param query new_file new_scalar_ref new_array_ref new_filehandle)],
     Parse   => [qw(parse_tree parse_expr apply_precedence parse_args dump_parse dump_parse_expr)],
-    Play    => [qw(play_tree play_DUMP play_PROCESS play_INCLUDE play_USE list_plugins)],
+    Play    => [qw(play_tree play_CONFIG play_DUMP play_PROCESS play_INCLUDE play_USE list_plugins)],
     Tmpl    => [qw(parse_tree_tmpl set_delimiters set_strip set_value set_values parse_string set_dir parse_file loop_iteration fetch_loop_iteration)],
 };
 our $AUTOLOOKUP = { map { my $type = $_; map { ($_ => $type) } @{ $AUTOROLE->{$type} } } keys %$AUTOROLE };
@@ -619,7 +619,7 @@ sub play_expr {
                 die "Shouldn't get a ". ref($name) ." during a vivify on chain";
             }
         }
-        if ($QR_PRIVATE && $name =~ $QR_PRIVATE) { # don't allow vars that begin with _
+        if (! defined $name || ($QR_PRIVATE && $name =~ $QR_PRIVATE)) { # don't allow vars that begin with _
             $ref = undef;
             last;
         }
@@ -760,7 +760,7 @@ sub play_variable {
         $var  = shift;
         $name = $var->[$i++];
 
-        return if $QR_PRIVATE && $name =~ $QR_PRIVATE; # don't allow vars that begin with _
+        return if ! defined($name) || ($QR_PRIVATE && $name =~ $QR_PRIVATE); # don't allow vars that begin with _
         $ref = $self->{'_vars'}->{$name};
         if (! defined $ref) {
             $ref = ($name eq 'template' || $name eq 'component') ? $self->{"_$name"} : $VOBJS->{$name};
@@ -794,7 +794,7 @@ sub play_variable {
         my $was_dot_call = $var->[$i++] eq '.';
         $name            = $var->[$i++];
         $args            = $var->[$i++];
-        if ($QR_PRIVATE && $name =~ $QR_PRIVATE) { # don't allow vars that begin with _
+        if (! defined $name || ($QR_PRIVATE && $name =~ $QR_PRIVATE)) { # don't allow vars that begin with _
             $ref = undef;
             last;
         }
@@ -1131,7 +1131,7 @@ sub play_operator {
 
 sub _vars {
     my $self = shift;
-    $self->{'_vars'} = shift if $#_ == 0;
+    $self->{'_vars'} = shift if @_ == 1;
     return $self->{'_vars'} ||= {};
 }
 
