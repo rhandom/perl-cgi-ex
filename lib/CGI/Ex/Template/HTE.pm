@@ -214,7 +214,6 @@ sub parse_tree_hte {
                     $self->throw('parse', 'Error while looking for NAME', undef, pos($$str_ref)) if ! $name;
                     $node->[3] = $func eq 'INCLUDE' ? $name : [($self->{'CASE_SENSITIVE'} ? $name : lc $name), 0]; # set the variable
                     $node->[3] = [[undef, '||', $node->[3], $default], 0] if $default;
-                    $node->[2] = pos $$str_ref;
 
                     ### dress up node before finishing
                     $escape = lc $self->{'DEFAULT_ESCAPE'} if ! $escape && $self->{'DEFAULT_ESCAPE'};
@@ -229,6 +228,7 @@ sub parse_tree_hte {
                         }
                     }
                 }
+                $node->[2] = pos $$str_ref;
 
                 ### fixup DIRECTIVE storage
                 if ($func eq 'INCLUDE') {
