@@ -6,18 +6,21 @@
 
 =cut
 
-use vars qw($module $is_ht $is_hte $is_cet);
+use vars qw($module $is_ht $is_hte $is_cet $compile_perl);
 BEGIN {
     $module = 'CGI::Ex::Template';
-#    $module = 'HTML::Template';
-#    $module = 'HTML::Template::Expr';
+    if (grep {/hte/i} @ARGV) {
+        $module = 'HTML::Template::Expr';
+    } elsif (grep {/ht/i} @ARGV) {
+        $module = 'HTML::Template';
+    }
     $is_hte = $module eq 'HTML::Template::Expr';
     $is_ht  = $module eq 'HTML::Template';
     $is_cet = $module eq 'CGI::Ex::Template';
 };
 
 use strict;
-use Test::More tests => ($is_cet) ? 93 : ($is_ht) ? 60 : 64;
+use Test::More tests => ($is_cet) ? 184 : ($is_ht) ? 60 : 64;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -37,6 +40,7 @@ sub process_ok { # process the value and say if it was ok
     my $test = shift;
     my $vars = shift || {};
     my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
+    push @$conf, (COMPILE_PERL => $compile_perl) if $compile_perl;
     my $line = (caller)[2];
     delete $vars->{'tt_config'};
 
@@ -83,8 +87,11 @@ open($fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
 print $fh "(<TMPL_VAR bar>)";
 close $fh;
 
+for $compile_perl ((! $is_cet) ? (0) : (0, 1)) {
+    my $is_compile_perl = "compile perl ($compile_perl)";
+
 ###----------------------------------------------------------------###
-print "### VAR ##############################################################\n";
+print "### VAR ############################################# $is_compile_perl\n";
 
 process_ok("Foo" => "Foo");
 
@@ -123,7 +130,7 @@ process_ok("<!--TMPL_VAR foo-->" => "FOO", {foo => "FOO"}) if $is_cet;
 process_ok("<!--TMPL_VAR NAME='foo'-->" => "FOO", {foo => "FOO"});
 
 ###----------------------------------------------------------------###
-print "### IF / ELSE / UNLESS ###############################################\n";
+print "### IF / ELSE / UNLESS ############################## $is_compile_perl\n";
 
 process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "", {foo => ""});
 process_ok("<TMPL_IF foo>bar</TMPL_IF>" => "bar", {foo => "1"});
@@ -136,7 +143,7 @@ process_ok("<TMPL_IF ESCAPE=HTML foo>bar</TMPL_IF>baz" => "", {foo => "1"});
 process_ok("<TMPL_IF DEFAULT=bar foo>bar</TMPL_IF>baz" => "", {foo => "1"});
 
 ###----------------------------------------------------------------###
-print "### INCLUDE ##########################################################\n";
+print "### INCLUDE ######################################### $is_compile_perl\n";
 
 process_ok("<TMPL_INCLUDE blah>bar" => "");
 process_ok("<TMPL_INCLUDE foo.ht>" => "Good Day!");
@@ -156,7 +163,7 @@ process_ok("<TMPL_INCLUDE bar.ht>" => "()");
 process_ok("<TMPL_INCLUDE bar.ht>" => "(hi)", {bar => 'hi'});
 
 ###----------------------------------------------------------------###
-print "### EXPR #############################################################\n";
+print "### EXPR ############################################ $is_compile_perl\n";
 
 process_ok("<TMPL_VAR EXPR=\"sprintf('%d', foo)\">" => "777", {foo => "777"}) if ! $is_ht;
 process_ok("<TMPL_VAR EXPR=\"sprintf('%d', foo)\">" => "777", {foo => "777"}) if ! $is_ht;
@@ -170,7 +177,7 @@ process_ok("<TMPL_VAR DEFAULT=bar EXPR=foo>" => "", {foo => "FOO", bar => "BAR"}
 process_ok("<!--TMPL_VAR EXPR=\"foo\"-->" => "FOO", {foo => "FOO"}) if ! $is_ht;;
 
 ###----------------------------------------------------------------###
-print "### LOOP #############################################################\n";
+print "### LOOP ############################################ $is_compile_perl\n";
 
 process_ok("<TMPL_LOOP blah></TMPL_LOOP>foo" => "foo");
 process_ok("<TMPL_LOOP blah>Hi</TMPL_LOOP>foo" => "foo", {blah => 1}) if $is_cet;
@@ -204,7 +211,7 @@ process_ok("<TMPL_LOOP blah>\n(<TMPL_VAR __first__>|<TMPL_VAR __last__>|<TMPL_VA
 
 
 ###----------------------------------------------------------------###
-print "### TT3 DIRECTIVES ###################################################\n";
+print "### TT3 DIRECTIVES ################################## $is_compile_perl\n";
 
 process_ok("<TMPL_GET foo>" => "FOO", {foo => "FOO"})    if $is_cet;
 process_ok("<TMPL_GET foo>" => "", {foo => "FOO", tt_config => [NO_TT => 1]}) if $is_cet;
@@ -225,18 +232,19 @@ process_ok("<TMPL_GET template.foo><TMPL_META foo = 'bar'>" => "bar") if $is_cet
 process_ok('<TMPL_MACRO bar(n) BLOCK>You said <TMPL_VAR n></TMPL_MACRO><TMPL_GET bar("hello")>' => 'You said hello') if $is_cet;
 
 ###----------------------------------------------------------------###
-print "### TT3 CHOMPING #####################################################\n";
+print "### TT3 CHOMPING #################################### $is_compile_perl\n";
 
 process_ok("\n<TMPL_GET foo>" => "\nFOO", {foo => "FOO"}) if $is_cet;
 process_ok("<TMPL_GET foo->\n" => "FOO", {foo => "FOO"})  if $is_cet;
 process_ok("\n<-TMPL_GET foo>" => "FOO", {foo => "FOO"})  if $is_cet;
 
 ###----------------------------------------------------------------###
-print "### TT3 INTERPOLATE ##################################################\n";
+print "### TT3 INTERPOLATE ################################# $is_compile_perl\n";
 
 process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => '$foo FOO ${ 1 + 2 }', {foo => "FOO"}) if $is_cet;
 process_ok('$foo <TMPL_GET foo> ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO", tt_config => [INTERPOLATE => 1]}) if $is_cet;
 process_ok('<TMPL_CONFIG INTERPOLATE => 1>$foo <TMPL_GET foo> ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO"}) if $is_cet;
 
 ###----------------------------------------------------------------###
-print "### DONE #############################################################\n";
+print "### DONE ############################################ $is_compile_perl\n";
+} # end of for

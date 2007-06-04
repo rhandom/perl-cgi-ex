@@ -6,15 +6,17 @@
 
 =cut
 
-use vars qw($module $is_tt);
+use vars qw($module $is_tt $compile_perl);
 BEGIN {
     $module = 'CGI::Ex::Template';
-#    $module = 'Text::Tmpl';
+    if (grep {/tt|tmpl/i} @ARGV) {
+        $module = 'Text::Tmpl';
+    }
     $is_tt = $module eq 'Text::Tmpl';
 };
 
 use strict;
-use Test::More tests => (! $is_tt) ? 51 : 25;
+use Test::More tests => (! $is_tt) ? 100 : 25;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -34,6 +36,7 @@ sub process_ok { # process the value and say if it was ok
     my $test = shift;
     my $vars = shift || {};
     my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
+    push @$conf, (COMPILE_PERL => $compile_perl) if $compile_perl;
     my $line = (caller)[2];
     delete $vars->{'tt_config'};
 
@@ -87,8 +90,12 @@ open($fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
 print $fh "(#[echo \$bar]#)";
 close $fh;
 
+
+for $compile_perl (($is_tt) ? (0) : (0, 1)) {
+    my $is_compile_perl = "compile perl ($compile_perl)";
+
 ###----------------------------------------------------------------###
-print "### ECHO #############################################################\n";
+print "### ECHO ############################################ $is_compile_perl\n";
 
 process_ok("Foo" => "Foo");
 
@@ -101,13 +108,13 @@ process_ok('#[echo \'hi\']#' => "hi", {foo => "FOO"}) if ! $is_tt;
 process_ok('#[echo foo]#' => "FOO", {foo => "FOO"}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-print "### COMMENT ##########################################################\n";
+print "### COMMENT ######################################### $is_compile_perl\n";
 
 process_ok('#[comment]# Hi there #[endcomment]#bar' => "bar", {foo => "FOO"});
 process_ok('#[comment]# Hi there #[end]#bar' => "bar", {foo => "FOO"}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-print "### IF / ELSIF / ELSE / IFN ##########################################\n";
+print "### IF / ELSIF / ELSE / IFN ######################### $is_compile_perl\n";
 
 process_ok('#[if $foo]#bar#[endif]#bar' => "bar");
 process_ok('#[if "1"]#bar#[endif]#' => "bar");
@@ -124,7 +131,7 @@ process_ok('#[if $foo]#bar#[elsif wow]#wee#[else]#bing#[endif]#' => "wee",  {wow
 process_ok('#[if $foo]#bar#[elsif wow]#wee#[else]#bing#[endif]#' => "bing", {foo => ''}) if ! $is_tt;
 
 ####----------------------------------------------------------------###
-print "### INCLUDE ##########################################################\n";
+print "### INCLUDE ######################################### $is_compile_perl\n";
 
 process_ok('#[include "wow.tmpl"]#bar' => "bar") if $is_tt;
 process_ok('#[include "foo.tmpl"]#' => "Good Day!");
@@ -134,7 +141,7 @@ process_ok('#[include "bar.tmpl"]#' => "()");
 process_ok('#[include "bar.tmpl"]#' => "(hi)", {bar => 'hi'});
 
 ###----------------------------------------------------------------###
-print "### LOOP #############################################################\n";
+print "### LOOP ############################################ $is_compile_perl\n";
 
 process_ok('#[loop "loop1"]#Hi#[endloop]#foo' => "foo");
 process_ok('#[loop "loop1"]#Hi#[endloop]#foo' => "Hifoo", {set_loop => [{}]});
@@ -144,7 +151,7 @@ process_ok('#[loop "loop1"]##[echo $bar]##[endloop]#foo' => "bingbangfoo", {set_
 process_ok('#[loop "loop1"]##[echo $boop]##[endloop]#foo' => "bopfoo", {boop => 'bop', set_loop => [{bar => 'bing'}]});
 
 ###----------------------------------------------------------------###
-print "### TT3 DIRECTIVES ###################################################\n";
+print "### TT3 DIRECTIVES ################################## $is_compile_perl\n";
 
 process_ok('#[GET foo]#' => "FOO", {foo => "FOO"})    if ! $is_tt;
 process_ok('#[GET 1+2+3+4]#' => "10", {foo => "FOO"}) if ! $is_tt;
@@ -163,18 +170,19 @@ process_ok('#[GET template.foo]##[META foo = "bar"]#' => "bar") if ! $is_tt;
 process_ok('#[MACRO bar(n) BLOCK]#You said #[VAR n]##[END]##[GET bar("hello")]#' => 'You said hello') if ! $is_tt;
 
 ###----------------------------------------------------------------###
-print "### TT3 CHOMPING #####################################################\n";
+print "### TT3 CHOMPING #################################### $is_compile_perl\n";
 
 process_ok("\n#[GET foo]#" => "\nFOO", {foo => "FOO"}) if ! $is_tt;
 process_ok("#[GET foo-]#\n" => "FOO", {foo => "FOO"})  if ! $is_tt;
 process_ok("\n#[-GET foo]#" => "FOO", {foo => "FOO"})  if ! $is_tt;
 
 ###----------------------------------------------------------------###
-print "### TT3 INTERPOLATE ##################################################\n";
+print "### TT3 INTERPOLATE ################################# $is_compile_perl\n";
 
 process_ok('$foo #[GET foo]# ${ 1 + 2 }' => '$foo FOO ${ 1 + 2 }', {foo => "FOO"}) if ! $is_tt;
 process_ok('$foo #[GET foo]# ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO", tt_config => [INTERPOLATE => 1]}) if ! $is_tt;
 process_ok('#[CONFIG INTERPOLATE => 1]#$foo #[GET foo]# ${ 1 + 2 }' => 'FOO FOO 3', {foo => "FOO"}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-print "### DONE #############################################################\n";
+print "### DONE ############################################ $is_compile_perl\n";
+} # end of for

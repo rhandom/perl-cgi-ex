@@ -26,15 +26,17 @@
 #
 #========================================================================
 
-use vars qw($module $is_tt);
+use vars qw($module $is_tt $compile_perl);
 BEGIN {
-    $module = 'CGI::Ex::Template'; #real    0m0.885s #user    0m0.432s #sys     0m0.004s
-#    $module = 'Template';         #real    0m2.133s #user    0m1.108s #sys     0m0.024s
+    $module = 'CGI::Ex::Template';
+    if (grep {/tt/i} @ARGV) {
+        $module = 'Template';
+    }
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 53 : 53;
+use Test::More tests => ! $is_tt ? 105 : 53;
 use Data::Dumper qw(Dumper);
 
 use_ok($module);
@@ -54,6 +56,7 @@ sub process_ok { # process the value and say if it was ok
     my $test = shift;
     my $vars = shift || {};
     my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
+    push @$conf, (COMPILE_PERL => $compile_perl) if $compile_perl;
     my $obj  = shift || $module->new(@$conf); # new object each time
     my $out  = '';
     my $line = (caller)[2];
@@ -75,6 +78,7 @@ sub process_ok { # process the value and say if it was ok
 
 ### This next section of code is verbatim from Andy's code
 #------------------------------------------------------------------------
+{
 package Foo;
 
 sub new {
@@ -93,22 +97,26 @@ sub reverse {
     return '{ ' . join(', ', map { "$_ => $self->{ $_ }" } 
 		       reverse sort keys %$self) . ' }';
 }
-
+}
 #------------------------------------------------------------------------
+{
 package Blessed::List;
 
 sub as_list {
     my $self = shift;
     return @$self;
 }
-
+}
 #------------------------------------------------------------------------
-package main;
 
 my $vars = {
     foo => Foo->new( pi => 3.14, e => 2.718 ),
     blessed_list => bless([ "Hello", "World" ], 'Blessed::List'),
 };
+
+
+for $compile_perl (($is_tt) ? (0) : (0, 1)) {
+    my $is_compile_perl = "compile perl ($compile_perl)";
 
 ###----------------------------------------------------------------###
 ### These are Andy's tests coded as Paul's process_oks
@@ -682,3 +690,7 @@ b:
 c: 10
 d: 10
 e: 10", $vars);
+
+###----------------------------------------------------------------###
+print "### DONE ############################################ $is_compile_perl\n";
+} # end of for

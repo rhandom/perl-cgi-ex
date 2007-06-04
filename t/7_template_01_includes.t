@@ -6,15 +6,17 @@
 
 =cut
 
-use vars qw($module $is_tt);
+use vars qw($module $is_tt $compile_perl);
 BEGIN {
     $module = 'CGI::Ex::Template';
-#    $module = 'Template';
+    if (grep {/tt/i} @ARGV) {
+        $module = 'Template';
+    }
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => (! $is_tt) ? 97 : 90;
+use Test::More tests => (! $is_tt) ? 192 : 90;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -34,7 +36,8 @@ sub process_ok { # process the value and say if it was ok
     my $test = shift;
     my $vars = shift || {};
     my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
-    my $obj  = shift || $module->new(@$conf, ABSOLUTE => 1, INCLUDE_PATH => $test_dir); # new object each time
+    push @$conf, (COMPILE_PERL => $compile_perl) if ! $compile_perl;
+    my $obj  = shift || $module->new(@$conf, ABSOLUTE => 1, INCLUDE_PATH => $test_dir, COMPILE_PERL => 1); # new object each time
     my $out  = '';
     my $line = (caller)[2];
     delete $vars->{'tt_config'};
@@ -124,8 +127,11 @@ open($fh, ">$template_template") || die "Couldn't open $template_template: $!";
 print $fh "<<[% PROCESS \$template %][% content %]>>";
 close $fh;
 
+for $compile_perl (($is_tt) ? (0) : (0, 1)) {
+    my $is_compile_perl = "compile perl ($compile_perl)";
+
 ###----------------------------------------------------------------###
-print "### INSERT ###########################################################\n";
+print "### INSERT ########################################## $is_compile_perl\n";
 
 process_ok("([% INSERT bar.tt %])" => '([% blue %]BAR)');
 process_ok("([% SET file = 'bar.tt' %][% INSERT \$file %])"     => '([% blue %]BAR)');
@@ -134,7 +140,7 @@ process_ok("([% SET file = 'bar.tt' %][% INSERT \"\$file\" %])" => '([% blue %]B
 process_ok("([% SET file = 'bar' %][% INSERT \"\${file}.tt\" %])" => '([% blue %]BAR)');
 
 ###----------------------------------------------------------------###
-print "### INCLUDE ##########################################################\n";
+print "### INCLUDE ######################################### $is_compile_perl\n";
 
 process_ok("([% INCLUDE bar.tt %])" => '(BAR)');
 process_ok("[% PROCESS foo.tt %]" => '(BAR)');
@@ -152,7 +158,7 @@ process_ok("([% INCLUDE baz.tt %])[% baz %]" => '(42)');
 process_ok("[% SET baz = 21 %]([% INCLUDE baz.tt %])[% baz %]" => '(42)21');
 
 ###----------------------------------------------------------------###
-print "### PROCESS ##########################################################\n";
+print "### PROCESS ######################################### $is_compile_perl\n";
 
 process_ok("([% PROCESS bar.tt %])" => '(BAR)');
 process_ok("[% PROCESS foo.tt %]" => '(BAR)');
@@ -170,7 +176,7 @@ process_ok("([% PROCESS baz.tt %])[% baz %]" => '(42)42');
 process_ok("[% SET baz = 21 %]([% PROCESS baz.tt %])[% baz %]" => '(42)42');
 
 ###----------------------------------------------------------------###
-print "### WRAPPER ##########################################################\n";
+print "### WRAPPER ######################################### $is_compile_perl\n";
 
 process_ok("([% WRAPPER wrap.tt %])" => '');
 process_ok("([% WRAPPER wrap.tt %] one [% END %])" => '(Hi one there)');
@@ -180,7 +186,7 @@ process_ok("([% WRAPPER wrap.tt %] ([% baz; baz='-local' %]) [% END %][% baz %])
 process_ok("([% WRAPPER wrap.tt %][% META foo='BLAM' %] [% END %])" => '(HiBLAM there)');
 
 ###----------------------------------------------------------------###
-print "### CONFIG PRE_PROCESS ###############################################\n";
+print "### CONFIG PRE_PROCESS ############################## $is_compile_perl\n";
 
 process_ok("Foo" => "BARFoo",      {tt_config => [PRE_PROCESS => 'bar.tt']});
 process_ok("Foo" => "BARFoo",      {tt_config => [PRE_PROCESS => ['bar.tt']]});
@@ -193,7 +199,7 @@ process_ok("([% WRAPPER wrap.tt %] one [% END %])" => 'BAR(Hi one there)', {tt_c
 process_ok("Foo" => "<<Foo>>Foo",  {tt_config => [PRE_PROCESS => 'template.tt']});
 
 ###----------------------------------------------------------------###
-print "### CONFIG POST_PROCESS ##############################################\n";
+print "### CONFIG POST_PROCESS ############################# $is_compile_perl\n";
 
 process_ok("Foo" => "FooBAR",      {tt_config => [POST_PROCESS => 'bar.tt']});
 process_ok("Foo" => "FooBAR",      {tt_config => [POST_PROCESS => ['bar.tt']]});
@@ -206,7 +212,7 @@ process_ok("([% WRAPPER wrap.tt %] one [% END %])" => '(Hi one there)BAR', {tt_c
 process_ok("Foo" => "Foo<<Foo>>",  {tt_config => [POST_PROCESS => 'template.tt']});
 
 ###----------------------------------------------------------------###
-print "### CONFIG PROCESS ###################################################\n";
+print "### CONFIG PROCESS ################################## $is_compile_perl\n";
 
 process_ok("Foo" => "BAR",      {tt_config => [PROCESS => 'bar.tt']});
 process_ok("Foo" => "BAR",      {tt_config => [PROCESS => ['bar.tt']]});
@@ -219,7 +225,7 @@ process_ok("Foo[% META foo='meta' %]" => "(metaBAR)BAR", {tt_config => [POST_PRO
 process_ok("Foo" => "<<Foo>>",  {tt_config => [PROCESS => 'template.tt']});
 
 ###----------------------------------------------------------------###
-print "### CONFIG WRAPPER ###################################################\n";
+print "### CONFIG WRAPPER ################################## $is_compile_perl\n";
 
 process_ok(" one " => 'Hi one there', {tt_config => [WRAPPER => 'wrap.tt']});
 process_ok(" one " => 'Hi one there', {tt_config => [WRAPPER => ['wrap.tt']]});
@@ -236,7 +242,7 @@ process_ok(" one " => 'Hi one thereBAR', {tt_config => [WRAPPER => 'wrap.tt', PO
 process_ok("Foo" => "<<FooFoo>>",  {tt_config => [WRAPPER => 'template.tt']});
 
 ###----------------------------------------------------------------###
-print "### CONFIG ERRORS ####################################################\n";
+print "### CONFIG ERRORS ################################### $is_compile_perl\n";
 
 process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERROR  => 'catch.tt']});
 process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERRORS => 'catch.tt']});
@@ -262,7 +268,7 @@ process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', POST_PROCESS => 
 process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', WRAPPER => 'die.tt']});
 
 ###----------------------------------------------------------------###
-print "### CONFIG and DUMP ##################################################\n";
+print "### CONFIG and DUMP ################################# $is_compile_perl\n";
 
 process_ok("[% CONFIG DUMP => {html => 0}; DUMP foo; PROCESS config.tt; DUMP foo %]" => qq{DUMP: File "input text" line 1
     foo = 'FOO';
@@ -272,11 +278,12 @@ process_ok("[% CONFIG DUMP => {html => 0}; DUMP foo; PROCESS config.tt; DUMP foo
 }, {foo => 'FOO'}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-print "### NOT FOUND CACHE ##################################################\n";
+print "### NOT FOUND CACHE ################################# $is_compile_perl\n";
 
 process_ok("[% BLOCK foo; TRY; PROCESS blurty.tt; CATCH %]([% error.type %])([% error.info %])\n[% END; END; PROCESS foo; PROCESS foo %]" => "(file)(blurty.tt: not found)\n(file)(blurty.tt: not found (cached))\n", {tt_config => [NEGATIVE_STAT_TTL => 2]}) if ! $is_tt;
 process_ok("[% BLOCK foo; TRY; PROCESS blurty.tt; CATCH %]([% error.type %])([% error.info %])\n[% END; END; PROCESS foo; PROCESS foo %]" => "(file)(blurty.tt: not found)\n(file)(blurty.tt: not found)\n", {tt_config => [NEGATIVE_STAT_TTL => -1]}) if ! $is_tt;
 process_ok("[% BLOCK foo; TRY; PROCESS blurty.tt; CATCH %]([% error.type %])([% error.info %])\n[% END; END; PROCESS foo; PROCESS foo %]" => "(file)(blurty.tt: not found)\n(file)(blurty.tt: not found)\n", {tt_config => [STAT_TTL => -1]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
-print "### DONE #############################################################\n";
+print "### DONE ############################################ $is_compile_perl\n";
+} # end of for
