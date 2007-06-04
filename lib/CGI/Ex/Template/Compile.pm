@@ -215,9 +215,14 @@ ${indent}}";
 sub compile_expr {
     my ($self, $var, $str_ref, $indent) = @_;
 
+    my $is_set   = delete($self->{'_is_set'});
+    my $is_undef = delete($self->{'_is_undef'});
+
     ### return literals
     if (! ref $var) {
-        if (! defined $var) {
+        if ($is_set) {
+            $$str_ref .= "(\$var = 'null op set of literal value')";
+        } elsif (! defined $var) {
             $$str_ref .= 'undef';
         } elsif ($var =~ /^-?[1-9]\d{0,13}\b(?:|\.0|\.\d{0,13}[1-9])$/ && ! $self->{'_no_bare_numbers'}) { # return unquoted numbers if it is simple
             $$str_ref .= $var;
@@ -233,14 +238,12 @@ sub compile_expr {
     my $i = 0;
     my $name = $var->[$i++];
     my $args = $var->[$i++];
-    my $is_set   = delete($self->{'_is_set'});
-    my $is_undef = delete($self->{'_is_undef'});
     my $open = '$self->'.($is_set ? 'set_variable' : $is_undef ? 'undefined_get' : 'play_variable').'([';
 
     if (ref $name) {
         if (! defined $name->[0]) { # operator
             if ($is_set) {
-                $$str_ref .= "\$var = 'null op set of complex string'";
+                $$str_ref .= "(\$var = 'null op set of complex string')";
                 return;
             } elsif ($i >= @$var) {
                 $self->compile_operator($name, $str_ref, $indent);
@@ -257,13 +260,8 @@ sub compile_expr {
         }
     } elsif (defined $name) {
         $$str_ref .= $open;
-        if ($self->{'is_namespace_during_compile'}) {
-            die;
-            #$ref = $self->{'NAMESPACE'}->{$name};
-        } else {
-            $name =~ s/\'/\\\'/g;
-            $$str_ref .= "'$name'";
-        }
+        $name =~ s/\'/\\\'/g;
+        $$str_ref .= "'$name'";
     } else {
         die "Parsed tree error - found an anomaly" if $is_set;
         $$str_ref .= "''"; # not sure we can get here
@@ -298,13 +296,8 @@ sub compile_expr {
                 $self->compile_expr($name, $str_ref, $indent);
             }
         } elsif (defined $name) {
-            if ($self->{'is_namespace_during_compile'}) {
-                die;
-                #$ref = $self->{'NAMESPACE'}->{$name};
-            } else {
-                $name =~ s/\'/\\\'/g;
-                $$str_ref .= ", '$name'";
-            }
+            $name =~ s/\'/\\\'/g;
+            $$str_ref .= ", '$name'";
         } else {
             $$str_ref .= "''";
         }
