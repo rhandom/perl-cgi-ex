@@ -36,8 +36,8 @@ sub process_ok { # process the value and say if it was ok
     my $test = shift;
     my $vars = shift || {};
     my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
-    push @$conf, (COMPILE_PERL => $compile_perl) if ! $compile_perl;
-    my $obj  = shift || $module->new(@$conf, ABSOLUTE => 1, INCLUDE_PATH => $test_dir, COMPILE_PERL => 1); # new object each time
+    push @$conf, (COMPILE_PERL => $compile_perl) if $compile_perl;
+    my $obj  = shift || $module->new(@$conf, ABSOLUTE => 1, INCLUDE_PATH => $test_dir); # new object each time
     my $out  = '';
     my $line = (caller)[2];
     delete $vars->{'tt_config'};
