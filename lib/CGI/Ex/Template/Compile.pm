@@ -940,7 +940,7 @@ ${indent}\$var = ";
     my $i = 0;
     while ($node = $node->[5]) { # CASES
         if (! defined $node->[3]) {
-            $default = $node->[4];
+            $default = $node;
             next;
         }
 
@@ -958,9 +958,9 @@ ${indent}${INDENT}my \$var;";
     }
 
     if ($default) {
-        $$str_ref .= _node_info($self, $node, $indent);
+        $$str_ref .= _node_info($self, $default, $indent);
         $$str_ref .= "\n$indent" .($i++ ? "} else {" : "if (1) {");
-        $$str_ref .= $self->compile_tree($default, "$indent$INDENT");
+        $$str_ref .= $self->compile_tree($default->[4], "$indent$INDENT");
     }
 
     $$str_ref .= "\n$indent}" if $i;
@@ -1009,7 +1009,7 @@ ${indent}if (\$err) {";
     my @names;
     while ($node = $node->[5]) { # CATCHES
         if ($node->[0] eq 'FINAL') {
-            $final = $node->[4];
+            $final = $node;
             next;
         }
         $catches_str .= _node_info($self, $node, "$indent$INDENT");
@@ -1055,8 +1055,8 @@ ${indent}\$self->throw('throw', 'Missing CATCH block');";
     $$str_ref .= "
 ${indent}}";
     if ($final) {
-        $$str_ref .= _node_info($self, $node, $indent);
-        $$str_ref .= $self->compile_tree($final, "$indent");
+        $$str_ref .= _node_info($self, $final, $indent);
+        $$str_ref .= $self->compile_tree($final->[4], "$indent");
     }
     $$str_ref .="
 ${indent}};";
@@ -1114,9 +1114,9 @@ ${indent}${INDENT}my \$blocks = \$hash->{'blocks'} = {};";
 ${indent}${INDENT}\$blocks->{'$key'} = {
 ${indent}${INDENT}${INDENT}name  => \$prefix . '$key',
 ${indent}${INDENT}${INDENT}_perl => {code => sub {
-${indent}${INDENT}${INDENT}${INDENT}my \$out = '';
-${indent}${INDENT}${INDENT}${INDENT}my \$out_ref = \\\$out;$code
-${indent}${INDENT}${INDENT}${INDENT}return \$out;
+${indent}${INDENT}${INDENT}${INDENT}my (\$self, \$out_ref, \$var) = \@_;$code
+
+${indent}${INDENT}${INDENT}${INDENT}return 1;
 ${indent}${INDENT}${INDENT}} },
 ${indent}${INDENT}};";
     }
@@ -1180,7 +1180,8 @@ ${indent}for my \$file (reverse("
 .join(",${indent}${INDENT}", map {"\$self->play_expr(".$self->compile_expr_flat($_).")"} @files).")) {
 ${indent}${INDENT}local \$self->{'_vars'}->{'content'} = \$var;
 ${indent}${INDENT}\$var = '';
-${indent}${INDENT}\$self->play_INCLUDE([$named, \$file], ['$node->[0]', $node->[1], $node->[2]], \\\$var);
+${indent}${INDENT}require CGI::Ex::Template::Play;
+${indent}\$CGI::Ex::Template::Play::DIRECTIVES->{'INCLUDE'}->(\$self, [$named, \$file], ['$node->[0]', $node->[1], $node->[2]], \\\$var);
 ${indent}}
 ${indent}\$\$out_ref .= \$var if defined \$var;";
 
