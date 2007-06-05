@@ -49,8 +49,8 @@ sub parse_tree_velocity {
     local $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
     local $self->{'_end_tag'}; # changes over time
 
-    local @{ $CGI::Ex::Template::Parse::ALIASES }{qw(PARSE   INCLUDE ELSEIF)}
-                                                = qw(PROCESS INSERT  ELSIF);
+    local @{ $CGI::Ex::Template::Parse::ALIASES }{qw(PARSE   INCLUDE _INCLUDE ELSEIF)}
+                                                = qw(PROCESS INSERT  INCLUDE  ELSIF);
     my $dirs    = $CGI::Ex::Template::Parse::DIRECTIVES;
     my $aliases = $CGI::Ex::Template::Parse::ALIASES;
     local @{ $dirs }{ keys %$aliases } = values %$aliases; # temporarily add to the table
@@ -128,6 +128,7 @@ sub parse_tree_velocity {
                         || $self->throw('parse', 'Missing close }', undef, pos($$str_ref));
                 } else {
                     local $self->{'_operator_precedence'} = 1; # no operators
+                    local $CGI::Ex::Template::Parse::QR_COMMENTS = qr{};
                     $ref = $self->parse_expr($str_ref);
                 }
                 $self->throw('parse', "Error while parsing for interpolated string", undef, pos($$str_ref))
@@ -197,6 +198,7 @@ sub parse_tree_velocity {
         ### handle ending tags - or continuation blocks
         if ($func eq 'END' || $dirs->{$func}->[4]) {
             if (! @state) {
+                print Data::Dumper::Dumper(\@tree);
                 $self->throw('parse', "Found an $func tag while not in a block", $node, pos($$str_ref));
             }
             my $parent_node = pop @state;
