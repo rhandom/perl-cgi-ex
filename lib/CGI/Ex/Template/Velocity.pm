@@ -38,17 +38,19 @@ sub parse_tree_velocity {
         $self->throw('parse.no_string', "No string or undefined during parse");
     }
 
+    local $self->{'V2EQUALS'}    = $self->{'V2EQUALS'} || 0;
     local $self->{'INTERPOLATE'} = defined($self->{'INTERPOLATE'}) ? $self->{'INTERPOLATE'} : 1;
     local $self->{'V1DOLLAR'}    = defined($self->{'V1DOLLAR'})    ? $self->{'V1DOLLAR'}    : 1;
     local $self->{'ANYCASE'}     = defined($self->{'ANYCASE'})     ? $self->{'ANYCASE'}     : 1;
     local $self->{'AUTO_EVAL'}   = defined($self->{'AUTO_EVAL'})   ? $self->{'AUTO_EVAL'}   : 1;
+    local $self->{'SHOW_UNDEFINED_INTERP'} = defined($self->{'SHOW_UNDEFINED_INTERP'}) ? $self->{'SHOW_UNDEFINED_INTERP'} : 1;
 
     local $self->{'START_TAG'}  = qr{\#};
     local $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
     local $self->{'_end_tag'}; # changes over time
 
-    local @{ $CGI::Ex::Template::Parse::ALIASES }{qw(PARSE   INCLUDE)}
-                                                = qw(PROCESS INSERT );
+    local @{ $CGI::Ex::Template::Parse::ALIASES }{qw(PARSE   INCLUDE ELSEIF)}
+                                                = qw(PROCESS INSERT  ELSIF);
     my $dirs    = $CGI::Ex::Template::Parse::DIRECTIVES;
     my $aliases = $CGI::Ex::Template::Parse::ALIASES;
     local @{ $dirs }{ keys %$aliases } = values %$aliases; # temporarily add to the table
@@ -69,14 +71,15 @@ sub parse_tree_velocity {
     my $func;
     my $pre_chomp;
     my $node;
-    my ($comment, $is_close);
     local pos $$str_ref = 0;
 
     while (1) {
         ### allow for #set(foo = PROCESS foo)
         if ($capture) {
-            $func = $$str_ref =~ m{ \G \s* (\w+)\b }gcx
-                ? uc $1 : $self->throw('parse', "Error looking for block in capture DIRECTIVE", undef, pos($$str_ref));
+            $$str_ref =~ m{ \G \s* (\w+)\b }gcx
+                || $self->throw('parse', "Error looking for block in capture DIRECTIVE", undef, pos($$str_ref));
+            $func = $self->{'ANYCASE'} ? uc($1) : $1;
+
             $func = $aliases->{$func} if $aliases->{$func};
             $self->throw('parse', "Found unknown DIRECTIVE ($func)", undef, pos($$str_ref) - length($func))
                 if ! $dirs->{$func};
@@ -129,18 +132,44 @@ sub parse_tree_velocity {
                 }
                 $self->throw('parse', "Error while parsing for interpolated string", undef, pos($$str_ref))
                     if ! defined $ref;
+                if (! $not && $self->{'SHOW_UNDEFINED_INTERP'}) {
+                    $ref = [[undef, '//', $ref, '$'.substr($$str_ref, $mark, pos($$str_ref)-$mark)], 0];
+                }
                 push @$pointer, ['GET', $mark, pos($$str_ref), $ref];
                 $post_chomp = 0; # no chomping after dollar vars
                 next;
             }
 
+            ### allow for escaped #
+            my $n = ($text =~ m{ (\\+) $ }x) ? length($1) : 0;
+            if ($n % 2) { # were there odd escapes
+                my $prev_text;
+                $prev_text = \$pointer->[-1] if defined($pointer->[-1]) && ! ref($pointer->[-1]);
+                chop($$prev_text) if $n % 2;
+                if ($prev_text) { $$prev_text .= '#' } else { push @$pointer, '#' }
+                next;
+            }
+
+            $$str_ref =~ m{ \G (\w+) }gcx
+                || $$str_ref =~ m{ \G \{ (\w+) \} }gcx
+                || $self->throw('parse', 'Missing directive name', undef, pos($$str_ref));
+            $func = $self->{'ANYCASE'} ? uc($1) : $1;
+
             ### make sure we know this directive
             $func = $aliases->{$func} if $aliases->{$func};
             $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func))
                 if ! $dirs->{$func};
-            $node = [$func, pos($$str_ref) - length($func) - length($pre_chomp) - 5, undef];
+            $node = [$func, pos($$str_ref), undef];
 
-            ### take care of chomping - yes HT now get CHOMP SUPPORT
+            if ($$str_ref =~ m{ \G \( ([+=~-]?) }gcx) {
+                $self->{'_end_tag'} = qr{\s*([+=~-]?)\)};
+                $pre_chomp = $1;
+            } else {
+                $self->{'_end_tag'} = qr{};
+                $pre_chomp = '';
+            }
+
+            ### take care of chomping (this is an extention to velocity
             $pre_chomp ||= $self->{'PRE_CHOMP'};
             $pre_chomp  =~ y/-=~+/1230/ if $pre_chomp;
             if ($pre_chomp && $pointer->[-1] && ! ref $pointer->[-1]) {
@@ -156,8 +185,7 @@ sub parse_tree_velocity {
         $$str_ref =~ m{ \G \s+ }gcx;
 
         ### parse remaining tag details
-        if (! $is_close) {
-            $self->{'_end_tag'} = $comment ? qr{\s*([+=~-]?)-->} : qr{\s*([+=~-]?)>};
+        if ($func ne 'END') {
             $node->[3] = eval { $dirs->{$func}->[0]->($self, $str_ref, $node) };
             if (my $err = $@) {
                 $err->node($node) if UNIVERSAL::can($err, 'node') && ! $err->node;
@@ -167,14 +195,11 @@ sub parse_tree_velocity {
         }
 
         ### handle ending tags - or continuation blocks
-        if ($is_close || $dirs->{$func}->[4]) {
+        if ($func eq 'END' || $dirs->{$func}->[4]) {
             if (! @state) {
                 $self->throw('parse', "Found an $func tag while not in a block", $node, pos($$str_ref));
             }
             my $parent_node = pop @state;
-
-            ### TODO - check for matching loop close name
-            $func = $node->[0] = 'END' if $is_close;
 
             ### handle continuation blocks such as elsif, else, catch etc
             if ($dirs->{$func}->[4]) {
