@@ -428,7 +428,7 @@ sub play_MACRO {
     if (! $sub_tree || ! $sub_tree->[0]) {
         $self->set_variable($name, undef);
         return;
-    } elsif ($sub_tree->[0]->[0] eq 'BLOCK') {
+    } elsif (ref($sub_tree->[0]) && $sub_tree->[0]->[0] eq 'BLOCK') {
         $sub_tree = $sub_tree->[0]->[4];
     }
 

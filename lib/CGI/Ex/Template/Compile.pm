@@ -752,7 +752,7 @@ ${indent}";
         $self->compile_expr($name, $str_ref, $indent);
         $$str_ref .= ";";
         return;
-    } elsif ($sub_tree->[0]->[0] eq 'BLOCK') {
+    } elsif (ref($sub_tree->[0]) && $sub_tree->[0]->[0] eq 'BLOCK') {
         $sub_tree = $sub_tree->[0]->[4];
     }
 
