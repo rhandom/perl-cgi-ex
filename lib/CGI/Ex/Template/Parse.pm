@@ -59,6 +59,7 @@ our $DIRECTIVES = {
     ELSE    => [sub {},          undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
     ELSIF   => [\&parse_IF,      undef,           0,       0,       {IF => 1, ELSIF => 1, UNLESS => 1}],
     END     => [sub {},          sub {}],
+    EVAL    => [\&parse_EVAL,    \&play_EVAL],
     FILTER  => [\&parse_FILTER,  \&play_FILTER,   1,       1],
     '|'     => [\&parse_FILTER,  \&play_FILTER,   1,       1],
     FINAL   => [sub {},          undef,           0,       0,       {TRY => 1, CATCH => 1}],
@@ -90,7 +91,9 @@ our $DIRECTIVES = {
     WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1,       1],
     #name       parse_sub        play_sub         block    postdir  continue  no_interp
 };
-our $ALIASES = {};
+our $ALIASES = {
+    EVALUATE => 'EVAL',
+};
 
 
 our $QR_DIRECTIVE = '( [a-zA-Z]+\b | \| )';
@@ -731,6 +734,11 @@ sub parse_DEBUG {
 sub parse_DEFAULT { $DIRECTIVES->{'SET'}->[0]->(@_) }
 
 sub parse_DUMP {
+    my ($self, $str_ref) = @_;
+    return $self->parse_args($str_ref, {named_at_front => 1});
+}
+
+sub parse_EVAL {
     my ($self, $str_ref) = @_;
     return $self->parse_args($str_ref, {named_at_front => 1});
 }
