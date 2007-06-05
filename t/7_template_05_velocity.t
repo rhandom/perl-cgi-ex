@@ -12,7 +12,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 150;
+use Test::More tests => 168;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -99,6 +99,7 @@ process_ok('#set($monkey.Blame = $whitehouse.Leak)$monkey.Blame' => 'from_veloci
 process_ok('#set($monkey.Plan = $spindoctor.weave($web))$monkey.Plan' => '(spider)', {spindoctor => {weave => sub {"($_[0])"}}, web => 'spider'});
 process_ok('#set($monkey.Number = 123)$monkey.Number' => '123');
 process_ok('#set($monkey.Numbers = [1..3])$monkey.Numbers.2' => '3');
+process_ok('#set($monkey.Map = {"banana" : "good"})$monkey.Map.banana' => 'good');
 
 process_ok('#set($value = $foo + 1)$value' => '9',     {foo => 8, bar => 4});
 process_ok('#set($value = $bar - 1)$value' => '3',     {foo => 8, bar => 4});
@@ -115,6 +116,19 @@ process_ok("Foo##interesting" => 'Foo');
 process_ok("Foo#*interesting\n" => '');
 process_ok("Foo#*interesting\n\n\n*#" => 'Foo');
 process_ok("Foo#*interesting\n\n\n*#Bar" => 'FooBar');
+
+###----------------------------------------------------------------###
+print "### ESCAPING ######################################## $is_compile_perl\n";
+
+process_ok(('\\'x0).'$email' => 'foo', {email => 'foo'});
+process_ok(('\\'x1).'$email' => '$email', {email => 'foo'});
+process_ok(('\\'x2).'$email' => '\\foo', {email => 'foo'});
+process_ok(('\\'x3).'$email' => '\\$email', {email => 'foo'});
+
+process_ok(('\\'x0).'$email' => '$email');
+process_ok(('\\'x1).'$email' => '$email');   # according to VTL spec this is wrong - but that means that the VTL spec parses inconsistently
+process_ok(('\\'x2).'$email' => '\\$email');
+process_ok(('\\'x3).'$email' => '\\$email'); # according to VTL spec this is wrong
 
 ###----------------------------------------------------------------###
 print "### IF / ELSEIF / ELSE ############################## $is_compile_perl\n";
