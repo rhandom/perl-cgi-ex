@@ -293,7 +293,7 @@ sub parse_expr {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $hashref = [undef, '{}'];
         while (defined(my $key = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"}))) {
-            $$str_ref =~ m{ \G \s* $QR_COMMENTS = >? }gcxo;
+            $$str_ref =~ m{ \G \s* $QR_COMMENTS (?: = >? | [:,]) }gcxo;
             my $val = $self->parse_expr($str_ref);
             push @$hashref, $key, $val;
             $$str_ref =~ m{ \G \s* $QR_COMMENTS , }gcxo;
