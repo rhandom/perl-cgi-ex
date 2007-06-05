@@ -20,12 +20,13 @@ our @EXPORT_OK = qw(@CONFIG_COMPILETIME @CONFIG_RUNTIME
 
 our $AUTOLOAD;
 our $AUTOROLE = {
-    TT      => [qw(parse_tree_tt3 process)],
-    Compile => [qw(load_perl compile_template compile_tree compile_expr compile_expr_flat compile_operator)],
-    HTE     => [qw(parse_tree_hte param output register_function clear_param query new_file new_scalar_ref new_array_ref new_filehandle)],
-    Parse   => [qw(parse_tree parse_expr apply_precedence parse_args dump_parse dump_parse_expr)],
-    Play    => [qw(play_tree list_plugins)],
-    Tmpl    => [qw(parse_tree_tmpl set_delimiters set_strip set_value set_values parse_string set_dir parse_file loop_iteration fetch_loop_iteration)],
+    TT       => [qw(parse_tree_tt3 process)],
+    Compile  => [qw(load_perl compile_template compile_tree compile_expr compile_expr_flat compile_operator)],
+    HTE      => [qw(parse_tree_hte param output register_function clear_param query new_file new_scalar_ref new_array_ref new_filehandle)],
+    Parse    => [qw(parse_tree parse_expr apply_precedence parse_args dump_parse dump_parse_expr)],
+    Play     => [qw(play_tree list_plugins)],
+    Tmpl     => [qw(parse_tree_tmpl set_delimiters set_strip set_value set_values parse_string set_dir parse_file loop_iteration fetch_loop_iteration)],
+    Velocity => [qw(parse_tree_velocity merge)],
 };
 our $AUTOLOOKUP = { map { my $type = $_; map { ($_ => $type) } @{ $AUTOROLE->{$type} } } keys %$AUTOROLE };
 
@@ -54,13 +55,14 @@ sub AUTOLOAD {
 our $QR_PRIVATE = qr/^[_.]/;
 
 our $SYNTAX = {
-    cet  => sub { shift->parse_tree_tt3(@_) },
-    ht   => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; local $self->{'EXPR'} = 0; $self->parse_tree_hte(@_) },
-    hte  => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; $self->parse_tree_hte(@_) },
-    tt3  => sub { shift->parse_tree_tt3(@_) },
-    tt2  => sub { my $self = shift; local $self->{'V2PIPE'} = 1; $self->parse_tree_tt3(@_) },
-    tt1  => sub { my $self = shift; local $self->{'V2PIPE'} = 1; local $self->{'V1DOLLAR'} = 1; $self->parse_tree_tt3(@_) },
-    tmpl => sub { shift->parse_tree_tmpl(@_) },
+    cet      => sub { shift->parse_tree_tt3(@_) },
+    ht       => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; local $self->{'EXPR'} = 0; $self->parse_tree_hte(@_) },
+    hte      => sub { my $self = shift; local $self->{'V2EQUALS'} = 0; $self->parse_tree_hte(@_) },
+    tt3      => sub { shift->parse_tree_tt3(@_) },
+    tt2      => sub { my $self = shift; local $self->{'V2PIPE'} = 1; $self->parse_tree_tt3(@_) },
+    tt1      => sub { my $self = shift; local $self->{'V2PIPE'} = 1; local $self->{'V1DOLLAR'} = 1; $self->parse_tree_tt3(@_) },
+    tmpl     => sub { shift->parse_tree_tmpl(@_) },
+    velocity => sub { shift->parse_tree_velocity(@_) },
 };
 
 our $SCALAR_OPS = {
