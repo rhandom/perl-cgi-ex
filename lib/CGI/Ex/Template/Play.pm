@@ -39,6 +39,7 @@ our $DIRECTIVES = {
     ELSE    => undef,
     ELSIF   => undef,
     END     => sub {},
+    EVAL    => \&play_EVAL,
     FILTER  => \&play_FILTER,
     '|'     => \&play_FILTER,
     FINAL   => undef,
@@ -224,6 +225,19 @@ sub play_DUMP {
 
     $$out_ref .= $out;
     return;
+}
+
+sub play_EVAL {
+    my ($self, $ref, $node, $out_ref) = @_;
+    my ($named, @strs) = @$ref;
+    $named = $self->play_expr($named);
+
+    foreach my $str (@strs) {
+        $str = $self->play_expr($str);
+        next if ! defined $str;
+        #$$out_ref .= $self->play_variable($str, [undef, 0, '|', 'eval', [$named]]);
+        $$out_ref .= $self->play_variable($str, [undef, 0, '|', 'eval', 0]);
+    }
 }
 
 sub play_FILTER {

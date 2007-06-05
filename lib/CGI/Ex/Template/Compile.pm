@@ -39,6 +39,7 @@ our $DIRECTIVES = {
     ELSE    => undef,
     ELSIF   => undef,
     END     => sub {},
+    EVAL    => \&compile_EVAL,
     FILTER  => \&compile_FILTER,
     '|'     => \&compile_FILTER,
     FINAL   => undef,
@@ -574,6 +575,19 @@ sub compile_GET {
     $self->compile_expr($node->[3], $str_ref, $indent);
     $$str_ref .= "]);";
     return;
+}
+
+sub compile_EVAL {
+    my ($self, $node, $str_ref, $indent) = @_;
+    my ($named, @strs) = @{ $node->[3] };
+#    $named = $self->play_expr($named);
+
+    $$str_ref .= "
+${indent}foreach my \$str (".join(",\n", map {$self->compile_expr_flat($_)} @strs).") {
+${indent}${INDENT}\$str = \$self->play_expr(\$str);
+${indent}${INDENT}next if ! defined \$str;
+${indent}${INDENT}\$\$out_ref .= \$self->play_variable(\$str, [undef, 0, '|', 'eval', 0]);
+${indent}}";
 }
 
 sub compile_FILTER {
