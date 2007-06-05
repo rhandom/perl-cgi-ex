@@ -466,12 +466,18 @@ ${indent}}";
         $$str_ref .= "do { no warnings; $op";
         $self->compile_expr($the_rest[0], $str_ref, $indent);
         $$str_ref .= ' }';
-    } elsif ($op eq '||' || $op eq '&&') {
+    } elsif ($op eq '||' || $op eq '&&' || $op =~ /^(or|OR|and|AND)$/) {
         $$str_ref .= '(';
         $self->compile_expr($the_rest[0], $str_ref, $indent);
         $$str_ref .= " $op ";
         $self->compile_expr($the_rest[1], $str_ref, $indent);
         $$str_ref .= ')';
+    } elsif ($op eq '//' || $op eq 'err' || $op eq 'ERR') {
+        $$str_ref .= "do { my \$var = ";
+        $self->compile_expr($the_rest[0], $str_ref, $indent);
+        $$str_ref .= "; defined(\$var) ? \$var : ";
+        $self->compile_expr($the_rest[1], $str_ref, $indent);
+        $$str_ref .= " }";
     } else {
         local $self->{'_no_bare_numbers'} = 1; # allow for == vs eq distinction on strings
         $$str_ref .= 'do { no warnings; ';
