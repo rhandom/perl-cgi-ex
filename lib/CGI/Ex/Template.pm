@@ -216,19 +216,22 @@ our $OPERATORS = [
     ['none',    75,        ['cmp'],             sub { no warnings; $_[0] cmp $_[1] } ],
     ['left',    70,        ['&&'],              undef],
     ['right',   65,        ['||'],              undef],
+    ['right',   65,        ['//'],              undef],
     ['none',    60,        ['..'],              sub { no warnings; $_[0] .. $_[1]  } ],
     ['ternary', 55,        ['?', ':'],          undef],
-    ['assign',  53,        ['+='],              sub { no warnings; $_[0] +  $_[1]  } ],
-    ['assign',  53,        ['-='],              sub { no warnings; $_[0] -  $_[1]  } ],
-    ['assign',  53,        ['*='],              sub { no warnings; $_[0] *  $_[1]  } ],
-    ['assign',  53,        ['/='],              sub { no warnings; $_[0] /  $_[1]  } ],
-    ['assign',  53,        ['%='],              sub { no warnings; $_[0] %  $_[1]  } ],
-    ['assign',  53,        ['**='],             sub { no warnings; $_[0] ** $_[1]  } ],
-    ['assign',  53,        ['~=', '_='],        sub { no warnings; $_[0] .  $_[1]  } ],
+    ['assign',  53,        ['+='],              undef],
+    ['assign',  53,        ['-='],              undef],
+    ['assign',  53,        ['*='],              undef],
+    ['assign',  53,        ['/='],              undef],
+    ['assign',  53,        ['%='],              undef],
+    ['assign',  53,        ['**='],             undef],
+    ['assign',  53,        ['~=', '_='],        undef],
+    ['assign',  53,        ['//='],             undef],
     ['assign',  52,        ['='],               undef],
     ['prefix',  50,        ['not', 'NOT'],      sub { no warnings; ! $_[0]         } ],
     ['left',    45,        ['and', 'AND'],      undef],
-    ['right',   40,        ['or', 'OR'],        undef],
+    ['right',   40,        ['or',  'OR' ],      undef],
+    ['right',   40,        ['err', 'ERR'],      undef],
 ];
 our ($QR_OP, $QR_OP_PREFIX, $QR_OP_ASSIGN, $OP, $OP_PREFIX, $OP_DISPATCH, $OP_ASSIGN, $OP_POSTFIX, $OP_TERNARY);
 sub _op_qr { # no mixed \w\W operators
@@ -1049,15 +1052,8 @@ sub play_operator {
     my ($self, $tree) = @_;
     ### $tree looks like [undef, '+', 4, 5]
 
-    if ($OP_DISPATCH->{$tree->[1]}) {
-        if ($OP_ASSIGN->{$tree->[1]}) {
-            my $val = $OP_DISPATCH->{$tree->[1]}->($self->play_expr($tree->[2]), $self->play_expr($tree->[3]));
-            $self->set_variable($tree->[2], $val);
-            return $val;
-        } else {
-            return $OP_DISPATCH->{$tree->[1]}->(@$tree == 3 ? $self->play_expr($tree->[2]) : ($self->play_expr($tree->[2]), $self->play_expr($tree->[3])));
-        }
-    }
+    return $OP_DISPATCH->{$tree->[1]}->(@$tree == 3 ? $self->play_expr($tree->[2]) : ($self->play_expr($tree->[2]), $self->play_expr($tree->[3])))
+        if $OP_DISPATCH->{$tree->[1]};
 
     my $op = $tree->[1];
 
@@ -1074,6 +1070,11 @@ sub play_operator {
     } elsif ($op eq '&&' || $op eq 'and' || $op eq 'AND') {
         my $val = $self->play_expr($tree->[2]) && $self->play_expr($tree->[3]);
         return defined($val) ? $val : '';
+
+    } elsif ($op eq '//' || $op eq 'err' || $op eq 'ERR') {
+        my $val = $self->play_expr($tree->[2]);
+        return $val if defined $val;
+        return $self->play_expr($tree->[3]);
 
     } elsif ($op eq '?') {
         no warnings;
