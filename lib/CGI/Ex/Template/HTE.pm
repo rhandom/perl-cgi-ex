@@ -120,11 +120,12 @@ sub parse_tree_hte {
             if ($dollar) {
                 ### inspect previous text chunk for escape slashes
                 my $n = ($text =~ m{ (\\+) $ }x) ? length($1) : 0;
-                if ($self->{'_no_interp'} || $n % 2) { # were there odd escapes
-                    my $prev_text;
-                    $prev_text = \$pointer->[-1] if defined($pointer->[-1]) && ! ref($pointer->[-1]);
-                    chop($$prev_text) if $n % 2;
-                    if ($prev_text) { $$prev_text .= $dollar } else { push @$pointer, $dollar }
+                if ($n && ! $self->{'_no_interp'}) {
+                    my $chop = int(($n + 1) / 2); # were there odd escapes
+                    substr($pointer->[-1], -$chop, $chop, '') if defined($pointer->[-1]) && ! ref($pointer->[-1]);
+                }
+                if ($self->{'_no_interp'} || $n % 2) {
+                    push @$pointer, $dollar;
                     next;
                 }
 
