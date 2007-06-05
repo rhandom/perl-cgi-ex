@@ -53,6 +53,9 @@ sub parse_tree_hte {
         $self->throw('parse.no_string', "No string or undefined during parse");
     }
 
+    local $self->{'V2EQUALS'}   = $self->{'V2EQUALS'} || 0;
+    local $self->{'NO_TT'}      = $self->{'NO_TT'} || ($self->{'SYNTAX'} eq 'hte' ? 0 : 1);
+
     local $self->{'START_TAG'}  = qr{<(|!--\s*)(/?)([+=~-]?)[Tt][Mm][Pp][Ll]_(\w+)\b};
     local $self->{'_start_tag'} = (! $self->{'INTERPOLATE'}) ? $self->{'START_TAG'} : qr{(?: $self->{'START_TAG'} | (\$))}sx;
     local $self->{'_end_tag'}; # changes over time
@@ -418,14 +421,12 @@ sub output {
     $cache_size = undef if $self->{'DOUBLE_FILE_CACHE'};
 
     local $self->{'SYNTAX'}       = $self->{'SYNTAX'} || 'hte';
-    local $self->{'NO_TT'}        = $self->{'NO_TT'} || ($self->{'SYNTAX'} eq 'hte' ? 0 : 1);
     local $self->{'CACHE_SIZE'}   = $cache_size;
     local $self->{'STAT_TTL'}     = $stat_ttl;
     local $self->{'COMPILE_DIR'}  = $compile_dir;
     local $self->{'ABSOLUTE'}     = 1;
     local $self->{'RELATIVE'}     = 1;
     local $self->{'INCLUDE_PATH'} = $self->{'PATH'} || './';
-    local $self->{'V2EQUALS'}     = $self->{'V2EQUALS'} || 0;
     local $self->{'_documents'}   = $self->{'_documents'} || \%DOCUMENTS;
     local $self->{'LOWER_CASE_VAR_FALLBACK'} = ! $self->{'CASE_SENSITIVE'}; # un-smart HTML::Template default
     local $CGI::Ex::Template::QR_PRIVATE = undef;
