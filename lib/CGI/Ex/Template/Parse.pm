@@ -404,7 +404,7 @@ sub parse_expr {
     }
 
     ### allow for all "operators"
-    if (! $self->{'_operator_precedence'} && defined $is_aq) {
+    if (! $self->{'_operator_precedence'}) {
         my $tree;
         my $found;
         while (1) {
@@ -450,7 +450,7 @@ sub parse_expr {
             }
 
             ### add the operator to the tree
-            my $var2 =  $self->parse_expr($str_ref, {from_here => 1});
+            my $var2 =  $self->parse_expr($str_ref);
             $self->throw('parse', 'Missing variable after "'.$op.'"', undef, pos($$str_ref)) if ! defined $var2;
             push (@{ $tree ||= [] }, $op, $var2);
             $found->{$OP->{$op}->[1]}->{$op} = 1; # found->{precedence}->{op}
