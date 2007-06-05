@@ -12,7 +12,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 51;
+use Test::More tests => 150;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -31,16 +31,16 @@ sub process_ok { # process the value and say if it was ok
     my $str  = shift;
     my $test = shift;
     my $vars = shift || {};
-    my $conf = local $vars->{'_config'} = $vars->{'_config'} || [];
+    my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
     push @$conf, (COMPILE_PERL => $compile_perl) if $compile_perl;
-    my $obj  = shift || $module->new(@$conf); # new object each time
+    my $obj  = shift || $module->new(INCLUDE_PATH => $test_dir, @$conf); # new object each time
     my $out  = '';
     my $line = (caller)[2];
     delete $vars->{'tt_config'};
 
     Taint::Runtime::taint(\$str) if test_taint;
 
-    $obj->process_simple(\$str, $vars, \$out);
+    $obj->merge(\$str, $vars, \$out);
     my $ok = ref($test) ? $out =~ $test : $out eq $test;
     if ($ok) {
         ok(1, "Line $line   \"$str\" => \"$out\"");
@@ -48,90 +48,153 @@ sub process_ok { # process the value and say if it was ok
     } else {
         ok(0, "Line $line   \"$str\"");
         warn "# Was:\n$out\n# Should've been:\n$test\n";
-        print $obj->error if $obj->can('error');
-        print Dumper $obj->parse_tree(\$str) if $obj->can('parse_tree');
+        print $obj->error if $obj->can('error') && $obj->error;
+        if ($obj->can('parse_tree')) {
+            local $obj->{'SYNTAX'} = 'velocity';
+            print Dumper $obj->parse_tree(\$str);
+        }
         exit;
     }
 }
 
 
 ### create some files to include
-my $foo_template = "$test_dir/foo.tmpl";
+my $foo_template = "$test_dir/foo.vel";
 END { unlink $foo_template };
 open(my $fh, ">$foo_template") || die "Couldn't open $foo_template: $!";
 print $fh "Good Day!";
 close $fh;
 
 ### create some files to include
-my $bar_template = "$test_dir/bar.tmpl";
+my $bar_template = "$test_dir/bar.vel";
 END { unlink $bar_template };
 open($fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
-print $fh "(#[echo \$bar]#)";
+print $fh "(\$bar)";
 close $fh;
 
 for $compile_perl (0, 1) {
     my $is_compile_perl = "compile perl ($compile_perl)";
 
 ###----------------------------------------------------------------###
-print "### ECHO ############################################ $is_compile_perl\n";
+print "### VARIABLES ####################################### $is_compile_perl\n";
 
 process_ok("Foo" => "Foo");
+process_ok('$mud_Slinger_9' => "bar",    {mud_Slinger_9 => 'bar'});
+process_ok('$!mud_Slinger_9' => "bar",   {mud_Slinger_9 => 'bar'});
+process_ok('${mud_Slinger_9}' => "bar",  {mud_Slinger_9 => 'bar'});
+process_ok('$!{mud_Slinger_9}' => "bar", {mud_Slinger_9 => 'bar'});
+process_ok('$mud_Slinger_9<<' => "\$mud_Slinger_9<<",    {});
+process_ok('$!mud_Slinger_9<<' => "<<",   {});
+process_ok('${mud_Slinger_9}<<' => "\${mud_Slinger_9}<<",  {});
+process_ok('$!{mud_Slinger_9}<<' => "<<", {});
 
-process_ok('#[echo $foo]#bar' => "bar");
-process_ok('#[echo $foo]#' => "FOO", {foo => "FOO"});
-process_ok('#[echo $foo $foo]#' => "FOOFOO", {foo => "FOO"});
-process_ok('#[echo $foo "bar" $foo]#' => "FOObarFOO", {foo => "FOO"});
-process_ok('#[echo "hi"]#' => "hi", {foo => "FOO"});
+###----------------------------------------------------------------###
+print "### SET ############################################# $is_compile_perl\n";
+
+process_ok('#set($foo = "bar")$foo' => 'bar');
+
+process_ok('#set($monkey = $bill)$monkey' => 'Bill', {bill => 'Bill'});
+process_ok('#set($monkey.Friend = \'monica\')$monkey.Friend' => 'monica');
+process_ok('#set($monkey.Blame = $whitehouse.Leak)$monkey.Blame' => 'from_velocity_ref_guide', {whitehouse => {Leak => 'from_velocity_ref_guide'}});
+process_ok('#set($monkey.Plan = $spindoctor.weave($web))$monkey.Plan' => '(spider)', {spindoctor => {weave => sub {"($_[0])"}}, web => 'spider'});
+process_ok('#set($monkey.Number = 123)$monkey.Number' => '123');
+process_ok('#set($monkey.Numbers = [1..3])$monkey.Numbers.2' => '3');
+
+process_ok('#set($value = $foo + 1)$value' => '9',     {foo => 8, bar => 4});
+process_ok('#set($value = $bar - 1)$value' => '3',     {foo => 8, bar => 4});
+process_ok('#set($value = $foo * $bar)$value' => '32', {foo => 8, bar => 4});
+process_ok('#set($value = $foo / $bar)$value' => '2',  {foo => 8, bar => 4});
+process_ok('#set($value = $foo % $bar)$value' => '0',  {foo => 8, bar => 4});
 
 ###----------------------------------------------------------------###
 print "### COMMENT ######################################### $is_compile_perl\n";
 
-process_ok('#[comment]# Hi there #[endcomment]#bar' => "bar", {foo => "FOO"});
+process_ok("Foo##interesting\nBar" => 'FooBar');
+process_ok("Foo##interesting\n\nBar" => "Foo\nBar");
+process_ok("Foo##interesting" => 'Foo');
+process_ok("Foo#*interesting\n" => '');
+process_ok("Foo#*interesting\n\n\n*#" => 'Foo');
+process_ok("Foo#*interesting\n\n\n*#Bar" => 'FooBar');
 
 ###----------------------------------------------------------------###
-print "### IF / ELSIF / ELSE / IFN ######################### $is_compile_perl\n";
+print "### IF / ELSEIF / ELSE ############################## $is_compile_perl\n";
 
-process_ok('#[if $foo]#bar#[endif]#bar' => "bar");
-process_ok('#[if "1"]#bar#[endif]#' => "bar");
-process_ok('#[if $foo]#bar#[endif]#' => "", {foo => ""});
-process_ok('#[if $foo]#bar#[endif]#' => "bar", {foo => "1"});
-process_ok('#[ifn $foo]#bar#[endifn]#' => "bar", {foo => ""});
-process_ok('#[ifn $foo]#bar#[endifn]#' => "", {foo => "1"});
+process_ok('#if($foo)bar#{end}bar' => "bar");
+process_ok('#if("1")bar#end' => "bar");
+process_ok('#if($foo)bar#end' => "", {foo => ""});
+process_ok('#if($foo)bar#end' => "bar", {foo => "1"});
+process_ok('#if($foo)bar#{else}baz#end' => "bar", {foo => "1"});
+process_ok('#if($foo)bar#{else}baz#end' => "baz", {foo => ""});
+process_ok('#if($foo)bar#elseif($bing)bang#{else}baz#end' => "baz", {bing => ""});
+process_ok('#if($foo)bar#elseif($bing)bang#{else}baz#end' => "bang", {bing => "1"});
+
+###----------------------------------------------------------------###
+print "### FOREACH  ######################################## $is_compile_perl\n";
+
+process_ok("#foreach( foo )bar#{end}" => 'bar', {foo => 1});
+process_ok("#foreach( f IN foo )bar\$f#{end}" => 'bar1bar2', {foo => [1,2]});
+process_ok("#foreach( f = foo )bar\$f#{end}" => 'bar1bar2', {foo => [1,2]});
+process_ok("#foreach( f = [1,2] )bar\$f#{end}" => 'bar1bar2');
+process_ok("#foreach( f = [1..3] )bar\$f#{end}" => 'bar1bar2bar3');
+process_ok("#foreach( f = [{a=>'A'},{a=>'B'}] )bar\$f.a#{end}" => 'barAbarB');
+process_ok("#foreach( [{a=>'A'},{a=>'B'}] )bar\$a#{end}" => 'barAbarB');
+process_ok("#foreach( [{a=>'A'},{a=>'B'}] )bar\$a#{end}\$!a" => 'barAbarB');
+process_ok("#foreach( f = [1..3] )\$loop.count/\$loop.size #{end}" => '1/3 2/3 3/3 ');
+
 
 ####----------------------------------------------------------------###
 print "### INCLUDE ######################################### $is_compile_perl\n";
 
-process_ok('#[include "foo.tmpl"]#' => "Good Day!");
-process_ok("#[include \"$test_dir/foo.tmpl\"]#" => "Good Day!");
+process_ok('#include("foo.vel")' => "Good Day!");
+process_ok('#parse($foo)' => "Good Day!", {foo => "foo.vel"});
+process_ok('#include("bar.vel")' => "(\$bar)");
+process_ok('#include("bar.vel")' => "(\$bar)", {bar => 'foo'});
 
-process_ok('#[include "bar.tmpl"]#' => "()");
-process_ok('#[include "bar.tmpl"]#' => "(hi)", {bar => 'hi'});
+####----------------------------------------------------------------###
+print "### PARSE ############################################ $is_compile_perl\n";
 
-###----------------------------------------------------------------###
-print "### LOOP ############################################ $is_compile_perl\n";
-
-process_ok('#[loop "loop1"]#Hi#[endloop]#foo' => "foo");
-process_ok('#[loop "loop1"]#Hi#[endloop]#foo' => "Hifoo", {set_loop => [{}]});
-process_ok('#[loop "loop1"]##[echo $bar]##[endloop]#foo' => "bingfoo", {set_loop => [{bar => 'bing'}]});
-process_ok('#[loop "loop1"]##[echo $bar]##[endloop]#foo' => "bingbangfoo", {set_loop => [{bar => 'bing'}, {bar => 'bang'}]});
-process_ok('#[loop "loop1"]##[echo $boop]##[endloop]#foo' => "bopfoo", {boop => 'bop', set_loop => [{bar => 'bing'}]});
+process_ok('#parse("foo.vel")' => "Good Day!");
+process_ok('#parse($foo)' => "Good Day!", {foo => "foo.vel"});
+process_ok('#parse("bar.vel")' => "(\$bar)");
+process_ok('#parse("bar.vel")' => "(foo)", {bar => 'foo'});
 
 ###----------------------------------------------------------------###
-print "### TT3 DIRECTIVES ################################## $is_compile_perl\n";
+print "### STOP ############################################ $is_compile_perl\n";
 
+process_ok("#stop" => '');
+process_ok("One#{stop}Two" => 'One');
+process_ok("#block('foo')One#{stop}Two#{end}First#process('foo')Last" => 'FirstOne');
+process_ok("#foreach( \$f = [1..3] )\$f#if(loop.first)#end\$f#end" => '112233');
+process_ok("#foreach( \$f = [1..3] )\$f#if(loop.first)#stop#end#end" => '1');
+process_ok("#foreach( \$f = [1..3] )#if(loop.first)#stop#end\$f#end" => '');
 
+###----------------------------------------------------------------###
+print "### EVALUATE ######################################## $is_compile_perl\n";
 
+process_ok('#set($f = \'>#try#evaluate($f)#{catch}caught#end\')#evaluate($f)' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]});
+process_ok('#set($f = \'>#try#eval($f)#{catch}foo#end\')#eval($f)#EVALUATE($f)' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]});
 
+###----------------------------------------------------------------###
+print "### MACRO ########################################### $is_compile_perl\n";
 
-
+process_ok("#macro(foo PROCESS bar )#block(bar)Hi#end\$foo" => 'Hi');
+process_ok("#macro(foo BLOCK)Hi#end\$foo" => 'Hi');
+process_ok('#macro(foo $n BLOCK)Hi$n#end$foo' => 'Hi$n');
+process_ok('#macro(foo $n BLOCK)Hi$n#end$foo(2)' => 'Hi2');
+process_ok('#macro(foo(n) BLOCK)Hi$n#end$foo' => 'Hi$n');
+process_ok('#macro(foo(n) BLOCK)Hi$n#end$foo(2)' => 'Hi2');
+process_ok('#macro(foo $n)Hi$n#end$foo' => 'Hi$n');
+process_ok('#macro(foo $n)Hi$n#end$foo(2)' => 'Hi2');
+process_ok('#macro(foo $n)Hi$n#end#foo(2)' => 'Hi2');
+process_ok('#macro(foo $n $m)Hi($n)($m)#end#foo(2 3)' => 'Hi(2)(3)');
 
 ###----------------------------------------------------------------###
 print "### TT3 CHOMPING #################################### $is_compile_perl\n";
 
-
-###----------------------------------------------------------------###
-print "### TT3 INTERPOLATE ################################# $is_compile_perl\n";
-
+process_ok("\n#get( \$foo )" => "\nFOO", {foo => "FOO"});
+process_ok("#get( \$foo -)\n" => "FOO", {foo => "FOO"});
+process_ok("\n#get(- \$foo)" => "FOO", {foo => "FOO"});
+process_ok("\n#get( -\$foo)" => "\n-7", {foo => "7"});
 
 ###----------------------------------------------------------------###
 print "### DONE ############################################ $is_compile_perl\n";
