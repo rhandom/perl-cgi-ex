@@ -32,10 +32,10 @@ sub parse_tree_tmpl {
 
     local @{ $CGI::Ex::Template::Parse::ALIASES }{qw(ECHO INCLUDE IFN    ENDCOMMENT ENDIF ENDIFN ENDLOOP)}
                                                 = qw(GET  PROCESS UNLESS END        END   END    END);
-    local $self->{'ABSOLUTE'}   = 1;
-    local $self->{'RELATIVE'}   = 1;
-    local $self->{'ANYCASE'}    = 1;
-    local $self->{'V1DOLLAR'}   = 1;
+    local $self->{'ABSOLUTE'}   = defined($self->{'ABSOLUTE'}) ? $self->{'ABSOLUTE'} : 1;
+    local $self->{'RELATIVE'}   = defined($self->{'RELATIVE'}) ? $self->{'RELATIVE'} : 1;
+    local $self->{'V1DOLLAR'}   = defined($self->{'V1DOLLAR'}) ? $self->{'V1DOLLAR'} : 1;
+    local $self->{'ANYCASE'}    = defined($self->{'ANYCASE'})  ? $self->{'ANYCASE'}  : 1;
     local $self->{'TAG_STYLE'}  = $self->{'TAG_STYLE'} || 'html';
 
     return $self->parse_tree_tt3(@_);
