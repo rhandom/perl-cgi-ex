@@ -459,7 +459,12 @@ sub parse_expr {
         ### if we found operators - tree the nodes by operator precedence
         if ($tree) {
             if (@$tree == 2) { # only one operator - keep simple things fast
-                $var = [[undef, $tree->[0], $var, $tree->[1]], 0];
+                if ($OP->{$tree->[0]}->[0] eq 'assign' && $tree->[0] =~ /(.+)=/) {
+                    $var = [[undef, '=', $var, [[undef, $1, $var, $tree->[1]], 0]], 0]; # "a += b" => "a = a + b"
+                    print Data::Dumper::Dumper($var);
+                } else {
+                    $var = [[undef, $tree->[0], $var, $tree->[1]], 0];
+                }
             } else {
                 unshift @$tree, $var;
                 $var = $self->apply_precedence($tree, $found);
@@ -544,7 +549,13 @@ sub apply_precedence {
 
         } elsif ($type eq 'right' || $type eq 'assign') {
             my $val = $exprs[-1];
-            $val = [[undef, $ops[$_ - 1], $exprs[$_], $val], 0] for reverse (0 .. $#exprs - 1);
+            for (reverse (0 .. $#exprs - 1)) {
+                if ($type eq 'assign' && $ops[$_ - 1] =~ /(.+)=$/) {
+                    $val = [[undef, '=', $exprs[$_], [[undef, $1, $exprs[$_], $val], 0]], 0];
+                } else {
+                    $val = [[undef, $ops[$_ - 1], $exprs[$_], $val], 0];
+                }
+            }
             return $val;
 
         } else {
@@ -813,14 +824,20 @@ sub parse_SET {
     my $func;
 
     if ($initial_op) {
-        if ($$str_ref =~ m{ \G \s* $QR_COMMENTS $QR_DIRECTIVE }gcx # find a word
+        if ($initial_op eq '='
+            && $$str_ref =~ m{ \G \s* $QR_COMMENTS $QR_DIRECTIVE }gcx # find a word
             && ((pos($$str_ref) -= length($1)) || 1)             # always revert
             && $DIRECTIVES->{$self->{'ANYCASE'} ? uc $1 : $1}) { # make sure its a directive - if so set up capturing
             $node->[6] = 1;                                      # set a flag to keep parsing
             my $val = $node->[4] ||= [];                         # setup storage
             return [[$initial_op, $initial_var, $val]];
         } else { # get a normal variable
-            return [[$initial_op, $initial_var, $self->parse_expr($str_ref)]];
+            my $val = $self->parse_expr($str_ref);
+            if ($initial_op =~ /(.+)=$/) {
+                $initial_op = '=';
+                $val = [[undef, $1, $initial_var, $val], 0];
+            }
+            return [[$initial_op, $initial_var, $val]];
         }
     }
 
@@ -830,11 +847,16 @@ sub parse_SET {
 
         if ($$str_ref =~ m{ \G \s* $QR_COMMENTS ($QR_OP_ASSIGN) >? }gcx) {
             my $op = $1;
-            if ($$str_ref =~ m{ \G \s* $QR_COMMENTS $QR_DIRECTIVE }gcx # find a word
+            if ($op eq '='
+                && $$str_ref =~ m{ \G \s* $QR_COMMENTS $QR_DIRECTIVE }gcx # find a word
                 && ((pos($$str_ref) -= length($1)) || 1)             # always revert
                 && $DIRECTIVES->{$self->{'ANYCASE'} ? uc $1 : $1}) { # make sure its a directive - if so set up capturing
                 $node->[6] = 1;                                      # set a flag to keep parsing
                 my $val = $node->[4] ||= [];                         # setup storage
+                if ($op =~ /(.+)=$/) {
+                    $op = '=';
+                    $val = [[undef, $1, $set, $val], 0];
+                }
                 push @SET, [$op, $set, $val];
                 last;
             } else { # get a normal variable

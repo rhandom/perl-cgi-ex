@@ -16,7 +16,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 1819 : 625;
+use Test::More tests => ! $is_tt ? 1845 : 625;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -644,6 +644,9 @@ process_ok("[% a = 4; (a /= 2) %]"  => 2)  if ! $is_tt;
 process_ok("[% a = 1; (a *= 2) %]"  => 2)  if ! $is_tt;
 process_ok("[% a = 3; (a **= 2) %]" => 9)  if ! $is_tt;
 process_ok("[% a = 1; (a %= 2) %]"  => 1)  if ! $is_tt;
+process_ok("[% a = 1; (a += 2 + 3) %]"  => 6)  if ! $is_tt;
+process_ok("[% a = 1; b = 2; (a += b += 3) %]|[% a %]|[% b %]" => "6|6|5")  if ! $is_tt;
+process_ok("[% a = 1; b = 2; (a += (b += 3)) %]|[% a %]|[% b %]" => "6|6|5")  if ! $is_tt;
 
 process_ok('[% a += 1 %]-[% a %]-[% a += 1 %]-[% a %]' => '-1--2') if ! $is_tt;
 process_ok('[% (a += 1) %]-[% (a += 1) %]' => '1-2') if ! $is_tt;
@@ -705,6 +708,19 @@ process_ok("[% t = 0 or 0 ? 0 : 1 or 2 ? 2 : 3 %][% t %]" => '1') if ! $is_tt;
 process_ok("[% t = 0 or 0 ? 0 : 0 or 2 ? 2 : 3 %][% t %]" => '2');
 
 process_ok("[% 0 ? 1 ? 1 + 2 * 3 : 1 + 2 * 4 : 1 + 2 * 5 %]" => '11');
+
+process_ok("[% foo //= 2 ; foo %]" => 2) if ! $is_tt;
+process_ok("[% foo = 3; foo //= 2; foo %]" => 3) if ! $is_tt;
+process_ok("[% foo = 3; SET foo; foo //= 2; foo %]" => 2) if ! $is_tt;
+
+process_ok("[% 5 // 6 %]" => 5) if ! $is_tt;
+process_ok("[% foo // 6 %]" => 6) if ! $is_tt;
+process_ok("[% foo // 6 %]" => 6, {foo => undef}) if ! $is_tt;
+process_ok("[% foo // 6 %]" => '', {foo => ''}) if ! $is_tt;
+process_ok("[% foo // 6 %]" => 'bar', {foo => 'bar'}) if ! $is_tt;
+
+process_ok("[% foo err 6 %]" => 6, {foo => undef}) if ! $is_tt;
+process_ok("[% foo ERR 6 %]" => 6, {foo => undef}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### regex ########################################### $is_compile_perl\n";
