@@ -398,21 +398,6 @@ ${indent}${INDENT}";
 ${indent}${INDENT}\$var
 ${indent}}";
 
-    # handle assignment operators
-    } elsif ($CGI::Ex::Template::OP_ASSIGN->{$op}) {
-        $op =~ /^([^\w\s\$]+)=$/ || die "Not sure how to handle that op $op";
-        my $short = $1;
-        $$str_ref .= "do {
-${indent}${INDENT}my \$var = ";
-        $self->compile_expr([[undef, $short, $the_rest[0], $the_rest[1]], 0], $str_ref, $indent);
-        $$str_ref .= ";
-${indent}${INDENT}";
-        local $self->{'_is_set'} = 1;
-        $self->compile_expr($the_rest[0], $str_ref, $indent);
-        $$str_ref .= ";
-${indent}${INDENT}\$var;
-${indent}}";
-
     } elsif ($op eq '++') {
         my $is_postfix = $the_rest[1] || 0; # set to 1 during postfix
         $$str_ref .= "do {
