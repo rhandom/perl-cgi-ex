@@ -308,7 +308,7 @@ sub parse_expr {
         my $var = $self->parse_expr($str_ref, {allow_parened_ops => 1});
 
         $$str_ref =~ m{ \G \s* $QR_COMMENTS \) }gcxo
-            || $self->throw('parse.missing.paren', "Missing close \)", undef, pos($$str_ref));
+            || $self->throw('parse.missing.paren', "Missing close \) in group", undef, pos($$str_ref));
 
         $self->throw('parse', 'Paren group cannot be followed by an open paren', undef, pos($$str_ref))
             if $$str_ref =~ m{ \G \( }gcx;
@@ -342,7 +342,7 @@ sub parse_expr {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $args = $self->parse_args($str_ref, {is_parened => 1});
         $$str_ref =~ m{ \G \s* $QR_COMMENTS \) }gcxo
-            || $self->throw('parse.missing.paren', "Missing close \)", undef, pos($$str_ref));
+            || $self->throw('parse.missing.paren', "Missing close \) in args", undef, pos($$str_ref));
         push @var, $args;
     } else {
         push @var, 0;
@@ -382,7 +382,7 @@ sub parse_expr {
             local $self->{'_operator_precedence'} = 0; # reset precedence
             my $args = $self->parse_args($str_ref, {is_parened => 1});
             $$str_ref =~ m{ \G \s* $QR_COMMENTS \) }gcxo
-                || $self->throw('parse.missing.paren', "Missing close \)", undef, pos($$str_ref));
+                || $self->throw('parse.missing.paren', "Missing close \) in args of nested item", undef, pos($$str_ref));
             push @var, $args;
         } else {
             push @var, 0;
@@ -792,7 +792,7 @@ sub parse_LOOP {
 sub parse_MACRO {
     my ($self, $str_ref, $node) = @_;
 
-    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"});
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.)"});
     $self->throw('parse', "Missing macro name", undef, pos($$str_ref)) if ! defined $name;
     if (! ref $name) {
         $name = [ $name, 0 ];
@@ -802,6 +802,16 @@ sub parse_MACRO {
     if ($$str_ref =~ m{ \G \( \s* }gcx) {
         $args = $self->parse_args($str_ref, {positional_only => 1});
         $$str_ref =~ m{ \G \) \s* }gcx || $self->throw('parse.missing', "Missing close ')'", undef, pos($$str_ref));
+    } elsif ($self->{'V1DOLLAR'}) { # allow for Velocity style macro args (no parens - but dollars are fine)
+        while ($$str_ref =~ m{ \G (\s+ \$) }gcx) {
+            my $lead = $1;
+            my $arg  = $self->parse_expr($str_ref);
+            if (! defined $arg) {
+                pos($$str_ref) -= length($lead);
+                last;
+            }
+            push @$args, $arg;
+        }
     }
 
     $node->[6] = 1;           # set a flag to keep parsing
