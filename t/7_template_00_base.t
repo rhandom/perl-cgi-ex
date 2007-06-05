@@ -16,7 +16,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 1845 : 625;
+use Test::More tests => ! $is_tt ? 1849 : 625;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -1293,6 +1293,12 @@ process_ok('[% qw([%  1  +  2  %]).join.eval %]' => '3') if ! $is_tt;
 
 process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
 process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; f.eval;f.eval %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
+
+###----------------------------------------------------------------###
+print "### EVALUATE ######################################## $is_compile_perl\n";
+
+process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; EVALUATE f %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
+process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; EVALUATE f; EVALUATE f %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### DUMP ############################################ $is_compile_perl\n";
