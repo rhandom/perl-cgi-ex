@@ -71,20 +71,27 @@ sub parse_tree_velocity {
     my $func;
     my $pre_chomp;
     my $node;
+    my $macro_block;
     local pos $$str_ref = 0;
 
     while (1) {
         ### allow for #set(foo = PROCESS foo)
         if ($capture) {
-            $$str_ref =~ m{ \G \s* (\w+)\b }gcx
-                || $self->throw('parse', "Error looking for block in capture DIRECTIVE", undef, pos($$str_ref));
-            $func = $self->{'ANYCASE'} ? uc($1) : $1;
-
-            $func = $aliases->{$func} if $aliases->{$func};
-            $self->throw('parse', "Found unknown DIRECTIVE ($func)", undef, pos($$str_ref) - length($func))
-                if ! $dirs->{$func};
-
-            $node = [$func, pos($$str_ref) - length($func), undef];
+            if ($macro_block) {
+                $macro_block = 0;
+                push @state, $capture;
+                $pointer = $capture->[4] ||= [];
+                undef $capture;
+                next;
+            } elsif ($$str_ref =~ m{ \G \s* (\w+)\b }gcx) {
+                $func = $self->{'ANYCASE'} ? uc($1) : $1;
+                $func = $aliases->{$func} if $aliases->{$func};
+                $self->throw('parse', "Found unknown DIRECTIVE ($func)", undef, pos($$str_ref) - length($func))
+                    if ! $dirs->{$func};
+                $node = [$func, pos($$str_ref) - length($func), undef];
+            } else {
+                $self->throw('parse', "Error looking for block in capture DIRECTIVE", undef, pos($$str_ref));
+            }
 
             push @{ $capture->[4] }, $node;
             undef $capture;
@@ -150,23 +157,40 @@ sub parse_tree_velocity {
                 if ($prev_text) { $$prev_text .= '#' } else { push @$pointer, '#' }
                 next;
             }
+            if ($$str_ref =~ m{ \G \# .*\n? }gcx          # single line comment
+                || $$str_ref =~ m{ \G \* .*? \*\# }gcxs) { # multi-line comment
+                next;
+            }
 
             $$str_ref =~ m{ \G (\w+) }gcx
-                || $$str_ref =~ m{ \G \{ (\w+) \} }gcx
+                || $$str_ref =~ m{ \G \{ (\w+) (\}) }gcx
                 || $self->throw('parse', 'Missing directive name', undef, pos($$str_ref));
             $func = $self->{'ANYCASE'} ? uc($1) : $1;
 
-            ### make sure we know this directive
+            ### make sure we know this directive - if we don't then allow fallback to macros (velocity allows them as directives)
             $func = $aliases->{$func} if $aliases->{$func};
-            $self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func))
-                if ! $dirs->{$func};
+            if (! $dirs->{$func}) {
+                my $name = $1;
+                my $mark = pos($$str_ref) - length($func) - ($2 ? 2 : 0);
+                my $args = 0;
+                if ($$str_ref =~ m{ \G \( }gcx) {
+                    local $self->{'_operator_precedence'} = 0; # reset precedence
+                    $args = $self->parse_args($str_ref, {is_parened => 1});
+                    $$str_ref =~ m{ \G \s* $CGI::Ex::Template::Parse::QR_COMMENTS \) }gcxo
+                        || $self->throw('parse.missing.paren', "Missing close \) in directive args", undef, pos($$str_ref));
+                }
+                $node = ['GET', $mark, pos($$str_ref), [$name, $args]];
+                push @$pointer, $node;
+                next;
+                #$self->throw('parse', "Found unknow DIRECTIVE ($func)", undef, pos($$str_ref) - length($func));
+            }
             $node = [$func, pos($$str_ref), undef];
 
             if ($$str_ref =~ m{ \G \( ([+=~-]?) }gcx) {
                 $self->{'_end_tag'} = qr{\s*([+=~-]?)\)};
                 $pre_chomp = $1;
             } else {
-                $self->{'_end_tag'} = qr{};
+                $self->{'_end_tag'} = '';
                 $pre_chomp = '';
             }
 
@@ -261,6 +285,11 @@ sub parse_tree_velocity {
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
             $continue = 0;
             $post_op  = 0;
+
+            if ($node->[6] && $node->[0] eq 'MACRO') { # allow for MACRO's without a BLOCK
+                $capture = $node;
+                $macro_block = 1;
+            }
             next;
 
         ### setup capturing
