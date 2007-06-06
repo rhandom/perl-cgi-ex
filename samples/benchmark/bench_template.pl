@@ -46,12 +46,9 @@ my @config2 = (@config1, COMPILE_EXT => '.ttc');
 
 #use CGI::Ex::Template::XS;
 #my $tt1 = CGI::Ex::Template::XS->new(@config1);
-#my $tt2 = CGI::Ex::Template::XS->new(@config2);
 my $tt1 = Template->new(@config1);
-my $tt2 = Template->new(@config2);
 
-my $cet = CGI::Ex::Template->new(@config1);
-my $cetc = CGI::Ex::Template->new(@config2);
+my $cet = CGI::Ex::Template->new(@config1, compile_perl => 1);
 
 #$swap->{$_} = $_ for (1 .. 1000); # swap size affects benchmark speed
 
