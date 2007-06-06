@@ -4,24 +4,6 @@ package CGI::Ex::Template::Velocity;
 
 CGI::Ex::Template::Tmpl - provide Text::Tmpl support
 
-=head1 DESCRIPTION
-
-Provides for extra or extended features that may not be as commonly used.
-This module should not normally be used by itself.
-
-See the CGI::Ex::Template documentation for configuration and other parameters.
-
-http://velocity.apache.org/engine/devel/vtl-reference-guide.html
-http://www.javaworld.com/javaworld/jw-12-2001/jw-1228-velocity.html?page=4
-
-=head1 AUTHOR
-
-Paul Seamons <paul at seamons dot com>
-
-=head1 LICENSE
-
-This module may be distributed under the same terms as Perl itself.
-
 =cut
 
 use strict;
@@ -332,3 +314,89 @@ sub merge {
 ###----------------------------------------------------------------###
 
 1;
+
+__END__
+
+=head1 DESCRIPTION
+
+Provides for extra or extended features that may not be as commonly used.
+This module should not normally be used by itself.
+
+See the CGI::Ex::Template documentation for configuration and other parameters.
+
+http://velocity.apache.org/engine/devel/vtl-reference-guide.html
+http://www.javaworld.com/javaworld/jw-12-2001/jw-1228-velocity.html?page=4
+
+=head1 UNSUPPORTED VELOCITY SPEC
+
+=over 4
+
+=item
+
+The magic velocity property lookups don't exist.  You must use the actual
+method name, CET will not try to guess it for you.
+
+=item
+
+Escaping of variables is consistent.  The velocity spec is not.  The
+velocity spec says that "\\$email" will return "\\$email" if email is
+not defined and it will return "\foo" if email is equal to "foo".  The
+slash behavior magically changes according to the spec.  In CET the
+"\\$email" would be "\$email" if email is not defined.
+
+=item
+
+You can set items to null (undefined) in CET.  According to the velocity spec
+you have to configure Velocity to do this.  To get the other behavior, you
+would need to do "#if($questionable)#set($foo=$questionable)#end".  The default
+Velocity spec way provides no way for checking null return values.
+
+=item
+
+There currently isn't a "literal" directive.  The VTL spec doesn't mention
+#literal, but the user-guide does.  In CET you can use the following:
+
+    #get('#foreach($a in [1..3]) $a #end')
+
+We will probably add the literal support - but it will still have to parse the
+document, so unless you are using compile_perl, you will parse literal sections
+multiple times.
+
+=item
+
+There is no $velocityCount .  Use $loop.count .
+
+=item
+
+In CET, excess whitespace outside of the directive matters.  In the VTL user-guide
+it mentions that all excess whitespace is gobbled up.  CET supports the TT chomp
+operators.  These operators are placed just inside the open and close parenthesis
+of directives as in the following:
+
+     #set(~ $a = 1 ~)
+
+=item
+
+In CET, / division is always floating point.  If you want integer division, use "div".
+
+=item
+
+Perl doesn't support negative ranges.  However, arrays do have reverse method.
+
+     #foreach( $bar in [-2 .. 2].reverse ) $bar #end
+
+=item
+
+In CET arguments to macros are passed by value, not by name.
+
+=back
+
+=head1 AUTHOR
+
+Paul Seamons <paul at seamons dot com>
+
+=head1 LICENSE
+
+This module may be distributed under the same terms as Perl itself.
+
+=cut
