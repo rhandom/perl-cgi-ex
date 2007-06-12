@@ -4,6 +4,10 @@
 
 7_template_00_base.t - Test the basic language functionality of CGI::Ex::Template - including many edge cases
 
+=head1 DESCRIPTION
+
+Test the basics of CGI::Ex::Template inheritance - but leave the full test suite to Template::Alloy.
+
 =cut
 
 use vars qw($module $is_tt);
