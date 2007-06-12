@@ -89,9 +89,6 @@ my $obj = Foo2->new;
 my $vars;
 
 
-for $compile_perl (($is_tt) ? (0) : (0, 1)) {
-    my $is_compile_perl = "compile perl ($compile_perl)";
-
 ###----------------------------------------------------------------###
 print "### GET ############################################# $is_compile_perl\n";
 
@@ -983,7 +980,6 @@ process_ok("[% SWITCH 1 %][% CASE [1..10] %]bar[% END %]hi" => 'barhi');
 process_ok("[% SWITCH 11 %][% CASE [1..10] %]bar[% END %]hi" => 'hi');
 
 process_ok("[% SWITCH 1.0 %][% CASE [1..10] %]bar[% END %]hi" => 'barhi');
-process_ok("[% SWITCH '1.0' %][% CASE [1..10] %]bar[% END %]hi" => 'barhi') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 print "### TRY / THROW / CATCH / FINAL ##################### $is_compile_perl\n";
@@ -1392,4 +1388,3 @@ process_ok("[% CONFIG VMETHOD_FUNCTIONS => 0 %][% sprintf('%d %d', 7, 8) %] d" =
 
 ###----------------------------------------------------------------###
 print "### DONE ############################################ $is_compile_perl\n";
-} # end of for
