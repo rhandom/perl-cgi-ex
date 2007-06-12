@@ -1,8 +1,8 @@
 2.14
-      2007
-        * Added strref cache support
-        * Added compile_perl support.
-        * Added support of Text::Tmpl style templates
+      2007-06-12
+        * Moved CGI::Ex::Template to Template::Alloy
+        * Template::Alloy is now required as a dependency
+        * Update some portions of App POD.
 
 2.13
       2007-05-21
