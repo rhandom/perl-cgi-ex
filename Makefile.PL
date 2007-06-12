@@ -11,6 +11,9 @@ WriteMakefile(
               ABSTRACT_FROM => "lib/CGI/Ex.pm",
               VERSION_FROM  => "lib/CGI/Ex.pm",
               INSTALLDIRS   => 'site',
+              PREREQ_PM     => {
+                  'Template::Alloy' => '1.002',
+              },
               
               dist          => {
                 DIST_DEFAULT => 'all tardist',
