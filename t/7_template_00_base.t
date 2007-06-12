@@ -20,7 +20,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 53 : 45;
+use Test::More tests => ! $is_tt ? 46 : 45;
 use Data::Dumper qw(Dumper);
 
 use_ok($module);
@@ -74,6 +74,7 @@ process_ok("[% foo(bar) %]" => 7,    {foo => sub { $_[0] }, bar => 7});
 process_ok("[% foo(bar.baz) %]" => 7,{foo => sub { $_[0] }, bar => {baz => 7}});
 
 # we don't do as many tests here - leave that to Template::Alloy
+# See Template::Alloy t/05_tt_base.t
 
 ###----------------------------------------------------------------###
 print "### SET ##############################################################\n";
@@ -88,7 +89,6 @@ process_ok("[% SET foo = 1 %][% SET foo %][% foo %]" => '');
 process_ok("[% SET foo = [] %][% foo.0 %]" => "");
 process_ok("[% SET foo = [1, 2, 3] %][% foo.1 %]" => 2);
 process_ok("[% SET foo = {} %][% foo.0 %]" => "");
-process_ok("[% SET foo = {1 => 2} %][% foo.1 %]" => "2") if ! $is_tt;
 process_ok("[% SET foo = {'1' => 2} %][% foo.1 %]" => "2");
 
 process_ok("[% SET name = 1 %][% SET foo = name %][% foo %]" => "1");
@@ -97,7 +97,6 @@ process_ok("[% SET name = 1 %][% SET foo = \${name} %][% foo %]" => "");
 process_ok("[% SET name = 1 %][% SET foo = \"\$name\" %][% foo %]" => "1");
 process_ok("[% SET name = 1 foo = name %][% foo %]" => '1');
 process_ok("[% SET name = 1 %][% SET foo = {\$name => 2} %][% foo.1 %]" => "2");
-process_ok("[% SET name = 1 %][% SET foo = {\"\$name\" => 2} %][% foo.1 %]" => "2") if ! $is_tt;
 process_ok("[% SET name = 1 %][% SET foo = {\${name} => 2} %][% foo.1 %]" => "2");
 
 process_ok("[% SET name = 7 %][% SET foo = {'2' => name} %][% foo.2 %]" => "7");
@@ -114,6 +113,7 @@ process_ok("[% SET foo.bar.2 = 1 %][% foo.bar.2 %] [% foo.bar.size %]" => '1 1')
 process_ok("[% SET foo.bar = [] %][% SET foo.bar.2 = 1 %][% foo.bar.2 %] [% foo.bar.size %]" => '1 3');
 
 # We don't do as many tests here - leave that to Template::Alloy
+# See Template::Alloy t/05_tt_base.t
 
 ###----------------------------------------------------------------###
 print "### LOOP #############################################################\n";
@@ -132,22 +132,8 @@ if (! $is_tt) {
 ", {tt_config => [LOOP_CONTEXT_VARS => 1]});
 }
 
-###----------------------------------------------------------------###
-print "### MACRO ############################################################\n";
-
-process_ok('[% MACRO f BLOCK %]>[% TRY; f ; CATCH ;  "caught" ; END %][% END %][% f %]' => '>>>caught', {tt_config => [MAX_MACRO_RECURSE => 3]}) if ! $is_tt;
-
-###----------------------------------------------------------------###
-print "### embedded items ###################################################\n";
-
-process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
-process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; f.eval;f.eval %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
-
-###----------------------------------------------------------------###
-print "### EVALUATE #########################################################\n";
-
-process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; EVALUATE f %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
-process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; EVALUATE f; EVALUATE f %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
+# See Template::Alloy t/05_tt_base.t
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";
+print "### See Template::Alloy t/05_tt_base.t
