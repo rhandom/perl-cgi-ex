@@ -2601,7 +2601,7 @@ the core logic of the application.
             return 0;
         }
 
-        my $s = "UPDATE recipe SET title = ?, ingredients = ?, directions = ? WHERE id = ?";
+        $s = "UPDATE recipe SET title = ?, ingredients = ?, directions = ? WHERE id = ?";
         $self->dbh->do($s, {}, $form->{'title'},
                                $form->{'ingredients'},
                                $form->{'directions'},
@@ -2992,13 +2992,15 @@ Also see the L<CGI::Ex::Auth> perldoc.
 The following corporation and individuals contributed in some part to
 the original versions.
 
-    Bizhosting.com - giving a problem that fit basic design patterns.
+    Bizhosting.com  - giving a problem that fit basic design patterns.
 
-    Earl Cahill    - pushing the idea of more generic frameworks.
+    Earl Cahill     - pushing the idea of more generic frameworks.
 
-    Adam Erickson  - design feedback, bugfixing, feature suggestions.
+    Adam Erickson   - design feedback, bugfixing, feature suggestions.
 
-    James Lance    - design feedback, bugfixing, feature suggestions.
+    James Lance     - design feedback, bugfixing, feature suggestions.
+
+    Krassimir Berov - feedback and some warnings issues with POD examples.
 
 =head1 AUTHOR
 
