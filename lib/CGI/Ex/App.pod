@@ -314,31 +314,31 @@ The default out of the box configuration will map URIs to steps as follows:
 
     # Assuming /cgi-bin/my_app is the program being run
 
-    URI:  /cgi-bin/my_app
+   URI:  /cgi-bin/my_app
     STEP: main
     FORM: {}
     WHY:  No other information is passed.  The path method is
           called which eventually calls ->default_step which
           defaults to "main"
 
-    URI:  /cgi-bin/my_app?foo=bar
+   URI:  /cgi-bin/my_app?foo=bar
     STEP: main
     FORM: {foo => "bar"}
     WHY:  Same as previous example except that QUERY_STRING
           information was passed and placed in form.
 
-    URI:  /cgi-bin/my_app?step=my_step
+   URI:  /cgi-bin/my_app?step=my_step
     STEP: my_step
     FORM: {step => "my_step"}
     WHY:  The path method is called which looks in $self->form
           for the key ->step_key (which defaults to "step").
 
-    URI:  /cgi-bin/my_app?step=my_step&foo=bar
+   URI:  /cgi-bin/my_app?step=my_step&foo=bar
     STEP: my_step
     FORM: {foo => "bar", step => "my_step"}
-    WHY:  Same as before but has other parameters were passed.
+    WHY:  Same as before but another parameter was passed.
 
-    URI:  /cgi-bin/my_app/my_step
+   URI:  /cgi-bin/my_app/my_step
     STEP: my_step
     FORM: {step => "my_step"}
     WHY:  The path method is called which called path_info_map_base
@@ -348,12 +348,12 @@ The default out of the box configuration will map URIs to steps as follows:
           $self->form->{$self->step_key} for the initial step. See
           the path_info_map_base method for more information.
 
-    URI:  /cgi-bin/my_app/my_step?foo=bar
+   URI:  /cgi-bin/my_app/my_step?foo=bar
     STEP: my_step
     FORM: {foo => "bar", step => "my_step"}
     WHY:  Same as before but other parameters were passed.
 
-    URI:  /cgi-bin/my_app/my_step?step=other_step
+   URI:  /cgi-bin/my_app/my_step?step=other_step
     STEP: other_step
     FORM: {step => "other_step"}
     WHY:  The same procedure took place, but when the PATH_INFO
@@ -371,7 +371,7 @@ that the following method is installed in your script.
         ];
     }
 
-    URI:  /cgi-bin/my_app/my_step/bar
+   URI:  /cgi-bin/my_app/my_step/bar
     STEP: my_step
     FORM: {foo => "bar"}
     WHY:  The step was matched as in previous examples using
@@ -381,7 +381,7 @@ that the following method is installed in your script.
           and the corresponding matched value was placed into
           the form using the keys specified following the regex.
 
-    URI:  /cgi-bin/my_app/my_step/bar/1234
+   URI:  /cgi-bin/my_app/my_step/bar/1234
     STEP: my_step
     FORM: {foo => "bar", id => "1234"}
     WHY:  Same as the previous example, except that the first
@@ -391,19 +391,19 @@ that the following method is installed in your script.
           order that will match the most data.  The third regex
           would also match this PATH_INFO.
 
-    URI:  /cgi-bin/my_app/my_step/some/other/type/of/data
+   URI:  /cgi-bin/my_app/my_step/some/other/type/of/data
     STEP: my_step
     FORM: {anything_else => 'some/other/type/of/data'}
     WHY:  Same as the previous example, except that the third
           regex matched.
 
-    URI:  /cgi-bin/my_app/my_step/bar?bling=blang
+   URI:  /cgi-bin/my_app/my_step/bar?bling=blang
     STEP: my_step
     FORM: {foo => "bar", bling => "blang"}
-    WHY:  Same as the first step, but additional QUERY_STRING
+    WHY:  Same as the first sample, but additional QUERY_STRING
           information was passed.
 
-    URI:  /cgi-bin/my_app/my_step/one%20two?bar=three%20four
+   URI:  /cgi-bin/my_app/my_step/one%20two?bar=three%20four
     STEP: my_step
     FORM: {anything_else => "one two", bar => "three four"}
     WHY:  The third path_info_map regex matched.  Note that the
@@ -440,7 +440,7 @@ for more information about the many ways you can validate your data.
 The default hash_validation hook returns an empty hashref.  This means that passed
 in data is all valid and the script will automatically call the step's finalize method.
 
-The following shows how to some contrived validation to a step called "my_step".
+The following shows how to add some contrived validation to a step called "my_step".
 
     sub my_step_hash_validation {
         return {
@@ -564,7 +564,9 @@ validation files).
 
 The default file_print hook will look for content on your file system,
 but it can also be completely overridden to return a reference to a
-scalar containing the contents of your file.  Actually it can return
+scalar containing the contents of your file (beginning with version 2.14
+string references can be cached which makes templates passed this way
+"first class" citizens).  Actually it can return
 anything that Template::Alloy (Template::Toolkit compatible) will
 treat as input.  This templated html is displayed to the user during
 any step that enters the "print" phase.
