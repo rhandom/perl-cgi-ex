@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.13';
+    $VERSION = '2.14';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
     eval {require Scalar::Util};
@@ -464,6 +464,8 @@ sub dump_history {
                 $note .= ' - {}';
             } elsif (ref($resp) eq 'ARRAY' && ! @$resp) {
                 $note .= ' - []';
+            } elsif (! defined $resp) {
+                $note .= ' - undef';
             } elsif (! ref $resp || ! $all) {
                 my $max = $self->{'history_max'} || 30;
                 if (length($resp) > $max) {
