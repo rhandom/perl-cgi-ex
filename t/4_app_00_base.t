@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 17;
+use Test::More tests => 19;
 use strict;
 
 {
@@ -141,6 +141,8 @@ Foo->new({
 })->navigate;
 ok($Foo::test_stdout eq "Login Form", "Got the right output");
 
+###----------------------------------------------------------------###
+
 Foo->new({
     form => {},
 })->navigate_authenticated;
@@ -205,7 +207,7 @@ Foo->new({
     form => {},
     require_auth => {main => 0},
 })->navigate;
-ok($Foo::test_stdout eq "Main Content", "Got the right output for Bar3");
+ok($Foo::test_stdout eq "Main Content", "Got the right output");
 
 ###----------------------------------------------------------------###
 
@@ -213,4 +215,30 @@ Foo->new({
     form => {},
     require_auth => {main => 1},
 })->navigate;
-ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar3");
+ok($Foo::test_stdout eq "Login Form", "Got the right output");
+
+###----------------------------------------------------------------###
+
+{
+    package Bar4;
+    @Bar4::ISA = qw(Foo);
+    sub pre_navigate { shift->require_auth(0); 0 }
+}
+
+Bar4->new({
+    form => {},
+})->navigate_authenticated;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Bar4");
+
+###----------------------------------------------------------------###
+
+{
+    package Bar5;
+    @Bar5::ISA = qw(Foo);
+    sub pre_navigate { shift->require_auth(1); 0 }
+}
+
+Bar5->new({
+    form => {},
+})->navigate;
+ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar5 ($@)");
