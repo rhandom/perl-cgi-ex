@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 19;
+use Test::More tests => 20;
 use strict;
 
 {
@@ -242,3 +242,16 @@ Bar5->new({
     form => {},
 })->navigate;
 ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar5 ($@)");
+
+###----------------------------------------------------------------###
+
+{
+    package Bar6;
+    @Bar6::ISA = qw(Foo);
+    sub pre_navigate { shift->require_auth({main => 1}); 0 }
+}
+
+Bar6->new({
+    form => {},
+})->navigate;
+ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar6 ($@)");
