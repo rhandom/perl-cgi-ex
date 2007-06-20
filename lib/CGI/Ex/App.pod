@@ -202,6 +202,9 @@ The nav_loop method will run as follows:
 
         foreach step of path {
 
+            ->require_auth (hook)
+                # exits nav_loop if true
+
             ->morph
                 # check ->allow_morph
                 # check ->allow_nested_morph
@@ -1384,8 +1387,7 @@ to the authentication object during the get_valid_auth method.
 
 =item get_valid_auth (method)
 
-If require_auth is true at either the application level or at the
-step level, get_valid_auth will be called.
+If require_auth hook returns true on any given step then get_valid_auth will be called.
 
 It will call auth_args to get some default args to pass to
 CGI::Ex::Auth->new.  It augments the args with sensible defaults that
@@ -1774,8 +1776,9 @@ This starts the process flow for the path and its steps.
 
 =item navigate_authenticated (method)
 
-Same as the method navigate but sets require_auth(1) before
-running.  See the require_auth method.
+Same as the method navigate but calls ->require_auth(1) before
+running.  It will only work if the navigate_authenticated method
+has not been overwritten. See the require_auth method.
 
 =item new (class method)
 
@@ -2024,45 +2027,104 @@ had been successfully validated and acted upon.
 Arguments are the steps used to replace.  Can be called any time.
 Replaces the remaining steps (if any) of the current path.
 
-=item require_auth (method)
+=item require_auth (hook)
 
-Default undef.  Can return either a true value or a hashref of step names.
+Defaults to self->{require_auth} which defaults to undef.
+If called as a method and passed a single value of 1, 0, or undef it will
+set the value of $self->{require_auth} to that value.  If set to a true
+value then any subsequent step will require authentication (unless its
+hook has been overwritten).
 
-If a hashref of stepnames is returned, authentication will be turned on
-at the step level.  In this mode if any step is accessed, the get_valid_auth
-method will be called.  If it fails, then the nav_loop will be stopped
-(the post_navigate method will be called - use the is_authed method to perform
-different functions).  Any step of the path not in the hash will not require
-authentication.  For example, to add authentication to add authentication
-to the add, edit and delete steps you could do:
+Any of the following ways can be used to require authentication on
+every step.
 
-    sub require_auth { {add => 1, edit => 1, delete => 1} }
+=over 4
 
-If a non-hash true value is returned from the require_auth method then
-authentication will take place before the pre_navigation or the nav_loop methods.
-If authentication fails the navigation process is exited (the post_navigate
-method will not be called).
+=item
 
     sub require_auth { 1 }
 
-Alternatively you can also could do either of the following:
+=item
 
     __PACKAGE__->navigate_authenticated; # instead of __PACKAGE__->navigate;
 
-    # OR
-
-    sub init { shift->require_auth(1) }
-
-    # OR
+=item
 
     __PACKAGE__->new({require_auth => 1}->navigate;
 
-If get_valid_auth returns true, in either case, the is_authed method will
-return true and the auth_data will contain the authenticated user's data.
-If it returns false, auth_data may possibly contain a defined but false
-data object with details as to why authentication failed.
+=item
 
-See the get_valid_auth method.
+    sub init { shift->require_auth(1) }
+
+=back
+
+Because it is called as a hook, the current step is passed as the
+first argument.  If the hook returns false, no authentication will be
+required on this step.  If the hook returns a true, non-hashref value,
+authentication will be required via the get_valid_auth method.  If the
+method returns a hashref of stepnames to require authentication on,
+the step will require authentication via the get_valid_auth method if
+the current step is in the hashref.  If authentication is required and
+succeeds, the step will proceed.  If authentication is required and
+fails at the step level the current step will be aborted,
+authentication will be asked for (the post_navigate method will still
+be called).
+
+For example you could add authentication to the add, edit, and delete
+steps in any of the following ways:
+
+=over 4
+
+=item
+
+    sub require_auth { {add => 1, edit => 1, delete => 1} }
+
+=item
+
+    sub add_require_auth    { 1 }
+    sub edit_require_auth   { 1 }
+    sub delete_require_auth { 1 }
+
+=item
+
+    sub require_auth {
+        my ($self, $step) = @_;
+        return 1 if $step && $step =~ /^(add|edit|delete)$/;
+        return 0;
+    }
+
+=back
+
+If however you wanted to require authentication on all but one or two methods
+(such as requiring authentication on all but a forgot_password step) you could do
+either of the following:
+
+=over 4
+
+=item
+
+    sub require_auth {
+        my ($self, $step) = @_;
+        return 0 if $step && $step eq 'forgot_password';
+        return 1; # require auth on all other steps
+    }
+
+=item
+
+    sub require_auth { 1 } # turn it on for all steps
+
+    sub forgot_password_require_auth { 0 } # turn it off
+
+=back
+
+See the get_valid_auth method for what occurs should authentication be required.
+
+There is one key difference from the 2.14 version of App.  In 2.14 and
+previous versions, the pre_navigate and post_navigate methods would
+not be called if require_auth returned a true non-hashref value.  In
+version 2.15 and later, the 2.15 pre_navigate and post_navigate
+methods are always called - even if authentication fails.  Also in 2.15
+and later, the method is called as a hook meaning the step is passed in.
 
 =item run_hook (method)
 
@@ -2984,6 +3046,18 @@ will cause all steps to require validation):
     }
 
     sub require_auth { {add => 1, edit => 1, delete => 1} }
+
+We could also enable authentication by using individual hooks as in:
+
+    sub add_require_auth    { 1 }
+    sub edit_require_auth   { 1 }
+    sub delete_require_auth { 1 }
+
+Or we could require authentication on everything - but let a few steps in:
+
+    sub require_auth { 1 }      # turn authentication on for all
+    sub main_require_auth { 0 } # turn it off for main and view
+    sub view_require_auth { 0 }
 
 That's it.  The add, edit, and delete steps will now require authentication.
 See the require_auth, get_valid_auth, and auth_args methods for more information.
