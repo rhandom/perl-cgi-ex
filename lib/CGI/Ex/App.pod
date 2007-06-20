@@ -1176,6 +1176,7 @@ called is "view".
     debug: admin/Recipe.pm line 14
     shift->dump_history = [
             "Elapsed: 0.00562",
+            "view - require_auth - require_auth - 0.00001 - 0",
             "view - run_step - run_step - 0.00488 - 1",
             "    view - pre_step - pre_step - 0.00003 - 0",
             "    view - skip - view_skip - 0.00004 - 0",
