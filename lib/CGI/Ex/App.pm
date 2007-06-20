@@ -607,7 +607,7 @@ sub navigate_authenticated {
 
 sub require_auth {
     my $self = shift;
-    $self->{'require_auth'} = shift if @_ == 1 && (! defined($_[0]) || $_[0] =~ /^[01]$/);
+    $self->{'require_auth'} = shift if @_ == 1 && (! defined($_[0]) || ref($_[0]) || $_[0] =~ /^[01]$/);
     return $self->{'require_auth'} || 0;
 }
 
