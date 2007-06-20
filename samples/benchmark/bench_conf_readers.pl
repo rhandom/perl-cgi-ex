@@ -2,7 +2,7 @@
 
 use strict;
 use vars qw($PLACEHOLDER);
-use Benchmark qw(cmpthese);
+use Benchmark qw(cmpthese timethese);
 use CGI::Ex::Conf;
 use POSIX qw(tmpnam);
 
@@ -41,6 +41,152 @@ my $str = '{
   one7    => {key1 => "val7",  key2 => "ralph"},
   one8    => {key1 => "val8",  key2 => "ralph"},
 }';
+
+my $str = '[
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+  foo     => [key1 => "bar",   key2 => "ralph"],
+  pass    => [key1 => "word",  key2 => "ralph"],
+  garbage => [key1 => "can",   key2 => "ralph"],
+  mighty  => [key1 => "ducks", key2 => "ralph"],
+  quack   => [key1 => "moo",   key2 => "ralph"],
+  one1    => [key1 => "val1",  key2 => "ralph"],
+  one2    => [key1 => "val2",  key2 => "ralph"],
+  one3    => [key1 => "val3",  key2 => "ralph"],
+  one4    => [key1 => "val4",  key2 => "ralph"],
+  one5    => [key1 => "val5",  key2 => "ralph"],
+  one6    => [key1 => "val6",  key2 => "ralph"],
+  one7    => [key1 => "val7",  key2 => "ralph"],
+  one8    => [key1 => "val8",  key2 => "ralph"],
+]';
 
 ###----------------------------------------------------------------###
 
@@ -87,13 +233,13 @@ $TESTS{pl} = sub {
 $files{pl} = $file;
 
 ### do a generic conf_write
-my $file2 = tmpnam(). '.g_conf';
-&generic_conf_write($file2, $conf);
-local $CGI::Ex::Conf::EXT_READERS{g_conf} = \&generic_conf_read;
-$TESTS{g_conf} = sub {
-  my $hash = $cob->read_ref($file2);
-};
-$files{g_conf} = $file2;
+#my $file2 = tmpnam(). '.g_conf';
+#&generic_conf_write($file2, $conf);
+#local $CGI::Ex::Conf::EXT_READERS{g_conf} = \&generic_conf_read;
+#$TESTS{g_conf} = sub {
+#  my $hash = $cob->read_ref($file2);
+#};
+#$files{g_conf} = $file2;
 
 
 if (eval {require JSON}) {
@@ -187,7 +333,7 @@ foreach my $key (sort keys %files) {
   print "$key => $files{$key}\n";
 }
 
-cmpthese($n, \%TESTS);
+cmpthese timethese ($n, \%TESTS);
 
 ### comment out this line to inspect files
 unlink $_ foreach values %files;

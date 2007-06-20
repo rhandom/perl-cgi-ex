@@ -26,16 +26,8 @@ samples/benchmark/bench_cgix_hfif.pl
 samples/benchmark/bench_conf_readers.pl
 samples/benchmark/bench_conf_writers.pl
 samples/benchmark/bench_jsondump.pl
-samples/benchmark/bench_method_calling.pl
-samples/benchmark/bench_operator_storage.pl
-samples/benchmark/bench_optree.pl
-samples/benchmark/bench_template.pl
-samples/benchmark/bench_template_tag_parser.pl
 samples/benchmark/bench_validation.pl
-samples/benchmark/bench_various_templaters.pl
-samples/benchmark/bench_various_templaters.pl.out
 samples/devel/dprof_conf.d
-samples/devel/dprof_template.d
 samples/devel/dprof_validation.d
 samples/generate_js.pl
 samples/index.cgi
