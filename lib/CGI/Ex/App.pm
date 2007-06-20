@@ -626,8 +626,14 @@ sub get_valid_auth {
     my $self = shift;
     return 1 if $self->is_authed;
 
-    ### augment the args with sensible defaults
     my $args = $self->auth_args;
+
+    ### allow passed in args
+    if (my $extra = shift) {
+        $args = {%$args, %$extra};
+    }
+
+    ### augment the args with sensible defaults
     $args->{'cgix'}             ||= $self->cgix;
     $args->{'form'}             ||= $self->form;
     $args->{'cookies'}          ||= $self->cookies;
