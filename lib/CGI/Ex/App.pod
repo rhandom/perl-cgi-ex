@@ -1202,6 +1202,11 @@ called is "view".
             "    view - post_print - post_print - 0.00003 - 0"
     ];
 
+=item error_step (method)
+
+Defaults to "__error".  The name of a step to run should a dying error
+be caught by the default handle_error method.  See the handle_error method.
+
 =item exit_nav_loop (method)
 
 This method should not normally used but there is no problem with
@@ -1248,7 +1253,8 @@ $self->{form} which defaults to CGI::Ex::get_form.
 =item handle_error (method)
 
 If anything dies during execution, handle_error will be called with
-the error that had happened.  Default action is to die with that error.
+the error that had happened.  Default action is to try running the
+step returned by the error_step method.
 
 =item history (method)
 
