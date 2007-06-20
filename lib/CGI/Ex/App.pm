@@ -49,12 +49,6 @@ sub navigate {
     $self->{'_time'} = time;
 
     eval {
-        ### allow for authentication
-        my $ref = $self->require_auth;
-        if ($ref && ! ref $ref) {
-            return $self if ! $self->get_valid_auth;
-        }
-
         ### a chance to do things at the very beginning
         return $self if ! $self->{'_no_pre_navigate'} && $self->pre_navigate;
 
@@ -98,8 +92,6 @@ sub nav_loop {
     ### allow for an early return
     return if $self->pre_loop($path); # a true value means to abort the navigate
 
-    my $req_auth = ref($self->require_auth) ? $self->require_auth : undef;
-
     ### iterate on each step of the path
     foreach ($self->{'path_i'} ||= 0;
              $self->{'path_i'} <= $#$path;
@@ -113,17 +105,18 @@ sub nav_loop {
         $step = $1; # untaint
 
         ### allow for per-step authentication
-        if ($req_auth
-            && $req_auth->{$step}
-            && ! $self->get_valid_auth) {
-            return;
+        if (! $self->is_authed) {
+            my $req = $self->run_hook('require_auth', $step, 1);
+            if (ref($req) ? $req->{$step} : $req) { # in the hash - or true
+                return if ! $self->get_valid_auth;
+            }
         }
 
         ### allow for becoming another package (allows for some steps in external files)
         $self->morph($step);
 
         ### allow for mapping path_info pieces to form elements
-        if (my $info = $ENV{'PATH_INFO'}) {
+        if (my $info = $self->path_info) {
             my $maps = $self->run_hook('path_info_map', $step) || [];
             croak 'Usage: sub path_info_map { [[qr{/path_info/(\w+)}, "keyname"]] }'
                 if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
@@ -195,8 +188,8 @@ sub path {
     if (! $self->{'path'}) {
         my $path = $self->{'path'} = []; # empty path
 
-        ### add initial items to the form hash from path_info
-        if (my $info = $ENV{'PATH_INFO'}) {
+        ### add initial items to the form hash from path_info5B
+        if (my $info = $self->path_info) {
             my $maps = $self->path_info_map_base || [];
             croak 'Usage: sub path_info_map_base { [[qr{/path_info/(\w+)}, "keyname"]] }'
                 if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
@@ -603,6 +596,10 @@ sub navigate_authenticated {
     my ($self, $args) = @_;
     $self = $self->new($args) if ! ref $self;
 
+    if ($self->can('require_auth') != \&CGI::Ex::App::require_auth) {
+        require Carp;
+        Carp::croak("The default navigate_authenticated method was called but the default require_auth method has been overwritten - aborting");
+    }
     $self->require_auth(1);
 
     return $self->navigate;
@@ -610,8 +607,8 @@ sub navigate_authenticated {
 
 sub require_auth {
     my $self = shift;
-    $self->{'require_auth'} = shift if @_ == 1;
-    return $self->{'require_auth'};
+    $self->{'require_auth'} = shift if @_ == 1 && (! defined($_[0]) || $_[0] =~ /^[01]$/);
+    return $self->{'require_auth'} || 0;
 }
 
 sub is_authed { shift->auth_data }
@@ -634,6 +631,8 @@ sub get_valid_auth {
     }
 
     ### augment the args with sensible defaults
+    $args->{'script_name'}      ||= $self->script_name;
+    $args->{'path_info'}        ||= $self->path_info;
     $args->{'cgix'}             ||= $self->cgix;
     $args->{'form'}             ||= $self->form;
     $args->{'cookies'}          ||= $self->cookies;
@@ -668,6 +667,19 @@ sub verify_user  { 1 }
 ###----------------------------------------------------------------###
 ### a few standard base accessors
 
+sub script_name { shift->{'script_name'} || $ENV{'SCRIPT_NAME'} || $0 }
+
+sub path_info { shift->{'path_info'} || $ENV{'PATH_INFO'} || '' }
+
+sub cgix {
+    my $self = shift;
+    $self->{'cgix'} = shift if @_ == 1;
+    return $self->{'cgix'} ||= do {
+        require CGI::Ex;
+        CGI::Ex->new; # return of the do
+    };
+}
+
 sub form {
     my $self = shift;
     $self->{'form'} = shift if @_ == 1;
@@ -678,15 +690,6 @@ sub cookies {
     my $self = shift;
     $self->{'cookies'} = shift if @_ == 1;
     return $self->{'cookies'} ||= $self->cgix->get_cookies;
-}
-
-sub cgix {
-    my $self = shift;
-    $self->{'cgix'} = shift if @_ == 1;
-    return $self->{'cgix'} ||= do {
-        require CGI::Ex;
-        CGI::Ex->new; # return of the do
-    };
 }
 
 sub vob {
@@ -892,7 +895,7 @@ sub name_module {
 
     return $self->{'name_module'} ||= do {
         # allow for cgi-bin/foo or cgi-bin/foo.pl to resolve to "foo"
-        my $script = $ENV{'SCRIPT_NAME'} || $0;
+        my $script = $self->script_name;
         $script =~ m/ (\w+) (?:\.\w+)? $/x || die "Couldn't determine module name from \"name_module\" lookup ($step)";
         $1; # return of the do
     };
@@ -1041,8 +1044,8 @@ sub hash_base {
         my $copy = $self;
         eval {require Scalar::Util; Scalar::Util::weaken($copy)};
         my $hash = {
-            script_name     => $ENV{'SCRIPT_NAME'} || $0,
-            path_info       => $ENV{'PATH_INFO'}   || '',
+            script_name     => $copy->script_name,
+            path_info       => $copy->path_info,
             js_validation   => sub { $copy->run_hook('js_validation', $step, shift) },
             form_name       => sub { $copy->run_hook('form_name', $step) },
             $self->step_key => $step,
@@ -1125,7 +1128,7 @@ sub ext_val {
 ### default to using this script as a handler
 sub js_uri_path {
     my $self   = shift;
-    my $script = $ENV{'SCRIPT_NAME'} || return '';
+    my $script = $self->script_name;
     my $js_step = $self->js_step;
     return ($self->can('path') == \&CGI::Ex::App::path)
         ? $script .'/'. $js_step # try to use a cache friendly URI (if path is our own)
@@ -1140,7 +1143,7 @@ sub js_run_step {
     my $self = shift;
 
     ### make sure path info looks like /js/CGI/Ex/foo.js
-    my $file = $self->form->{'js'} || $ENV{'PATH_INFO'} || '';
+    my $file = $self->form->{'js'} || $self->path_info;
     $file = ($file =~  m!^(?:/js/|/)?(\w+(?:/\w+)*\.js)$!) ? $1 : '';
 
     $self->cgix->print_js($file);
