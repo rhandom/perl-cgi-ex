@@ -642,9 +642,15 @@ sub get_valid_auth {
     $args->{'cleanup_user'}     ||= sub { my ($auth, $user) = @_; $self->cleanup_user(    $user, $auth) };
     $args->{'login_print'}      ||= sub {
         my ($auth, $template, $hash) = @_;
-        my $out = $self->run_hook('swap_template', '__login', $template, $hash);
-        $self->run_hook('fill_template', '__login', \$out, $hash);
-        $self->run_hook('print_out', '__login', $out);
+        my $step = '__login';
+        my $hash_base = $self->run_hook('hash_base',   $step) || {};
+        my $hash_comm = $self->run_hook('hash_common', $step) || {};
+        my $hash_swap = $self->run_hook('hash_swap',   $step) || {};
+        my $swap = {%$hash_base, %$hash_comm, %$hash_swap, %$hash};
+
+        my $out = $self->run_hook('swap_template', $step, $template, $swap);
+        $self->run_hook('fill_template', $step, \$out, $hash);
+        $self->run_hook('print_out', $step, \$out);
     };
 
     require CGI::Ex::Auth;
@@ -818,15 +824,14 @@ sub print {
     my $out  = $self->run_hook('swap_template', $step, $file, $swap);
 
     $self->run_hook('fill_template', $step, \$out, $fill);
-
-    $self->run_hook('print_out', $step, $out);
+    $self->run_hook('print_out',     $step, \$out);
 }
 
 sub print_out {
     my ($self, $step, $out) = @_;
 
     $self->cgix->print_content_type;
-    print $out;
+    print ref($out) ? $$out : $out;
 }
 
 sub swap_template {
