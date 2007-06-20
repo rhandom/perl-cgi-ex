@@ -80,8 +80,8 @@ sub nav_loop {
     my $self = shift;
 
     ### keep from an infinate nesting
-    local $self->{'recurse'} = $self->{'recurse'} || 0;
-    if ($self->{'recurse'} ++ >= $self->recurse_limit) {
+    local $self->{'_recurse'} = $self->{'_recurse'} || 0;
+    if ($self->{'_recurse'}++ >= $self->recurse_limit) {
         my $err = "recurse_limit (".$self->recurse_limit.") reached";
         $err .= " number of jumps (".$self->{'jumps'}.")" if ($self->{'jumps'} || 0) > 1;
         croak $err;
@@ -170,7 +170,14 @@ sub handle_error {
   my $self = shift;
   my $err  = shift;
 
-  die $err;
+  die $err if $self->{'_handling_error'};
+  local $self->{'_handling_error'} = 1;
+  local $self->{'_recurse'} = 0; # allow for this next step - even if we hit a recurse error
+
+  $self->stash->{'error_step'} = $self->current_step;
+  $self->stash->{'error'}      = $err;
+  $self->replace_path($self->error_step);
+  $self->jump; # exits nav loop when finished
 }
 
 ###----------------------------------------------------------------###
@@ -180,6 +187,8 @@ sub default_step { shift->{'default_step'} || 'main' }
 sub js_step { shift->{'js_step'} || 'js' }
 
 sub forbidden_step { shift->{'forbidden_step'} || '__forbidden' }
+
+sub error_step { shift->{'error_step'} || '__error' }
 
 sub step_key { shift->{'step_key'} || 'step' }
 
@@ -1164,9 +1173,18 @@ sub js_run_step {
 
 sub __forbidden_info_complete { 0 }
 
-sub __forbidden_hash_swap { {forbidden_step => shift->stash->{'forbidden_step'}} }
+sub __forbidden_hash_swap { shift->stash }
 
 sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the step <b>\"[% forbidden_step %]\"</b>" }
+
+###----------------------------------------------------------------###
+### a step that is used by the default handle_error
+
+sub __error_info_complete { 0 }
+
+sub __error_hash_swap { shift->stash }
+
+sub __error_file_print { \ "<h1>An a fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
 
 ###----------------------------------------------------------------###
 
