@@ -1,3 +1,11 @@
+2.15
+      2007-06-20
+        * Fix some warning issues with the Recipe sample in App
+        * Cleanup require_auth interface in App (you will want to
+          double check if you have overwritten require_auth in your
+          application to make sure your implementation is still compatible)
+        * Require latest Template::Alloy
+
 2.14
       2007-06-12
         * Moved CGI::Ex::Template to Template::Alloy
