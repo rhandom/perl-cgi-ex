@@ -29,7 +29,8 @@ use strict;
     sub print_out {
         my $self = shift;
         my $step = shift;
-        $test_stdout = shift;
+        my $str  = shift;
+        $test_stdout = ref($str) ? $$str : $str;
     }
 
     sub swap_template {
