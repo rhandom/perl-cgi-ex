@@ -54,7 +54,7 @@ sub navigate {
 
         ### run the step loop
         eval {
-            local $self->{'__morph_lineage_start_index'} = $#{$self->{'__morph_lineage'} || []};
+            local $self->{'_morph_lineage_start_index'} = $#{$self->{'_morph_lineage'} || []};
             $self->nav_loop;
         };
         if ($@) {
@@ -182,13 +182,11 @@ sub handle_error {
 
 ###----------------------------------------------------------------###
 
-sub default_step { shift->{'default_step'} || 'main' }
-
-sub js_step { shift->{'js_step'} || 'js' }
-
+sub default_step   { shift->{'default_step'}   || 'main'    }
+sub js_step        { shift->{'js_step'}        || 'js'      }
+sub login_step     { shift->{'login_step'}     || '__login' }
+sub error_step     { shift->{'error_step'}     || '__error' }
 sub forbidden_step { shift->{'forbidden_step'} || '__forbidden' }
-
-sub error_step { shift->{'error_step'} || '__error' }
 
 sub step_key { shift->{'step_key'} || 'step' }
 
@@ -286,9 +284,9 @@ sub exit_nav_loop {
     my $self = shift;
 
     ### undo morphs
-    if (my $ref = $self->{'__morph_lineage'}) {
+    if (my $ref = $self->{'_morph_lineage'}) {
         ### use the saved index - this allows for early "morphers" to only get rolled back so far
-        my $index = $self->{'__morph_lineage_start_index'};
+        my $index = $self->{'_morph_lineage_start_index'};
         $index = -1 if ! defined $index;
         $self->unmorph while $#$ref != $index;
     }
@@ -506,7 +504,7 @@ sub morph {
     my $allow = $self->allow_morph($step) || return;
 
     ### place to store the lineage
-    my $lin = $self->{'__morph_lineage'} ||= [];
+    my $lin = $self->{'_morph_lineage'} ||= [];
     my $cur = ref $self; # what are we currently
     push @$lin, $cur;    # store so subsequent unmorph calls can do the right thing
 
@@ -564,12 +562,12 @@ sub morph {
 
 sub unmorph {
     my $self = shift;
-    my $step = shift || '__no_step';
-    my $lin  = $self->{'__morph_lineage'} || return;
+    my $step = shift || '_no_step';
+    my $lin  = $self->{'_morph_lineage'} || return;
     my $cur  = ref $self;
 
     my $prev = pop(@$lin) || croak "unmorph called more times than morph - current ($cur)";
-    delete $self->{'__morph_lineage'} if ! @$lin;
+    delete $self->{'_morph_lineage'} if ! @$lin;
 
     ### if we are not already that package - bless us there
     my $hist = {
@@ -651,7 +649,7 @@ sub get_valid_auth {
     $args->{'cleanup_user'}     ||= sub { my ($auth, $user) = @_; $self->cleanup_user(    $user, $auth) };
     $args->{'login_print'}      ||= sub {
         my ($auth, $template, $hash) = @_;
-        my $step = '__login';
+        my $step = $self->login_step;
         my $hash_base = $self->run_hook('hash_base',   $step) || {};
         my $hash_comm = $self->run_hook('hash_common', $step) || {};
         my $hash_swap = $self->run_hook('hash_swap',   $step) || {};
@@ -741,8 +739,8 @@ sub clear_app {
         path
         path_i
         history
-        __morph_lineage_start_index
-        __morph_lineage
+        _morph_lineage_start_index
+        _morph_lineage
         hash_errors
         hash_fill
         hash_swap
@@ -827,11 +825,8 @@ sub prepared_print {
 
 sub print {
     my ($self, $step, $swap, $fill) = @_;
-
     my $file = $self->run_hook('file_print', $step); # get a filename relative to base_dir_abs
-
     my $out  = $self->run_hook('swap_template', $step, $file, $swap);
-
     $self->run_hook('fill_template', $step, \$out, $fill);
     $self->run_hook('print_out',     $step, \$out);
 }
@@ -840,24 +835,17 @@ sub print_out {
     my ($self, $step, $out) = @_;
 
     $self->cgix->print_content_type;
-    print ref($out) ? $$out : $out;
+    print ref($out) eq 'SCALAR' ? $$out : $out;
 }
 
 sub swap_template {
     my ($self, $step, $file, $swap) = @_;
 
     my $args = $self->run_hook('template_args', $step);
-    my $copy = $self;
-    eval {require Scalar::Util; Scalar::Util::weaken($copy)};
-    $args->{'INCLUDE_PATH'} ||= sub {
-        my $dir = $copy->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"";
-        $dir = $dir->() if UNIVERSAL::isa($dir, 'CODE');
-        return $dir;
-    };
+    $args->{'INCLUDE_PATH'} ||= $self->base_dir_abs;
 
-    my $t   = $self->template_obj($args);
+    my $t = $self->template_obj($args);
     my $out = '';
-
     $t->process($file, $swap, \$out) || die $t->error;
 
     return $out;
@@ -1116,25 +1104,25 @@ sub add_to_hash {
 
 sub base_dir_rel {
     my $self = shift;
-    $self->{'base_dir_rel'} = shift if $#_ != -1;
+    $self->{'base_dir_rel'} = shift if @_ == 1;
     return $self->{'base_dir_rel'} || '';
 }
 
 sub base_dir_abs {
     my $self = shift;
-    $self->{'base_dir_abs'} = shift if $#_ != -1;
-    return $self->{'base_dir_abs'} || '';
+    $self->{'base_dir_abs'} = shift if @_ == 1;
+    return $self->{'base_dir_abs'} || ['.']; # default to the current directory
 }
 
 sub ext_print {
     my $self = shift;
-    $self->{'ext_print'} = shift if $#_ != -1;
+    $self->{'ext_print'} = shift if @_ == 1;
     return $self->{'ext_print'} || 'html';
 }
 
 sub ext_val {
     my $self = shift;
-    $self->{'ext_val'} = shift if $#_ != -1;
+    $self->{'ext_val'} = shift if @_ == 1;
     return $self->{'ext_val'} || 'val';
 }
 
