@@ -8,7 +8,7 @@ CGI::Ex::Template - Template::Alloy based TT2/TT3/HT/HTE/Tmpl/Velocity engine.
 
 use strict;
 use warnings;
-use Template::Alloy 1.003;
+use Template::Alloy 1.004;
 use base qw(Template::Alloy);
 use vars qw($VERSION
             $QR_PRIVATE
