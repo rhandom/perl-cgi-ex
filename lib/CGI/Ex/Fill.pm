@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION   = '2.15';
+    $VERSION   = '2.16';
     @EXPORT    = qw(form_fill);
     @EXPORT_OK = qw(fill form_fill html_escape get_tagval_by_key swap_tagval_by_key);
 };
@@ -838,6 +838,6 @@ This module may distributed under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-Paul Seamons
+Paul Seamons <perl at seamons dot com>
 
 =cut

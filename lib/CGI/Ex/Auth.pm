@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.15';
+$VERSION = '2.16';
 
 ###----------------------------------------------------------------###
 
@@ -1150,6 +1150,10 @@ The text items shown in the default login template.  The default values are:
     text_save  "Save Password ?"
 
 =back
+
+=head1 LICENSE
+
+This module may be distributed under the same terms as Perl itself.
 
 =head1 AUTHORS
 

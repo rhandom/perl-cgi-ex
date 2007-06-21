@@ -17,7 +17,7 @@ use strict;
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION  = '2.15';
+    $VERSION  = '2.16';
 
     @EXPORT = qw(JSONDump);
     @EXPORT_OK = @EXPORT;
@@ -387,8 +387,12 @@ behavior in these cases you can use the no_tag_splitting flag to turn off the be
 
 =back
 
+=head1 LICENSE
+
+This module may distributed under the same terms as Perl itself.
+
 =head1 AUTHORS
 
-Paul Seamons <paul at seamons dot com>
+Paul Seamons <perl at seamons dot com>
 
 =cut

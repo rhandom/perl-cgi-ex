@@ -17,7 +17,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION
 use strict;
 use Exporter;
 
-$VERSION   = '2.15';
+$VERSION   = '2.16';
 @ISA       = qw(Exporter);
 @EXPORT    = qw(dex dex_warn dex_text dex_html ctrace dex_trace);
 @EXPORT_OK = qw(dex dex_warn dex_text dex_html ctrace dex_trace debug);
@@ -239,8 +239,12 @@ Turns calls to routines on or off.  Default is to be on.
 
 =back
 
+=head1 LICENSE
+
+This module may distributed under the same terms as Perl itself.
+
 =head1 AUTHORS
 
-Paul Seamons <perlspam at seamons dot com>
+Paul Seamons <perl at seamons dot com>
 
 =cut

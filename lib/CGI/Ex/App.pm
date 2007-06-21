@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.15';
+    $VERSION = '2.16';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
     eval {require Scalar::Util};

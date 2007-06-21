@@ -29,7 +29,7 @@ use vars qw($VERSION
             );
 @EXPORT_OK = qw(conf_read conf_write in_cache);
 
-$VERSION = '2.15';
+$VERSION = '2.16';
 
 $DEFAULT_EXT = 'conf';
 
@@ -909,13 +909,13 @@ without even opening the file.
 
 Make a similar write method that handles immutability.
 
-=head1 AUTHOR
-
-Paul Seamons <perl at seamons dot com>
-
 =head1 LICENSE
 
 This module may be distributed under the same terms as Perl itself.
+
+=head1 AUTHOR
+
+Paul Seamons <perl at seamons dot com>
 
 =cut
 

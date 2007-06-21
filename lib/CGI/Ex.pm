@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.15';
+    $VERSION               = '2.16';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -1038,12 +1038,12 @@ See also L<CGI::Ex::Template>.
 
 See also L<CGI::Ex::Validate>.
 
-=head1 AUTHOR
-
-Paul Seamons
-
 =head1 LICENSE
 
 This module may be distributed under the same terms as Perl itself.
+
+=head1 AUTHOR
+
+Paul Seamons <perl at seamons dot com>
 
 =cut

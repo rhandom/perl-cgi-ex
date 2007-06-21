@@ -25,7 +25,7 @@ use vars qw($VERSION
             $VOBJS
             );
 
-$VERSION = '2.15';
+$VERSION = '2.16';
 
 ### install true symbol table aliases that can be localized
 *QR_PRIVATE        = *Template::Alloy::QR_PRIVATE;
@@ -148,12 +148,12 @@ suggested that you use Template::Alloy directly instead.
 For examples of usage, configuration, syntax, bugs, vmethods,
 directives, etc please refer to the L<Template::Alloy> documentation.
 
-=head1 AUTHOR
-
-Paul Seamons <perl at seamons dot com>
-
 =head1 LICENSE
 
 This module may be distributed under the same terms as Perl itself.
+
+=head1 AUTHOR
+
+Paul Seamons <perl at seamons dot com>
 
 =cut

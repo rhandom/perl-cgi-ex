@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.15';
+$VERSION = '2.16';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
@@ -2079,14 +2079,12 @@ javascript didn't validate correctly, the user can still submit the data.
 Thanks to Eamon Daly for providing bug fixes for bugs in validate.js
 caused by HTML::Prototype.
 
-=head1 AUTHOR
-
-Paul Seamons
-
 =head1 LICENSE
 
 This module may be distributed under the same terms as Perl itself.
 
+=head1 AUTHOR
+
+Paul Seamons <perl at seamons dot com>
+
 =cut
-
-
