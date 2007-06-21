@@ -245,16 +245,16 @@ during the run_step hook.
 
     run_step {
         ->pre_step (hook)
-            # exits nav_loop if true
+            # skips this step if true and exit nav_loop
 
         ->skip (hook)
-            # skips this step if true (stays in nav_loop)
+            # skips this step if true and stays in nav_loop
 
         ->prepare (hook - defaults to true)
 
         ->info_complete (hook - ran if prepare was true)
             ->ready_validate (hook)
-            return false if ! ready_validate
+                # returns false from info_complete if ! ready_validate
             ->validate (hook - uses CGI::Ex::Validate to validate form info)
                 ->hash_validation (hook)
                    ->file_val (hook)
@@ -263,7 +263,7 @@ during the run_step hook.
                        ->name_module
                        ->name_step
                        ->ext_val
-            returns true if validate is true or if nothing to validate
+            # returns true if validate is true or if nothing to validate
 
         ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
 
