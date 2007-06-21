@@ -911,7 +911,7 @@ Make a similar write method that handles immutability.
 
 =head1 AUTHOR
 
-Paul Seamons
+Paul Seamons <perl at seamons dot com>
 
 =head1 LICENSE
 

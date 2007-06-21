@@ -1,4 +1,4 @@
-package CGI::Ex::Auth;
+\package CGI::Ex::Auth;
 
 =head1 NAME
 
@@ -1153,6 +1153,6 @@ The text items shown in the default login template.  The default values are:
 
 =head1 AUTHORS
 
-Paul Seamons <paul at seamons dot com>
+Paul Seamons <perl at seamons dot com>
 
 =cut

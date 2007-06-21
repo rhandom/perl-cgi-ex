@@ -182,6 +182,6 @@ be added later.
 
 =head1 AUTHORS
 
-Paul Seamons <perlspam at seamons dot com>
+Paul Seamons <perl at seamons dot com>
 
 =cut
