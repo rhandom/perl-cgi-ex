@@ -1113,8 +1113,8 @@ The following items will be cleared:
     path
     path_i
     history
-    __morph_lineage_start_index
-    __morph_lineage
+    _morph_lineage_start_index
+    _morph_lineage
     hash_errors
     hash_fill
     hash_swap
