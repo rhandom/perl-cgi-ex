@@ -1,4 +1,4 @@
-\package CGI::Ex::Auth;
+package CGI::Ex::Auth;
 
 =head1 NAME
 
