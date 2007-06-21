@@ -132,8 +132,10 @@ How about a form with validation (inluding javascript validation)...
 There are infinite possibilities.  There is a longer "SYNOPSIS" after
 the process flow discussion and more examples near the end of this
 document.  It is interesting to note that there have been no databases
-so far.  CGI::Ex::App is Controller/Viewer that is somewhat Model
-agnostic.
+so far.  It is very, very difficult to find a single database
+abstraction that fits every model.  CGI::Ex::App is Controller/Viewer
+that is somewhat Model agnostic and doesn't come with any default
+database abstraction.
 
 =head1 DESCRIPTION
 
