@@ -6,8 +6,15 @@
 
 =cut
 
+use vars qw($test_stdout @ISA);
 use strict;
-use Test::More tests => 63;
+use Test::More tests => 71;
+
+sub TIEHANDLE { bless [], __PACKAGE__ }
+sub PRINT {
+    my $self = shift;
+    $test_stdout = join("", @_);
+}
 
 use_ok('CGI::Ex');
 
@@ -46,6 +53,47 @@ ok($form->{'foo'} eq 'bar', "Could set form");
 my $cookies = $cgix->cookies;
 ok($cookies->{'foo'} eq 'bar', "Could set form");
 
+### try print_content_type
+if (eval { require Tie::Handle }) {
+    local @ISA = qw(Tie::Handle);
+    my $old_out = select STDOUT;
+
+    foreach ([[]                             => "Content-Type: text/html\r\n\r\n"],
+             [['text/html']                  => "Content-Type: text/html\r\n\r\n"],
+             [['image/gif']                  => "Content-Type: image/gif\r\n\r\n"],
+             [['text/html', 'utf-8'],        => "Content-Type: text/html; charset=utf-8\r\n\r\n"],
+             [[$cgix, ]                      => "Content-Type: text/html\r\n\r\n"],
+             [[$cgix, 'text/html']           => "Content-Type: text/html\r\n\r\n"],
+             [[$cgix, 'image/gif']           => "Content-Type: image/gif\r\n\r\n"],
+             [[$cgix, 'text/html', 'utf-8'], => "Content-Type: text/html; charset=utf-8\r\n\r\n"],
+             ) {
+        local $ENV{'MOD_PERL'}      = 0;
+        local $ENV{'CONTENT_TYPED'} = 0;
+        my ($args, $answer) = @$_;
+
+        LOCAL: {
+            local *STDOUT;
+            tie *STDOUT, __PACKAGE__;
+            CGI::Ex::print_content_type(@$args);
+        };
+
+        select $old_out;
+
+        (my $ans = $answer) =~ s/\s+$//;
+        if ($test_stdout eq $answer) {
+            ok(1, "(@$args) => $ans");
+        } else {
+            ok(0, "(@$args) => $ans");
+            print "#($test_stdout)\n";
+        }
+    }
+
+    select $old_out;
+} else {
+  SKIP: {
+      skip("Can't test print_content_type", 8);
+  };
+}
 
 ### try out make_form
 my $str = $cgix->make_form($form);
