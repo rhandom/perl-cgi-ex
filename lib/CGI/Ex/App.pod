@@ -31,7 +31,7 @@ Well, you should put your content in an external file...
 
     __PACKAGE__->navigate;
 
-    sub base_dir_abs { '/var/www/templates' }
+    sub template_path { '/var/www/templates' }
 
 
     -------- File: /var/www/templates/my_cgi/main.html --------
@@ -49,7 +49,7 @@ How about if we want to add substitutions...
 
     __PACKAGE__->navigate;
 
-    sub base_dir_abs { '/var/www/templates' }
+    sub template_path { '/var/www/templates' }
 
     sub main_hash_swap {
         my $self = shift;
@@ -76,7 +76,7 @@ How about a form with validation (inluding javascript validation)...
 
     __PACKAGE__->navigate;
 
-    sub base_dir_abs { '/var/www/templates' }
+    sub template_path { '/var/www/templates' }
 
     sub main_hash_swap { {date => sub { scalar localtime }} }
 
@@ -260,7 +260,7 @@ during the run_step hook.
             ->validate (hook - uses CGI::Ex::Validate to validate form info)
                 ->hash_validation (hook)
                    ->file_val (hook)
-                       ->base_dir_abs
+                       ->vob_path (defaults to template_path)
                        ->base_dir_rel
                        ->name_module
                        ->name_step
@@ -591,13 +591,14 @@ are also documented more in the HOOKS AND METHODS section.
 
 =over 4
 
-=item base_dir_abs
+=item template_path
 
-Absolute path or arrayref of paths to the base templates directory.  Default "".
+Absolute path or arrayref of paths to the base templates directory.  Defaults to
+base_dir_abs which defaults to ['.'].
 
 =item base_dir_rel
 
-Relative path inside of the base_dir_abs directory where content can be found.  Default "".
+Relative path inside of the template_path directory where content can be found.  Default "".
 
 =item name_module
 
@@ -632,7 +633,7 @@ a contrived example.  The following is a hypothetical layout for your templates:
 
 In this example we would most likely set values as follows:
 
-    base_dir_abs  /home/user/templates
+    template_path /home/user/templates
     base_dir_rel  content
     name_module   my_app
 
@@ -648,7 +649,7 @@ Continuing with the example and assuming that name of the step that
 the user has requested is "step1" then the following values would be
 returned:
 
-    base_dir_abs  /home/user/templates
+    template_path /home/user/templates
     base_dir_rel  content
     name_module   my_app
     name_step     step1
@@ -662,13 +663,13 @@ The call to the template engine would look something like
 the following:
 
     my $t = $self->template_obj({
-        INCLUDE_PATH => $self->base_dir_abs,
+        INCLUDE_PATH => $self->template_path, # defaults to base_dir_abs
     });
 
     $t->process($self->file_print($step), \%vars);
 
 The template engine would then look for the relative file
-inside of the absolute paths (from base_dir_abs).
+inside of the absolute paths (from template_path).
 
 The call to the validation engine would pass the absolute
 filename that is returned by file_val.
@@ -677,7 +678,7 @@ The name_module and name_step methods can return filenames with
 additional directories included.  The previous example could
 also have been setup using the following values:
 
-    base_dir_abs  /home/user/templates
+    template_path /home/user/templates
     base_dir_rel
     name_module   content/my_app
 
@@ -1052,12 +1053,12 @@ See the get_valid_auth method.
 
 =item base_dir_abs (method)
 
-Used as the absolute base directory to find template files and validation files.
+Used as the absolute base directory to find template, validation and conf files.
 It may return a single value or an arrayref of values, or a coderef that
 returns an arrayref or coderef of values.  You may pass base_dir_abs
 as a parameter in the arguments passed to the "new" method.
 
-Default value is "".
+Default value is ['.'].
 
 For example, to pass multiple paths, you would use something
 similar to the following:
@@ -1066,12 +1067,14 @@ similar to the following:
         return ['/my/path/one', '/some/other/path'];
     }
 
-The base_dir_abs value is used along with the base_dir_rel, name_module,
-name_step, ext_print and ext_values for determining the values
-returned by the default file_print and file_val hooks.  See those methods
-for further discussion.
+The base_dir_abs value is used by template_path along with the
+base_dir_rel, name_module, name_step, ext_print and ext_values for
+determining the values returned by the default file_print and file_val
+hooks.  See those methods for further discussion.
 
 See the section on FINDING TEMPLATES for further discussion.
+
+The base_dir_abs method is also used as the default value for conf_path and vob_path.
 
 =item base_dir_rel (method)
 
@@ -1079,14 +1082,14 @@ Added as a relative base directory to content under the base_dir_abs directory.
 
 Default value is "".
 
-The base_dir_abs method is used as top level where template includes may
-pull from, while the base_dir_rel is directory relative to the base_dir_abs
+The template_path method is used as top level where template includes may
+pull from, while the base_dir_rel is directory relative to the template_path
 where the content files will be stored.
 
 A value for base_dir_rel may passed as a parameter in the arguments passed
 to the new method.
 
-See the base_dir_abs method for more discussion.
+See the template_path and base_dir_abs methods for more discussion.
 
 See the section on FINDING TEMPLATES for further discussion.
 
@@ -1121,6 +1124,67 @@ The following items will be cleared:
     hash_fill
     hash_swap
     hash_common
+
+=item conf (method)
+
+Used by default in init_from_conf if load_conf returns true.
+Will try to read the file returned by the conf_file method
+using the object returned by conf_obj using that object's read
+method.  If conf_validation returns a non-empty hashref, the
+conf hash will be validated using $self->vob->validate (see the
+validate method).
+
+This method may be used for other purposes as well (including when
+load_conf is false)..
+
+Caches results in $self->{'conf'}.
+
+=item conf_file (method)
+
+Used by conf for finding the configuration file to load.  Defaults
+to $self->{'conf_file'} which defaults $self->name_module with the extention
+returned by $self->conf_ext added on.  For example, if name_module
+returns "my_app" and conf_ext returns "ini" the value returned will
+be "my_app.ini".
+
+The value returned can absolute.  If the value will be searched for
+in the paths passed to conf_obj.
+
+The conf_ext may be any of those extentions understood by CGI::Ex::Conf.
+
+=item conf_ext
+
+Used by the default conf_file method.  Defaults to $self->{'conf_ext'} which
+defaults to 'pl' meaning that the read configuration file should return a
+valid perl hashref.
+
+=item conf_obj
+
+Used by the conf method to load the file returned by conf_file.  Defaults
+to conf_obj which defaults to loading args from conf_args, adding in paths
+returned by conf_path, and calling CGI::Ex::Conf->new.
+
+Any object that provides a read method that returns a hashref can be used.
+
+=item conf_path
+
+Defaults to $self->{'conf_path'} which defaults to base_dir_abs.  Should be
+a path or an arrayref of paths to look the configuration file returned by
+conf_file when that file is not absolute.
+
+=item conf_args
+
+Used by conf_obj.
+
+Defaults to $self->{'conf_args'} which defaults to {}.  Will have
+paths => $self->conf_path added before passing to CGI::Ex::Conf->new.
+
+=item conf_validation
+
+Used by default conf method.
+Defaults to an empty hashref.  If non-empty hashref is passed, the
+hashref returned by conf_obj->read will be validated using the hashref
+returned by conf_validation.
 
 =item current_step (method)
 
@@ -1265,15 +1329,15 @@ Returns a filename of the content to be used in the default print
 hook.  Adds method base_dir_rel to hook name_module, and name_step and
 adds on the default file extension found in $self->ext_print which
 defaults to the property $self->{ext_print} which will default to
-".html".  Should return a filename relative to base_dir_abs that can be
+".html".  Should return a filename relative to template_path that can be
 swapped using Template::Alloy, or should be a scalar reference to
 the template content that can be swapped.  This will be used by the
 hook print.
 
-    sub base_dir_abs { '/var/www/templates' }
-    sub base_dir_rel { 'content' }
-    sub name_module  { 'recipe' }
-    sub ext_print    { 'html' } # default
+    sub template_path { '/var/www/templates' }
+    sub base_dir_rel  { 'content' }
+    sub name_module   { 'recipe' }
+    sub ext_print     { 'html' } # default
 
     # ->file_print('this_step')
     # would return 'content/recipe/this_step.html'
@@ -1286,12 +1350,13 @@ the data for the application in a single location.
 
 =item file_val (hook)
 
-Returns a filename containing the validation.  Performs the same
-as file_print, but uses ext_val to get the extension, and it adds
-base_dir_abs onto the returned value (file_print is relative to
-base_dir_abs, while file_val is fully qualified with base_dir_abs).
-If base_dir_abs returns an arrayref of paths, then each path is
-checked for the existence of the file.
+Returns a filename containing the validation.  Performs the same as
+file_print, but uses ext_val to get the extension, and it adds
+vob_path (which defaults to template_path which defaults to
+base_dir_abs) onto the returned value (file_print is relative to
+template_path, while file_val is fully qualified with vob_path).  If
+vob_path returns an arrayref of paths, then each path is checked for
+the existence of the file.
 
 The file should be readable by CGI::Ex::Validate::get_validation.
 
@@ -1540,6 +1605,16 @@ Called by the default new method.  Allows for any object
 initilizations that may need to take place.  Default action does
 nothing.
 
+=item init_from_conf (method)
+
+Called by the default new method.  If load_conf is true, then the
+conf method will be called and the keys returned will be added to
+the $self object.
+
+This method is called after the init method.  If you need to further
+fix up values added during init_from_conf, you can use the pre_navigate
+method.
+
 =item insert_path (method)
 
 Arguments are the steps to insert.  Can be called any time.  Inserts
@@ -1634,6 +1709,14 @@ jumping (the path is modified so that the path history is not destroyed
 =item last_step (method)
 
 Returns the last step of the path.  Can be used to jump to the last step.
+
+=item load_conf (method)
+
+Defaults to ->{load_conf} which defaults to false.  If true, will
+allow keys returned by the conf method to be added to $self during
+the init_from_conf method.
+
+Enabling this method allows for out-of-the-box file based configuration.
 
 =item morph (method)
 
@@ -2229,7 +2312,7 @@ CGI::Ex::Template a subclass of Template::Alloy).
 Arguments are the template and the swap hashref.  The template can be
 either a scalar reference to the actual content, or the filename of
 the content.  If the filename is specified - it should be relative to
-base_dir_abs (which will be used to initialize INCLUDE_PATH by
+template_path (which will be used to initialize INCLUDE_PATH by
 default).
 
 The default method will create a template object by calling the
@@ -2255,7 +2338,7 @@ method as follows:
 
         my $t = HTML::Template->new(source => $file,
                                     type   => $type,
-                                    path   => $self->base_dir_abs,
+                                    path   => $self->template_path,
                                     die_on_bad_params => 0,
                                     );
 
@@ -2277,7 +2360,7 @@ For a listing of the available syntaxes, see the current L<Template::Alloy> docu
 
 Returns a hashref of args that will be passed to the "new" method of CGI::Ex::Template.
 The method is normally called from the swap_template hook.  The swap_template hook
-will add a value for INCLUDE_PATH which is set equal to base_dir_abs, if the INCLUDE_PATH
+will add a value for INCLUDE_PATH which is set equal to template_path, if the INCLUDE_PATH
 value is not already set.
 
 The returned hashref can contain any arguments that CGI::Ex::Template (a subclass of Template::Alloy)
@@ -2295,7 +2378,7 @@ See the L<Template::Alloy> documentation for a listing of all possible configura
 =item template_obj (method)
 
 Called from swap_template.  It is passed the result of template_args
-that have had a default INCLUDE_PATH added.  The default
+that have had a default INCLUDE_PATH added via template_path.  The default
 implementation uses CGI::Ex::Template (a subclass of Template::Alloy)
 but can easily be changed to use Template::Toolkit by using code
 similar to the following:
@@ -2306,6 +2389,11 @@ similar to the following:
         my ($self, $args) = @_;
         return Template->new($args);
     }
+
+=item template_path (method)
+
+Defaults to $self->{'template_path'} which defaults to base_dir_abs.  Used by
+the template_obj method.
 
 =item unmorph (method)
 
@@ -2513,7 +2601,7 @@ CGI::Ex::App is differrent in that it:
 
 The following example shows the creation of a basic recipe
 database.  It requires the use of DBD::SQLite, but that is all.
-Once you have configured the db_file and base_dir_abs methods
+Once you have configured the db_file and template_path methods
 of the "recipe" file, you will have a working script that
 does CRUD for the recipe table.  The observant reader may ask - why
 not use Catalyst or Ruby on Rails?  The observant programmer will
@@ -2553,7 +2641,7 @@ the core logic of the application.
         debug shift->dump_history;
     }
 
-    sub base_dir_abs { '/var/www/templates' }
+    sub template_path { '/var/www/templates' }
 
     sub base_dir_rel { 'content' }
 
