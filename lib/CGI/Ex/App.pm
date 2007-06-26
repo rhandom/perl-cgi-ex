@@ -679,12 +679,25 @@ sub require_auth {
     return $self->{'require_auth'} || 0;
 }
 
-sub is_authed { shift->auth_data }
+sub is_authed {
+    my $data = shift->auth_data;
+    return $data && ! $data->{'error'};
+}
 
 sub auth_data {
     my $self = shift;
     $self->{'auth_data'} = shift if @_ == 1;
     return $self->{'auth_data'};
+}
+
+sub check_valid_auth {
+    my $self = shift;
+    return $self->auth_data if $self->is_authed;
+
+    ### call get_valid_auth - but don't remove invalid cookies
+    $self->get_valid_auth({login_print => sub {}, delete_cookie => sub {}, location_bounce => sub {}});
+
+    return $self->is_authed ? $self->auth_data : undef;
 }
 
 sub get_valid_auth {
