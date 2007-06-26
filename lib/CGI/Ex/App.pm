@@ -48,8 +48,7 @@ sub init_from_conf {
     my $self = shift;
     return if ! $self->load_conf;
     my $conf = $self->conf;
-    my @keys = grep {! defined $self->{$_}} keys %$conf;
-    @{ $self }{ @keys } = @{ $conf }{ @keys };
+    @{ $self }{ keys %$conf } = values %$conf;
     return;
 }
 
@@ -57,7 +56,15 @@ sub load_conf { shift->{'load_conf'} ||= @_ ? 1 : 0 }
 
 sub conf {
     my $self = shift;
-    return $self->{'conf'} ||= $self->conf_obj->read($self->conf_file, {no_warn_on_fail => 1}) || croak $@;
+    return $self->{'conf'} ||= do {
+        my $conf = $self->conf_obj->read($self->conf_file, {no_warn_on_fail => 1}) || croak $@;
+        my $hash = $self->conf_validation;
+        if ($hash && scalar keys %$hash) {
+            my $err_obj = $self->vob->validate($conf, $hash);
+            die $err_obj if $err_obj;
+        }
+        $conf;
+    }
 }
 
 sub conf_path {
@@ -69,18 +76,21 @@ sub conf_file {
     my $self = shift;
     return $self->{'conf_file'} ||= do {
         my $module = $self->name_module || croak 'Missing name_module during conf_file call';
-        my $ext    = $self->conf_ext;
-        $ext ? "$module.$ext" : $module;
+        $module .'.'. $self->conf_ext;
     };
 }
 
-sub conf_ext { shift->{'conf_ext'} || 'pl' }
+sub conf_ext {
+    my $self = shift;
+    $self->{'conf_ext'} = shift if @_ == 1;
+    return $self->{'conf_ext'} || 'pl';
+}
 
-sub conf_args { {} }
+sub conf_args { shift->{'conf_args'} || {} }
 
 sub conf_obj {
     my $self = shift;
-    return $self->{'conf_obj'} ||= do {
+    return $self->{'conf_obj'} || do {
         my $args = $self->conf_args;
         $args->{'paths'}     ||= $self->conf_path;
         $args->{'directive'} ||= 'MERGE';
@@ -88,6 +98,8 @@ sub conf_obj {
         CGI::Ex::Conf->new($args);
     };
 }
+
+sub conf_validation {}
 
 ###----------------------------------------------------------------###
 
@@ -759,16 +771,13 @@ sub vob {
     $self->{'vob'} = shift if @_ == 1;
     return $self->{'vob'} ||= do {
         require CGI::Ex::Validate;
+        my $args = $self->vob_args;
+        $args->{'cgix'} ||= $self->cgix;
         CGI::Ex::Validate->new($self->vob_args); # return of the do
     };
 }
 
-sub vob_args {
-    my $self = shift;
-    return {
-        cgix    => $self->cgix,
-    };
-}
+sub vob_args { shift->{'vob_args'} || {} }
 
 ### provide a place for placing variables
 sub stash {
@@ -905,7 +914,7 @@ sub template_path {
     return $self->{'template_path'} || $self->base_dir_abs;
 }
 
-sub template_args { {} }
+sub template_args { shift->{'template_args'} || {} }
 
 sub template_obj {
     my ($self, $args) = @_;
@@ -927,7 +936,7 @@ sub fill_template {
     CGI::Ex::Fill::fill($args);
 }
 
-sub fill_args { {} }
+sub fill_args { shift->{'fill_args'} || {} }
 
 sub pre_step   { 0 } # success indicates we handled step (don't continue step or loop)
 sub skip       { 0 } # success indicates to skip the step (and continue loop)
