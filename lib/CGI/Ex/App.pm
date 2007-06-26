@@ -694,8 +694,8 @@ sub check_valid_auth {
     my $self = shift;
     return $self->auth_data if $self->is_authed;
 
-    ### call get_valid_auth - but don't remove invalid cookies
-    $self->get_valid_auth({login_print => sub {}, delete_cookie => sub {}, location_bounce => sub {}});
+    ### call get_valid_auth - but don't bounce to other locations
+    $self->get_valid_auth({login_print => sub {}, location_bounce => sub {}});
 
     return $self->is_authed ? $self->auth_data : undef;
 }
@@ -703,6 +703,15 @@ sub check_valid_auth {
 sub get_valid_auth {
     my $self = shift;
     return 1 if $self->is_authed;
+
+    my $hist = {
+        step  => '_none_',
+        meth  => 'get_valid_auth',
+        found => 'get_valid_auth',
+        level => $self->{'_level'},
+        time  => time,
+    };
+    push @{ $self->history }, $hist;
 
     my $args = $self->auth_args;
 
@@ -742,7 +751,8 @@ sub get_valid_auth {
     delete $data->{'real_pass'} if defined $data; # data may be defined but false
     $self->auth_data($data); # failed authentication may still have auth_data
 
-    return ($resp && $data) ? 1 : 0;
+    $hist->{'elapsed'} = time - $hist->{'time'};
+    return $hist->{'response'} = ($resp && $data) ? 1 : 0;
 }
 
 sub auth_args { {} }
