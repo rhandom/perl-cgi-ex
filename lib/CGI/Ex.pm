@@ -249,7 +249,7 @@ sub content_type { &print_content_type }
 #   print_content_type();
 #   print_content_type('text/plain);
 sub print_content_type {
-    my ($self, $type) = ($#_ >= 1) ? @_ : ref($_[0]) ? (shift, undef) : (undef, shift);
+    my ($self, $type, $charset) = (@_ && ref $_[0]) ? @_ : (undef, @_);
     $self = __PACKAGE__->new if ! $self;
 
     if ($type) {
@@ -257,6 +257,7 @@ sub print_content_type {
     } else {
         $type = 'text/html';
     }
+    $type .= "; charset=$charset" if $charset && $charset =~ m|^[\w\-\.\:\+]+$|;
 
     if (my $r = $self->apache_request) {
         return if $r->bytes_sent;

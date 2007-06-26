@@ -8,7 +8,7 @@
 
 use vars qw($test_stdout @ISA);
 use strict;
-use Test::More tests => 71;
+use Test::More tests => 73;
 
 sub TIEHANDLE { bless [], __PACKAGE__ }
 sub PRINT {
@@ -60,10 +60,12 @@ if (eval { require Tie::Handle }) {
 
     foreach ([[]                             => "Content-Type: text/html\r\n\r\n"],
              [['text/html']                  => "Content-Type: text/html\r\n\r\n"],
+             [['text/html', '']              => "Content-Type: text/html\r\n\r\n"],
              [['image/gif']                  => "Content-Type: image/gif\r\n\r\n"],
              [['text/html', 'utf-8'],        => "Content-Type: text/html; charset=utf-8\r\n\r\n"],
              [[$cgix, ]                      => "Content-Type: text/html\r\n\r\n"],
              [[$cgix, 'text/html']           => "Content-Type: text/html\r\n\r\n"],
+             [[$cgix, 'text/html', '']       => "Content-Type: text/html\r\n\r\n"],
              [[$cgix, 'image/gif']           => "Content-Type: image/gif\r\n\r\n"],
              [[$cgix, 'text/html', 'utf-8'], => "Content-Type: text/html; charset=utf-8\r\n\r\n"],
              ) {
@@ -91,7 +93,7 @@ if (eval { require Tie::Handle }) {
     select $old_out;
 } else {
   SKIP: {
-      skip("Can't test print_content_type", 8);
+      skip("Can't test print_content_type", 10);
   };
 }
 
