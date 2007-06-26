@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 20;
+use Test::More tests => 25;
 use strict;
 
 {
@@ -153,7 +153,7 @@ ok($Foo::test_stdout eq "Login Form", "Got the right output");
 
 {
     package Bar;
-    @Bar::ISA = qw(Foo);
+    our @ISA = qw(Foo);
     sub require_auth { 1 }
 }
 
@@ -166,7 +166,7 @@ ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar");
 
 {
     package Bar1;
-    @Bar1::ISA = qw(Foo);
+    our @ISA = qw(Foo);
     sub require_auth { 1 }
 }
 
@@ -179,7 +179,7 @@ ok(! $ok, "Got the right output for Bar1");
 
 {
     package Bar2;
-    @Bar2::ISA = qw(Foo);
+    our @ISA = qw(Foo);
     sub main_require_auth { 1 }
 }
 
@@ -192,7 +192,7 @@ ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar2");
 
 {
     package Bar3;
-    @Bar3::ISA = qw(Foo);
+    our @ISA = qw(Foo);
     sub require_auth { 1 }
     sub main_require_auth { 0 }
 }
@@ -222,7 +222,7 @@ ok($Foo::test_stdout eq "Login Form", "Got the right output");
 
 {
     package Bar4;
-    @Bar4::ISA = qw(Foo);
+    our @ISA = qw(Foo);
     sub pre_navigate { shift->require_auth(0); 0 }
 }
 
@@ -235,7 +235,7 @@ ok($Foo::test_stdout eq "Main Content", "Got the right output for Bar4");
 
 {
     package Bar5;
-    @Bar5::ISA = qw(Foo);
+    our @ISA = qw(Foo);
     sub pre_navigate { shift->require_auth(1); 0 }
 }
 
@@ -248,7 +248,7 @@ ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar5 ($@)");
 
 {
     package Bar6;
-    @Bar6::ISA = qw(Foo);
+    our @ISA = qw(Foo);
     sub pre_navigate { shift->require_auth({main => 1}); 0 }
 }
 
@@ -256,3 +256,35 @@ Bar6->new({
     form => {},
 })->navigate;
 ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar6 ($@)");
+
+###----------------------------------------------------------------###
+
+{
+    package Conf1;
+    our @ISA = qw(Foo);
+    sub name_module { 'conf_1' }
+}
+
+my $file = Conf1->new->conf_file;
+ok($file && $file eq 'conf_1.pl', "Got a conf_file ($file)");
+
+$file = Conf1->new({conf_ext => 'ini'})->conf_file;
+ok($file && $file eq 'conf_1.ini', "Got a conf_file ($file)");
+
+eval { Conf1->new({
+    load_conf => 1,
+})->navigate };
+my $err = $@;
+ok($err, "Got an error");
+chomp $err;
+ok($Foo::test_stdout eq "", "Got the right output for Conf1 ($err)");
+
+Conf1->new({
+    load_conf => 1,
+    conf => {
+        form => {step => 'step3'},
+    },
+})->navigate;
+ok($Foo::test_stdout eq "All good", "Got the right output for Conf1");
+
+###----------------------------------------------------------------###
