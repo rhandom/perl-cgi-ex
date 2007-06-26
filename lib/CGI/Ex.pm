@@ -921,6 +921,14 @@ else already printed content-type).  Calling this sends the Content-type
 header.  Trying to print -E<gt>content_type is an error.  For clarity,
 the method -E<gt>print_content_type is available.
 
+    $cgix->print_content_type;
+
+    # OR
+    $cgix->print_content_type('text/html');
+
+    # OR
+    $cgix->print_content_type('text/html', 'utf-8');
+
 =item C<-E<gt>set_cookie>
 
 Arguments are the same as those to CGI->new->cookie({}).
