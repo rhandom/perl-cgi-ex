@@ -897,9 +897,12 @@ sub print {
 sub print_out {
     my ($self, $step, $out) = @_;
 
-    $self->cgix->print_content_type;
+    $self->cgix->print_content_type($self->mimetype($step), $self->charset($step));
     print ref($out) eq 'SCALAR' ? $$out : $out;
 }
+
+sub mimetype { shift->{'mimetype'} || 'text/html' }
+sub charset  { shift->{'charset'}  || '' }
 
 sub swap_template {
     my ($self, $step, $file, $swap) = @_;
