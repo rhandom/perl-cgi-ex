@@ -33,12 +33,61 @@ sub new {
 
     $self->init;
 
+    $self->init_from_conf;
+
     return $self;
 }
 
 sub init {}
 
 sub destroy {}
+
+###----------------------------------------------------------------###
+
+sub init_from_conf {
+    my $self = shift;
+    return if ! $self->load_conf;
+    my $conf = $self->conf;
+    my @keys = grep {! defined $self->{$_}} keys %$conf;
+    @{ $self }{ @keys } = @{ $conf }{ @keys };
+    return;
+}
+
+sub load_conf { shift->{'load_conf'} ||= @_ ? 1 : 0 }
+
+sub conf {
+    my $self = shift;
+    return $self->{'conf'} ||= $self->conf_obj->read($self->conf_file, {no_warn_on_fail => 1}) || croak $@;
+}
+
+sub conf_path {
+    my $self = shift;
+    return $self->{'conf_path'} || $self->base_dir_abs;
+}
+
+sub conf_file {
+    my $self = shift;
+    return $self->{'conf_file'} ||= do {
+        my $module = $self->name_module || croak 'Missing name_module during conf_file call';
+        my $ext    = $self->conf_ext;
+        $ext ? "$module.$ext" : $module;
+    };
+}
+
+sub conf_ext { shift->{'conf_ext'} || 'pl' }
+
+sub conf_args { {} }
+
+sub conf_obj {
+    my $self = shift;
+    return $self->{'conf_obj'} ||= do {
+        my $args = $self->conf_args;
+        $args->{'paths'}     ||= $self->conf_path;
+        $args->{'directive'} ||= 'MERGE';
+        require CGI::Ex::Conf;
+        CGI::Ex::Conf->new($args);
+    };
+}
 
 ###----------------------------------------------------------------###
 
@@ -842,13 +891,18 @@ sub swap_template {
     my ($self, $step, $file, $swap) = @_;
 
     my $args = $self->run_hook('template_args', $step);
-    $args->{'INCLUDE_PATH'} ||= $self->base_dir_abs;
+    $args->{'INCLUDE_PATH'} ||= $args->{'include_path'} || $self->template_path;
 
     my $t = $self->template_obj($args);
     my $out = '';
     $t->process($file, $swap, \$out) || die $t->error;
 
     return $out;
+}
+
+sub template_path {
+    my $self = shift;
+    return $self->{'template_path'} || $self->base_dir_abs;
 }
 
 sub template_args { {} }
@@ -1172,7 +1226,7 @@ sub __error_info_complete { 0 }
 
 sub __error_hash_swap { shift->stash }
 
-sub __error_file_print { \ "<h1>An a fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
+sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
 
 ###----------------------------------------------------------------###
 
