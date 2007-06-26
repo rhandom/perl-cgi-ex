@@ -1,6 +1,7 @@
 2.18
         * Allow for check_valid_auth in App
         * Allow for set_cookie, delete_cookie, location_bounce to be overridden in Auth
+        * Add get_valid_auth to the history
 
 2.17
       2007-06-26
