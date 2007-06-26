@@ -779,6 +779,11 @@ sub vob {
 
 sub vob_args { shift->{'vob_args'} || {} }
 
+sub vob_path {
+    my $self = shift;
+    return $self->{'vob_path'} || $self->template_path;
+}
+
 ### provide a place for placing variables
 sub stash {
     my $self = shift;
@@ -883,7 +888,7 @@ sub prepared_print {
 
 sub print {
     my ($self, $step, $swap, $fill) = @_;
-    my $file = $self->run_hook('file_print', $step); # get a filename relative to base_dir_abs
+    my $file = $self->run_hook('file_print', $step); # get a filename relative to template_path
     my $out  = $self->run_hook('swap_template', $step, $file, $swap);
     $self->run_hook('fill_template', $step, \$out, $fill);
     $self->run_hook('print_out',     $step, \$out);
@@ -990,7 +995,7 @@ sub file_val {
     my $step = shift;
 
     ### determine the path to begin looking for files - allow for an arrayref
-    my $abs = $self->base_dir_abs || [];
+    my $abs = $self->vob_path || [];
     $abs = $abs->() if UNIVERSAL::isa($abs, 'CODE');
     $abs = [$abs] if ! UNIVERSAL::isa($abs, 'ARRAY');
     return {} if @$abs == 0;
