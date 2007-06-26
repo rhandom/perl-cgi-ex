@@ -1117,10 +1117,10 @@ sub hash_base {
         my $copy = $self;
         eval {require Scalar::Util; Scalar::Util::weaken($copy)};
         my $hash = {
-            script_name     => $copy->script_name,
-            path_info       => $copy->path_info,
+            script_name     => $self->script_name,
+            path_info       => $self->path_info,
             js_validation   => sub { $copy->run_hook('js_validation', $step, shift) },
-            form_name       => sub { $copy->run_hook('form_name', $step) },
+            form_name       => $self->run_hook('form_name', $step),
             $self->step_key => $step,
         }; # return of the do
     };
