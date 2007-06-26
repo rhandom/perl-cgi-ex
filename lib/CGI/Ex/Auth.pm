@@ -61,7 +61,7 @@ sub get_valid_auth {
         next if ! defined $hash->{$key};
         $had_form_info ++ if $is_form;
 
-        ### if it looks like a bare username (as in they didn't have javascript)- add in other items
+        ### if it looks like a bare username (as in they didn't have javascript) - add in other items
         my $data;
         if ($is_form
             && $hash->{$key} !~ m|^[^/]+/|
@@ -180,6 +180,7 @@ sub cookies {
 sub delete_cookie {
     my $self = shift;
     my $args = shift;
+    return $self->{'delete_cookie'}->($self, $args) if $self->{'delete_cookie'};
     my $key  = $args->{'key'};
     $self->cgix->set_cookie({
         -name    => $key,
@@ -193,6 +194,7 @@ sub delete_cookie {
 sub set_cookie {
     my $self = shift;
     my $args = shift;
+    return $self->{'set_cookie'}->($self, $args) if $self->{'set_cookie'};
     my $key  = $args->{'key'};
     my $val  = $args->{'val'};
     $self->cgix->set_cookie({
@@ -207,6 +209,7 @@ sub set_cookie {
 sub location_bounce {
     my $self = shift;
     my $url  = shift;
+    return $self->{'location_bounce'}->($self, $url) if $self->{'location_bounce'};
     return $self->cgix->location_bounce($url);
 }
 
