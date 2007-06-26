@@ -134,7 +134,7 @@ sub conf_read {
 
   ### don't die if the file is not found - do die otherwise
   if (! -e $file) {
-      eval { die "Conf file $file not found" };
+      eval { die "Conf file $file not found\n" };
       warn "Conf file $file not found" if ! $args->{'no_warn_on_fail'} && ! $NO_WARN_ON_FAIL;
       return;
   }
