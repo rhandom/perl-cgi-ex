@@ -614,6 +614,13 @@ sub replace_path {
     }
 }
 
+sub set_path {
+    my $self = shift;
+    my $path = $self->{'path'} ||= [];
+    croak "Cannot call set_path after the navigation loop has begun" if $self->{'path_i'};
+    splice @$path, 0, $#$path + 1, @_; # change entries in the ref (which updates other copies of the ref)
+}
+
 sub step_by_path_index {
     my $self = shift;
     my $i    = shift || 0;
