@@ -1143,18 +1143,18 @@ Caches results in $self->{'conf'}.
 
 Used by conf for finding the configuration file to load.  Defaults
 to $self->{'conf_file'} which defaults $self->name_module with the extention
-returned by $self->conf_ext added on.  For example, if name_module
-returns "my_app" and conf_ext returns "ini" the value returned will
+returned by $self->ext_conf added on.  For example, if name_module
+returns "my_app" and ext_conf returns "ini" the value returned will
 be "my_app.ini".
 
 The value returned can absolute.  If the value will be searched for
 in the paths passed to conf_obj.
 
-The conf_ext may be any of those extentions understood by CGI::Ex::Conf.
+The ext_conf may be any of those extentions understood by CGI::Ex::Conf.
 
-=item conf_ext
+=item ext_conf
 
-Used by the default conf_file method.  Defaults to $self->{'conf_ext'} which
+Used by the default conf_file method.  Defaults to $self->{'ext_conf'} which
 defaults to 'pl' meaning that the read configuration file should return a
 valid perl hashref.
 
