@@ -185,22 +185,28 @@ sub run_hook {
     croak "Could not find a method named ${step}_${hook} or ${hook}" if ! $code;
     croak "Value for $hook ($found) is not a code ref ($code)" if ! UNIVERSAL::isa($code, 'CODE');
 
-    my $hist = {
-        step  => $step,
-        meth  => $hook,
-        found => $found,
-        time  => time,
-    };
-    push @{ $self->history }, $hist;
-
-    $hist->{'level'} = $self->{'_level'};
+    my $hist;
+    if (! $self->{'no_history'}) {
+        $hist = {
+            step  => $step,
+            meth  => $hook,
+            found => $found,
+            time  => time,
+        };
+        push @{ $self->history }, $hist;
+        $hist->{'level'} = $self->{'_level'};
+        $hist->{'elapsed'}  = time - $hist->{'time'};
+    }
     local $self->{'_level'} = 1 + ($self->{'_level'} || 0);
-    $hist->{'elapsed'}  = time - $hist->{'time'};
 
     my $resp = $self->$code($step, @_);
 
-    $hist->{'elapsed'} = time - $hist->{'time'};
-    return $hist->{'response'} = $resp;
+    if (! $self->{'no_history'}) {
+        $hist->{'elapsed'} = time - $hist->{'time'};
+        $hist->{'response'} = $resp;
+    }
+
+    return $resp;
 }
 
 sub run_step {
@@ -319,8 +325,8 @@ sub conf_obj {
 
 sub template_obj {
     my ($self, $args) = @_;
-    require CGI::Ex::Template;
-    my $t = CGI::Ex::Template->new($args);
+    require Template::Alloy;
+    my $t = Template::Alloy->new($args);
 }
 
 sub val_obj {
@@ -563,7 +569,7 @@ sub morph {
     push @$lin, $cur;     # store so subsequent unmorph calls can do the right thing
 
     my $hist = {step => $step, meth => 'morph', found => 'morph', time => time, elapsed => 0, response => 0};
-    push @{ $self->history }, $hist;
+    push @{ $self->history }, $hist if ! $self->{'no_history'};
 
     if (ref($allow) && ! $allow->{$step}) { # hash - but no step - record for unbless
         $hist->{'found'} .= " (not allowed to morph to that step)";
@@ -640,7 +646,7 @@ sub unmorph {
     delete $self->{'_morph_lineage'} if ! @$lin;
 
     my $hist = {step => $step, meth => 'unmorph', found => 'unmorph', time => time, elapsed => 0, response => 0};
-    push @{ $self->history }, $hist;
+    push @{ $self->history }, $hist if ! $self->{'no_history'};
 
     if ($cur ne $prev) {
         $self->fixup_before_unmorph($step);
