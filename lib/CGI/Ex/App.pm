@@ -13,7 +13,7 @@ BEGIN {
     eval { use Scalar::Util };
 }
 
-our $VERSION = '2.17';
+our $VERSION = '2.18';
 
 sub new {
     my $class = shift || croak "Usage: Package->new";
@@ -353,16 +353,13 @@ sub ext_val      { (@_ == 2) ? $_[0]->{'ext_val'}      = pop : $_[0]->{'ext_val'
 sub form         { (@_ == 2) ? $_[0]->{'form'}         = pop : $_[0]->{'form'}         ||= $_[0]->cgix->get_form    }
 sub load_conf    { (@_ == 2) ? $_[0]->{'load_conf'}    = pop : $_[0]->{'load_conf'}              }
 
-sub conf_read {
-    my ($self, $file) = @_;
-    return $self->conf_obj->read($file, {no_warn_on_fail => 1}) || croak $@;
-}
-
 sub conf {
     my $self = shift;
     $self->{'conf'} = pop if @_ == 1;
     return $self->{'conf'} ||= do {
-        my $conf = $self->conf_read($self->conf_file);
+        my $conf = ($self->{'conf_warn_on_fail'})
+            ? $self->conf_obj->read($self->conf_file)
+            : $self->conf_obj->read($self->conf_file, {no_warn_on_fail => 1}) || croak $@;
         my $hash = $self->conf_validation;
         if ($hash && scalar keys %$hash) {
             my $err_obj = $self->val_obj->validate($conf, $hash);
