@@ -295,6 +295,7 @@ sub auth_args            { $_[0]->{'auth_args'}      ||  {} }
 sub charset              { $_[0]->{'charset'}        ||  '' }
 sub conf_args            { $_[0]->{'conf_args'}      ||  {} }
 sub conf_path            { $_[0]->{'conf_path'}      ||  $_[0]->base_dir_abs }
+sub conf_warn_on_fail    { $_[0]->{'conf_warn_on_fail'}     }
 sub default_step         { $_[0]->{'default_step'}   || 'main'        }
 sub error_step           { $_[0]->{'error_step'}     || '__error'     }
 sub forbidden_step       { $_[0]->{'forbidden_step'} || '__forbidden' }
@@ -357,7 +358,7 @@ sub conf {
     my $self = shift;
     $self->{'conf'} = pop if @_ == 1;
     return $self->{'conf'} ||= do {
-        my $conf = ($self->{'conf_warn_on_fail'})
+        my $conf = $self->conf_warn_on_fail
             ? $self->conf_obj->read($self->conf_file)
             : $self->conf_obj->read($self->conf_file, {no_warn_on_fail => 1}) || croak $@;
         my $hash = $self->conf_validation;
