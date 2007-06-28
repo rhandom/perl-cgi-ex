@@ -1139,6 +1139,16 @@ load_conf is false)..
 
 Caches results in $self->{'conf'}.
 
+If the conf_file can't be found, the method will die unless
+conf_die_on_fail returns 0 (defaults to true).
+
+=item conf_args
+
+Used by conf_obj.
+
+Defaults to $self->{'conf_args'} which defaults to {}.  Will have
+paths => $self->conf_path added before passing to CGI::Ex::Conf->new.
+
 =item conf_file (method)
 
 Used by conf for finding the configuration file to load.  Defaults
@@ -1151,12 +1161,6 @@ The value returned can absolute.  If the value will be searched for
 in the paths passed to conf_obj.
 
 The ext_conf may be any of those extentions understood by CGI::Ex::Conf.
-
-=item ext_conf
-
-Used by the default conf_file method.  Defaults to $self->{'ext_conf'} which
-defaults to 'pl' meaning that the read configuration file should return a
-valid perl hashref.
 
 =item conf_obj
 
@@ -1171,13 +1175,6 @@ Any object that provides a read method that returns a hashref can be used.
 Defaults to $self->{'conf_path'} which defaults to base_dir_abs.  Should be
 a path or an arrayref of paths to look the configuration file returned by
 conf_file when that file is not absolute.
-
-=item conf_args
-
-Used by conf_obj.
-
-Defaults to $self->{'conf_args'} which defaults to {}.  Will have
-paths => $self->conf_path added before passing to CGI::Ex::Conf->new.
 
 =item conf_validation
 
@@ -1283,6 +1280,12 @@ hooks for the current and remaining steps.  It is used to allow the
 ->jump functionality.  If the application has morphed, it will be
 unmorphed before returning.  Also - the post_navigate method will
 still be called.
+
+=item ext_conf
+
+Used by the default conf_file method.  Defaults to $self->{'ext_conf'} which
+defaults to 'pl' meaning that the read configuration file should return a
+valid perl hashref.
 
 =item ext_print (method)
 
