@@ -353,10 +353,16 @@ sub ext_val      { (@_ == 2) ? $_[0]->{'ext_val'}      = pop : $_[0]->{'ext_val'
 sub form         { (@_ == 2) ? $_[0]->{'form'}         = pop : $_[0]->{'form'}         ||= $_[0]->cgix->get_form    }
 sub load_conf    { (@_ == 2) ? $_[0]->{'load_conf'}    = pop : $_[0]->{'load_conf'}              }
 
+sub conf_read {
+    my ($self, $file) = @_;
+    return $self->conf_obj->read($file, {no_warn_on_fail => 1}) || croak $@;
+}
+
 sub conf {
     my $self = shift;
+    $self->{'conf'} = pop if @_ == 1;
     return $self->{'conf'} ||= do {
-        my $conf = $self->conf_obj->read($self->conf_file, {no_warn_on_fail => 1}) || croak $@;
+        my $conf = $self->conf_read($self->conf_file);
         my $hash = $self->conf_validation;
         if ($hash && scalar keys %$hash) {
             my $err_obj = $self->val_obj->validate($conf, $hash);
@@ -368,6 +374,7 @@ sub conf {
 
 sub conf_file {
     my $self = shift;
+    $self->{'conf_file'} = pop if @_ == 1;
     return $self->{'conf_file'} ||= do {
         my $module = $self->name_module || croak 'Missing name_module during conf_file call';
         $module .'.'. $self->ext_conf;
