@@ -764,8 +764,8 @@ sub js_validation {
     my ($self, $step) = @_;
     return '' if $self->ext_val =~ /^html?$/; # let htm validation do it itself
 
-    my $form_name = shift || $self->run_hook('form_name', $step);
-    my $hash_val  = shift || $self->run_hook('hash_validation', $step);
+    my $form_name = $_[2] || $self->run_hook('form_name', $step);
+    my $hash_val  = $_[3] || $self->run_hook('hash_validation', $step);
     my $js_uri    = $self->js_uri_path;
     return '' if UNIVERSAL::isa($hash_val, 'HASH')  && ! scalar keys %$hash_val
         || UNIVERSAL::isa($hash_val, 'ARRAY') && ! @$hash_val;
