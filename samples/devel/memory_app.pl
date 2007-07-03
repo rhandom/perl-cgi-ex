@@ -30,7 +30,7 @@ use Scalar::Util;
 use Time::HiRes;
 use CGI;
 use CGI::Ex::Dump qw(debug);
-use Template::Alloy load => 'HTE', 'Parse', 'Play', 'TT', 'HTML::Template', 'Template';
+use Template::Alloy load => 'Parse', 'Play', 'HTML::Template', 'Template';
 $Template::VERSION = 2.18;
 #use HTML::Template;
 
@@ -329,7 +329,7 @@ Abbreviations:
 
 The tests are currently run with the following code:
 
-  use Template::Alloy load => 'HTE', 'Parse', 'Play', 'TT', 'HTML::Template', 'Template';
+  use Template::Alloy load => 'Parse', 'Play', 'HTML::Template', 'Template';
 
 This assures that CGI::Application will use the same templating system
 as CGI::Ex::App so that template system issues don't affect overall
