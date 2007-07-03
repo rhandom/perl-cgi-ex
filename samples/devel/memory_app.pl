@@ -331,11 +331,13 @@ The tests are currently run with the following code:
 
   use Template::Alloy load => 'HTE', 'Parse', 'Play', 'TT', 'HTML::Template', 'Template';
 
-This assures that CGI::Application will use the same templating system as
-CGI::Ex::App so that template system issues don't affect overall performance.
-With the line commented out and CGI::Application using HTML::Template (ht), C::A has a slight speed benefit, though
-it still uses more memory.  With the line commented out and CGI::Application using Template (tt), C::E::A is 2 to 3
-times faster.
+This assures that CGI::Application will use the same templating system
+as CGI::Ex::App so that template system issues don't affect overall
+performance.  With the line commented out and CGI::Application using
+HTML::Template (ht), C::A has a slight speed benefit, though it still
+uses more memory.  With the line commented out and CGI::Application
+using Template (tt), C::E::A is 2 to 3 times faster and uses a lot
+less memory.
 
 =head1 SAMPLE OUTPUT
 
