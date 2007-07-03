@@ -845,6 +845,7 @@ sub validate {
     my $what_was_validated = [];
 
     my $err_obj = eval { $self->val_obj->validate($form, $hash, $what_was_validated) };
+    return 1 if ! $hash || (ref($hash) eq 'HASH' && ! scalar keys %$hash);
     die "Step $step: $@" if $@ && ! $err_obj;
 
     ### had an error - store the errors and return false
