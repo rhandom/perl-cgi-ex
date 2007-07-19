@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 3;
+use Test::More tests => 5;
 
 use_ok('CGI::Ex::Validate');
 
@@ -37,3 +37,14 @@ $form = {
 $err_obj = CGI::Ex::Validate::validate($form,$val);
 
 ok($err_obj, "Successfully failed");
+
+###----------------------------------------------------------------###
+
+eval { CGI::Ex::Validate::validate($form,undef) };
+ok($@, "Needs to have a hashref");
+
+###----------------------------------------------------------------###
+
+$err_obj = CGI::Ex::Validate::validate($form,{});
+
+ok(!$err_obj, "OK with empty hash");
