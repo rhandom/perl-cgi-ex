@@ -120,6 +120,7 @@ sub validate {
             push @$fields, { %{$val_hash->{$field}}, field => $field };
         }
     }
+    return if ! $fields;
 
     ### Finally we have our arrayref of hashrefs that each have their 'field' key
     ### now lets do the validation
