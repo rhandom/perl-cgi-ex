@@ -4,6 +4,8 @@
         * Add get_valid_auth to the history
         * Rename conf_ext to ext_conf to be similar to ext_print and ext_val
         * Add undocumented conf_die_on_fail (which defaults to true)
+        * Fix bug in handle_error
+        * Allow empty hashrefs passed to Validate - (broken in 2.17)
 
 2.17
       2007-06-26
