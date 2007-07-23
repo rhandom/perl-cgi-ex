@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 25;
+use Test::More tests => 160;
 use strict;
 
 {
@@ -24,20 +24,19 @@ use strict;
 
     sub init { $test_stdout = '' }
 
-    sub ready_validate { 1 }
-
     sub print_out {
         my $self = shift;
         my $step = shift;
         my $str  = shift;
+        my $charset  = $self->charset; # coverage only
+        my $mimetype = $self->mimetype; # coverage only
         $test_stdout = ref($str) ? $$str : $str;
     }
 
     sub swap_template {
         my ($self, $step, $file, $swap) = @_;
-        my $out = ref($file) ? $$file : "No filenames allowed during test mode";
-        $self->cgix->swap_template(\$out, $swap);
-        return $out;
+        die "No filenames allowed during test mode" if ! ref($file);
+        return $self->SUPER::swap_template($step, $file, $swap);
     }
 
     sub auth_args { {login_template => \q{Login Form}, key_user => 'user', key_pass => 'pass', key_cookie => 'user', set_cookie => sub {}} }
@@ -67,6 +66,19 @@ use strict;
     sub step3_info_complete { 0 }
 
     sub step3_file_print { return \ "All good" }
+
+    sub step4_file_val { return {wow => {required => 1, required_error => 'wow is required'}} }
+
+    sub step4_path_info_map { [[qr{^/step4/(\w+)$}x, 'wow']] }
+
+    sub step4_file_print { return \ "Some step4 content ([% foo %], [% one %]) <form><input type=text name=wow>[% wow_error %]</form>[% js_validation %]" }
+
+    sub step4_hash_swap { return {foo => 'bar', one => 'two'} }
+
+    sub step4_hash_fill { return {wow => 'wee'} }
+
+    sub step4_finalize { shift->append_path('step3') }
+
 }
 
 ###----------------------------------------------------------------###
@@ -161,13 +173,18 @@ ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo2_4");
 
 ###----------------------------------------------------------------###
 
-#$ENV{'REQUEST_METHOD'} = 'GET';
+local $ENV{'REQUEST_METHOD'} = 'POST';
 #$ENV{'QUERY_STRING'}   = 'step=step2';
 
 Foo->new({
     form => {step => 'step2'},
 })->navigate;
 ok($Foo::test_stdout eq "Some step2 content (bar, two) <input type=text name=wow value=\"wee\">wow is required", "Got the right output for Foo");
+
+Foo->new({
+    form => {step => 'step4'},
+})->navigate;
+ok($Foo::test_stdout =~ /Some step4 content.*wow is required.*<script>/s, "Got the right output for Foo (step4)");
 
 {
     package Foo3;
@@ -320,7 +337,7 @@ ok($Foo::test_stdout eq 'JS', "Got the right output for Foo6");
 print "### Test Authorization Methods ###\n";
 
 local $ENV{'PATH_INFO'}   = '';
-local $ENV{'SCRIPT_NAME'} = '';
+local $ENV{'SCRIPT_NAME'} = '/foo';
 
 Foo->new({
     form => {},
@@ -481,7 +498,7 @@ eval { Conf1->new({
 my $err = $@;
 ok($err, "Got an error");
 chomp $err;
-ok($Foo::test_stdout eq "", "Got the right output for Conf1 ($err)");
+ok($Foo::test_stdout eq "", "Got the right output for Conf1");
 
 Conf1->new({
     load_conf => 1,
@@ -491,11 +508,48 @@ Conf1->new({
 })->navigate;
 ok($Foo::test_stdout eq "All good", "Got the right output for Conf1");
 
+Conf1->new({
+    load_conf => 1,
+    conf_file => {form => {step => 'step3'}},
+})->navigate;
+ok($Foo::test_stdout eq "All good", "Got the right output for Conf1");
+
+Conf1->new({
+    load_conf => 1,
+    conf_file => {form => {step => 'step3'}},
+    conf_validation => {form => {required => 1}},
+})->navigate;
+ok($Foo::test_stdout eq "All good", "Got the right output for Conf1");
+
+eval { Conf1->new({
+    load_conf => 1,
+    conf_file => {},
+    conf_validation => {form => {required => 1}},
+})->navigate };
+ok($Foo::test_stdout eq "" && $@, "Got a conf_validation error");
+
+ok(Conf1->new->conf_obj, "Got a conf_obj");
+
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 print "### Various other coverage tests\n";
+
+ok(Foo2->navigate->clear_app, "clear_app works");
+
+my $dh = Foo2->navigate;
+push @{ $dh->history }, "A string", ['A non ref'], {key => 'No elapsed key'};
+push @{ $dh->history }, {elapsed => 2, response => {}};
+push @{ $dh->history }, {elapsed => 2, response => {hi => 'there'}};
+push @{ $dh->history }, {elapsed => 1, response => []};
+push @{ $dh->history }, {elapsed => 1, response => ['hi']};
+push @{ $dh->history }, {elapsed => 1, response => 'a'};
+push @{ $dh->history }, {elapsed => 1, response => 'a'x100};
+ok($dh->dump_history, "Can call dump_history");
+ok($dh->dump_history('all'), "Can call dump_history");
+$dh->{'history_max'} = 10;
+ok($dh->dump_history('all'), "Can call dump_history");
 
 {
     package Foo7;
@@ -512,7 +566,191 @@ Foo7->new({no_history => 1})->navigate;
 ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo7 ($Foo::test_stdout)");
 
 ok(  eval {  Foo->new->run_hook('hash_base', 'main') }, "Can run_hook main hash_base on Foo");
-ok(! eval {  Foo->new->run_hook('bogus',     'main') }, "Can't run_hook main bogus on Foo ($@)");
-ok(! eval { Foo7->new->run_hook('hash_base', 'bogus') }, "Can't run_hook bogus hash_base on Foo7 for other reasons ($@)");
+ok(! eval {  Foo->new->run_hook('bogus',     'main') }, "Can't run_hook main bogus on Foo");
+ok(! eval { Foo7->new->run_hook('hash_base', 'bogus') }, "Can't run_hook bogus hash_base on Foo7 for other reasons");
+
+foreach my $meth (qw(auth_args conf_args template_args val_args)) {
+    ok(! CGI::Ex::App->new->$meth, "Got a good $meth");
+    ok(CGI::Ex::App->new($meth => {a=>'A'})->$meth->{'a'} eq 'A', "Got a good $meth");
+}
+
+ok(CGI::Ex::App->new->charset eq '', "Got a good charset");
+
+### test read only
+foreach my $meth (qw(charset
+                     conf_die_on_fail
+                     conf_obj
+                     conf_path
+                     conf_validation
+                     default_step
+                     error_step
+                     forbidden_step
+                     js_step
+                     login_step
+                     mimetype
+                     path_info
+                     path_info_map_base
+                     script_name
+                     step_key
+                     template_obj
+                     template_path
+                     val_obj
+                     val_path
+                     )) {
+    ok(CGI::Ex::App->new($meth => 'blah')->$meth eq 'blah', "I can set $meth");
+}
+
+### test read/write
+foreach my $meth (qw(base_dir_abs
+                     base_dir_rel
+                     cgix
+                     conf
+                     conf_file
+                     cookies
+                     ext_conf
+                     ext_print
+                     ext_val
+                     form
+                     )) {
+    ok(CGI::Ex::App->new($meth => 'blah')->$meth eq 'blah', "I can set $meth");
+    my $c = CGI::Ex::App->new;
+    $c->$meth('blah');
+    ok($c->$meth eq 'blah', "I can set $meth");
+}
+
+foreach my $type (qw(base
+                     common
+                     errors
+                     fill
+                     form
+                     swap
+                     )) {
+    my $meth = "hash_$type";
+    ok(CGI::Ex::App->new("hash_$type" => {bing => 'bang'})->$meth->{'bing'} eq 'bang', "Can initialize $meth")
+        if $type ne 'form';
+
+    my $meth2 = "add_to_$type";
+    my $c = CGI::Ex::App->new;
+    $c->$meth2({bing => 'bang'});
+    $c->$meth2(bong => 'beng');
+
+    if ($type eq 'errors') {
+        $c->$meth2({bing => "wow"});
+        ok($c->$meth->{"bing_error"} eq "bang<br>wow", "$meth2 works");
+        ok($c->$meth->{"bong_error"} eq 'beng', "$meth2 works");
+
+        ok($c->has_errors, "has_errors works") if $type eq 'errors';
+    } else {
+        ok($c->$meth->{'bing'} eq 'bang', "$meth2 works");
+        ok($c->$meth->{'bong'} eq 'beng', "$meth2 works");
+    }
+}
+
+ok(! eval { CGI::Ex::App->new->get_pass_by_user } && $@, "Got a good error for get_pass_by_user");
 
 ###----------------------------------------------------------------###
+print "### Some morph tests ###\n";
+
+{
+    package Foo8;
+    our @ISA = qw(Foo);
+
+    sub blah1_pre_step { $Foo::test_stdout = 'blah1_pre'; 1 }
+    sub blah2_skip { 1 }
+    sub blah3_info_complete { 1 }
+    sub blah3_post_step { $Foo::test_stdout = 'blah3_post'; 1 }
+
+    sub blah4_prepare { 0 }
+    sub blah4_file_print { \ 'blah4_file_print' }
+
+    sub blah5_finalize { 0 }
+    sub blah5_info_complete { 1 }
+    sub blah5_file_print { \ 'blah5_file_print' }
+
+    sub blah6_allow_morph { 1 }
+    package Foo8::Blah6;
+    our @ISA = qw(Foo8);
+    sub info_complete { 0 }
+    sub file_print { \ 'blah6_file_print' }
+
+    sub blah7_allow_morph { 1 }
+    package Foo8::Blah6::Blah7;
+    our @ISA = qw(Foo8::Blah6);
+    sub info_complete { 0 }
+    sub file_print { \ 'blah7_file_print' }
+}
+
+Foo8->new({form => {step => 'blah1'}})->navigate;
+ok($Foo::test_stdout eq 'blah1_pre', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah1'}, allow_morph => 1})->navigate;
+ok($Foo::test_stdout eq 'blah1_pre', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah2'}})->navigate;
+ok($Foo::test_stdout eq 'Main Content', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah3'}})->navigate;
+ok($Foo::test_stdout eq 'blah3_post', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah4'}})->navigate;
+ok($Foo::test_stdout eq 'blah4_file_print', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah5'}})->navigate;
+ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah6'}})->navigate;
+ok($Foo::test_stdout eq 'blah6_file_print', "Got the right output for Foo8");
+
+my $foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => 1});
+$foo8->morph('blah6');
+$foo8->navigate;
+ok($Foo::test_stdout eq 'blah7_file_print', "Got the right output for Foo8 ($Foo::test_stdout)");
+
+###----------------------------------------------------------------###
+print "### Some path tests tests ###\n";
+
+{
+    package Foo9;
+    our @ISA = qw(Foo);
+    sub file_print {
+        my $self = shift;
+        my $str = "First(".$self->first_step.") Previous(".$self->previous_step.") Current(".$self->current_step.") Next(".$self->next_step.") Last(".$self->last_step.")";
+        return \$str;
+    }
+    sub one_skip { 1 }
+    sub two_skip { 1 }
+    sub info_complete { 0 }
+}
+ok(Foo9->new->previous_step eq '', 'No previous step if not navigating');
+
+my $c = Foo9->new(form => {step => 'one'});
+$c->add_to_path('one', 'two', 'three', 'four', 'five');
+$c->navigate;
+ok($Foo::test_stdout eq 'First(one) Previous(two) Current(three) Next(four) Last(five)', "Got the right content for Foo9");
+ok(! eval { $c->set_path("more") }, "Can't call set_path after nav started");
+
+$c = Foo9->new(form => {step => 'five'});
+$c->set_path('one', 'two', 'three', 'four', 'five');
+$c->navigate;
+ok($Foo::test_stdout eq 'First(one) Previous(two) Current(three) Next(four) Last(five)', "Got the right content for Foo9");
+
+###----------------------------------------------------------------###
+
+local $ENV{'SCRIPT_NAME'} = '/cgi/ralph.pl';
+ok(Foo->new->file_print("george") eq 'ralph/george.html', 'file_print: '. Foo->new->file_print("george"));
+ok(Foo->new->file_val("george") =~ m|\Q/ralph/george.val\E|, 'file_val: '. Foo->new->file_val("george"));
+
+###----------------------------------------------------------------###
+
+{
+    package Foo10;
+    our @ISA = qw(Foo);
+    sub step1_skip { 1 }
+    sub step1_next_step { 'step6' }
+    sub step6_file_print { \ 'step6_file_print' }
+}
+
+local $ENV{'REQUEST_METHOD'} = 'POST';
+
+Foo10->new(form => {step => 'step1'})->navigate;
+ok($Foo::test_stdout eq 'step6_file_print', "Refine Path and set_ready_validate work ($Foo::test_stdout)");

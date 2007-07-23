@@ -291,11 +291,12 @@ sub handle_error {
 
 sub allow_morph          { $_[0]->{'allow_morph'} }
 sub allow_nested_morph   { $_[0]->{'allow_nested_morph'} }
-sub auth_args            { $_[0]->{'auth_args'}      ||  {} }
+sub auth_args            { $_[0]->{'auth_args'} }
 sub charset              { $_[0]->{'charset'}        ||  '' }
-sub conf_args            { $_[0]->{'conf_args'}      ||  {} }
+sub conf_args            { $_[0]->{'conf_args'} }
 sub conf_die_on_fail     { $_[0]->{'conf_die_on_fail'} || ! defined $_[0]->{'conf_die_on_fail'} }
 sub conf_path            { $_[0]->{'conf_path'}      ||  $_[0]->base_dir_abs }
+sub conf_validation      { $_[0]->{'conf_validation'} }
 sub default_step         { $_[0]->{'default_step'}   || 'main'        }
 sub error_step           { $_[0]->{'error_step'}     || '__error'     }
 sub forbidden_step       { $_[0]->{'forbidden_step'} || '__forbidden' }
@@ -309,15 +310,15 @@ sub recurse_limit        { $_[0]->{'recurse_limit'}  ||  15                   }
 sub script_name          { $_[0]->{'script_name'}    ||  $ENV{'SCRIPT_NAME'} || $0 }
 sub stash                { $_[0]->{'stash'}          ||= {}    }
 sub step_key             { $_[0]->{'step_key'}       || 'step' }
-sub template_args        { $_[0]->{'template_args'}  ||  {}    }
+sub template_args        { $_[0]->{'template_args'} }
 sub template_path        { $_[0]->{'template_path'}  ||  $_[0]->base_dir_abs  }
-sub val_args             { $_[0]->{'val_args'}       ||  {}    }
+sub val_args             { $_[0]->{'val_args'} }
 sub val_path             { $_[0]->{'val_path'}       ||  $_[0]->template_path }
 
 sub conf_obj {
     my $self = shift;
     return $self->{'conf_obj'} || do {
-        my $args = $self->conf_args;
+        my $args = $self->conf_args || {};
         $args->{'paths'}     ||= $self->conf_path;
         $args->{'directive'} ||= 'MERGE';
         require CGI::Ex::Conf;
@@ -327,14 +328,16 @@ sub conf_obj {
 
 sub template_obj {
     my ($self, $args) = @_;
-    require Template::Alloy;
-    my $t = Template::Alloy->new($args);
+    return $self->{'template_obj'} || do {
+        require Template::Alloy;
+        my $t = Template::Alloy->new($args);
+    };
 }
 
 sub val_obj {
     my $self = shift;
     return $self->{'val_obj'} || do {
-        my $args = $self->val_args;
+        my $args = $self->val_args || {};
         $args->{'cgix'} ||= $self->cgix;
         require CGI::Ex::Validate;
         CGI::Ex::Validate->new($args);
@@ -359,7 +362,8 @@ sub conf {
     my $self = shift;
     $self->{'conf'} = pop if @_ == 1;
     return $self->{'conf'} ||= do {
-        my $conf = $self->conf_obj->read($self->conf_file, {no_warn_on_fail => 1}) || $self->conf_die_on_fail ? croak $@ : {};
+        my $conf = $self->conf_file;
+        $conf = ($self->conf_obj->read($conf, {no_warn_on_fail => 1}) || $self->conf_die_on_fail ? croak $@ : {}) if ! $conf;
         my $hash = $self->conf_validation;
         if ($hash && scalar keys %$hash) {
             my $err_obj = $self->val_obj->validate($conf, $hash);
@@ -389,7 +393,6 @@ sub add_to_form          { my $self = shift; $self->add_to_hash($self->hash_form
 sub add_to_path          { shift->append_path(@_) } # legacy
 sub add_to_swap          { my $self = shift; $self->add_to_hash($self->hash_swap,   @_) }
 sub cleanup_user         { my ($self, $user) = @_; $user }
-sub conf_validation      {}
 sub current_step         { $_[0]->step_by_path_index($_[0]->{'path_i'} || 0) }
 sub destroy              {}
 sub first_step           { $_[0]->step_by_path_index(0) }
@@ -566,7 +569,7 @@ sub js_uri_path {
 sub morph {
     my $self  = shift;
     my $step  = shift || return;
-    my $allow = $self->allow_morph($step) || return;
+    my $allow = $self->run_hook('allow_morph', $step) || return;
     my $lin   = $self->{'_morph_lineage'} ||= [];
     my $cur   = ref $self; # what are we currently
     push @$lin, $cur;     # store so subsequent unmorph calls can do the right thing
@@ -826,7 +829,7 @@ sub skip { 0 } # success indicates to skip the step (and continue loop)
 sub swap_template {
     my ($self, $step, $file, $swap) = @_;
 
-    my $args = $self->run_hook('template_args', $step);
+    my $args = $self->run_hook('template_args', $step) || {};
     $args->{'INCLUDE_PATH'} ||= $args->{'include_path'} || $self->template_path;
 
     my $t = $self->template_obj($args);
@@ -921,7 +924,7 @@ sub _do_auth {
     my ($self, $extra) = @_;
     return $self->auth_data if $self->is_authed;
 
-    my $args = { %{ $self->auth_args }, %{ $extra || {} } };
+    my $args = { %{ $self->auth_args || {} }, %{ $extra || {} } };
     $args->{'script_name'}      ||= $self->script_name;
     $args->{'path_info'}        ||= $self->path_info;
     $args->{'cgix'}             ||= $self->cgix;
