@@ -40,13 +40,17 @@ use strict;
         return $out;
     }
 
-    sub auth_args { {login_template => \q{Login Form}} }
+    sub auth_args { {login_template => \q{Login Form}, key_user => 'user', key_pass => 'pass', key_cookie => 'user', set_cookie => sub {}} }
+
+    sub get_pass_by_user { '123qwe' }
 
     ###----------------------------------------------------------------###
 
     sub main_info_complete { 0 }
 
     sub main_file_print { return \ "Main Content" }
+
+    sub main_path_info_map { shift->{'main_path_info_map'} }
 
     sub step2_hash_validation { return {wow => {required => 1, required_error => 'wow is required'}} }
 
@@ -66,6 +70,38 @@ use strict;
 }
 
 ###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+print "### Test some basic returns ###\n";
+
+ok(! eval { CGI::Ex::App::new()  }, "Invalid new");
+ok(! eval { CGI::Ex::App::new(0) }, "Invalid new");
+
+my $app = CGI::Ex::App->new({script_name => '/cgi-bin/foo_bar'});
+ok($app->script_name eq '/cgi-bin/foo_bar', "Can pass in script_name");
+ok($app->name_module eq 'foo_bar', "Can pass in script_name");
+
+$app = CGI::Ex::App->new({script_name => '/cgi-bin/foo_bar.pl'});
+ok($app->script_name eq '/cgi-bin/foo_bar.pl', "Can pass in script_name");
+ok($app->name_module eq 'foo_bar', "Can pass in script_name");
+
+ok($app->morph_package('foo') eq 'CGI::Ex::App::Foo',        "Got a good morph_package");
+ok($app->morph_package('foo_bar') eq 'CGI::Ex::App::FooBar', "Got a good morph_package");
+
+ok(ref($app->path), "Got a good path");
+ok(@{ $app->path } == 0, "Got a good path");
+ok($app->default_step   eq 'main',        "Got a good default_step");
+ok($app->login_step     eq '__login',     "Got a good login_step");
+ok($app->error_step     eq '__error',     "Got a good error_step");
+ok($app->forbidden_step eq '__forbidden', "Got a good forbidden_step");
+ok($app->js_step        eq 'js',          "Got a good js_step");
+
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+print "### Test basic step selection/form input/validation/filling/template swapping methods ###\n";
 
 #$ENV{'REQUEST_METHOD'} = 'GET';
 #$ENV{'QUERY_STRING'}   = '';
@@ -73,7 +109,55 @@ use strict;
 Foo->new({
     form => {},
 })->navigate;
-ok($Foo::test_stdout eq "Main Content", "Got the right output");
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo");
+
+{
+    package Foo2;
+    our @ISA = qw(Foo);
+    sub form { {} }
+}
+Foo2->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo2");
+
+###----------------------------------------------------------------###
+
+{
+    package Foo2_1;
+    our @ISA = qw(Foo);
+    sub pre_navigate { 1 }
+}
+Foo2_1->navigate;
+ok($Foo::test_stdout eq "", "Got the right output for Foo2_1");
+
+Foo2_1->new({_no_pre_navigate => 1})->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo2_1");
+
+{
+    package Foo2_2;
+    our @ISA = qw(Foo);
+    sub pre_loop { 1 }
+}
+Foo2_2->navigate;
+ok($Foo::test_stdout eq "", "Got the right output for Foo2_2");
+
+{
+    package Foo2_3;
+    our @ISA = qw(Foo);
+    sub post_loop { 1 }
+}
+Foo2_3->navigate;
+ok($Foo::test_stdout eq "", "Got the right output for Foo2_3");
+
+{
+    package Foo2_4;
+    our @ISA = qw(Foo);
+    sub post_navigate { $Foo::test_stdout .= " post"; 1 }
+}
+Foo2_4->navigate;
+ok($Foo::test_stdout eq "Main Content post", "Got the right output for Foo2_4");
+
+Foo2_4->new({_no_post_navigate => 1})->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo2_4");
 
 ###----------------------------------------------------------------###
 
@@ -83,7 +167,18 @@ ok($Foo::test_stdout eq "Main Content", "Got the right output");
 Foo->new({
     form => {step => 'step2'},
 })->navigate;
-ok($Foo::test_stdout eq "Some step2 content (bar, two) <input type=text name=wow value=\"wee\">wow is required", "Got the right output");
+ok($Foo::test_stdout eq "Some step2 content (bar, two) <input type=text name=wow value=\"wee\">wow is required", "Got the right output for Foo");
+
+{
+    package Foo3;
+    our @ISA = qw(Foo);
+    sub main_info_complete { 1 }
+}
+eval { Foo3->navigate };
+ok($Foo::test_stdout =~ /recurse_limit \(15\)/, "Got the right output for Foo3");
+
+eval { Foo3->new({recurse_limit => 10})->navigate };
+ok($Foo::test_stdout =~ /recurse_limit \(10\)/, "Got the right output for Foo3");
 
 ###----------------------------------------------------------------###
 
@@ -93,7 +188,25 @@ ok($Foo::test_stdout eq "Some step2 content (bar, two) <input type=text name=wow
 Foo->new({
     form=> {step => 'step2', wow => 'something'},
 })->navigate;
-ok($Foo::test_stdout eq "All good", "Got the right output");
+ok($Foo::test_stdout eq "All good", "Got the right output for Foo");
+
+###----------------------------------------------------------------###
+
+#$ENV{'REQUEST_METHOD'} = 'GET';
+#$ENV{'QUERY_STRING'}   = 'step=step2&wow=something';
+
+Foo->new({
+    form=> {step => '_bling'},
+})->navigate;
+ok($Foo::test_stdout =~ /Denied/i, "Got the right output for Foo");
+
+{
+    package Foo4;
+    our @ISA = qw(Foo);
+    sub path { shift->{'path'} ||= ['3foo'] }
+}
+Foo4->new({form => {}})->navigate;
+ok($Foo::test_stdout =~ /Denied/i, "Got the right output for Foo4");
 
 ###----------------------------------------------------------------###
 
@@ -105,6 +218,48 @@ Foo->new({
     form=> {},
 })->navigate;
 ok($Foo::test_stdout eq "Some step2 content (bar, two) <input type=text name=wow value=\"wee\">wow is required", "Got the right output");
+
+Foo->new({
+    path_info_map_base => [],
+})->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo ($Foo::test_stdout)");
+
+Foo->new({
+    path_info_map_base => [[qr{(?!)}, 'foo']],
+})->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo ($Foo::test_stdout)");
+
+eval { Foo->new({
+    path_info_map_base => {},
+})->navigate };
+ok($Foo::test_stdout eq "", "Got the right output for Foo");
+
+eval { Foo->new({
+    path_info_map_base => [{}],
+})->navigate };
+ok($Foo::test_stdout eq "", "Got the right output for Foo");
+
+{
+    package Foo5;
+    our @ISA = qw(Foo);
+    sub path_info_map_base {}
+}
+Foo5->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo5");
+
+local $ENV{'PATH_INFO'} = '/blah';
+
+eval { Foo->new({
+    path_info_map_base => [],
+    main_path_info_map => {},
+})->navigate };
+ok($Foo::test_stdout =~ /fatal error.+path_info_map/, "Got the right output for Foo");
+
+eval { Foo->new({
+    path_info_map_base => [],
+    main_path_info_map => [{}],
+})->navigate };
+ok($Foo::test_stdout =~ /fatal error.+path_info_map/, "Got the right output for Foo");
 
 ###----------------------------------------------------------------###
 
@@ -133,6 +288,37 @@ ok($f->form->{'wow'}  eq 'something', "Got the right variable set in form");
 
 ###----------------------------------------------------------------###
 
+local $ENV{'PATH_INFO'} = '';
+
+{
+    package Foo6;
+    our @ISA = qw(Foo);
+    sub valid_steps { {step2 => 1} }
+    sub js_run_step { $Foo::test_stdout = 'JS' }
+}
+Foo6->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo6");
+
+Foo6->new({form => {step => 'main'}})->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo6");
+
+Foo6->new({form => {step => 'step3'}})->navigate;
+ok($Foo::test_stdout =~ /denied/i, "Got the right output for Foo6");
+
+Foo6->new({form => {step => 'step2'}})->navigate;
+ok($Foo::test_stdout =~ /step2/i, "Got the right output for Foo6");
+
+Foo6->new({form => {step => Foo6->new->js_step}})->navigate;
+ok($Foo::test_stdout eq 'JS', "Got the right output for Foo6");
+
+
+
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+print "### Test Authorization Methods ###\n";
+
 local $ENV{'PATH_INFO'}   = '';
 local $ENV{'SCRIPT_NAME'} = '';
 
@@ -141,6 +327,20 @@ Foo->new({
     require_auth => 1,
 })->navigate;
 ok($Foo::test_stdout eq "Login Form", "Got the right output");
+
+Foo->new({
+    form => {},
+    cookies => {user => 'foo/123qwe'},
+    require_auth => 1,
+})->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo ($Foo::test_stdout)");
+
+Foo->new({
+    form => {},
+    auth_data => {user => 'foo'},
+    require_auth => 1,
+})->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo ($Foo::test_stdout)");
 
 ###----------------------------------------------------------------###
 
@@ -258,6 +458,10 @@ Bar6->new({
 ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar6 ($@)");
 
 ###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+print "### Test Configuration methods ###\n";
 
 {
     package Conf1;
@@ -268,7 +472,7 @@ ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar6 ($@)");
 my $file = Conf1->new->conf_file;
 ok($file && $file eq 'conf_1.pl', "Got a conf_file ($file)");
 
-$file = Conf1->new({conf_ext => 'ini'})->conf_file;
+$file = Conf1->new({ext_conf => 'ini'})->conf_file;
 ok($file && $file eq 'conf_1.ini', "Got a conf_file ($file)");
 
 eval { Conf1->new({
@@ -286,5 +490,29 @@ Conf1->new({
     },
 })->navigate;
 ok($Foo::test_stdout eq "All good", "Got the right output for Conf1");
+
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+###----------------------------------------------------------------###
+print "### Various other coverage tests\n";
+
+{
+    package Foo7;
+    our @ISA = qw(Foo);
+    sub hash_base {}
+    sub hash_common {}
+    sub hash_form {}
+    sub hash_fill {}
+    sub hash_swap {}
+    sub hash_errors {}
+    sub find_hook { my ($self, $hook, $step) = @_; return $self->SUPER::find_hook($hook, $step) if $step eq 'main'; return ["non_code",1] }
+}
+Foo7->new({no_history => 1})->navigate;
+ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo7 ($Foo::test_stdout)");
+
+ok(  eval {  Foo->new->run_hook('hash_base', 'main') }, "Can run_hook main hash_base on Foo");
+ok(! eval {  Foo->new->run_hook('bogus',     'main') }, "Can't run_hook main bogus on Foo ($@)");
+ok(! eval { Foo7->new->run_hook('hash_base', 'bogus') }, "Can't run_hook bogus hash_base on Foo7 for other reasons ($@)");
 
 ###----------------------------------------------------------------###
