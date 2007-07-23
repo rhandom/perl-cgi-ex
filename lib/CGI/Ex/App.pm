@@ -101,9 +101,9 @@ sub nav_loop {
         ### allow for mapping path_info pieces to form elements
         if (my $info = $self->path_info) {
             my $maps = $self->run_hook('path_info_map', $step) || [];
-            croak 'Usage: sub path_info_map { [[qr{/path_info/(\w+)}, "keyname"]] }'
-                if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
+            croak 'Usage: sub path_info_map { [] }' if ! UNIVERSAL::isa($maps, 'ARRAY');
             foreach my $map (@$maps) {
+                croak 'Usage: sub path_info_map { [[qr{/path_info/(\w+)}, "keyname"]] }' if ! UNIVERSAL::isa($map, 'ARRAY');
                 my @match = $info =~ $map->[0];
                 next if ! @match;
                 $self->form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $self->form->{$map->[$_]}} 1 .. $#$map;
@@ -146,9 +146,9 @@ sub path {
         ### add initial items to the form hash from path_info5B
         if (my $info = $self->path_info) {
             my $maps = $self->path_info_map_base || [];
-            croak 'Usage: sub path_info_map_base { [[qr{/path_info/(\w+)}, "keyname"]] }'
-                if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
+            croak 'Usage: sub path_info_map_base { [] }' if ! UNIVERSAL::isa($maps, 'ARRAY');
             foreach my $map (@$maps) {
+                croak 'Usage: sub path_info_map_base { [[qr{/path_info/(\w+)}, "keyname"]] }' if ! UNIVERSAL::isa($map, 'ARRAY');
                 my @match = $info =~ $map->[0];
                 next if ! @match;
                 $self->form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $self->form->{$map->[$_]}} 1 .. $#$map;
@@ -304,6 +304,7 @@ sub js_step              { $_[0]->{'js_step'}        || 'js'          }
 sub login_step           { $_[0]->{'login_step'}     || '__login'     }
 sub mimetype             { $_[0]->{'mimetype'}       ||  'text/html'  }
 sub path_info            { $_[0]->{'path_info'}      ||  $ENV{'PATH_INFO'}   || '' }
+sub path_info_map_base   { $_[0]->{'path_info_map_base'} ||[[qr{/(\w+)}, $_[0]->step_key]] }
 sub recurse_limit        { $_[0]->{'recurse_limit'}  ||  15                   }
 sub script_name          { $_[0]->{'script_name'}    ||  $ENV{'SCRIPT_NAME'} || $0 }
 sub stash                { $_[0]->{'stash'}          ||= {}    }
@@ -399,8 +400,7 @@ sub get_pass_by_user     { croak "get_pass_by_user is a virtual method and needs
 sub has_errors           { scalar keys %{ $_[0]->hash_errors } }
 sub init                 {}
 sub last_step            { $_[0]->step_by_path_index($#{ $_[0]->path }) }
-sub path_info_map        { }
-sub path_info_map_base   { [[qr{/(\w+)}, $_[0]->step_key]] }
+sub path_info_map        {}
 sub post_loop            { 0 } # true value means to abort the nav_loop - don't recurse
 sub post_navigate        {}
 sub pre_loop             { 0 } # true value means to abort the nav_loop routine
