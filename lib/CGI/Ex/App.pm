@@ -16,8 +16,8 @@ BEGIN {
 our $VERSION = '2.18';
 
 sub new {
-    my $class = shift || croak "Usage: Package->new";
-    my $self  = shift || {};
+    my $class = shift || croak "Usage: ".__PACKAGE__."->new";
+    my $self  = ref($_[0]) ? shift() : bless {@_};
     bless $self, $class;
 
     $self->init;
@@ -635,7 +635,7 @@ sub step_by_path_index {
     my $i    = shift || 0;
     my $ref  = $self->path;
     return '' if $i < 0;
-    return $self->default_step if $i > $#$ref;
+#    return $self->default_step if $i > $#$ref;
     return $ref->[$i];
 }
 
@@ -783,12 +783,9 @@ sub morph_package {
 
 sub name_module {
     my ($self, $step) = @_;
-    return $self->{'name_module'} ||= do {
-        # allow for cgi-bin/foo or cgi-bin/foo.pl to resolve to "foo"
-        my $script = $self->script_name;
-        $script =~ m/ (\w+) (?:\.\w+)? $/x || die "Couldn't determine module name from \"name_module\" lookup (".($step||'').")";
-        $1; # return of the do
-    };
+    return $self->{'name_module'} ||= ($self->script_name =~ m/ (\w+) (?:\.\w+)? $/x)
+        ? $1 # allow for cgi-bin/foo or cgi-bin/foo.pl to resolve to "foo"
+        : die "Couldn't determine module name from \"name_module\" lookup (".($step||'').")";
 }
 
 sub name_step  { my ($self, $step) = @_; $step }
@@ -889,6 +886,11 @@ sub require_auth {
     return $self->{'require_auth'} || 0;
 }
 
+sub is_authed {
+    my $data = shift->auth_data;
+    return $data && ! $data->{'error'};
+}
+
 sub check_valid_auth {
     return shift->_do_auth({
         login_print     => sub {}, # check only - don't login if not
@@ -913,11 +915,6 @@ sub get_valid_auth {
             $self->run_hook('print_out', $step, \$out);
         }
     });
-}
-
-sub is_authed {
-    my $data = shift->auth_data;
-    return $data && ! $data->{'error'};
 }
 
 sub _do_auth {
