@@ -753,7 +753,7 @@ sub hash_validation {
   return $self->{'hash_validation'}->{$step} ||= do {
       my $file = $self->run_hook('file_val', $step);
       my $hash = $file ? $self->val_obj->get_validation($file) : {}; # if the file is not found, errors will be in the webserver logs (all else dies)
-      $hash || {}; # return of the do
+      $hash; # return of the do
   };
 }
 
@@ -844,8 +844,8 @@ sub validate {
     my $hash = $self->run_hook('hash_validation', $step);
     my $what_was_validated = [];
 
+    return 1 if ! ref($hash) || ! scalar keys %$hash;
     my $err_obj = eval { $self->val_obj->validate($form, $hash, $what_was_validated) };
-    return 1 if ! $hash || (ref($hash) eq 'HASH' && ! scalar keys %$hash);
     die "Step $step: $@" if $@ && ! $err_obj;
 
     ### had an error - store the errors and return false
