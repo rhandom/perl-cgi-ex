@@ -528,13 +528,17 @@ eval { Conf1->new({
 })->navigate };
 ok($Foo::test_stdout eq "" && $@, "Got a conf_validation error");
 
-ok(Conf1->new->conf_obj, "Got a conf_obj");
-
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 print "### Various other coverage tests\n";
+
+ok(Conf1->new->conf_obj, "Got a conf_obj");
+ok(Conf1->new(conf_args => {paths => './', directive => 'merge'})->conf_obj, "Got a conf_obj");
+ok(Conf1->new->val_obj, "Got a val_obj");
+ok(Conf1->new(val_args => {cgix => Conf1->new->cgix})->val_obj, "Got a val_obj");
+ok(Conf1->new->load_conf(1), "Ran load_conf");
 
 ok(Foo2->navigate->clear_app, "clear_app works");
 
@@ -647,6 +651,7 @@ foreach my $type (qw(base
 }
 
 ok(! eval { CGI::Ex::App->new->get_pass_by_user } && $@, "Got a good error for get_pass_by_user");
+ok(! eval { CGI::Ex::App->new->find_hook } && $@, "Got a good error for find_hook");
 
 ###----------------------------------------------------------------###
 print "### Some morph tests ###\n";
@@ -667,11 +672,16 @@ print "### Some morph tests ###\n";
     sub blah5_info_complete { 1 }
     sub blah5_file_print { \ 'blah5_file_print' }
 
+    sub blah8_morph_package { 'Foo8' }
+    sub blah8_info_complete { 0 }
+    sub blah8_file_print { \ 'blah8_file_print' }
+
     sub blah6_allow_morph { 1 }
     package Foo8::Blah6;
     our @ISA = qw(Foo8);
     sub info_complete { 0 }
     sub file_print { \ 'blah6_file_print' }
+    sub early_exit_run_step { $Foo::test_stdout = 'early'; shift->exit_nav_loop }
 
     sub blah7_allow_morph { 1 }
     package Foo8::Blah6::Blah7;
@@ -698,13 +708,56 @@ ok($Foo::test_stdout eq 'blah4_file_print', "Got the right output for Foo8");
 Foo8->new({form => {step => 'blah5'}})->navigate;
 ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
 
+Foo8->new({form => {step => 'blah5'}, allow_morph => 1})->navigate;
+ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah5'}, allow_morph => 0})->navigate;
+ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah5'}, allow_morph => {}})->navigate;
+ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah5'}, allow_morph => {blah5 => 1}})->navigate;
+ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+
 Foo8->new({form => {step => 'blah6'}})->navigate;
 ok($Foo::test_stdout eq 'blah6_file_print', "Got the right output for Foo8");
+
+Foo8->new({form => {step => 'blah8'}, allow_morph => 1})->navigate;
+ok($Foo::test_stdout eq 'blah8_file_print', "Got the right output for Foo8 ($Foo::test_stdout)");
 
 my $foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => 1});
 $foo8->morph('blah6');
 $foo8->navigate;
-ok($Foo::test_stdout eq 'blah7_file_print', "Got the right output for Foo8 ($Foo::test_stdout)");
+ok($Foo::test_stdout eq 'blah7_file_print', "Got the right output for Foo8");
+
+$foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => {blah7 => 1}});
+$foo8->morph('blah6');
+$foo8->navigate;
+ok($Foo::test_stdout eq 'blah7_file_print', "Got the right output for Foo8");
+
+$foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => {blah9 => 1}});
+$foo8->morph('blah6');
+$foo8->navigate;
+ok($Foo::test_stdout eq 'blah6_file_print', "Got the right output for Foo8");
+
+$foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => 0});
+$foo8->morph('blah6');
+$foo8->navigate;
+ok($Foo::test_stdout eq 'blah6_file_print', "Got the right output for Foo8");
+
+$foo8 = Foo8->new({form => {step => 'early_exit'}, no_history => 1});
+$foo8->morph('blah6');
+$foo8->navigate;
+ok($Foo::test_stdout eq 'early', "Got the right output for Foo8");
+ok(ref($foo8) eq 'Foo8::Blah6', 'Still is unmorphed right');
+
+$foo8 = Foo8->new;
+$foo8->morph;
+ok(ref($foo8) eq 'Foo8', 'Got the right class');
+$foo8->morph('blah6');
+eval { $foo8->exit_nav_loop }; # coverage
+ok($@, "Got the die from exit_nav_loop");
 
 ###----------------------------------------------------------------###
 print "### Some path tests tests ###\n";
@@ -720,11 +773,13 @@ print "### Some path tests tests ###\n";
     sub one_skip { 1 }
     sub two_skip { 1 }
     sub info_complete { 0 }
+    sub invalid_run_step { shift->jump('::') }
 }
 ok(Foo9->new->previous_step eq '', 'No previous step if not navigating');
 
 my $c = Foo9->new(form => {step => 'one'});
-$c->add_to_path('one', 'two', 'three', 'four', 'five');
+$c->add_to_path('three', 'four', 'five');
+$c->insert_path('one', 'two');
 $c->navigate;
 ok($Foo::test_stdout eq 'First(one) Previous(two) Current(three) Next(four) Last(five)', "Got the right content for Foo9");
 ok(! eval { $c->set_path("more") }, "Can't call set_path after nav started");
@@ -733,6 +788,84 @@ $c = Foo9->new(form => {step => 'five'});
 $c->set_path('one', 'two', 'three', 'four', 'five');
 $c->navigate;
 ok($Foo::test_stdout eq 'First(one) Previous(two) Current(three) Next(four) Last(five)', "Got the right content for Foo9");
+
+$c = Foo9->new;
+$c->append_path('one');
+eval { $c->jump('FIRST') };
+ok($Foo::test_stdout eq '', "Can't jump without nav_loop");
+
+eval { Foo9->new(form => {step => 'invalid'})->navigate };
+ok($Foo::test_stdout =~ /fatal.*invalid jump index/si, "Can't jump with invalid step");
+
+###----------------------------------------------------------------###
+
+{
+    package Foo10;
+    our @ISA = qw(Foo);
+
+    sub join_path {
+        my $self = shift;
+        my $s = join "", @{ $self->path };
+        substr($s, $self->{'path_i'}, 0, '(');
+        substr($s, $self->{'path_i'} + 2, 0, ')');
+        return $s;
+    }
+
+    #sub run_hook {
+    #    my ($self, $hook, $step) = @_;
+    #    print "Into $step: ".$self->join_path."\n" if $hook eq 'run_step';
+    #    return $self->SUPER::run_hook($hook, $step);
+    #}
+
+    sub a_run_step {
+        my $self = shift;
+        if ($self->join_path eq '(a)') {
+            $self->append_path('b', 'c', 'd', 'e');
+            $self->jump('CURRENT');
+        } elsif ($self->join_path eq 'a(a)bcde') {
+            $self->jump('NEXT');
+        } elsif ($self->join_path eq 'aab(a)bcde') {
+            $self->jump(1);
+        } elsif ($self->join_path eq 'aabab(a)ababcde') {
+            $self->jump('c');
+        } elsif ($self->join_path eq 'aababacd(a)ababacde') {
+            $self->jump('LAST');
+        } else {
+            die "Shouldn't get here";
+        }
+    }
+
+    sub b_run_step {
+        my $self = shift;
+        if ($self->join_path eq 'aa(b)cde') {
+            $self->jump('PREVIOUS');
+        } elsif ($self->join_path eq 'aaba(b)cde') {
+            $self->jump(-10);
+        } else {
+            die "Shouldn't get here";
+        }
+    }
+
+    sub c_run_step { 0 }
+
+    sub d_run_step { shift->jump('FIRST') }
+
+    sub e_run_step {
+        my $self = shift;
+        $self->replace_path(); # truncate
+        $self->jump(1);
+    }
+
+    sub default_step { 'z' }
+
+    sub z_run_step { 1 }
+
+    sub __error_run_step { 1 }
+}
+
+my $Foo10 = Foo10->new(form => {step => 'a'});
+$Foo10->navigate;
+ok($Foo10->join_path eq 'aababacdae(z)', 'Followed good path: '.$Foo10->join_path);
 
 ###----------------------------------------------------------------###
 
@@ -743,7 +876,7 @@ ok(Foo->new->file_val("george") =~ m|\Q/ralph/george.val\E|, 'file_val: '. Foo->
 ###----------------------------------------------------------------###
 
 {
-    package Foo10;
+    package Foo11;
     our @ISA = qw(Foo);
     sub step1_skip { 1 }
     sub step1_next_step { 'step6' }
@@ -752,5 +885,5 @@ ok(Foo->new->file_val("george") =~ m|\Q/ralph/george.val\E|, 'file_val: '. Foo->
 
 local $ENV{'REQUEST_METHOD'} = 'POST';
 
-Foo10->new(form => {step => 'step1'})->navigate;
+Foo11->new(form => {step => 'step1'})->navigate;
 ok($Foo::test_stdout eq 'step6_file_print', "Refine Path and set_ready_validate work ($Foo::test_stdout)");
