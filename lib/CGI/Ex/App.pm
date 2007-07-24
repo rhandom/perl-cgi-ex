@@ -299,7 +299,9 @@ sub conf_path            { $_[0]->{'conf_path'}      ||  $_[0]->base_dir_abs }
 sub conf_validation      { $_[0]->{'conf_validation'} }
 sub default_step         { $_[0]->{'default_step'}   || 'main'        }
 sub error_step           { $_[0]->{'error_step'}     || '__error'     }
+sub fill_args            { $_[0]->{'fill_args'} }
 sub forbidden_step       { $_[0]->{'forbidden_step'} || '__forbidden' }
+sub form_name            { $_[0]->{'form_name'}      || 'theform'     }
 sub history              { $_[0]->{'history'}        ||= []           }
 sub js_step              { $_[0]->{'js_step'}        || 'js'          }
 sub login_step           { $_[0]->{'login_step'}     || '__login'     }
@@ -674,7 +676,7 @@ sub file_print {
 
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
-    my $_step    = $self->run_hook('name_step', $step) || die "Missing name_step";
+    my $_step    = $self->run_hook('name_step', $step) || croak "Missing name_step";
     $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
 
     foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
@@ -693,8 +695,9 @@ sub file_val {
 
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
-    my $_step    = $self->run_hook('name_step', $step) || die "Missing name_step";
-    $_step .= '.'. $self->ext_val if $_step !~ /\.\w+$/;
+    my $_step    = $self->run_hook('name_step', $step) || croak "Missing name_step";
+    $_step =~ s/\.\w+$//;
+    $_step .= '.'. $self->ext_val;
 
     foreach (@$abs, $base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
 
@@ -712,7 +715,7 @@ sub fill_template {
     my ($self, $step, $outref, $fill) = @_;
     return if ! $fill || ! scalar keys %$fill;
 
-    my $args = $self->run_hook('fill_args', $step);
+    my $args = $self->run_hook('fill_args', $step) || {};
     local $args->{'text'} = $outref;
     local $args->{'form'} = $fill;
 
@@ -720,9 +723,7 @@ sub fill_template {
     CGI::Ex::Fill::fill($args);
 }
 
-sub fill_args { $_[0]->{'fill_args'} || {}        }
 sub finalize  { 1 } # failure means show step
-sub form_name { $_[0]->{'form_name'} || 'theform' }
 
 sub hash_base {
     my ($self, $step) = @_;
@@ -770,8 +771,7 @@ sub js_validation {
     my $form_name = $_[2] || $self->run_hook('form_name', $step);
     my $hash_val  = $_[3] || $self->run_hook('hash_validation', $step);
     my $js_uri    = $self->js_uri_path;
-    return '' if UNIVERSAL::isa($hash_val, 'HASH')  && ! scalar keys %$hash_val
-        || UNIVERSAL::isa($hash_val, 'ARRAY') && ! @$hash_val;
+    return '' if ! $form_name || ! ref($hash_val) || ! scalar keys %$hash_val;
 
     return $self->val_obj->generate_js($hash_val, $form_name, $js_uri);
 }
@@ -779,7 +779,7 @@ sub js_validation {
 sub morph_package {
     my ($self, $step) = @_;
     my $cur = ref $self; # default to using self as the base for morphed modules
-    my $new = $cur .'::'. ($step || '');
+    my $new = $cur .'::'. ($step || croak "Missing step");
     $new =~ s/(\b|_+)(\w)/\u$2/g; # turn Foo::my_step_name into Foo::MyStepName
     return $new;
 }
