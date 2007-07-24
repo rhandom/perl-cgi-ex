@@ -13,8 +13,9 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 160;
+use Test::More tests => 214;
 use strict;
+use warnings;
 
 {
     package Foo;
@@ -28,8 +29,6 @@ use strict;
         my $self = shift;
         my $step = shift;
         my $str  = shift;
-        my $charset  = $self->charset; # coverage only
-        my $mimetype = $self->mimetype; # coverage only
         $test_stdout = ref($str) ? $$str : $str;
     }
 
@@ -98,6 +97,11 @@ $app = CGI::Ex::App->new({script_name => '/cgi-bin/foo_bar.pl'});
 ok($app->script_name eq '/cgi-bin/foo_bar.pl', "Can pass in script_name");
 ok($app->name_module eq 'foo_bar', "Can pass in script_name");
 
+ok(Foo->new(name_module => 'foo')->name_module eq 'foo', "Got the name_module");
+ok(! eval { Foo->new(script_name => '%####$')->name_module } && $@, "Bad script_name");
+ok(! eval { Foo->new(script_name => '%####$')->name_module('foo') } && $@, "Bad script_name");
+
+ok(! eval { $app->morph_package } && $@,                     "Can't get a good morph_package");
 ok($app->morph_package('foo') eq 'CGI::Ex::App::Foo',        "Got a good morph_package");
 ok($app->morph_package('foo_bar') eq 'CGI::Ex::App::FooBar', "Got a good morph_package");
 
@@ -352,6 +356,20 @@ Foo->new({
 })->navigate;
 ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo ($Foo::test_stdout)");
 
+ok(Foo->new({
+    form => {},
+    cookies => {user => 'foo/123qwe'},
+})->check_valid_auth, "Ran check_valid_auth");
+
+my $cva = Foo->new({form => {}, cookies => {user => 'foo/123qwe'}});
+ok($cva->check_valid_auth && $cva->check_valid_auth, "Can run twice");
+
+
+
+ok(! Foo->new({
+    form => {},
+})->check_valid_auth, "Ran check_valid_auth");
+
 Foo->new({
     form => {},
     auth_data => {user => 'foo'},
@@ -483,11 +501,13 @@ print "### Test Configuration methods ###\n";
 {
     package Conf1;
     our @ISA = qw(Foo);
-    sub name_module { 'conf_1' }
+    sub name_module { my $self = shift; defined($self->{'name_module'}) ? $self->{'name_module'} : 'conf_1' }
 }
 
 my $file = Conf1->new->conf_file;
 ok($file && $file eq 'conf_1.pl', "Got a conf_file ($file)");
+
+ok(! eval { Conf1->new(name_module => '')->conf_file } && $@, "Couldn't get conf_file");
 
 $file = Conf1->new({ext_conf => 'ini'})->conf_file;
 ok($file && $file eq 'conf_1.ini', "Got a conf_file ($file)");
@@ -544,12 +564,12 @@ ok(Foo2->navigate->clear_app, "clear_app works");
 
 my $dh = Foo2->navigate;
 push @{ $dh->history }, "A string", ['A non ref'], {key => 'No elapsed key'};
-push @{ $dh->history }, {elapsed => 2, response => {}};
-push @{ $dh->history }, {elapsed => 2, response => {hi => 'there'}};
-push @{ $dh->history }, {elapsed => 1, response => []};
-push @{ $dh->history }, {elapsed => 1, response => ['hi']};
-push @{ $dh->history }, {elapsed => 1, response => 'a'};
-push @{ $dh->history }, {elapsed => 1, response => 'a'x100};
+push @{ $dh->history }, {step => 'foo', meth => 'bar', found => 'bar', elapsed => 2, response => {}};
+push @{ $dh->history }, {step => 'foo', meth => 'bar', found => 'bar', elapsed => 2, response => {hi => 'there'}};
+push @{ $dh->history }, {step => 'foo', meth => 'bar', found => 'bar', elapsed => 1, response => []};
+push @{ $dh->history }, {step => 'foo', meth => 'bar', found => 'bar', elapsed => 1, response => ['hi']};
+push @{ $dh->history }, {step => 'foo', meth => 'bar', found => 'bar', elapsed => 1, response => 'a'};
+push @{ $dh->history }, {step => 'foo', meth => 'bar', found => 'bar', elapsed => 1, response => 'a'x100};
 ok($dh->dump_history, "Can call dump_history");
 ok($dh->dump_history('all'), "Can call dump_history");
 $dh->{'history_max'} = 10;
@@ -577,8 +597,6 @@ foreach my $meth (qw(auth_args conf_args template_args val_args)) {
     ok(! CGI::Ex::App->new->$meth, "Got a good $meth");
     ok(CGI::Ex::App->new($meth => {a=>'A'})->$meth->{'a'} eq 'A', "Got a good $meth");
 }
-
-ok(CGI::Ex::App->new->charset eq '', "Got a good charset");
 
 ### test read only
 foreach my $meth (qw(charset
@@ -869,21 +887,111 @@ ok($Foo10->join_path eq 'aababacdae(z)', 'Followed good path: '.$Foo10->join_pat
 
 ###----------------------------------------------------------------###
 
-local $ENV{'SCRIPT_NAME'} = '/cgi/ralph.pl';
-ok(Foo->new->file_print("george") eq 'ralph/george.html', 'file_print: '. Foo->new->file_print("george"));
-ok(Foo->new->file_val("george") =~ m|\Q/ralph/george.val\E|, 'file_val: '. Foo->new->file_val("george"));
-
-###----------------------------------------------------------------###
-
 {
     package Foo11;
     our @ISA = qw(Foo);
     sub step1_skip { 1 }
     sub step1_next_step { 'step6' }
     sub step6_file_print { \ 'step6_file_print' }
+    sub step2_name_step { '' }
+    sub step3_name_step { 'foo.htm' }
+
+    package Foo12;
+    our @ISA = qw(Foo11);
+    sub val_path { '' }
 }
+
+local $ENV{'SCRIPT_NAME'} = '/cgi/ralph.pl';
+ok(Foo11->new->file_print("george") eq 'ralph/george.html', 'file_print: '. Foo11->new->file_print("george"));
+ok(Foo11->new->file_val("george") =~ m|\Q/ralph/george.val\E|, 'file_val: '. Foo11->new->file_val("george"));
+ok(ref(Foo12->new->file_val("george")) eq 'HASH', 'file_val: no such path');
+ok(Foo11->new(val_path => '../'        )->file_val("george") eq '../ralph/george.val', 'file_val');
+ok(Foo11->new(val_path => sub {'../'}  )->file_val("george") eq '../ralph/george.val', 'file_val');
+ok(Foo11->new(val_path => ['../']      )->file_val("george") eq '../ralph/george.val', 'file_val');
+ok(Foo11->new(val_path => ['../', './'])->file_val("george") eq '../ralph/george.val', 'file_val');
+
+ok(! eval { Foo11->new->file_print("step2") } && $@, 'Bad name_step');
+ok(! eval { Foo11->new->file_val("step2") } && $@, 'Bad name_step');
+
+ok(Foo11->new->file_print("step3") eq 'ralph/foo.htm', 'file_print: '. Foo11->new->file_print("step3"));
+ok(Foo11->new->file_val("step3") =~ m|\Q/ralph/foo.val\E|, 'file_val: '. Foo11->new->file_val("step3"));
+
 
 local $ENV{'REQUEST_METHOD'} = 'POST';
 
 Foo11->new(form => {step => 'step1'})->navigate;
 ok($Foo::test_stdout eq 'step6_file_print', "Refine Path and set_ready_validate work ($Foo::test_stdout)");
+
+Foo11->set_ready_validate(1);
+ok(Foo11->ready_validate, "Is ready to validate");
+Foo11->set_ready_validate(0);
+ok(! Foo11->ready_validate, "Not ready to validate");
+Foo11->set_ready_validate(1);
+ok(Foo11->ready_validate, "Is ready to validate");
+Foo11->set_ready_validate('somestep', 0);
+ok(! Foo11->ready_validate, "Not ready to validate");
+
+###----------------------------------------------------------------###
+
+{
+    package Foo13;
+    our @ISA = qw(Foo);
+    sub step0_ready_validate { 1 }
+    sub step0_hash_validation { {foo => {required => 1}} }
+
+    sub step1_ready_validate { 1 }
+    sub step1_form_name       { shift->{'step1_form_name'} }
+    sub step1_hash_validation { shift->{'step1_hash_validation'} }
+    sub step1_file_print { \ 'step1_file_print [% has_errors %]' }
+}
+
+ok(Foo13->new(ext_val => 'html')->navigate->js_validation('step0') eq '', 'Got right validation');
+ok($Foo::test_stdout eq 'Main Content', "Got the right content on Foo13 ($Foo::test_stdout)");
+
+Foo13->new(form => {step => 'step1'})->navigate->js_validation('step1');
+ok($Foo::test_stdout eq 'Main Content', "Got the right content on Foo13");
+
+ok(Foo13->new->js_validation('step1')            eq '', "No validation found");
+ok(Foo13->new->js_validation('step1', 'foo')     eq '', "No validation found");
+ok(Foo13->new->js_validation('step1', 'foo', {}) eq '', "No validation found");
+ok(Foo13->new->js_validation('step1', 'foo', {foo => {required => 1}}), "Validation found");
+
+###----------------------------------------------------------------###
+
+{
+    package CGIX;
+    sub new { bless {}, __PACKAGE__ }
+    sub get_form { {} }
+    sub print_js {
+        my ($self, $file) = @_;
+        $Foo::test_stdout = "Print JS: $file";
+    }
+    sub print_content_type {
+        my $self = shift;
+        my $mime = shift || 'text/html';
+        my $char = shift || '';
+        $mime .= "; charset=$char" if $char && $char =~ m|^[\w\-\.\:\+]+$|;
+        $Foo::test_stdout = "Print: $mime";
+    }
+}
+
+CGI::Ex::App->new(cgix => CGIX->new)->js_run_step;
+ok($Foo::test_stdout eq 'Print JS: ', "Ran js_run_step: $Foo::test_stdout");
+
+CGI::Ex::App->new(cgix => CGIX->new, form => {js => 'CGI/Ex/validate.js'})->js_run_step;
+ok($Foo::test_stdout eq 'Print JS: CGI/Ex/validate.js', "Ran js_run_step: $Foo::test_stdout");
+
+CGI::Ex::App->new(cgix => CGIX->new, path_info => '/js/CGI/Ex/validate.js')->js_run_step;
+ok($Foo::test_stdout eq 'Print JS: CGI/Ex/validate.js', "Ran js_run_step: $Foo::test_stdout");
+
+CGI::Ex::App->new(cgix => CGIX->new)->print_out('foo', "# the output\n");
+ok($Foo::test_stdout eq 'Print: text/html', "Got right header: $Foo::test_stdout");
+CGI::Ex::App->new(cgix => CGIX->new, mimetype => 'img/gif')->print_out('foo', "# the output\n");
+ok($Foo::test_stdout eq 'Print: img/gif', "Got right header: $Foo::test_stdout");
+CGI::Ex::App->new(cgix => CGIX->new, charset => 'ISO-foo')->print_out('foo', "# the output\n");
+ok($Foo::test_stdout eq 'Print: text/html; charset=ISO-foo', "Got right header: $Foo::test_stdout");
+
+CGI::Ex::App->new(cgix => CGIX->new)->print_out('foo', \ "# the output\n");
+ok($Foo::test_stdout eq 'Print: text/html', "Got right header: $Foo::test_stdout");
+
+###----------------------------------------------------------------###\
