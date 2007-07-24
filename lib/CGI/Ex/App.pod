@@ -208,7 +208,7 @@ The nav_loop method will run as follows:
                 # exits nav_loop if true
 
             ->morph
-                # check ->allow_morph
+                # check ->allow_morph (hook)
                 # check ->allow_nested_morph
                 # ->morph_package (hook - get the package to bless into)
                 # ->fixup_after_morph if morph_package exists
@@ -981,7 +981,7 @@ The following is the alphabetical list of methods and hooks.
 
 =over 4
 
-=item allow_morph (method)
+=item allow_morph (hook)
 
 Should return true if this step is allowed to "morph" the current App
 object into another package.  Default is false.  It is passed a single
