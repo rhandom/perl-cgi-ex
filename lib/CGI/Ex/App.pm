@@ -17,7 +17,7 @@ our $VERSION = '2.18';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
-    my $self  = ref($_[0]) ? shift() : bless {@_};
+    my $self  = ref($_[0]) ? shift() : (@_ % 2) ? {} : {@_};
     bless $self, $class;
 
     $self->init;
