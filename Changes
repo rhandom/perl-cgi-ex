@@ -1,4 +1,6 @@
 2.18
+     2007-07-24
+        * Merry Pioneer Day - http://en.wikipedia.org/wiki/Pioneer_Day_(Utah)
         * Allow for check_valid_auth in App
         * Allow for set_cookie, delete_cookie, location_bounce to be overridden in Auth
         * Add get_valid_auth to the history
@@ -7,6 +9,7 @@
         * Add undocumented conf_die_on_fail (which defaults to true)
         * Fix bug in handle_error
         * Allow empty hashrefs passed to Validate - (broken in 2.17)
+        * Add tests to help with Devel::Cover coverage.
 
 2.17
       2007-06-26
