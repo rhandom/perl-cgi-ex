@@ -331,51 +331,26 @@ sub verify_token {
     my $args  = shift;
     my $token = delete $args->{'token'} || die "Missing token";
     my $data  = $self->{'_last_auth_data'} = $self->new_auth_data({token => $token, %$args});
+    my $meth;
 
-    ### token already parsed
-    if (ref $token) {
+    ### make sure the token is parsed to usable data
+    if (ref $token) { # token already parsed
         $data->add_data({%$token, armor => 'none'});
 
-    ### parse token for info
-    } else {
-        my $found;
-        my $key;
-        for my $armor ('none', 'base64', 'blowfish') { # try with and without base64 encoding
-            my $copy = ($armor eq 'none')           ? $token
-                     : ($armor eq 'base64')         ? eval { local $^W; decode_base64($token) }
-                     : ($key = $self->use_blowfish) ? decrypt_blowfish($token, $key)
-                     : next;
-            if ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
-                $data->add_data({
-                    user         => $1,
-                    cram_time    => $2,
-                    expires_min  => $3,
-                    payload      => $4,
-                    test_pass    => $5,
-                    secure_hash  => $6 || '',
-                    armor        => $armor,
-                });
-                $found = 1;
-                last;
-            } elsif ($copy =~ m|^ ([^/]+) / (.*) $|x) {
-                $data->add_data({
-                    user         => $1,
-                    test_pass    => $2,
-                    armor        => $armor,
-                });
-                $found = 1;
-                last;
-            }
+    } elsif (my $meth = $self->{'parse_token'}) {
+        if (! $meth->($self, $args)) {
+            $data->error('Invalid custom parsed token') if ! $data->error; # add error if not already added
+            return $data;
         }
-        if (! $found) {
-            $data->error('Invalid token');
+    } else {
+        if (! $self->parse_token($token, $data)) {
+            $data->error('Invalid token') if ! $data->error; # add error if not already added
             return $data;
         }
     }
 
 
-    ### verify the user and get the pass
-    my $pass;
+    ### verify the user
     if (! defined($data->{'user'})) {
         $data->error('Missing user');
 
@@ -385,7 +360,12 @@ sub verify_token {
     } elsif (! $self->verify_user($data->{'user'} = $self->cleanup_user($data->{'user'}))) {
         $data->error('Invalid user');
 
-    } elsif (! defined($pass = eval { $self->get_pass_by_user($data->{'user'}) })) {
+    }
+    return $data if $data->error;
+
+    ### get the pass
+    my $pass;
+    if (! defined($pass = eval { $self->get_pass_by_user($data->{'user'}) })) {
         $data->add_data({details => $@});
         $data->error('Could not get pass');
     } elsif (ref $pass eq 'HASH') {
@@ -397,22 +377,89 @@ sub verify_token {
         $data->add_data($extra);
     }
     return $data if $data->error;
+    $data->add_data({real_pass => $pass}); # store - to allow generate_token to not need to relookup the pass
 
 
-    ### store - to allow generate_token to not need to relookup the pass
-    $data->add_data({real_pass => $pass});
+    ### validate the pass
+    if ($meth = $self->{'verify_password'}) {
+        if (! $meth->($self, $pass, $data)) {
+            $data->error('Password failed verification') if ! $data->error;
+        }
+    } else{
+        if (! $self->verify_password($pass, $data)) {
+            $data->error('Password failed verification') if ! $data->error;
+        }
+    }
+    return $data if $data->error;
 
+
+    ### validate the payload
+    if ($meth = $self->{'verify_payload'}) {
+        if (! $meth->($self, $data->{'payload'}, $data)) {
+            $data->error('Payload failed custom verification') if ! $data->error;
+        }
+    } else {
+        if (! $self->verify_payload($data->{'payload'}, $data)) {
+            $data->error('Payload failed verification') if ! $data->error;
+        }
+    }
+
+    return $data;
+}
+
+sub new_auth_data {
+    my $self = shift;
+    return CGI::Ex::Auth::Data->new(@_);
+}
+
+sub parse_token {
+    my ($self, $token, $data) = @_;
+    my $found;
+    my $key;
+    for my $armor ('none', 'base64', 'blowfish') { # try with and without base64 encoding
+        my $copy = ($armor eq 'none')           ? $token
+            : ($armor eq 'base64')         ? eval { local $^W; decode_base64($token) }
+        : ($key = $self->use_blowfish) ? decrypt_blowfish($token, $key)
+            : next;
+        if ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
+            $data->add_data({
+                user         => $1,
+                cram_time    => $2,
+                expires_min  => $3,
+                payload      => $4,
+                test_pass    => $5,
+                secure_hash  => $6 || '',
+                armor        => $armor,
+            });
+            $found = 1;
+            last;
+        } elsif ($copy =~ m|^ ([^/]+) / (.*) $|x) {
+            $data->add_data({
+                user         => $1,
+                test_pass    => $2,
+                armor        => $armor,
+            });
+            $found = 1;
+            last;
+        }
+    }
+    return $found;
+}
+
+sub verify_password {
+    my ($self, $pass, $data) = @_;
+    my $err;
 
     ### looks like a secure_hash cram
     if ($data->{'secure_hash'}) {
         $data->add_data(type => 'secure_hash_cram');
         my $array = eval {$self->secure_hash_keys };
         if (! $array) {
-            $data->error('secure_hash_keys not found');
+            $err = 'secure_hash_keys not found';
         } elsif (! @$array) {
-            $data->error('secure_hash_keys empty');
+            $err = 'secure_hash_keys empty';
         } elsif ($data->{'secure_hash'} !~ /^sh\.(\d+)\.(\d+)$/ || $1 > $#$array) {
-            $data->error('Invalid secure hash');
+            $err = 'Invalid secure hash';
         } else {
             my $rand1 = $1;
             my $rand2 = $2;
@@ -421,9 +468,9 @@ sub verify_token {
             my $sum = md5_hex($str .'/'. $real .('/sh.'.$array->[$rand1].'.'.$rand2));
             if ($data->{'expires_min'} > 0
                 && ($self->server_time - $data->{'cram_time'}) > $data->{'expires_min'} * 60) {
-                $data->error('Login expired');
+                $err = 'Login expired';
             } elsif (lc($data->{'test_pass'}) ne $sum) {
-                $data->error('Invalid login');
+                $err = 'Invalid login';
             }
         }
 
@@ -435,9 +482,9 @@ sub verify_token {
         my $sum  = md5_hex($str .'/'. $real);
         if ($data->{'expires_min'} > 0
                  && ($self->server_time - $data->{'cram_time'}) > $data->{'expires_min'} * 60) {
-            $data->error('Login expired');
+            $err = 'Login expired';
         } elsif (lc($data->{'test_pass'}) ne $sum) {
-            $data->error('Invalid login');
+            $err = 'Invalid login';
         }
 
     ### plaintext_crypt
@@ -447,7 +494,7 @@ sub verify_token {
 
     ### failed plaintext crypt
     } elsif ($self->use_crypt) {
-        $data->error('Invalid login');
+        $err = 'Invalid login';
         $data->add_data(type => 'crypt', was_plaintext => ($data->{'test_pass'} =~ /^[a-f0-9]{32}$/ ? 0 : 1));
 
     ### plaintext and md5
@@ -457,21 +504,12 @@ sub verify_token {
         my $test = $is_md5_t ? lc($data->{'test_pass'}) : md5_hex($data->{'test_pass'});
         my $real = $is_md5_r ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
         $data->add_data(type => ($is_md5_r ? 'md5' : 'plaintext'), was_plaintext => ($is_md5_t ? 0 : 1));
-        $data->error('Invalid login')
+        $err = 'Invalid login'
             if $test ne $real;
     }
 
-    ### check the payload
-    if (! $data->error && ! $self->verify_payload($data->{'payload'})) {
-        $data->error('Invalid payload');
-    }
-
-    return $data;
-}
-
-sub new_auth_data {
-    my $self = shift;
-    return CGI::Ex::Auth::Data->new(@_);
+    $data->error($err) if $err;
+    return ! $err;
 }
 
 sub last_auth_data { shift->{'_last_auth_data'} }
@@ -529,6 +567,9 @@ sub generate_token {
 sub generate_payload {
     my $self = shift;
     my $args = shift;
+    if (my $meth = $self->{'generate_payload'}) {
+        return $meth->($self, $args);
+    }
     return defined($args->{'payload'}) ? $args->{'payload'} : '';
 }
 
@@ -561,10 +602,9 @@ sub get_pass_by_user {
 }
 
 sub verify_payload {
-    my $self    = shift;
-    my $payload = shift;
+    my ($self, $payload, $data) = @_;
     if (my $meth = $self->{'verify_payload'}) {
-        return $meth->($self, $payload);
+        return $meth->($self, $payload, $data);
     }
     return 1;
 }
@@ -1053,6 +1093,11 @@ for creating tokes is listed below).  It also allows for armoring the token with
 base64 encoding, or using blowfish encryption.  A listing of creating these tokens
 can be found under generate_token.
 
+=item C<parse_token>
+
+Used by verify_token to remove armor from the passed tokens and split the token into its parts.
+Returns true if it was able to parse the passed token.
+
 =item C<cleanup_user>
 
 Called by verify_token.  Default is to do no modification.  Allows for usernames to
@@ -1091,6 +1136,24 @@ in the data object will override those in the data object.
            user_id  => $user_id,
        };
    }
+
+=item C<verify_password>
+
+Called by verify_token.  Passed the password to check as well as the
+auth data object.  Should return true if the password matches.
+Default method can handle md5, crypt, cram, secure_hash_cram, and
+plaintext (all of the default types supported by generate_token).  If
+a property named verify_password exists, it will be used and called as
+a coderef rather than using the default method.
+
+=item C<verify_payload>
+
+Called by verify_token.  Passed the password to check as well as the
+auth data object.  Should return true if the payload is valid.
+Default method returns true without performing any checks on the
+payload.  If a property named verify_password exists, it will be used
+and called as a coderef rather than using the default method.
+
 
 =item C<cgix>
 
