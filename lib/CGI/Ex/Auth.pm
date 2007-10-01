@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.18';
+$VERSION = '2.19';
 
 ###----------------------------------------------------------------###
 
@@ -463,7 +463,7 @@ sub verify_password {
         } else {
             my $rand1 = $1;
             my $rand2 = $2;
-            my $real  = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
+            my $real  = $pass =~ /^[a-f0-9]{32}$/ ? lc($pass) : md5_hex($pass);
             my $str  = join("/", @{$data}{qw(user cram_time expires_min payload)});
             my $sum = md5_hex($str .'/'. $real .('/sh.'.$array->[$rand1].'.'.$rand2));
             if ($data->{'expires_min'} > 0
@@ -477,7 +477,7 @@ sub verify_password {
     ### looks like a normal cram
     } elsif ($data->{'cram_time'}) {
         $data->add_data(type => 'cram');
-        my $real = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
+        my $real = $pass =~ /^[a-f0-9]{32}$/ ? lc($pass) : md5_hex($pass);
         my $str  = join("/", @{$data}{qw(user cram_time expires_min payload)});
         my $sum  = md5_hex($str .'/'. $real);
         if ($data->{'expires_min'} > 0
@@ -488,8 +488,8 @@ sub verify_password {
         }
 
     ### plaintext_crypt
-    } elsif ($data->{'real_pass'} =~ m|^([./0-9A-Za-z]{2})([./0-9A-Za-z]{11})$|
-             && crypt($data->{'test_pass'}, $1) eq $data->{'real_pass'}) {
+    } elsif ($pass =~ m|^([./0-9A-Za-z]{2})([./0-9A-Za-z]{11})$|
+             && crypt($data->{'test_pass'}, $1) eq $pass) {
         $data->add_data(type => 'crypt', was_plaintext => 1);
 
     ### failed plaintext crypt
@@ -500,9 +500,9 @@ sub verify_password {
     ### plaintext and md5
     } else {
         my $is_md5_t = $data->{'test_pass'} =~ /^[a-f0-9]{32}$/;
-        my $is_md5_r = $data->{'real_pass'} =~ /^[a-f0-9]{32}$/;
+        my $is_md5_r = $pass =~ /^[a-f0-9]{32}$/;
         my $test = $is_md5_t ? lc($data->{'test_pass'}) : md5_hex($data->{'test_pass'});
-        my $real = $is_md5_r ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'});
+        my $real = $is_md5_r ? lc($pass) : md5_hex($pass);
         $data->add_data(type => ($is_md5_r ? 'md5' : 'plaintext'), was_plaintext => ($is_md5_t ? 0 : 1));
         $err = 'Invalid login'
             if $test ne $real;
