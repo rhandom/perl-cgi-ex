@@ -321,6 +321,8 @@ sub login_hash_common {
         text_user          => $self->text_user,
         text_pass          => $self->text_pass,
         text_save          => $self->text_save,
+        text_submit        => $self->text_submit,
+        hide_save          => $self->hide_save,
     };
 }
 
@@ -682,14 +684,16 @@ sub login_form {
       <td>[% text_pass %]</td>
       <td><input name="[% key_pass %]" type="password" size="30" value=""></td>
     </tr>
+    [% IF ! hide_save ~%]
     <tr class="login_save">
       <td colspan="2">
         <input type="checkbox" name="[% key_save %]" value="1"> [% text_save %]
       </td>
     </tr>
+    [%~ END %]
     <tr class="login_submit">
       <td colspan="2" align="right">
-        <input type="submit" value="Submit">
+        <input type="submit" value="[% text_submit %]">
       </td>
     </tr>
     </table>
@@ -698,9 +702,11 @@ sub login_form {
 };
 }
 
-sub text_user { my $self = shift; return defined($self->{'text_user'}) ? $self->{'text_user'} : 'Username:' }
-sub text_pass { my $self = shift; return defined($self->{'text_pass'}) ? $self->{'text_pass'} : 'Password:' }
-sub text_save { my $self = shift; return defined($self->{'text_save'}) ? $self->{'text_save'} : 'Save Password ?' }
+sub text_user   { my $self = shift; return defined($self->{'text_user'})   ? $self->{'text_user'}   : 'Username:' }
+sub text_pass   { my $self = shift; return defined($self->{'text_pass'})   ? $self->{'text_pass'}   : 'Password:' }
+sub text_save   { my $self = shift; return defined($self->{'text_save'})   ? $self->{'text_save'}   : 'Save Password ?' }
+sub hide_save   { my $self = shift; return defined($self->{'hide_save'})   ? $self->{'hide_save'}   : 0 }
+sub text_submit { my $self = shift; return defined($self->{'text_submit'}) ? $self->{'text_submit'} : 'Login:' }
 
 sub login_script {
   return q {
@@ -877,6 +883,8 @@ defined separately.
     text_user
     text_pass
     text_save
+    text_submit
+    hide_save
     use_base64
     use_blowfish
     use_crypt
@@ -1029,6 +1037,8 @@ Passed to the template swapped during login_print.
     text_user          # $self->text_user        # template text Username:
     text_pass          # $self->text_pass        # template text Password:
     text_save          # $self->text_save        # template text Save Password ?
+    text_submit        # $self->text_submit      # template text Login
+    hide_save          # $self->hide_save        # 0
 
 =item C<key_logout>
 
