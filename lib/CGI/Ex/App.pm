@@ -332,7 +332,15 @@ sub template_obj {
     my ($self, $args) = @_;
     return $self->{'template_obj'} || do {
         require Template::Alloy;
-        my $t = Template::Alloy->new($args);
+        Template::Alloy->new($args);
+    };
+}
+
+sub auth_obj {
+    my ($self, $args) = @_;
+    return $self->{'auth_obj'} || do {
+        require CGI::Ex::Auth;
+        CGI::Ex::Auth->new($args);
     };
 }
 
@@ -935,8 +943,7 @@ sub _do_auth {
     $args->{'verify_user'}      ||= sub { my ($auth, $user) = @_; $self->verify_user(     $user, $auth) };
     $args->{'cleanup_user'}     ||= sub { my ($auth, $user) = @_; $self->cleanup_user(    $user, $auth) };
 
-    require CGI::Ex::Auth;
-    my $obj = CGI::Ex::Auth->new($args);
+    my $obj  = $self->auth_obj($args);
     my $resp = $obj->get_valid_auth;
 
     my $data = $obj->last_auth_data;
