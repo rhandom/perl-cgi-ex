@@ -1028,7 +1028,8 @@ steps to the end of the current path.
 
 =item auth_args (method)
 
-Should return a hashref that will be passed to the new method of CGI::Ex::Auth.
+Should return a hashref that will be passed to the auth_obj method
+which should return a CGI::Ex::Auth compatible object.
 It is augmented with arguments that integrate it into CGI::Ex::App.
 
 See the get_valid_auth method and the CGI::Ex::Auth documentation.
@@ -1050,6 +1051,11 @@ evaluates to false if there was an error and true if the authentication
 was successful - so this data can be defined but false.
 
 See the get_valid_auth method.
+
+=item auth_obj (method)
+
+Passed auth_args.  Should return a CGI::Ex::Auth compatible object.  Default
+is to call CGI::Ex::Auth->new with the passed args.
 
 =item base_dir_abs (method)
 
