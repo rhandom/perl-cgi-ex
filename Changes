@@ -4,6 +4,7 @@
         * Added parse_token method and/or property
         * Added verify_password method and/or property
         * Added verify_payload method and/or property
+        * Fix filename based conf reading in App
 
 2.18
      2007-07-24
