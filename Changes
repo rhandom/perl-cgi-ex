@@ -1,3 +1,10 @@
+2.19
+     2007-10-01
+        * Make verify_token more granualar in Auth
+        * Added parse_token method and/or property
+        * Added verify_password method and/or property
+        * Added verify_payload method and/or property
+
 2.18
      2007-07-24
         * Merry Pioneer Day - http://en.wikipedia.org/wiki/Pioneer_Day_(Utah)
