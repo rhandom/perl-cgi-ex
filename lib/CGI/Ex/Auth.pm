@@ -709,7 +709,7 @@ sub hide_save   { my $self = shift; return defined($self->{'hide_save'})   ? $se
 sub text_submit { my $self = shift; return defined($self->{'text_submit'}) ? $self->{'text_submit'} : 'Login:' }
 
 sub login_script {
-  return q {
+    return shift->{'login_script'} || q {
     [%~ IF ! use_plaintext %]
     <script src="[% md5_js_path %]"></script>
     <script>
