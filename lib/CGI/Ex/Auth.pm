@@ -706,7 +706,7 @@ sub text_user   { my $self = shift; return defined($self->{'text_user'})   ? $se
 sub text_pass   { my $self = shift; return defined($self->{'text_pass'})   ? $self->{'text_pass'}   : 'Password:' }
 sub text_save   { my $self = shift; return defined($self->{'text_save'})   ? $self->{'text_save'}   : 'Save Password ?' }
 sub hide_save   { my $self = shift; return defined($self->{'hide_save'})   ? $self->{'hide_save'}   : 0 }
-sub text_submit { my $self = shift; return defined($self->{'text_submit'}) ? $self->{'text_submit'} : 'Login:' }
+sub text_submit { my $self = shift; return defined($self->{'text_submit'}) ? $self->{'text_submit'} : 'Login' }
 
 sub login_script {
     return shift->{'login_script'} || q {
