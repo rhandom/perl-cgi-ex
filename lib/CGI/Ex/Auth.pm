@@ -227,6 +227,7 @@ sub key_verify       { shift->{'key_verify'}       ||= 'cea_verify'   }
 sub key_redirect     { shift->{'key_redirect'}     ||= 'cea_redirect' }
 sub key_payload      { shift->{'key_payload'}      ||= 'cea_payload'  }
 sub secure_hash_keys { shift->{'secure_hash_keys'} ||= []             }
+#perl -e 'use Digest::MD5 qw(md5_hex); open(my $fh, "<", "/dev/urandom"); for (1..10) { read $fh, my $t, 5_000_000; print md5_hex($t),"\n"}'
 sub no_cookie_verify { shift->{'no_cookie_verify'} ||= 0              }
 sub use_crypt        { shift->{'use_crypt'}        ||= 0              }
 sub use_blowfish     { shift->{'use_blowfish'}     ||= ''             }
