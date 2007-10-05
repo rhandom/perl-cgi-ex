@@ -31,6 +31,7 @@ sub new {
 sub get_valid_auth {
     my $self = shift;
     $self = $self->new(@_) if ! ref $self;
+    delete $self->{'_last_auth_data'};
 
     ### shortcut that will print a js file as needed (such as the md5.js)
     if ($self->script_name . $self->path_info eq $self->js_uri_path . "/CGI/Ex/md5.js") {
@@ -39,32 +40,41 @@ sub get_valid_auth {
         return;
     }
 
-    my $form    = $self->form;
-    my $cookies = $self->cookies;
-    my $key_l   = $self->key_logout;
-    my $key_c   = $self->key_cookie;
-    my $has_cookies = scalar %$cookies;
+    my $form = $self->form;
+    use Debug;
+    debug $form;
 
     ### allow for logout
-    if ($form->{$key_l}) {
-        $self->delete_cookie({key => $key_c});;
-        $self->location_bounce($self->logout_redirect);
+    if ($form->{$self->key_logout} && ! $self->{'_logout_looking_for_user'}) {
+        local $self->{'_logout_looking_for_user'} = 1;
+        local $self->{'no_set_cookie'}    = 1;
+        local $self->{'no_cookie_verify'} = 1;
+        $self->check_valid_auth; # verify the logout so we can capture the username if possible
+        my $user = $self->last_auth_data ? $self->last_auth_data->{'user'} : undef;
+        $self->location_bounce($self->logout_redirect(defined($user) ? $user : ''));
         eval { die "Logging out" };
         return;
     }
 
-    my $had_form_info;
-    foreach ([$form,    $self->key_user, 1],
-             [$cookies, $key_c,          0],
+    ### look first in form, then in cookies for valid tokens
+    my $had_form_data;
+    foreach ([$form,          $self->key_user,   1],
+             [$self->cookies, $self->key_cookie, 0],
              ) {
         my ($hash, $key, $is_form) = @$_;
         next if ! defined $hash->{$key};
-        $had_form_info ++ if $is_form;
+        last if ! $is_form && $had_form_data;  # if form info was passed in - we must use it only
+        $had_form_data = 1 if $is_form;
 
         ### if it looks like a bare username (as in they didn't have javascript) - add in other items
         my $data;
-        if ($is_form
-            && $hash->{$key} !~ m|^[^/]+/|
+        if ($is_form && delete $form->{$self->key_loggedout}) { # don't validate the form on a logout
+            my $key_u = $self->key_user;
+            $self->new_auth_data({user => delete($form->{$key_u})});
+            $had_form_data = 0;
+            next;
+        } elsif ($is_form
+            && $hash->{$key} !~ m|^[^/]+/| # looks like a cram token
             && defined $hash->{ $self->key_pass }) {
             $data = $self->verify_token({
                 token => {
@@ -84,7 +94,7 @@ sub get_valid_auth {
         ### generate a fresh cookie if they submitted info on plaintext types
         if ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
             $self->set_cookie({
-                key        => $key_c,
+                key        => $self->key_cookie,
                 val        => $self->generate_token($data),
                 no_expires => ($data->{ $self->key_save } ? 0 : 1), # make it a session cookie unless they ask for saving
             }) if $is_form; # only set the cookie if we found info in the form - the cookie will be a session cookie after that
@@ -92,40 +102,61 @@ sub get_valid_auth {
         ### always generate a cookie on types that have expiration
         } else {
             $self->set_cookie({
-                key        => $key_c,
+                key        => $self->key_cookie,
                 val        => $self->generate_token($data),
                 no_expires => 0,
             });
         }
 
         ### successful login
-
-        ### bounce to redirect
-        if (my $redirect = $form->{ $self->key_redirect }) {
-            $self->location_bounce($redirect);
-            eval { die "Success login - bouncing to redirect" };
-            return;
-
-        ### if they have cookies we are done
-        } elsif ($has_cookies || $self->no_cookie_verify) {
-            return $self;
-
-        ### need to verify cookies are set-able
-        } elsif ($is_form) {
-            $form->{$self->key_verify} = $self->server_time;
-            my $query = $self->cgix->make_form($form);
-            my $url   = $self->script_name . $self->path_info . ($query ? "?$query" : "");
-
-            $self->location_bounce($url);
-            eval { die "Success login - bouncing to test cookie" };
-            return;
-        }
+        return $self->handle_success({is_form => $is_form});
     }
 
-    ### make sure the cookie is gone
-    $self->delete_cookie({key => $key_c}) if $cookies->{$key_c};
+    return $self->handle_failure({had_form_data => $had_form_data});
+}
 
-    ### nothing found - see if they have cookies
+sub handle_success {
+    my $self = shift;
+    my $args = shift || {};
+    if (my $meth = $self->{'handle_success'}) {
+        return $meth->($self, $args);
+    }
+    my $form = $self->form;
+
+    ### bounce to redirect
+    if (my $redirect = $form->{ $self->key_redirect }) {
+        $self->location_bounce($redirect);
+        eval { die "Success login - bouncing to redirect" };
+        return;
+
+    ### if they have cookies we are done
+    } elsif (scalar(keys %{$self->cookies}) || $self->no_cookie_verify) {
+        return $self;
+
+    ### need to verify cookies are set-able
+    } elsif ($args->{'is_form'}) {
+        $form->{$self->key_verify} = $self->server_time;
+        my $url = $self->script_name . $self->path_info . "?". $self->cgix->make_form($form);
+
+        $self->location_bounce($url);
+        eval { die "Success login - bouncing to test cookie" };
+        return;
+    }
+}
+
+sub handle_failure {
+    my $self = shift;
+    my $args = shift || {};
+    if (my $meth = $self->{'handle_failure'}) {
+        return $meth->($self, $args);
+    }
+    my $form = $self->form;
+
+    ### make sure the cookie is gone
+    my $key_c = $self->key_cookie;
+    $self->delete_cookie({key => $key_c}) if $self->cookies->{$key_c};
+
+    ### no valid login and we are checking for cookies - see if they have cookies
     if (my $value = delete $form->{$self->key_verify}) {
         if (abs(time() - $value) < 15) {
             $self->no_cookies_print;
@@ -135,12 +166,8 @@ sub get_valid_auth {
 
     ### oh - you're still here - well then - ask for login credentials
     my $key_r = $self->key_redirect;
-    if (! $form->{$key_r}) {
-        my $query = $self->cgix->make_form($form);
-        $form->{$key_r} = $self->script_name . $self->path_info . ($query ? "?$query" : "");
-    }
-
-    $form->{'had_form_data'} = $had_form_info;
+    local $form->{$key_r} = $form->{$key_r} || $self->script_name . $self->path_info . (scalar(keys %$form) ? "?".$self->cgix->make_form($form) : '');
+    local $form->{'had_form_data'} = $args->{'had_form_data'} || 0;
     $self->login_print;
     my $data = $self->last_auth_data;
     eval { die defined($data) ? $data : "Requesting credentials" };
@@ -149,6 +176,16 @@ sub get_valid_auth {
     sleep($self->failed_sleep) if defined($data) && $data->error ne 'Login expired' && $self->failed_sleep;
 
     return;
+}
+
+sub check_valid_auth {
+    my $self = shift;
+    $self = $self->new(@_) if ! ref $self;
+
+    local $self->{'location_bounce'} = sub {}; # but don't bounce to other locations
+    local $self->{'login_print'}     = sub {}; # check only - don't login if not
+    local $self->{'set_cookie'}      = $self->{'no_set_cookie'} ? sub {} : $self->{'set_cookie'};
+    return $self->get_valid_auth;
 }
 
 ###----------------------------------------------------------------###
@@ -226,6 +263,7 @@ sub form_name        { shift->{'form_name'}        ||= 'cea_form'     }
 sub key_verify       { shift->{'key_verify'}       ||= 'cea_verify'   }
 sub key_redirect     { shift->{'key_redirect'}     ||= 'cea_redirect' }
 sub key_payload      { shift->{'key_payload'}      ||= 'cea_payload'  }
+sub key_loggedout    { shift->{'key_loggedout'}    ||= 'loggedout'    }
 sub secure_hash_keys { shift->{'secure_hash_keys'} ||= []             }
 #perl -e 'use Digest::MD5 qw(md5_hex); open(my $fh, "<", "/dev/urandom"); for (1..10) { read $fh, my $t, 5_000_000; print md5_hex($t),"\n"}'
 sub no_cookie_verify { shift->{'no_cookie_verify'} ||= 0              }
@@ -237,8 +275,9 @@ sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined 
 sub failed_sleep     { shift->{'failed_sleep'}     ||= 0              }
 
 sub logout_redirect {
-    my $self = shift;
-    return $self->{'logout_redirect'} || $self->script_name ."?loggedout=1";
+    my ($self, $user) = @_;
+    my $form = $self->cgix->make_form({$self->key_loggedout => 1, (length($user) ? ($self->key_user => $user) : ()) });
+    return $self->{'logout_redirect'} || $self->script_name ."?$form";
 }
 
 sub js_uri_path {
@@ -295,8 +334,7 @@ sub template_include_path { shift->{'template_include_path'} || '' }
 sub login_hash_common {
     my $self = shift;
     my $form = $self->form;
-    my $data = $self->last_auth_data;
-    $data = {} if ! defined $data;
+    my $data = $self->last_auth_data || {};
 
     return {
         %$form,
@@ -333,7 +371,7 @@ sub verify_token {
     my $self  = shift;
     my $args  = shift;
     my $token = delete $args->{'token'} || die "Missing token";
-    my $data  = $self->{'_last_auth_data'} = $self->new_auth_data({token => $token, %$args});
+    my $data  = $self->new_auth_data({token => $token, %$args});
     my $meth;
 
     ### make sure the token is parsed to usable data
@@ -412,7 +450,7 @@ sub verify_token {
 
 sub new_auth_data {
     my $self = shift;
-    return CGI::Ex::Auth::Data->new(@_);
+    return $self->{'_last_auth_data'} = CGI::Ex::Auth::Data->new(@_);
 }
 
 sub parse_token {
@@ -712,6 +750,9 @@ sub text_submit { my $self = shift; return defined($self->{'text_submit'}) ? $se
 sub login_script {
     return shift->{'login_script'} || q {
     [%~ IF ! use_plaintext %]
+    <form name="[% form_name %]_jspost" style="margin:0px" method="POST">
+    <input type="hidden" name="[% key_user %]"><input type="hidden" name="[% key_redirect %]">
+    </form>
     <script src="[% md5_js_path %]"></script>
     <script>
     if (document.md5_hex) document.[% form_name %].onsubmit = function () {
@@ -721,13 +762,15 @@ sub login_script {
       var t = f.[% key_time %].value;
       var s = f.[% key_save %] && f.[% key_save %].checked ? -1 : f.[% key_expires_min %].value;
       var l = f.[% key_payload %].value;
-      var r = f.[% key_redirect %].value;
 
       var str = u+'/'+t+'/'+s+'/'+l;
       var sum = document.md5_hex(str +'/' + document.md5_hex(p));
-      var loc = f.action + '?[% key_user %]='+escape(str +'/'+ sum)+'&[% key_redirect %]='+escape(r);
 
-      location.href = loc;
+      var f2 = document.[% form_name %]_jspost;
+      f2.[% key_user %].value = str +'/'+ sum;
+      f2.[% key_redirect %].value = f.[% key_redirect %].value;
+      f2.action = f.action;
+      f2.submit();
       return false;
     }
     </script>
