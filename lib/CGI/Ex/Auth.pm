@@ -41,8 +41,6 @@ sub get_valid_auth {
     }
 
     my $form = $self->form;
-    use Debug;
-    debug $form;
 
     ### allow for logout
     if ($form->{$self->key_logout} && ! $self->{'_logout_looking_for_user'}) {
@@ -50,10 +48,19 @@ sub get_valid_auth {
         local $self->{'no_set_cookie'}    = 1;
         local $self->{'no_cookie_verify'} = 1;
         $self->check_valid_auth; # verify the logout so we can capture the username if possible
-        my $user = $self->last_auth_data ? $self->last_auth_data->{'user'} : undef;
-        $self->location_bounce($self->logout_redirect(defined($user) ? $user : ''));
-        eval { die "Logging out" };
-        return;
+
+        if ($self->bounce_on_logout) {
+            my $key_c = $self->key_cookie;
+            $self->delete_cookie({key => $key_c}) if $self->cookies->{$key_c};
+            my $user = $self->last_auth_data ? $self->last_auth_data->{'user'} : undef;
+            $self->location_bounce($self->logout_redirect(defined($user) ? $user : ''));
+            eval { die "Logging out" };
+            return;
+        } else {
+            $self->form({});
+            $self->handle_failure;
+            return;
+        }
     }
 
     ### look first in form, then in cookies for valid tokens
@@ -198,19 +205,19 @@ sub server_time { time }
 
 sub cgix {
     my $self = shift;
-    $self->{'cgix'} = shift if $#_ != -1;
+    $self->{'cgix'} = shift if @_ == 1;
     return $self->{'cgix'} ||= CGI::Ex->new;
 }
 
 sub form {
     my $self = shift;
-    $self->{'form'} = shift if $#_ != -1;
+    $self->{'form'} = shift if @_ == 1;
     return $self->{'form'} ||= $self->cgix->get_form;
 }
 
 sub cookies {
     my $self = shift;
-    $self->{'cookies'} = shift if $#_ != -1;
+    $self->{'cookies'} = shift if @_ == 1;
     return $self->{'cookies'} ||= $self->cgix->get_cookies;
 }
 
@@ -264,6 +271,7 @@ sub key_verify       { shift->{'key_verify'}       ||= 'cea_verify'   }
 sub key_redirect     { shift->{'key_redirect'}     ||= 'cea_redirect' }
 sub key_payload      { shift->{'key_payload'}      ||= 'cea_payload'  }
 sub key_loggedout    { shift->{'key_loggedout'}    ||= 'loggedout'    }
+sub bounce_on_logout { shift->{'bounce_on_logout'} ||= 0              }
 sub secure_hash_keys { shift->{'secure_hash_keys'} ||= []             }
 #perl -e 'use Digest::MD5 qw(md5_hex); open(my $fh, "<", "/dev/urandom"); for (1..10) { read $fh, my $t, 5_000_000; print md5_hex($t),"\n"}'
 sub no_cookie_verify { shift->{'no_cookie_verify'} ||= 0              }
@@ -709,7 +717,7 @@ sub login_form {
     return shift->{'login_form'} || q {
     <div class="login_chunk">
     <span class="login_error">[% error %]</span>
-    <form class="login_form" name="[% form_name %]" method="post" action="[% script_name %][% path_info %]">
+    <form class="login_form" name="[% form_name %]" method="POST" action="[% script_name %][% path_info %]">
     <input type="hidden" name="[% key_redirect %]" value="">
     <input type="hidden" name="[% key_payload %]" value="">
     <input type="hidden" name="[% key_time %]" value="">
@@ -913,11 +921,15 @@ defined separately.
     key_time
     key_user
     key_verify
+    key_loggedout
+    bounce_on_logout
     login_footer
     login_form
     login_header
     login_script
     login_template
+    handle_success
+    handle_failure
     no_cookie_verify
     path_info
     script_name
@@ -1045,6 +1057,12 @@ new object using the passed arguments, and then run get_valid_auth.
 
   CGI::Ex::Auth->get_valid_auth({key_user => 'my_user'}) || exit;
 
+=item C<check_valid_auth>
+
+Runs get_valid_auth with login_print and location_bounce set to do nothing.
+This allows for obtaining login data without forcing an html login
+page to appear.
+
 =item C<login_print>
 
 Called if login errored.  Defaults to printing a very basic (but
@@ -1083,6 +1101,11 @@ Passed to the template swapped during login_print.
     text_save          # $self->text_save        # template text Save Password ?
     text_submit        # $self->text_submit      # template text Login
     hide_save          # $self->hide_save        # 0
+
+=item C<key_loggedout>
+
+Key to bounce with in the form during a logout should bounce_on_logout return true.
+Default is "loggedout".
 
 =item C<key_logout>
 
