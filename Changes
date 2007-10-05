@@ -1,10 +1,12 @@
 2.19
-     2007-10-01
+     2007-10-05
         * Make verify_token more granualar in Auth
         * Added parse_token method and/or property
         * Added verify_password method and/or property
         * Added verify_payload method and/or property
         * Fix filename based conf reading in App
+        * Added check_valid_auth, handle_success, handle_failure
+           key_loggedout, bounce_on_logout to Auth.
 
 2.18
      2007-07-24
