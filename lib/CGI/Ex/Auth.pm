@@ -1102,6 +1102,11 @@ Passed to the template swapped during login_print.
     text_submit        # $self->text_submit      # template text Login
     hide_save          # $self->hide_save        # 0
 
+=item C<bounce_on_logout>
+
+Default 0.  If true, will location bounce to script returned by logout_redirect
+passing the key key_logout.  If false, will simply show the login screen.
+
 =item C<key_loggedout>
 
 Key to bounce with in the form during a logout should bounce_on_logout return true.
