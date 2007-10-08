@@ -1,3 +1,10 @@
+2.20
+     2007-10-08
+        * Added success_hook and failure_hook to Auth (not documented)
+        * Fix precedence issue in conf reading in App (thanks to Krassimir Berov)
+        * Fix bug in validate.js with LOCAL_PART matching (thanks to Thomas den Braber)
+        * Add support for clear_on_error to validate.js (thanks to Thomas den Braber)
+
 2.19
      2007-10-05
         * Make verify_token more granualar in Auth
