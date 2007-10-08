@@ -13,7 +13,7 @@ BEGIN {
     eval { use Scalar::Util };
 }
 
-our $VERSION = '2.19';
+our $VERSION = '2.20';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
