@@ -138,6 +138,7 @@ sub handle_success {
 
     ### if they have cookies we are done
     } elsif (scalar(keys %{$self->cookies}) || $self->no_cookie_verify) {
+        $self->success_hook;
         return $self;
 
     ### need to verify cookies are set-able
@@ -149,6 +150,14 @@ sub handle_success {
         eval { die "Success login - bouncing to test cookie" };
         return;
     }
+}
+
+sub success_hook {
+    my $self = shift;
+    if (my $meth = $self->{'success_hook'}) {
+        return $meth->($self);
+    }
+    return;
 }
 
 sub handle_failure {
@@ -181,7 +190,16 @@ sub handle_failure {
 
     ### allow for a sleep to help prevent brute force
     sleep($self->failed_sleep) if defined($data) && $data->error ne 'Login expired' && $self->failed_sleep;
+    $self->failure_hook;
 
+    return;
+}
+
+sub failure_hook {
+    my $self = shift;
+    if (my $meth = $self->{'failure_hook'}) {
+        return $meth->($self);
+    }
     return;
 }
 
@@ -930,6 +948,8 @@ defined separately.
     login_template
     handle_success
     handle_failure
+    success_hook
+    failure_hook
     no_cookie_verify
     path_info
     script_name
