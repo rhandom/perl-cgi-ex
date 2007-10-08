@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.18';
+$VERSION = '2.19';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
@@ -1739,6 +1739,11 @@ an enum, equals, match, compare, custom, or type check.  If the
 field has been checked and there are no errors - the field is "untainted."
 
 This is for use in conjunction with perl's -T switch.
+
+=item C<clear_on_error>
+
+Clears the form field should a validation error occur.  Only supported
+on the Javascript side (no affect on the server side).
 
 =back
 
