@@ -49,6 +49,8 @@ sub get_valid_auth {
         local $self->{'no_cookie_verify'} = 1;
         $self->check_valid_auth; # verify the logout so we can capture the username if possible
 
+        $self->logout_hook;
+
         if ($self->bounce_on_logout) {
             my $key_c = $self->key_cookie;
             $self->delete_cookie({key => $key_c}) if $self->cookies->{$key_c};
@@ -155,6 +157,14 @@ sub handle_success {
 sub success_hook {
     my $self = shift;
     if (my $meth = $self->{'success_hook'}) {
+        return $meth->($self);
+    }
+    return;
+}
+
+sub logout_hook {
+    my $self = shift;
+    if (my $meth = $self->{'logout_hook'}) {
         return $meth->($self);
     }
     return;
@@ -950,6 +960,7 @@ defined separately.
     handle_failure
     success_hook
     failure_hook
+    logout_hook
     no_cookie_verify
     path_info
     script_name
