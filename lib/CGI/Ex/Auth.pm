@@ -90,7 +90,6 @@ sub get_valid_auth {
                     user        => delete $hash->{$key},
                     test_pass   => delete $hash->{ $self->key_pass },
                     expires_min => delete($hash->{ $self->key_save }) ? -1 : delete($hash->{ $self->key_expires_min }) || $self->expires_min,
-                    payload     => delete $hash->{ $self->key_payload } || '',
                 },
                 from => 'form',
             }) || next;
@@ -297,7 +296,6 @@ sub key_expires_min  { shift->{'key_expires_min'}  ||= 'cea_expires_min' }
 sub form_name        { shift->{'form_name'}        ||= 'cea_form'     }
 sub key_verify       { shift->{'key_verify'}       ||= 'cea_verify'   }
 sub key_redirect     { shift->{'key_redirect'}     ||= 'cea_redirect' }
-sub key_payload      { shift->{'key_payload'}      ||= 'cea_payload'  }
 sub key_loggedout    { shift->{'key_loggedout'}    ||= 'loggedout'    }
 sub bounce_on_logout { shift->{'bounce_on_logout'} ||= 0              }
 sub secure_hash_keys { shift->{'secure_hash_keys'} ||= []             }
@@ -381,7 +379,6 @@ sub login_hash_common {
         key_time           => $self->key_time,
         key_save           => $self->key_save,
         key_expires_min    => $self->key_expires_min,
-        key_payload        => $self->key_payload,
         key_redirect       => $self->key_redirect,
         form_name          => $self->form_name,
         script_name        => $self->script_name,
@@ -391,7 +388,6 @@ sub login_hash_common {
         $self->key_user    => $data->{'user'} || '',
         $self->key_pass    => '', # don't allow for this to get filled into the form
         $self->key_time    => $self->server_time,
-        $self->key_payload => $self->generate_payload({%$data, login_form => 1}),
         $self->key_expires_min => $self->expires_min,
         text_user          => $self->text_user,
         text_pass          => $self->text_pass,
@@ -747,7 +743,6 @@ sub login_form {
     <span class="login_error">[% error %]</span>
     <form class="login_form" name="[% form_name %]" method="POST" action="[% script_name %][% path_info %]">
     <input type="hidden" name="[% key_redirect %]" value="">
-    <input type="hidden" name="[% key_payload %]" value="">
     <input type="hidden" name="[% key_time %]" value="">
     <input type="hidden" name="[% key_expires_min %]" value="">
     <table class="login_table">
@@ -797,9 +792,8 @@ sub login_script {
       var p = f.[% key_pass %].value;
       var t = f.[% key_time %].value;
       var s = f.[% key_save %] && f.[% key_save %].checked ? -1 : f.[% key_expires_min %].value;
-      var l = f.[% key_payload %].value;
 
-      var str = u+'/'+t+'/'+s+'/'+l;
+      var str = u+'/'+t+'/'+s+'/'+'';
       var sum = document.md5_hex(str +'/' + document.md5_hex(p));
 
       var f2 = document.[% form_name %]_jspost;
@@ -943,7 +937,6 @@ defined separately.
     key_expires_min
     key_logout
     key_pass
-    key_payload
     key_redirect
     key_save
     key_time
@@ -1115,7 +1108,6 @@ Passed to the template swapped during login_print.
     key_pass           # $self->key_pass,        # the password fieldname
     key_time           # $self->key_time,        # the server time field name
     key_save           # $self->key_save,        # the save password checkbox field name
-    key_payload        # $self->key_payload,     # the payload fieldname
     key_redirect       # $self->key_redirect,    # the redirect fieldname
     form_name          # $self->form_name,       # the name of the form
     script_name        # $self->script_name,     # where the server will post back to
@@ -1125,7 +1117,6 @@ Passed to the template swapped during login_print.
     $self->key_user    # $data->{'user'},        # the username (if any)
     $self->key_pass    # '',                     # intentional blankout
     $self->key_time    # $self->server_time,     # the server's time
-    $self->key_payload # $data->{'payload'}      # the payload (if any)
     $self->key_expires_min # $self->expires_min  # how many minutes crams are valid
     text_user          # $self->text_user        # template text Username:
     text_pass          # $self->text_pass        # template text Password:
