@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION   = '2.20';
+    $VERSION   = '2.21';
     @EXPORT    = qw(form_fill);
     @EXPORT_OK = qw(fill form_fill html_escape get_tagval_by_key swap_tagval_by_key);
 };
