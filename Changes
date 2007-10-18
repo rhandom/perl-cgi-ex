@@ -1,3 +1,9 @@
+2.21
+        * Add logout_hook to Auth
+        * Remove key_payload
+        * Only accept payload from cram styles
+        * Added disable_simple_cram to enforce protecting server generated payloads
+
 2.20
      2007-10-08
         * Added success_hook and failure_hook to Auth (not documented)
