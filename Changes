@@ -1,3 +1,5 @@
+        * Allow for no errors with a username of "0"
+
 2.21
      2007-10-18
         * Add logout_hook to Auth
