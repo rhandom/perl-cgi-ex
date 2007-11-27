@@ -247,9 +247,9 @@ sub prepared_print {
     my $self = shift;
     my $step = shift;
 
+    my $hash_form = $self->run_hook('hash_form',   $step) || {};
     my $hash_base = $self->run_hook('hash_base',   $step) || {};
     my $hash_comm = $self->run_hook('hash_common', $step) || {};
-    my $hash_form = $self->run_hook('hash_form',   $step) || {};
     my $hash_fill = $self->run_hook('hash_fill',   $step) || {};
     my $hash_swap = $self->run_hook('hash_swap',   $step) || {};
     my $hash_errs = $self->run_hook('hash_errors', $step) || {};
@@ -650,7 +650,6 @@ sub step_by_path_index {
     my $i    = shift || 0;
     my $ref  = $self->path;
     return '' if $i < 0;
-#    return $self->default_step if $i > $#$ref;
     return $ref->[$i];
 }
 
