@@ -115,7 +115,7 @@ sub validate {
     foreach my $field (@field_keys) {
         die "Found nonhashref value for field $field" if ref($val_hash->{$field}) ne 'HASH';
         if (defined $val_hash->{$field}->{'field'}) {
-            push @$fields, $val_hash->{$field}->{'field'};
+            push @$fields, $val_hash->{$field};
         } else {
             push @$fields, { %{$val_hash->{$field}}, field => $field };
         }
