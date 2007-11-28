@@ -1,5 +1,6 @@
         * Allow for no errors with a username of "0"
         * Run hash_form hook before others so dump_history shows it in order of use
+        * Fix Validate error with passing in the field name
 
 2.21
      2007-10-18
