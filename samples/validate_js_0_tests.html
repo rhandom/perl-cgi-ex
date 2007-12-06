@@ -1,0 +1,42 @@
+<html>
+<head>
+<title>CGI/Ex/validate.js tests</title>
+<script src="../lib/CGI/Ex/validate.js"></script>
+</style>
+</head>
+<body>
+<h1>CGI/Ex/validate.js tests</h1>
+<div style="background:#eee">
+Test Form
+<form name=the_form>
+<input type=text     size=3 name=text1>
+<input type=password size=3 name=password1>
+<input type=hidden   name=hidden1>
+<select name=select1><option>foo</option></select>
+<select name=select2><option value="foo">foo</option></select>
+<select name=select3><option value="foo">foo</option><option value="bar">bar</option></select>
+<select name=select4 multiple=multiple><option value="foo">foo</option><option value="bar">bar</option></select>
+<textarea name=textarea1 rows=1 cols=3></textarea>
+<input type=checkbox name=checkbox1 value=1>
+<input type=checkbox name=checkbox2 value=1><input type=checkbox name=checkbox2 value=2>
+<input type=radio name=radio1 value=1>
+<input type=radio name=radio2 value=1><input type=radio name=radio2 value=2>
+</form>
+</div>
+<div id="output"></div>
+</body>
+</html>
+<script>
+var ok_i = 0;
+function ok (is_ok, str) {
+  str = ""+ (is_ok ? "ok" : "not ok") +" "+ (++ok_i) +" - "+ str;
+  str = "<span style=color:"+(is_ok ? "green" : "red")+">"+ str +"</span><br>\n";
+  var el = document.getElementById("output")
+  el.innerHTML = str + el.innerHTML;
+}
+
+ok(document.validate, "Found document.validate function");
+ok(vob_get_form_value, "Found vob_get_form_value function ");
+
+
+</script>
