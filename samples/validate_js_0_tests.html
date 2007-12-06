@@ -10,6 +10,8 @@
 Test Form
 <form name=the_form>
 <input type=text     size=3 name=text1>
+<input type=text     size=3 name=text2>
+<input type=text     size=3 name=text2>
 <input type=password size=3 name=password1>
 <input type=hidden   name=hidden1>
 <select name=select1><option>foo</option></select>
@@ -37,6 +39,19 @@ function ok (is_ok, str) {
 
 ok(document.validate, "Found document.validate function");
 ok(vob_get_form_value, "Found vob_get_form_value function ");
+
+var form = document.the_form;
+ok(form, "Got the form");
+var _form_value = function (name) { return vob_get_form_value(form[name]) };
+
+form.text1.value = "foo";
+ok(_form_value("text1") == "foo", "We can set and get values from the form");
+
+//alert(_form_value(form.text2));
+//form.text2[0].value = "foo";
+//form.text2[1].value = "bar";
+//ok(1, "We can set and get values for duplicate named items");
+
 
 
 </script>
