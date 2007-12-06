@@ -31,7 +31,7 @@ if (! document.validate) {
 <tr>
   <td valign=top>Username:</td>
   <td>
-    <input type=text size=20 name=username><br>
+    <table border=0 cellspacing=0 cellpadding=0><tr><td><input type=text size=20 name=username></td><td> Try hitting enter rather than tab.</td></tr></table>
     <span id=username_error class=error></span>
   </td>
 </tr>
@@ -203,3 +203,4 @@ if (document.check_form) document.check_form('a');
 </script>
 
 </html>
+<script>window.onload = function () { document.a.username.focus() }</script>
