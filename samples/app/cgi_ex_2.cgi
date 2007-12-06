@@ -118,7 +118,7 @@ sub _success_file_print {
     <body>
     <h1 style='color:green'>Success</h1>
     <br>
-    print "I can now continue on with the rest of my script!";
+    I can now continue on with the rest of my script!
     </body>
     </html>
 };
