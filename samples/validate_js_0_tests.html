@@ -11,7 +11,8 @@ Test Form
 <form name=the_form>
 <input type=text     size=3 name=text1>
 <input type=text     size=3 name=text2>
-<input type=text     size=3 name=text2>
+<input type=text     size=3 name=text3>
+<input type=text     size=3 name=text3>
 <input type=password size=3 name=password1>
 <input type=hidden   name=hidden1>
 <select name=select1><option>foo</option></select>
@@ -37,21 +38,360 @@ function ok (is_ok, str) {
   el.innerHTML = str + el.innerHTML;
 }
 
-ok(document.validate, "Found document.validate function");
-ok(vob_get_form_value, "Found vob_get_form_value function ");
+function validate (vars, vals) {
+  var f = document.the_form;
+  f.text1.value = vars.text1 || '';
+  f.text2.value = vars.text2 || '';
 
-var form = document.the_form;
-ok(form, "Got the form");
-var _form_value = function (name) { return vob_get_form_value(form[name]) };
+  for (var j = 0; j < f.checkbox2.length; j++)
+     f.checkbox2[j].checked = false;
+  if (vars.checkbox2)
+    for (var i = 0; i < vars.checkbox2.length; i++)
+      for (var j = 0; j < f.checkbox2.length; j++)
+        if (vars.checkbox2[i] == f.checkbox2[j].value) f.checkbox2[j].checked = true;
 
-form.text1.value = "foo";
-ok(_form_value("text1") == "foo", "We can set and get values from the form");
+  var val_obj = new Validate();
+  var err_obj = val_obj.validate(f, vals);
+  if (err_obj) return err_obj.as_hash();
+  return false;
+}
 
-//alert(_form_value(form.text2));
-//form.text2[0].value = "foo";
-//form.text2[1].value = "bar";
-//ok(1, "We can set and get values for duplicate named items");
+function run_tests () {
+  ok(document.validate, "Found document.validate function");
+  ok(vob_get_form_value, "Found vob_get_form_value function ");
 
+  var form = document.the_form;
+  ok(form, "Got the form");
+  var _form_value = function (name) { return vob_get_form_value(form[name]) };
 
+  form.text1.value = "foo";
+  ok(_form_value("text1") == "foo", "We can set and get values from the form");
 
+  // required
+  var e = validate({}, {text1:{required:1}});
+  ok(e, "Got required error");
+  ok(e.text1_error == 'The field text1 is required.', "Got the right required error");
+
+  e = validate({text1:1}, {text1:{required:1}});
+  ok(! e, "Got no required error");
+
+  // validate_if
+  e = validate({}, {text1:{required:1, validate_if:'text2'}});
+  ok(! e, "Got no error on validate_if");
+  e = validate({text2:1}, {text1:{required:1, validate_if:'text2'}});
+  ok(e, "Got validate_if error");
+  ok(e.text1_error == "The field text1 is required.", "Got the right required error");
+
+  // required_if
+  e = validate({}, {text1:{required_if:'text2'}});
+  ok(! e, "No required_if error");
+  e = validate({text2:1}, {text1:{required_if:'text2'}});
+  ok(e, "Required_if error");
+  ok(e.text1_error == "The field text1 is required.", "Got the right required error");
+
+  // max_values
+  e = validate({checkbox2:[1,2]}, {checkbox2:{required:1}});
+  ok(e, "Got max_values error "+e.checkbox2_error);
+  ok(e.checkbox2_error == "The field checkbox2 had more than 1 value.", "Got the right max_values error");
+  e = validate({checkbox2:[1]}, {checkbox2:{max_values:2}});
+  ok(! e, "No max_values error");
+  e = validate({checkbox2:[1,2]}, {checkbox2:{max_values:2}});
+  ok(! e, "No max_values error");
+
+  // min_values
+  e = validate({checkbox2:[1]}, {checkbox2:{min_values:2}});
+  ok(e, "Got min_values error");
+  ok(e.checkbox2_error == "The field checkbox2 had less than 2 values.", "Got the right min_values error");
+  e = validate({checkbox2:[1,2]}, {checkbox2:{min_values:2, max_values:10}});
+  ok(! e, "No min_values error");
+
+  // enum
+  var v = {text1:{enum:[1, 2, 3]}, text2:{enum:"1 || 2||3"}};
+  e = validate({}, v);
+  ok(e, "Got enum error");
+  ok(e.text1_error == "The field text1 is not in the given list.", "Got the right enum error");
+  e = validate({text1:1, text2:1}, v);
+  ok(! e, "No enum error");
+  e = validate({text1:1, text2:2}, v);
+  ok(! e, "No enum error");
+  e = validate({text1:1, text2:4}, v);
+  ok(e, "Got enum error");
+
+  //# equals
+  //v = {text1:{equals:'text2'}};
+  //e = validate({}, v);
+  //ok(! e);
+  //
+  //e = validate({text1:1}, v);
+  //ok(e);
+  //
+  //e = validate({text2:1}, v);
+  //ok(e);
+  //
+  //e = validate({text1:1, text2:2}, v);
+  //ok(e);
+  //
+  //e = validate({text1:1, text2:1}, v);
+  //ok(! e);
+  //
+  //v = {text1:{equals:'"text2"'}};
+  //e = validate({text1:1, text2:1}, v);
+  //ok(e);
+  //
+  //e = validate({text1:'text2', text2:1}, v);
+  //ok(! e);
+  //
+  //### min_len
+  //v = {text1:{min_len:10}};
+  //e = validate({}, v);
+  //ok(e);
+  //
+  //e = validate({text1:""}, v);
+  //ok(e);
+  //
+  //e = validate({text1:"123456789"}, v);
+  //ok(e);
+  //
+  //e = validate({text1:"1234567890"}, v);
+  //ok(! e);
+  //
+  //### max_len
+  //v = {text1:{max_len:10}};
+  //e = validate({}, v);
+  //ok(! e);
+  //
+  //e = validate({text1:""}, v);
+  //ok(! e);
+  //
+  //e = validate({text1:"1234567890"}, v);
+  //ok(! e);
+  //
+  //e = validate({text1:"12345678901"}, v);
+  //ok(e);
+  //
+  //### match
+  //v = {text1:{match:qr/^\w+$/}};
+  //e = validate({text1:"abc"}, v);
+  //ok(! e);
+  //
+  //e = validate({text1:"abc."}, v);
+  //ok(e);
+  //
+  //v = {text1:{match:[qr/^\w+$/, qr/^[a-z]+$/]}};
+  //e = validate({text1:"abc"}, v);
+  //ok(! e);
+  //
+  //e = validate({text1:"abc1"}, v);
+  //ok(e);
+  //
+  //v = {text1:{match:'m/^\w+$/'}};
+  //e = validate({text1:"abc"}, v);
+  //ok(! e);
+  //
+  //e = validate({text1:"abc."}, v);
+  //ok(e);
+  //
+  //v = {text1:{match:'m/^\w+$/ || m/^[a-z]+$/'}};
+  //e = validate({text1:"abc"}, v);
+  //ok(! e);
+  //
+  //e = validate({text1:"abc1"}, v);
+  //ok(e);
+  //
+  //v = {text1:{match:'! m/^\w+$/'}};
+  //e = validate({text1:"abc"}, v);
+  //ok(e);
+  //
+  //e = validate({text1:"abc."}, v);
+  //ok(! e);
+  //
+  //v = {text1:{match:'m/^\w+$/'}};
+  //e = validate({}, v);
+  //ok(e);
+  //
+  //v = {text1:{match:'! m/^\w+$/'}};
+  //e = validate({}, v);
+  //ok(! e);
+  //
+  //### compare
+  //v = {text1:{compare:'> 0'}};
+  //e = validate({}, v);
+  //ok(e);
+  //v = {text1:{compare:'== 0'}};
+  //e = validate({}, v);
+  //ok(! e);
+  //v = {text1:{compare:'< 0'}};
+  //e = validate({}, v);
+  //ok(e);
+  //
+  //v = {text1:{compare:'> 10'}};
+  //e = validate({text1:11}, v);
+  //ok(! e);
+  //e = validate({text1:10}, v);
+  //ok(e);
+  //
+  //v = {text1:{compare:'== 10'}};
+  //e = validate({text1:11}, v);
+  //ok(e);
+  //e = validate({text1:10}, v);
+  //ok(! e);
+  //
+  //v = {text1:{compare:'< 10'}};
+  //e = validate({text1:9}, v);
+  //ok(! e);
+  //e = validate({text1:10}, v);
+  //ok(e);
+  //
+  //v = {text1:{compare:'>= 10'}};
+  //e = validate({text1:10}, v);
+  //ok(! e);
+  //e = validate({text1:9}, v);
+  //ok(e);
+  //
+  //v = {text1:{compare:'!= 10'}};
+  //e = validate({text1:10}, v);
+  //ok(e);
+  //e = validate({text1:9}, v);
+  //ok(! e);
+  //
+  //v = {text1:{compare:'<= 10'}};
+  //e = validate({text1:11}, v);
+  //ok(e);
+  //e = validate({text1:10}, v);
+  //ok(! e);
+  //
+  //
+  //v = {text1:{compare:'gt ""'}};
+  //e = validate({}, v);
+  //ok(e);
+  //v = {text1:{compare:'eq ""'}};
+  //e = validate({}, v);
+  //ok(! e);
+  //v = {text1:{compare:'lt ""'}};
+  //e = validate({}, v);
+  //ok(e); # 68
+  //
+  //v = {text1:{compare:'gt "c"'}};
+  //e = validate({text1:'d'}, v);
+  //ok(! e);
+  //e = validate({text1:'c'}, v);
+  //ok(e);
+  //
+  //v = {text1:{compare:'eq c'}};
+  //e = validate({text1:'d'}, v);
+  //ok(e);
+  //e = validate({text1:'c'}, v);
+  //ok(! e);
+  //
+  //v = {text1:{compare:'lt c'}};
+  //e = validate({text1:'b'}, v);
+  //ok(! e);
+  //e = validate({text1:'c'}, v);
+  //ok(e);
+  //
+  //v = {text1:{compare:'ge c'}};
+  //e = validate({text1:'c'}, v);
+  //ok(! e);
+  //e = validate({text1:'b'}, v);
+  //ok(e);
+  //
+  //v = {text1:{compare:'ne c'}};
+  //e = validate({text1:'c'}, v);
+  //ok(e);
+  //e = validate({text1:'b'}, v);
+  //ok(! e);
+  //
+  //v = {text1:{compare:'le c'}};
+  //e = validate({text1:'d'}, v);
+  //ok(e);
+  //e = validate({text1:'c'}, v);
+  //ok(! e); # 80
+  //
+  //### sql
+  //### can't really do anything here without prompting for a db connection
+  //
+  //### custom
+  //my $n = 1;
+  //v = {text1:{custom:$n}};
+  //e = validate({}, v);
+  //ok(! e);
+  //e = validate({text1:"str"}, v);
+  //ok(! e);
+  //
+  //$n = 0;
+  //v = {text1:{custom:$n}};
+  //e = validate({}, v);
+  //ok(e);
+  //e = validate({text1:"str"}, v);
+  //ok(e);
+  //
+  //$n = sub { my ($key, val) = @_; return defined(val) ? 1 : 0};
+  //v = {text1:{custom:$n}};
+  //e = validate({}, v);
+  //ok(e);
+  //e = validate({text1:"str"}, v);
+  //ok(! e);
+  //
+  //### type checks
+  //v = {text1:{type:'ip'}};
+  //e = validate({text1:'209.108.25'}, v);
+  //ok(e);
+  //e = validate({text1:'209.108.25.111'}, v);
+  //ok(! e);
+  //
+  //### min_in_set checks
+  //v = {text1:{min_in_set:'2 of text1 text2 baz', max_values:5}};
+  //e = validate({text1:1}, v);
+  //ok(e);
+  //e = validate({text1:1, text2:1}, v);
+  //ok(! e);
+  //e = validate({text1:1, text2:''}, v); # empty string doesn't count as value
+  //ok(e);
+  //e = validate({text1:1, text2:0}, v);
+  //ok(! e);
+  //e = validate({text1:[1, 2]}, v);
+  //ok(! e);
+  //e = validate({text1:[1]}, v);
+  //ok(e);
+  //v = {text1:{min_in_set:'2 text1 text2 baz', max_values:5}};
+  //e = validate({text1:1, text2:1}, v);
+  //ok(! e);
+  //
+  //### max_in_set checks
+  //v = {text1:{max_in_set:'2 of text1 text2 baz', max_values:5}};
+  //e = validate({text1:1}, v);
+  //ok(! e);
+  //e = validate({text1:1, text2:1}, v);
+  //ok(! e);
+  //e = validate({text1:1, text2:1, baz:1}, v);
+  //ok(e);
+  //e = validate({text1:[1, 2]}, v);
+  //ok(! e);
+  //e = validate({text1:[1, 2, 3]}, v);
+  //ok(e);
+  //
+  //### validate_if revisited (but negated - uses max_in_set)
+  //v = {text1:{required:1, validate_if:'! text2'}};
+  //e = validate({}, v);
+  //ok(e);
+  //
+  //e = validate({text2:1}, v);
+  //ok(! e);
+  //
+  //### default value
+  //my $f = {};
+  //v = {text1:{required:1, default:'hmmmm'}};
+  //e = validate($f, v);
+  //ok(! e);
+  //
+  //ok($f->{text1} && $f->{text1} eq 'hmmmm');
+
+  //alert(_form_value(form.text2));
+  //form.text2[0].value = "text1";
+  //form.text2[1].value = "text2";
+  //ok(1, "We can set and get values for duplicate named items");
+
+}
+
+window.onload = run_tests;
 </script>
