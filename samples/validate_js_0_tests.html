@@ -120,6 +120,8 @@ function run_tests () {
   ok(! e, "No enum error");
   e = validate({text1:1, text2:4}, v);
   ok(e, "Got enum error");
+  e = validate({text1:4, text2:1}, v);
+  ok(e, "Got enum error");
 
   // equals
   v = {text1:{equals:'text2'}};
@@ -304,8 +306,13 @@ function run_tests () {
   v = {text1:{type:'ip'}};
   e = validate({text1:'209.108.25'}, v);
   ok(e, "Got type ip error");
+  ok(e.text1_error == "The field text1 did not match type ip.", "Got the right type ip error");
   e = validate({text1:'209.108.25.111'}, v);
   ok(! e, "No type ip error");
+  v = {text1:{type:'email'}};
+  e = validate({text1:'foo.bar.com'}, v)
+  ok(e, "Got an email error");
+  ok(e.text1_error == "The field text1 did not match type email.", "Got the right type email error");
 
   // min_in_set checks
   v = {text1:{min_in_set:'2 of text1 text2 password1', max_values:5}};
@@ -339,7 +346,7 @@ function run_tests () {
   ok(! e, "Didn't get an error because default value was found");
   ok(document.the_form.text1.value == "hmmmm", "Default value got set in form");
 
-  // do_not_trim
+  // do_not_trim / case / replace
   e = validate({text1:" hey "}, {text1:{required:1}});
   ok(! e, "No error - just trimmed");
   ok(document.the_form.text1.value == "hey", "Got right trimmed value ("+document.the_form.text1.value+")");
@@ -349,13 +356,23 @@ function run_tests () {
   e = validate({text1:" "}, {text1:{required:1}});
   ok(e, "Got a required error because chars where trimmed");
   e = validate({text1:" "}, {text1:{required:1,do_not_trim:1}});
-  ok(! e, "No error because we didn't trim"+e.text1_error);
+  ok(! e, "No error because we didn't trim");
   e = validate({textarea1:"hey\n"}, {textarea1:{required:1,do_not_trim:1}});
   ok(! e, "No error - just trimmed");
   ok(document.the_form.textarea1.value == "hey\n", "Got right trimmed value ("+document.the_form.textarea1.value+")");
   e = validate({textarea1:"\they\n"}, {textarea1:{required:1,do_not_trim:1,trim_control_chars:1}});
   ok(! e, "No error - just trimmed");
   ok(document.the_form.textarea1.value == " hey", "Got right trimmed value ("+document.the_form.textarea1.value+")");
+  e = validate({textarea1:"hey"}, {textarea1:{to_upper_case:1}});
+  ok(! e, "No error - just upper cased");
+  ok(document.the_form.textarea1.value == "HEY", "Got right uppercase value");
+  e = validate({textarea1:"HEY"}, {textarea1:{to_lower_case:1}});
+  ok(! e, "No error - just lower cased");
+  ok(document.the_form.textarea1.value == "hey", "Got right lowercase value");
+
+  e = validate({textarea1:"wow"}, {textarea1:{replace:"s/w/W/g", replace2:"s/O/0/i"}});
+  ok(! e, "No error - just replaced");
+  ok(document.the_form.textarea1.value == "W0W", "Got right value ("+document.the_form.textarea1.value+")");
 
 
   //alert(_form_value(form.text2));
