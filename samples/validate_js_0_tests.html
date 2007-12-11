@@ -42,8 +42,10 @@ function ok (is_ok, str) {
 
 function validate (vars, vals) {
   var f = document.the_form;
-  f.text1.value = vars.text1 || '';
-  f.text2.value = vars.text2 || '';
+  f.text1.value     = typeof(vars.text1    ) != 'undefined' ? vars.text1     : '';
+  f.text2.value     = typeof(vars.text2    ) != 'undefined' ? vars.text2     : '';
+  f.textarea1.value = typeof(vars.textarea1) != 'undefined' ? vars.textarea1 : '';
+  f.password1.value = typeof(vars.password1) != 'undefined' ? vars.password1 : '';
 
   for (var j = 0; j < f.checkbox2.length; j++)
      f.checkbox2[j].checked = false;
@@ -306,51 +308,55 @@ function run_tests () {
   ok(! e, "No type ip error");
 
   // min_in_set checks
-  //v = {text1:{min_in_set:'2 of text1 text2 baz', max_values:5}};
-  //e = validate({text1:1}, v);
-  //ok(e);
-  //e = validate({text1:1, text2:1}, v);
-  //ok(! e);
-  //e = validate({text1:1, text2:''}, v); # empty string doesn't count as value
-  //ok(e);
-  //e = validate({text1:1, text2:0}, v);
-  //ok(! e);
-  //e = validate({text1:[1, 2]}, v);
-  //ok(! e);
-  //e = validate({text1:[1]}, v);
-  //ok(e);
-  //v = {text1:{min_in_set:'2 text1 text2 baz', max_values:5}};
-  //e = validate({text1:1, text2:1}, v);
-  //ok(! e);
-  //
-  //### max_in_set checks
-  //v = {text1:{max_in_set:'2 of text1 text2 baz', max_values:5}};
-  //e = validate({text1:1}, v);
-  //ok(! e);
-  //e = validate({text1:1, text2:1}, v);
-  //ok(! e);
-  //e = validate({text1:1, text2:1, baz:1}, v);
-  //ok(e);
-  //e = validate({text1:[1, 2]}, v);
-  //ok(! e);
-  //e = validate({text1:[1, 2, 3]}, v);
-  //ok(e);
-  //
-  //### validate_if revisited (but negated - uses max_in_set)
-  //v = {text1:{required:1, validate_if:'! text2'}};
-  //e = validate({}, v);
-  //ok(e);
-  //
-  //e = validate({text2:1}, v);
-  //ok(! e);
-  //
-  //### default value
-  //my $f = {};
-  //v = {text1:{required:1, default:'hmmmm'}};
-  //e = validate($f, v);
-  //ok(! e);
-  //
-  //ok($f->{text1} && $f->{text1} eq 'hmmmm');
+  v = {text1:{min_in_set:'2 of text1 text2 password1', max_values:5}};
+  e = validate({text1:1}, v);
+  ok(e, "Had a min_in_set error");
+  ok(e.text1_error == "Not enough fields were chosen from the set (2 of text1 text2 password1)", "Got the right error");
+  e = validate({text1:1, text2:1}, v);
+  ok(! e, "No min_in_set error");
+  e = validate({text1:1, text2:0}, v);
+  ok(! e, "No min_in_set error");
+
+  // max_in_set checks
+  v = {text1:{max_in_set:'2 of text1 text2 password1'}};
+  e = validate({text1:1}, v);
+  ok(! e, "No max_in_set error");
+  e = validate({text1:1, text2:1}, v);
+  ok(! e, "No max_in_set error");
+  e = validate({text1:1, text2:1, password1:1}, v);
+  ok(e, "Got a max_in_set error");
+
+  // validate_if revisited (but negated - uses max_in_set)
+  v = {text1:{required:1, validate_if:'! text2'}};
+  e = validate({}, v);
+  ok(e, "Got an error because validate_if failed");
+  e = validate({text2:1}, v);
+  ok(! e, "Didn't run required because of validate_if");
+
+  // default value
+  v = {text1:{required:1, default:'hmmmm'}};
+  e = validate({}, v);
+  ok(! e, "Didn't get an error because default value was found");
+  ok(document.the_form.text1.value == "hmmmm", "Default value got set in form");
+
+  // do_not_trim
+  e = validate({text1:" hey "}, {text1:{required:1}});
+  ok(! e, "No error - just trimmed");
+  ok(document.the_form.text1.value == "hey", "Got right trimmed value ("+document.the_form.text1.value+")");
+  e = validate({text1:"hey\n"}, {text1:{required:1}});
+  ok(! e, "No error - just trimmed");
+  ok(document.the_form.text1.value == "hey", "Got right trimmed value ("+document.the_form.text1.value+")");
+  e = validate({text1:" "}, {text1:{required:1}});
+  ok(e, "Got a required error because chars where trimmed");
+  e = validate({text1:" "}, {text1:{required:1,do_not_trim:1}});
+  ok(! e, "No error because we didn't trim"+e.text1_error);
+  e = validate({textarea1:"hey\n"}, {textarea1:{required:1,do_not_trim:1}});
+  ok(! e, "No error - just trimmed");
+  ok(document.the_form.textarea1.value == "hey\n", "Got right trimmed value ("+document.the_form.textarea1.value+")");
+  e = validate({textarea1:"\they\n"}, {textarea1:{required:1,do_not_trim:1,trim_control_chars:1}});
+  ok(! e, "No error - just trimmed");
+  ok(document.the_form.textarea1.value == " hey", "Got right trimmed value ("+document.the_form.textarea1.value+")");
+
 
   //alert(_form_value(form.text2));
   //form.text2[0].value = "text1";
