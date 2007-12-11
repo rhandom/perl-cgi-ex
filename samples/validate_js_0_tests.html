@@ -31,7 +31,9 @@ Test Form
 </html>
 <script>
 var ok_i = 0;
+var nok  = 0;
 function ok (is_ok, str) {
+  if (! is_ok) nok++;
   str = ""+ (is_ok ? "ok" : "not ok") +" "+ (++ok_i) +" - "+ str;
   str = "<span style=color:"+(is_ok ? "green" : "red")+">"+ str +"</span><br>\n";
   var el = document.getElementById("output")
@@ -117,229 +119,193 @@ function run_tests () {
   e = validate({text1:1, text2:4}, v);
   ok(e, "Got enum error");
 
-  //# equals
-  //v = {text1:{equals:'text2'}};
-  //e = validate({}, v);
-  //ok(! e);
-  //
-  //e = validate({text1:1}, v);
-  //ok(e);
-  //
-  //e = validate({text2:1}, v);
-  //ok(e);
-  //
-  //e = validate({text1:1, text2:2}, v);
-  //ok(e);
-  //
-  //e = validate({text1:1, text2:1}, v);
-  //ok(! e);
-  //
-  //v = {text1:{equals:'"text2"'}};
-  //e = validate({text1:1, text2:1}, v);
-  //ok(e);
-  //
-  //e = validate({text1:'text2', text2:1}, v);
-  //ok(! e);
-  //
-  //### min_len
-  //v = {text1:{min_len:10}};
-  //e = validate({}, v);
-  //ok(e);
-  //
-  //e = validate({text1:""}, v);
-  //ok(e);
-  //
-  //e = validate({text1:"123456789"}, v);
-  //ok(e);
-  //
-  //e = validate({text1:"1234567890"}, v);
-  //ok(! e);
-  //
-  //### max_len
-  //v = {text1:{max_len:10}};
-  //e = validate({}, v);
-  //ok(! e);
-  //
-  //e = validate({text1:""}, v);
-  //ok(! e);
-  //
-  //e = validate({text1:"1234567890"}, v);
-  //ok(! e);
-  //
-  //e = validate({text1:"12345678901"}, v);
-  //ok(e);
-  //
-  //### match
-  //v = {text1:{match:qr/^\w+$/}};
-  //e = validate({text1:"abc"}, v);
-  //ok(! e);
-  //
-  //e = validate({text1:"abc."}, v);
-  //ok(e);
-  //
-  //v = {text1:{match:[qr/^\w+$/, qr/^[a-z]+$/]}};
-  //e = validate({text1:"abc"}, v);
-  //ok(! e);
-  //
-  //e = validate({text1:"abc1"}, v);
-  //ok(e);
-  //
-  //v = {text1:{match:'m/^\w+$/'}};
-  //e = validate({text1:"abc"}, v);
-  //ok(! e);
-  //
-  //e = validate({text1:"abc."}, v);
-  //ok(e);
-  //
-  //v = {text1:{match:'m/^\w+$/ || m/^[a-z]+$/'}};
-  //e = validate({text1:"abc"}, v);
-  //ok(! e);
-  //
-  //e = validate({text1:"abc1"}, v);
-  //ok(e);
-  //
-  //v = {text1:{match:'! m/^\w+$/'}};
-  //e = validate({text1:"abc"}, v);
-  //ok(e);
-  //
-  //e = validate({text1:"abc."}, v);
-  //ok(! e);
-  //
-  //v = {text1:{match:'m/^\w+$/'}};
-  //e = validate({}, v);
-  //ok(e);
-  //
-  //v = {text1:{match:'! m/^\w+$/'}};
-  //e = validate({}, v);
-  //ok(! e);
-  //
-  //### compare
-  //v = {text1:{compare:'> 0'}};
-  //e = validate({}, v);
-  //ok(e);
-  //v = {text1:{compare:'== 0'}};
-  //e = validate({}, v);
-  //ok(! e);
-  //v = {text1:{compare:'< 0'}};
-  //e = validate({}, v);
-  //ok(e);
-  //
-  //v = {text1:{compare:'> 10'}};
-  //e = validate({text1:11}, v);
-  //ok(! e);
-  //e = validate({text1:10}, v);
-  //ok(e);
-  //
-  //v = {text1:{compare:'== 10'}};
-  //e = validate({text1:11}, v);
-  //ok(e);
-  //e = validate({text1:10}, v);
-  //ok(! e);
-  //
-  //v = {text1:{compare:'< 10'}};
-  //e = validate({text1:9}, v);
-  //ok(! e);
-  //e = validate({text1:10}, v);
-  //ok(e);
-  //
-  //v = {text1:{compare:'>= 10'}};
-  //e = validate({text1:10}, v);
-  //ok(! e);
-  //e = validate({text1:9}, v);
-  //ok(e);
-  //
-  //v = {text1:{compare:'!= 10'}};
-  //e = validate({text1:10}, v);
-  //ok(e);
-  //e = validate({text1:9}, v);
-  //ok(! e);
-  //
-  //v = {text1:{compare:'<= 10'}};
-  //e = validate({text1:11}, v);
-  //ok(e);
-  //e = validate({text1:10}, v);
-  //ok(! e);
-  //
-  //
-  //v = {text1:{compare:'gt ""'}};
-  //e = validate({}, v);
-  //ok(e);
-  //v = {text1:{compare:'eq ""'}};
-  //e = validate({}, v);
-  //ok(! e);
-  //v = {text1:{compare:'lt ""'}};
-  //e = validate({}, v);
-  //ok(e); # 68
-  //
-  //v = {text1:{compare:'gt "c"'}};
-  //e = validate({text1:'d'}, v);
-  //ok(! e);
-  //e = validate({text1:'c'}, v);
-  //ok(e);
-  //
-  //v = {text1:{compare:'eq c'}};
-  //e = validate({text1:'d'}, v);
-  //ok(e);
-  //e = validate({text1:'c'}, v);
-  //ok(! e);
-  //
-  //v = {text1:{compare:'lt c'}};
-  //e = validate({text1:'b'}, v);
-  //ok(! e);
-  //e = validate({text1:'c'}, v);
-  //ok(e);
-  //
-  //v = {text1:{compare:'ge c'}};
-  //e = validate({text1:'c'}, v);
-  //ok(! e);
-  //e = validate({text1:'b'}, v);
-  //ok(e);
-  //
-  //v = {text1:{compare:'ne c'}};
-  //e = validate({text1:'c'}, v);
-  //ok(e);
-  //e = validate({text1:'b'}, v);
-  //ok(! e);
-  //
-  //v = {text1:{compare:'le c'}};
-  //e = validate({text1:'d'}, v);
-  //ok(e);
-  //e = validate({text1:'c'}, v);
-  //ok(! e); # 80
-  //
-  //### sql
-  //### can't really do anything here without prompting for a db connection
-  //
-  //### custom
-  //my $n = 1;
-  //v = {text1:{custom:$n}};
-  //e = validate({}, v);
-  //ok(! e);
-  //e = validate({text1:"str"}, v);
-  //ok(! e);
-  //
-  //$n = 0;
-  //v = {text1:{custom:$n}};
-  //e = validate({}, v);
-  //ok(e);
-  //e = validate({text1:"str"}, v);
-  //ok(e);
-  //
-  //$n = sub { my ($key, val) = @_; return defined(val) ? 1 : 0};
-  //v = {text1:{custom:$n}};
-  //e = validate({}, v);
-  //ok(e);
-  //e = validate({text1:"str"}, v);
-  //ok(! e);
-  //
-  //### type checks
-  //v = {text1:{type:'ip'}};
-  //e = validate({text1:'209.108.25'}, v);
-  //ok(e);
-  //e = validate({text1:'209.108.25.111'}, v);
-  //ok(! e);
-  //
-  //### min_in_set checks
+  // equals
+  v = {text1:{equals:'text2'}};
+  e = validate({}, v);
+  ok(! e, 'No equals error');
+
+  e = validate({text1:1}, v);
+  ok(e, "Got an equals error");
+  ok(e.text1_error == "The field text1 did not equal the field text2.", "Got the right equals error");
+  e = validate({text1:1, text2:2}, v);
+  ok(e, "Got equals error");
+  e = validate({text1:1, text2:1}, v);
+  ok(! e, "No equals error");
+  v = {text1:{equals:'"text2"'}};
+  e = validate({text1:1, text2:1}, v);
+  ok(e, "Got equals error");
+  e = validate({text1:'text2', text2:1}, v);
+  ok(! e, "No equals error");
+
+  //min_len
+  v = {text1:{min_len:1}};
+  e = validate({}, v);
+  ok(e, "Got min_len error");
+  ok(e.text1_error == "The field text1 was less than 1 character.", "Got the right min_len error");
+  v = {text1:{min_len:10}};
+  e = validate({}, v);
+  ok(e, "Got min_len error");
+  ok(e.text1_error == "The field text1 was less than 10 characters.", "Got the right min_len error");
+  e = validate({text1:"123456789"}, v);
+  ok(e, "Got a min_len error");
+  e = validate({text1:"1234567890"}, v);
+  ok(! e, "No min_len error");
+
+  // max_len
+  v = {text1:{max_len:10}};
+  e = validate({}, v);
+  ok(! e, "No max_len error");
+  e = validate({text1:""}, v);
+  ok(! e, "No max_len error");
+  e = validate({text1:"1234567890"}, v);
+  ok(! e, "No max_len error");
+  e = validate({text1:"12345678901"}, v);
+  ok(e, "Got a max_len error");
+  ok(e.text1_error == "The field text1 was more than 10 characters.", "Got the right max_len error");
+  v = {text1:{max_len:1}};
+  e = validate({text1:"12345678901"}, v);
+  ok(e, "Got a max_len error");
+  ok(e.text1_error == "The field text1 was more than 1 character.", "Got the right max_len error");
+
+  // match
+  v = {text1:{match:'m/^\\w+$/'}};
+  e = validate({text1:"abc"}, v);
+  ok(! e, "No match error");
+  e = validate({text1:"abc."}, v);
+  ok(e, "Got a match error");
+  ok(e.text1_error == "The field text1 contains invalid characters.", "Got the right match error");
+
+  v = {text1:{match:['m/^\\w+$/', 'm/^[a-z]+$/']}};
+  e = validate({text1:"abc"}, v);
+  ok(! e, "No match error");
+  e = validate({text1:"abc1"}, v);
+  ok(e, "Got a match error");
+
+  v = {text1:{match:'m/^\\w+$/ || m/^[a-z]+$/'}};
+  e = validate({text1:"abc"}, v);
+  ok(! e, "No match error");
+  e = validate({text1:"abc1"}, v);
+  ok(e, "Got a match error");
+
+  v = {text1:{match:'! m/^\\w+$/'}};
+  e = validate({text1:"abc"}, v);
+  ok(e, "Got a match error");
+  e = validate({text1:"abc."}, v);
+  ok(! e, "No match error");
+
+  v = {text1:{match:'m/^\\w+$/'}};
+  e = validate({}, v);
+  ok(e, "Got an error "+e.text1_error);
+  v = {text1:{match:'! m/^\w+$/'}};
+  e = validate({}, v);
+  ok(! e, "No match error");
+
+  // compare
+  v = {text1:{compare:'> 0'}};
+  e = validate({}, v);
+  ok(e, "Got an error");
+  ok(e.text1_error == "The field text1 did not fit comparison.", "Got the right compare error");
+  v = {text1:{compare:'== 0'}};
+  e = validate({}, v);
+  ok(! e, "No compare error == 0");
+  v = {text1:{compare:'== 1'}};
+  e = validate({}, v);
+  ok(e, "Got compare error == 1");
+  v = {text1:{compare:'< 0'}};
+  e = validate({}, v);
+  ok(e, "Got compare error < 0");
+  v = {text1:{compare:'> 10'}};
+  e = validate({text1:11}, v);
+  ok(! e, "No compare error > 10");
+  e = validate({text1:10}, v);
+  ok(e, "Got compare error > 10");
+  v = {text1:{compare:'== 10'}};
+  e = validate({text1:11}, v);
+  ok(e, "Got compare error == 10");
+  e = validate({text1:10}, v);
+  ok(! e, "No compare error == 10");
+  v = {text1:{compare:'< 10'}};
+  e = validate({text1:9}, v);
+  ok(! e, "No compare error < 10");
+  e = validate({text1:10}, v);
+  ok(e, "Got compare error < 10");
+  v = {text1:{compare:'>= 10'}};
+  e = validate({text1:10}, v);
+  ok(! e, "No compare error >= 10");
+  e = validate({text1:9}, v);
+  ok(e, "Got compare error >= 10");
+  v = {text1:{compare:'!= 10'}};
+  e = validate({text1:10}, v);
+  ok(e, "Got compare error >= 10");
+  e = validate({text1:9}, v);
+  ok(! e, "No compare error >= 10");
+  v = {text1:{compare:'<= 10'}};
+  e = validate({text1:11}, v);
+  ok(e, "Got compare error <= 10");
+  e = validate({text1:10}, v);
+  ok(! e, "No compare error <= 10");
+  v = {text1:{compare:'gt ""'}};
+  e = validate({}, v);
+  ok(e, "Got compare error gt ''");
+  v = {text1:{compare:'eq ""'}};
+  e = validate({}, v);
+  ok(! e, "No compare error eq ''");
+  v = {text1:{compare:'lt ""'}};
+  e = validate({}, v);
+  ok(e, "Got compare error lt ''");
+  v = {text1:{compare:'gt "c"'}};
+  e = validate({text1:'d'}, v);
+  ok(! e, "No compare error gt 'c'");
+  e = validate({text1:'c'}, v);
+  ok(e, "Got compare error gt 'c'");
+  v = {text1:{compare:'eq c'}};
+  e = validate({text1:'d'}, v);
+  ok(e, "Got compare error eq c");
+  e = validate({text1:'c'}, v);
+  ok(! e, "No compare error lt c");
+  v = {text1:{compare:'lt c'}};
+  e = validate({text1:'b'}, v);
+  ok(! e, "No compare error lt c");
+  e = validate({text1:'c'}, v);
+  ok(e, "Got compare error lt c");
+  v = {text1:{compare:'ge c'}};
+  e = validate({text1:'c'}, v);
+  ok(! e, "No compare error ge c");
+  e = validate({text1:'b'}, v);
+  ok(e, "Got compare error ge c");
+  v = {text1:{compare:'ne c'}};
+  e = validate({text1:'c'}, v);
+  ok(e, "Got compare error ne c");
+  e = validate({text1:'b'}, v);
+  ok(! e, "No compare error ne c");
+  v = {text1:{compare:'le c'}};
+  e = validate({text1:'d'}, v);
+  ok(e, "Got compare error le c");
+  e = validate({text1:'c'}, v);
+  ok(! e, "No compare error le c");
+
+  // custom_js
+  v = {text1:{custom_js:" value ? true : false "}};
+  e = validate({}, v);
+  ok(e, "Got a custom_js error");
+  ok(e.text1_error == "The field text1 did not match custom_js check.", "Got the right custom_js error");
+  e = validate({text1:"str"}, v);
+  ok(! e, "No custom_js error");
+  v = {text1:{custom_js:function (value, key, vob) { return value ? true : false }}};
+  e = validate({}, v);
+  ok(e, "Got a custom_js error");
+  ok(e.text1_error == "The field text1 did not match custom_js check.", "Got the right custom_js error");
+  e = validate({text1:"str"}, v);
+  ok(! e, "No custom_js error");
+
+  // type checks
+  v = {text1:{type:'ip'}};
+  e = validate({text1:'209.108.25'}, v);
+  ok(e, "Got type ip error");
+  e = validate({text1:'209.108.25.111'}, v);
+  ok(! e, "No type ip error");
+
+  // min_in_set checks
   //v = {text1:{min_in_set:'2 of text1 text2 baz', max_values:5}};
   //e = validate({text1:1}, v);
   //ok(e);
@@ -391,6 +357,9 @@ function run_tests () {
   //form.text2[1].value = "text2";
   //ok(1, "We can set and get values for duplicate named items");
 
+  var str = nok ? "<span style=color:red>Failed tests: "+nok+"</span><br>\n" : "<span style=color:green>All tests passed</span><br>\n";
+  var el = document.getElementById("output")
+  el.innerHTML = str + el.innerHTML;
 }
 
 window.onload = run_tests;
