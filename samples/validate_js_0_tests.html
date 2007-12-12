@@ -61,6 +61,9 @@ function validate (vars, vals) {
 }
 
 function run_tests () {
+  var begin = new Date();
+  begin = begin.getTime();
+
   ok(document.validate, "Found document.validate function");
   ok(vob_get_form_value, "Found vob_get_form_value function ");
 
@@ -412,7 +415,12 @@ function run_tests () {
   //form.text2[1].value = "text2";
   //ok(1, "We can set and get values for duplicate named items");
 
+  var end = new Date();
+  end = end.getTime();
+  var sec = (end - begin)/1000;
+
   var str = nok ? "<span style=color:red>Failed tests: "+nok+"</span><br>\n" : "<span style=color:green>All tests passed</span><br>\n";
+  str += "(Seconds: "+sec+")<br>\n";
   var el = document.getElementById("output")
   el.innerHTML = str + el.innerHTML;
 }
