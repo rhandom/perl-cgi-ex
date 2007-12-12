@@ -66,20 +66,17 @@ function run_tests () {
 
   var form = document.the_form;
   ok(form, "Got the form");
-  var _form_value = function (name) { return vob_get_form_value(form[name]) };
-
-  form.text1.value = "foo";
-  ok(_form_value("text1") == "foo", "We can set and get values from the form");
 
   // required
   var e = validate({}, {text1:{required:1}});
   ok(e, "Got required error");
-  ok(e.text1_error == 'The field text1 is required.', "Got the right required error");
+  ok(e.text1_error == "The field text1 is required.", "Got the right required error");
 
   e = validate({text1:1}, {text1:{required:1}});
   ok(! e, "Got no required error");
 
   // validate_if
+
   e = validate({}, {text1:{required:1, validate_if:'text2'}});
   ok(! e, "Got no error on validate_if");
   e = validate({text2:1}, {text1:{required:1, validate_if:'text2'}});
@@ -110,7 +107,7 @@ function run_tests () {
   ok(! e, "No min_values error");
 
   // enum
-  var v = {text1:{enum:[1, 2, 3]}, text2:{enum:"1 || 2||3"}};
+  var v = {text1:{'enum':[1, 2, 3]}, text2:{'enum':"1 || 2||3"}};
   e = validate({}, v);
   ok(e, "Got enum error");
   ok(e.text1_error == "The field text1 is not in the given list.", "Got the right enum error");
@@ -376,7 +373,7 @@ function run_tests () {
   ok(! e, "Didn't run required because of validate_if");
 
   // default value
-  v = {text1:{required:1, default:'hmmmm'}};
+  v = {text1:{required:1, 'default':'hmmmm'}};
   e = validate({}, v);
   ok(! e, "Didn't get an error because default value was found");
   ok(document.the_form.text1.value == "hmmmm", "Default value got set in form");
