@@ -121,7 +121,7 @@ if (! document.validate) {
 document.validation = {
   "group no_confirm": 1,
   "group no_alert": 1,
-  "group order": ["username", "password", "password2", "email", "email2", "state", "region", "s_r_combo", "enum", "compare", "checkone", "checktwo", "foo"],
+  //"group order": ["username", "password", "password2", "email", "email2", "state", "region", "s_r_combo", "enum", "compare", "checkone", "checktwo", "foo"],
   username: {
     name: "Username",
     required: 1,
@@ -172,9 +172,9 @@ document.validation = {
     min_in_set:       "1 of state region",
     min_in_set_error: "Specify one of state and region."
   },
-  enum: {
+  'enum': {
     name: "Enum check",
-    enum: ["one", "two", "three", "four"],
+    'enum': ["one", "two", "three", "four"],
     enum_error: "$name must be one of one, two, three, or four.'"
   },
   compare: {
@@ -182,7 +182,7 @@ document.validation = {
     replace: "s/\\D//g",
     name: "Compare check",
     compare: ['> 99', '< 1000'],
-    compare_error: '$name must be greater than 99 and less than 1000.',
+    compare_error: '$name must be greater than 99 and less than 1000.'
   },
   checkone: {
     name: "Check one",
@@ -192,7 +192,7 @@ document.validation = {
   checktwo: {
     name: "Check two",
     min_values: 2,
-    max_values: 2,
+    max_values: 2
   },
   foo: {
     min_in_set: "2 of foo bar baz",
