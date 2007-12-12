@@ -313,6 +313,41 @@ function run_tests () {
   e = validate({text1:'foo.bar.com'}, v)
   ok(e, "Got an email error");
   ok(e.text1_error == "The field text1 did not match type email.", "Got the right type email error");
+  e = validate({text1:'f oo@bar.com'}, v)
+  ok(e, "Got an email error");
+  ok(e.text1_error == "The field text1 did not match type email.", "Got the right type email error");
+  e = validate({text1:'foo@bar.com'}, v)
+  ok(!e, "No email error");
+  e = validate({text1:'+foo@bar.com'}, v)
+  ok(!e, "No email error");
+  e = validate({text1:'+bar.com'}, {text1:{type:'domain'}});
+  ok(e, "Got a domain error");
+  e = validate({text1:'foo-.bar.com'}, {text1:{type:'domain'}});
+  ok(e, "Got a domain error");
+  e = validate({text1:'foo..bar.com'}, {text1:{type:'domain'}});
+  ok(e, "Got a domain error");
+  e = validate({text1:'.foo.bar.com'}, {text1:{type:'domain'}});
+  ok(e, "Got a domain error");
+  e = validate({text1:'foo.bar.com'}, {text1:{type:'domain'}});
+  ok(!e, "No domain error");
+  e = validate({text1:'http://bar.com/'}, {text1:{type:'url'}});
+  ok(!e, "No url error");
+  e = validate({text1:'https://bar.com/foo.html'}, {text1:{type:'url'}});
+  ok(!e, "No url error");
+  e = validate({text1:'http://bar.com.:8080/'}, {text1:{type:'url'}});
+  ok(!e, "No url error");
+  e = validate({text1:'http://bar.com/fo sdf'}, {text1:{type:'url'}});
+  ok(e, "Got url error");
+  e = validate({text1:'234234234'}, {text1:{type:'cc'}});
+  ok(e, "Got cc error");
+  e = validate({text1:'4242-4242-4242-4242'}, {text1:{type:'cc'}});
+  ok(!e, "No cc error");
+  e = validate({text1:'4242 4242 4242 4242'}, {text1:{type:'cc'}});
+  ok(!e, "No cc error");
+  e = validate({text1:'4241-4242-4242-4242'}, {text1:{type:'cc'}});
+  ok(e, "Got cc error");
+  e = validate({text1:'4241-4242-4242'}, {text1:{type:'cc'}});
+  ok(e, "Got cc error");
 
   // min_in_set checks
   v = {text1:{min_in_set:'2 of text1 text2 password1', max_values:5}};
