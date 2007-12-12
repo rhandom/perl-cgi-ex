@@ -391,7 +391,7 @@ function run_tests () {
   ok(! e, "No error because we didn't trim");
   e = validate({textarea1:"hey\n"}, {textarea1:{required:1,do_not_trim:1}});
   ok(! e, "No error - just trimmed");
-  ok(document.the_form.textarea1.value == "hey\n", "Got right trimmed value ("+document.the_form.textarea1.value+")");
+  ok(document.the_form.textarea1.value.match(/hey\r?\n/), "Got right trimmed value ("+document.the_form.textarea1.value+")");
   e = validate({textarea1:"\they\n"}, {textarea1:{required:1,do_not_trim:1,trim_control_chars:1}});
   ok(! e, "No error - just trimmed");
   ok(document.the_form.textarea1.value == " hey", "Got right trimmed value ("+document.the_form.textarea1.value+")");
