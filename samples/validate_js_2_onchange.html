@@ -116,12 +116,10 @@ if (! document.validate) {
 <script src="../lib/CGI/Ex/validate.js"></script>
 <script>
 document.validate_set_hook = function (key) {
-  key = key.match(/(\w+)_error/)[1];
   document.getElementById(key+'_img').innerHTML = '<span style="font-weight:bold;color:red">!</span>';
   document.getElementById(key+'_row').style.background = '#ffdddd';
 };
 document.validate_clear_hook = function (key) {
-  key = key.match(/(\w+)_error/)[1];
   document.getElementById(key+'_img').innerHTML = '<span style="font-weight:bold;color:green">+</span>';
   document.getElementById(key+'_row').style.background = '#ddffdd';
 };
