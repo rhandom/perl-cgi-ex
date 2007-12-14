@@ -54,8 +54,7 @@ function validate (vars, vals) {
       for (var j = 0; j < f.checkbox2.length; j++)
         if (vars.checkbox2[i] == f.checkbox2[j].value) f.checkbox2[j].checked = true;
 
-  var val_obj = new Validate();
-  var err_obj = val_obj.validate(f, vals);
+  var err_obj = v_validate(f, vals);
   if (err_obj) return err_obj.as_hash();
   return false;
 }
@@ -65,7 +64,7 @@ function run_tests () {
   begin = begin.getTime();
 
   ok(document.validate, "Found document.validate function");
-  ok(vob_get_form_value, "Found vob_get_form_value function ");
+  ok(v_get_form_value, "Found v_get_form_value function ");
 
   var form = document.the_form;
   ok(form, "Got the form");
@@ -295,7 +294,7 @@ function run_tests () {
   ok(e.text1_error == "The field text1 did not match custom_js check.", "Got the right custom_js error");
   e = validate({text1:"str"}, v);
   ok(! e, "No custom_js error");
-  v = {text1:{custom_js:function (value, key, vob) { return value ? true : false }}};
+  v = {text1:{custom_js:function (value, key) { return value ? true : false }}};
   e = validate({}, v);
   ok(e, "Got a custom_js error");
   ok(e.text1_error == "The field text1 did not match custom_js check.", "Got the right custom_js error");
