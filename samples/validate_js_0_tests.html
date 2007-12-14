@@ -352,7 +352,7 @@ function run_tests () {
   v = {text1:{min_in_set:'2 of text1 text2 password1', max_values:5}};
   e = validate({text1:1}, v);
   ok(e, "Had a min_in_set error");
-  ok(e.text1_error == "Not enough fields were chosen from the set (2 of text1 text2 password1)", "Got the right error");
+  ok(e.text1_error == "Not enough fields were chosen from the set (2 of text1, text2, password1)", "Got the right error");
   e = validate({text1:1, text2:1}, v);
   ok(! e, "No min_in_set error");
   e = validate({text1:1, text2:0}, v);
