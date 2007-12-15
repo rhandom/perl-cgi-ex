@@ -1,5 +1,5 @@
 2.22
-     2007
+     2007-12-14
         * Allow for no errors with a username of "0"
         * Run hash_form hook before others so dump_history shows it in order of use
         * Fix Validate error with passing in the field name
@@ -7,6 +7,7 @@
         * Add onevent: change, blur and submit types.
         * Add hooks and better overriding to valiate.js
         * Cleanup Validate.pm pod
+        * Be sure Conf json read requires JSON
 
 2.21
      2007-10-18
