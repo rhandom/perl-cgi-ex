@@ -2,7 +2,7 @@ package CGI::Ex::Validate;
 
 =head1 NAME
 
-CGI::Ex::Validate - another form validator - but it does javascript in parallel
+CGI::Ex::Validate - The "Just Right" form validator with javascript in parallel
 
 =cut
 
@@ -1102,14 +1102,14 @@ __END__
         email    => {
             required => 1,
             max_len  => 100,
+            type     => 'email',
         },
         email2   => {
-            validate_if => 'email',
-            equals      => 'email',
+            equals   => 'email',
         },
     };
 
-    ### ordered
+    ### ordered (only onevent submit needs order)
     my $val_hash = {
         'group order' => [qw(username email email2)],
         username => {required => 1, max_len => 30},
@@ -1128,44 +1128,51 @@ __END__
             required => 1,
             max_len  => 100,
         }, {
-            field       => 'email2',
-            validate_if => 'email',
-            equals      => 'email',
+            field    => 'email2',
+            equals   => 'email',
         }],
     };
 
 
     my $vob    = CGI::Ex::Validate->new;
     my $errobj = $vob->validate($form, $val_hash);
-    # OR #
-    my $errobj = $vob->validate($form, "/somefile/somewhere.val"); # import config using yaml file
-    # OR #
-    my $errobj = $vob->validate($form, "/somefile/somewhere.pl");  # import config using perl file
-    # OR #
-    my $errobj = $vob->validate($form, "--- # a yaml document\n"); # import config using yaml str
 
+    # OR #
+    # import config using any type CGI::Ex::Conf supports
+    my $errobj = $vob->validate($form, "/somefile/somewhere.val");
 
     if ($errobj) {
         my $error_heading = $errobj->as_string; # OR "$errobj";
         my $error_list    = $errobj->as_array;  # ordered list of what when wrong
         my $error_hash    = $errobj->as_hash;   # hash of arrayrefs of errors
     } else {
-        # form passed validation
+        # the form passed validation
     }
 
     ### will add an error for any form key not found in $val_hash
     my $vob = CGI::Ex::Validate->new({no_extra_keys => 1});
     my $errobj = $vob->validate($form, $val_hash);
 
+
+    my $js_uri_path = '/js/';     # static or dynamic URI path to find CGI/Ex/validate.js
+    my $form_name   = "the_form"; # name of the form to attach javascript to
+    my $javascript  = $vob->generate_js($val_hash, $form_name, $js_uri_path);
+
+
 =head1 DESCRIPTION
 
 CGI::Ex::Validate is one of many validation modules.  It aims to have
 all of the basic data validation functions, avoid adding all of the
 millions of possible types, while still giving the capability for the
-developer to add their own types.
+developer to add their own types for the rare cases that the basic
+ones don't suffice.  Generally anything more than basic validation
+probably needs programmatic or data based validation.
 
-It also has full support for providing the same validation in javascript.
-It provides methods for attaching the javascript to existing forms.
+CGI::Ex::Validate also has full support for providing the same
+validation in javascript.  It provides methods for attaching the
+javascript to existing forms.  This ability is tightly integrated into
+CGI::Ex::App, but it should be easy to add validation just about
+anywhere using any type of controller.
 
 As opposed to other kitchen sync validation modules, CGI::Ex::Validate
 offers the simple types of validation, and makes it easy to add your
@@ -1275,7 +1282,7 @@ The $JS_URI_PATH of "/cgi-bin/js" could contain the following:
     use strict;
     use CGI::Ex;
 
-    ### path_info should contain something like /CGI/Ex/yaml_load.js
+    ### path_info should contain something like /CGI/Ex/validate.js
     my $info = $ENV{PATH_INFO} || '';
     die "Invalid path" if $info !~ m|^(/\w+)+.js$|;
     $info =~ s|^/+||;
@@ -1284,29 +1291,31 @@ The $JS_URI_PATH of "/cgi-bin/js" could contain the following:
     exit;
 
 The print_js method in CGI::Ex is designed to cache the javascript in
-the browser (caching is suggested as they are medium sized files).
+the browser.
 
 =item C<-E<gt>cgix>
 
-Returns a CGI::Ex object.  Used internally.
+Returns a CGI::Ex object.  Used internally if a CGI object is
+passed to validate rather than a straight form hash.
 
 =back
 
 =head1 VALIDATION HASH
 
-The validation hash may be passed as a hashref or as a
-filename, or as a YAML document string.  If it is a filename, it will
-be translated into a hash using the %EXT_HANDLER for the extension on
-the file.  If there is no extension, it will use $DEFAULT_EXT as a
-default.  CGI::Ex::Conf is used for the reading of files.
+The validation hash may be passed as a hashref or as a filename, or as
+a YAML document string.  Experience has shown it to be better
+programming to pass in a hashref.  If the validation "hash" is a
+filename or a YAML string, it will be translated into a hash using
+CGI::Ex::Conf.
 
-Keys matching the regex m/^(general|group)\s+(\w+)$/ are reserved and
-are counted as GROUP OPTIONS.  Other keys (if any, should be field names
-that need validation).
+Keys matching the regex m/^(general|group)\s+(\w+)$/ such as "group
+onevent" are reserved and are counted as GROUP OPTIONS.  Other keys
+(if any, should be field names that need validation).
 
-If the GROUP OPTION 'group validate_if' is set, the validation will only
-be validated if the conditions are met.  If 'group validate_if' is not
-specified, then the validation will proceed.
+If the GROUP OPTION 'group validate_if' is set, the validation will
+only be validated if the conditions of the validate_if are met.  If
+'group validate_if' is not specified, then the validation will
+proceed.  See the validate_if VALIDATION type for more information.
 
 Each of the items listed in the validation will be validated.  The
 validation order is determined in one of three ways:
@@ -1359,6 +1368,16 @@ tested.
 
     'group order' => [qw(zip OR postalcode state OR region)],
 
+At this time, only "group onevent" submit works with this option.  Using
+OR is deprecated.  Instead you should use min_in_set or max_in_set.
+
+    'zip' => {
+         max_in_set: '1 of zip, postalcode',
+    },
+    'state' => {
+         max_in_set: '1 of state, region',
+    },
+
 Each individual field validation hashref will operate on the field contained
 in the 'field' key.  This key may also be a regular expression in the
 form of 'm/somepattern/'.  If a regular expression is used, all keys
@@ -1380,23 +1399,193 @@ types listed in VALIDATION TYPES.
 
 This section lists the available validation types.  Multiple instances
 of the same type may be used for some validation types by adding a
-number to the type (ie match, match2, match232, match_94).  Multiple
-instances are validated in sorted order.  Types that allow multiple
-values are:
-
-    compare
-    custom
-    equals
-    match
-    max_in_set
-    min_in_set
-    replace
-    required_if
-    sql
-    type
-    validate_if
+number to the type (ie match, match2, match232).  Multiple instances
+are validated in sorted order.  Types that allow multiple values are:
+compare, custom, custom_js, equals, enum, match, required_if, sql,
+type, validate_if, and replace (replace is a MODIFICATION TYPE).
 
 =over 4
+
+=item C<compare>
+
+Allows for custom comparisons.  Available types are
+>, <, >=, <=, !=, ==, gt, lt, ge, le, ne, and eq.  Comparisons
+also work in the JS.
+
+    {
+      field    => 'my_number',
+      match    => 'm/^\d+$/',
+      compare1 => '> 100',
+      compare2 => '< 255',
+      compare3 => '!= 150',
+    }
+
+=item C<custom>
+
+Custom value - not available in JS.  Allows for extra programming types.
+May be either a boolean value predetermined before calling validate, or may be
+a coderef that will be called during validation.  If coderef is called, it will
+be passed the field name, the form value for that name, and a reference to the
+field validation hash.  If the custom type returns false the element fails
+validation and an error is added.
+
+    {
+      field => 'username',
+      custom => sub {
+        my ($key, $val, $type, $field_val_hash) = @_;
+        # do something here
+        return 0;
+      },
+    }
+
+=item C<custom_js>
+
+Custom value - only available in JS.  Allows for extra programming types.
+May be a javascript function (if fully declared in javascript), a string containing
+a javascript function (that will be eval'ed into a real function),
+a boolean value pre-determined before calling validate, or may be
+section of javascript that will be eval'ed (the last value of
+the eval'ed javascript will determine if validation passed).  A false response indicates
+the value did not pass validation.  A true response indicates that it did.  See
+the samples/validate_js_0_tests.html page for a sample of usages.
+
+    {
+      field => 'date',
+      required => 1,
+      match    => 'm|^\d\d\d\d/\d\d/\d\d$|',
+      match_error => 'Please enter date in YYYY/MM/DD format',
+      custom_js => "function (args) {
+        var t=new Date();
+        var y=t.getYear()+1900;
+        var m=t.getMonth() + 1;
+        var d=t.getDate();
+        if (m<10) m = '0'+m;
+        if (d<10) d = '0'+d;
+        (args.value > ''+y+'/'+m+'/'+d) ? 1 : 0;
+      }",
+      custom_js_error => 'The date was not greater than today.',
+    }
+
+=item C<enum>
+
+Allows for checking whether an item matches a set of options.  In perl
+the value may be passed as an arrayref.  In the conf or in perl the
+value may be passed of the options joined with ||.
+
+    {
+      field => 'password_type',
+      enum  => 'plaintext||crypt||md5', # OR enum => [qw(plaintext crypt md5)],
+    }
+
+=item C<equals>
+
+Allows for comparison of two form elements.  Can have an optional !.
+
+    {
+      field  => 'password',
+      equals => 'password_verify',
+    },
+    {
+      field  => 'domain1',
+      equals => '!domain2', # make sure the fields are not the same
+    }
+
+=item C<match>
+
+Allows for regular expression comparison.  Multiple matches may
+be concatenated with ||.  Available in JS.
+
+    {
+      field   => 'my_ip',
+      match   => 'm/^\d{1,3}(\.\d{1,3})3$/',
+      match_2 => '!/^0\./ || !/^192\./',
+    }
+
+=item C<max_in_set> and C<min_in_set>
+
+Somewhat like min_values and max_values except that you specify the
+fields that participate in the count.  Also - entries that are not
+defined or do not have length are not counted.  An optional "of" can
+be placed after the number for human readability.
+
+    min_in_set => "2 of foo bar baz",
+      # two of the fields foo, bar or baz must be set
+      # same as
+    min_in_set => "2 foo bar baz",
+      # same as
+    min_in_set => "2 OF foo bar baz",
+
+    validate_if => {field => 'whatever', max_in_set => '0 of whatever'},
+      # only run validation if there were zero occurrences of whatever
+
+=item C<max_len and min_len>
+
+Allows for check on the length of fields
+
+    {
+      field   => 'site',
+      min_len => 4,
+      max_len => 100,
+    }
+
+=item C<max_values> and C<min_values>
+
+Allows for specifying the maximum number of form elements passed.
+max_values defaults to 1 (You must explicitly set it higher
+to allow more than one item by any given name).
+
+=item C<required>
+
+Requires the form field to have some value.  If the field is not present,
+no other checks will be run.
+
+=item C<required_if>
+
+Requires the form field if the condition is satisfied.  The conditions
+available are the same as for validate_if.  This is somewhat the same
+as saying:
+
+    validate_if => 'some_condition',
+    required    => 1
+
+    required_if => 'some_condition',
+
+If a regex is used for the field name, the required_if
+field will have any match patterns swapped in.
+
+    {
+      field       => 'm/^(\w+)_pass/',
+      required_if => '$1_user',
+    }
+
+This example would require the "foobar_pass" field to be set
+if the "foobar_user" field was passed.
+
+=item C<sql>
+
+SQL query based - not available in JS.  The database handle will be looked
+for in the value $self->{dbhs}->{foo} if sql_db_type is set to 'foo',
+otherwise it will default to $self->{dbh}.  If $self->{dbhs}->{foo} or
+$self->{dbh} is a coderef - they will be called and should return a dbh.
+
+    {
+      field => 'username',
+      sql   => 'SELECT COUNT(*) FROM users WHERE username = ?',
+      sql_error_if => 1, # default is 1 - set to 0 to negate result
+      # sql_db_type  => 'foo', # will look for a dbh under $self->{dbhs}->{foo}
+    }
+
+=item C<type>
+
+Allows for more strict type checking.  Currently supported types
+include CC (credit card), EMAIL, DOMAIN, IP, URL.  Other types will be
+added upon request provided we can add a perl and a javascript
+version.
+
+    {
+      field => 'credit_card',
+      type  => 'CC',
+    }
 
 =item C<validate_if>
 
@@ -1442,184 +1631,6 @@ the item after 'OR' will be tested instead.  If the item preceding 'OR'
 passes validation the item after 'OR' will not be tested.
 
     validate_if => [qw(zip OR postalcode)],
-
-=item C<required_if>
-
-Requires the form field if the condition is satisfied.  The conditions
-available are the same as for validate_if.  This is somewhat the same
-as saying:
-
-    validate_if => 'some_condition',
-    required    => 1
-
-    required_if => 'some_condition',
-
-If a regex is used for the field name, the required_if
-field will have any match patterns swapped in.
-
-    {
-      field       => 'm/^(\w+)_pass/',
-      required_if => '$1_user',
-    }
-
-This example would require the "foobar_pass" field to be set
-if the "foobar_user" field was passed.
-
-=item C<required>
-
-Requires the form field to have some value.  If the field is not present,
-no other checks will be run.
-
-=item C<min_values> and C<max_values>
-
-Allows for specifying the maximum number of form elements passed.
-max_values defaults to 1 (You must explicitly set it higher
-to allow more than one item by any given name).
-
-=item C<min_in_set> and C<max_in_set>
-
-Somewhat like min_values and max_values except that you specify the
-fields that participate in the count.  Also - entries that are not
-defined or do not have length are not counted.  An optional "of" can
-be placed after the number for human readability.
-
-    min_in_set => "2 of foo bar baz",
-      # two of the fields foo, bar or baz must be set
-      # same as
-    min_in_set => "2 foo bar baz",
-      # same as
-    min_in_set => "2 OF foo bar baz",
-
-    validate_if => {field => 'whatever', max_in_set => '0 of whatever'},
-      # only run validation if there were zero occurrences of whatever
-
-=item C<enum>
-
-Allows for checking whether an item matches a set of options.  In perl
-the value may be passed as an arrayref.  In the conf or in perl the
-value may be passed of the options joined with ||.
-
-    {
-      field => 'password_type',
-      enum  => 'plaintext||crypt||md5', # OR enum => [qw(plaintext crypt md5)],
-    }
-
-=item C<equals>
-
-Allows for comparison of two form elements.  Can have an optional !.
-
-    {
-      field  => 'password',
-      equals => 'password_verify',
-    },
-    {
-      field  => 'domain1',
-      equals => '!domain2', # make sure the fields are not the same
-    }
-
-=item C<min_len and max_len>
-
-Allows for check on the length of fields
-
-    {
-      field   => 'site',
-      min_len => 4,
-      max_len => 100,
-    }
-
-=item C<match>
-
-Allows for regular expression comparison.  Multiple matches may
-be concatenated with ||.  Available in JS.
-
-    {
-      field   => 'my_ip',
-      match   => 'm/^\d{1,3}(\.\d{1,3})3$/',
-      match_2 => '!/^0\./ || !/^192\./',
-    }
-
-=item C<compare>
-
-Allows for custom comparisons.  Available types are
->, <, >=, <=, !=, ==, gt, lt, ge, le, ne, and eq.  Comparisons
-also work in the JS.
-
-    {
-      field    => 'my_number',
-      match    => 'm/^\d+$/',
-      compare1 => '> 100',
-      compare2 => '< 255',
-      compare3 => '!= 150',
-    }
-
-=item C<sql>
-
-SQL query based - not available in JS.  The database handle will be looked
-for in the value $self->{dbhs}->{foo} if sql_db_type is set to 'foo',
-otherwise it will default to $self->{dbh}.  If $self->{dbhs}->{foo} or
-$self->{dbh} is a coderef - they will be called and should return a dbh.
-
-    {
-      field => 'username',
-      sql   => 'SELECT COUNT(*) FROM users WHERE username = ?',
-      sql_error_if => 1, # default is 1 - set to 0 to negate result
-      # sql_db_type  => 'foo', # will look for a dbh under $self->{dbhs}->{foo}
-    }
-
-=item C<custom>
-
-Custom value - not available in JS.  Allows for extra programming types.
-May be either a boolean value predetermined before calling validate, or may be
-a coderef that will be called during validation.  If coderef is called, it will
-be passed the field name, the form value for that name, and a reference to the
-field validation hash.  If the custom type returns false the element fails
-validation and an error is added.
-
-    {
-      field => 'username',
-      custom => sub {
-        my ($key, $val, $type, $field_val_hash) = @_;
-        # do something here
-        return 0;
-      },
-    }
-
-=item C<custom_js>
-
-Custom value - only available in JS.  Allows for extra programming types.
-May be either a boolean value pre-determined before calling validate, or may be
-section of javascript that will be eval'ed.  The last value (return value) of
-the eval'ed javascript will determine if validation passed.  A false value indicates
-the value did not pass validation.  A true value indicates that it did.  See
-the t/samples/js_validate_3.html page for a sample of usage.
-
-    {
-      field => 'date',
-      required => 1,
-      match    => 'm|^\d\d\d\d/\d\d/\d\d$|',
-      match_error => 'Please enter date in YYYY/MM/DD format',
-      custom_js => "
-        var t=new Date();
-        var y=t.getYear()+1900;
-        var m=t.getMonth() + 1;
-        var d=t.getDate();
-        if (m<10) m = '0'+m;
-        if (d<10) d = '0'+d;
-        (value > ''+y+'/'+m+'/'+d) ? 1 : 0;
-      ",
-      custom_js_error => 'The date was not greater than today.',
-    }
-
-=item C<type>
-
-Allows for more strict type checking.  Currently supported types
-include CC (credit card).  Other types will be added upon request provided
-we can add a perl and a javascript version.
-
-    {
-      field => 'credit_card',
-      type  => 'CC',
-    }
 
 =back
 
@@ -1847,11 +1858,11 @@ used to have the concept of validation groups - these were not
 commonly used so support has been deprecated as of the 2.10 release).
 Group options will also be looked for in the Validate object ($self)
 and can be set when instantiating the object ($self->{raise_error} is
-equivalent to $valhash->{'group raise_error'}).  The current know
-options are:
+equivalent to $valhash->{'group raise_error'}).
 
 Options may also be set globally before calling validate by
-populating the %DEFAULT_OPTIONS global hash.
+populating the %DEFAULT_OPTIONS global hash.  However, only the options
+set properly in the $valhash will be passed to the javascript.
 
 =over 4
 
@@ -1963,32 +1974,79 @@ a string that will be pre-pended on to the error string.
 If as_hash_join has been set to a true value, as_hash_footer may be set to
 a string that will be postpended on to the error string.
 
+=item C<onevent>
+
+Defaults to {submit => 1}.  This controls when the javascript validation
+will take place.  May be passed any or all or submit, change, or blur.
+Multiple events may be passed in the hash.
+
+    'group onevent' => {submit => 1, change => 1}',
+
+A comma separated string of types may also be passed:
+
+    'group onevent' => 'submit,change,blur',
+
+Currently, change and blur will not work for dynamically matched
+field names such as 'm/\w+/'.  Support will be added.
+
+=item C<set_hook>
+
+Defaults document.validate_set_hook which defaults to nothing.  If
+"group set_hook" or document.validate_set_hook are set to a function,
+they will be passed the key name of a form element that had a
+validation error and the error that will be set.  If a true value is
+returned, then validate will not also the inline error.  If no value
+or false is returned (default) the validate will continue setting the
+inline error.  This gives full control over setting inline
+errors. samples/validate_js_2_onchange.html has a good example of
+using these hooks.
+
+    'group set_hook' => "function (key, val, val_hash, form) {
+      alert("Setting error to field "+key);
+    }",
+
+The document.validate_set_hook option is probably the better option to use,
+as it helps to separate display functionality out into your html templates
+rather than storing too much html logic in your CGI.
+
+=item C<clear_hook>
+
+Similar to set_hook, but called when inline error is cleared.  Its
+corresponding default is document.validate_clear_hook.  The clear hook
+is also sampled in samples/validate_js_2_onchange.html
+
+    'group clear_hook' => "function (key, val_hash, form) {
+      alert("Clear error on field "+key);
+    }",
+
 =item C<no_inline>
 
-If set to true, the javascript validation will not attempt to generate inline
-errors.  Default is true.  Inline errors are independent of confirm and alert
-errors.
+If set to true, the javascript validation will not attempt to generate
+inline errors when the only "group onevent" type is "submit".  Default
+is true.  Inline errors are independent of confirm and alert errors.
 
-    'general no_inline' => 1,
+    'group no_inline' => 1,
 
 =item C<no_confirm>
 
-If set to true, the javascript validation will try to use an alert instead
-of a confirm to inform the user of errors.  Alert and confirm are independent
+If set to true, the javascript validation will try to use an alert
+instead of a confirm to inform the user of errors when one of the
+"group onevent" types is "submit".  Alert and confirm are independent
 or inline errors.  Default is false.
 
-    'general no_confirm' => 1,
+    'group no_confirm' => 1,
 
 =item C<no_alert>
 
 If set to true, the javascript validation will not show an alert box
 when errors occur.  Default is false.  This option only comes into
-play if no_confirm is also set.  This option is independent of inline
-errors.  Although it is possible to turn off all errors by setting
-no_inline, no_confirm, and no_alert all to 1, it is suggested that at
-least one of the error reporting facilities is left on.
+play if no_confirm is also set.  This option is only in effect if
+"group onevent" includes "submit".  This option is independent of
+inline errors.  Although it is possible to turn off all errors by
+setting no_inline, no_confirm, and no_alert all to 1, it is suggested
+that at least one of the error reporting facilities is left on.
 
-    'general no_alert' => 1,
+    'group no_alert' => 1,
 
 =back
 
@@ -2009,8 +2067,30 @@ validation will be read in using CGI::Ex::Conf::read_handler_html.
 
 All inline html validation must be written in yaml.
 
-It is anticipated that the html will contain something like either of the
+It is anticipated that the html will contain something like one of the
 following examples:
+
+  <script src="/cgi-bin/js/CGI/Ex/validate.js"></script>
+  <script>
+  document.validation = {
+    'group no_confirm': 1,
+    'group no_alert':   1,
+    'group onevent':    'change,blur,submit',
+    'group order': ['username', 'password'],
+    username: {
+      required: 1,
+      max_len: 20
+    },
+    password: {
+      required: 1,
+      max_len: 30
+    }
+  };
+  if (document.check_form) document.check_form('my_form_name');
+  </script>
+
+Prior to the realization of JSON, YAML was part of the method
+for introducing validation into the script.
 
   <script src="/cgi-bin/js/CGI/Ex/yaml_load.js"></script>
   <script src="/cgi-bin/js/CGI/Ex/validate.js"></script>
@@ -2030,7 +2110,8 @@ following examples:
   if (document.check_form) document.check_form('my_form_name');
   </script>
 
-Alternately we can use element attributes:
+Alternately, CGI/Ex/validate.js can parse the YAML from html
+form element attributes:
 
   <form name="my_form_name">
 
@@ -2056,10 +2137,11 @@ Alternately we can use element attributes:
   if (document.check_form) document.check_form('my_form_name');
   </script>
 
-The read_handler_html from CGI::Ex::Conf will find either of these
-types of validation.
+The read_handler_html from CGI::Ex::Conf will find the YAML types
+of validation.  The JSON type is what would be generated by default
+when the validation is specified in Perl.
 
-If inline errors are asked for, each error that occurs will attempt
+If inline errors are enabled (default), each error that occurs will attempt
 to find an html element with its name as the id.  For example, if
 the field "username" failed validation and created a "username_error",
 the javascript would set the html of <span id="username_error"></span>
@@ -2074,11 +2156,34 @@ from the server side as well.
 If the javascript fails for some reason, the form should still be able
 to submit as normal (fail gracefully).
 
-If the confirm option is used, the errors will be displayed to the user.
-If they choose OK they will be able to try and fix the errors.  If they
-choose cancel, the form will submit anyway and will rely on the server
-to do the validation.  This is for fail safety to make sure that if the
-javascript didn't validate correctly, the user can still submit the data.
+Additionally, there are two hooks that are called when ever an inline
+error is set or cleared.  The following hooks are used in
+samples/validate_js_2_onchange.html.
+
+    document.validate_set_hook = function (key, val, val_hash, form) {
+      document.getElementById(key+'_img').innerHTML
+        = '<span style="font-weight:bold;color:red">!</span>';
+      document.getElementById(key+'_row').style.background
+        = '#ffdddd';
+    };
+
+    document.validate_clear_hook = function (key, val_hash, form) {
+      document.getElementById(key+'_img').innerHTML
+        = '<span style="font-weight:bold;color:green">+</span>';
+      document.getElementById(key+'_row').style.background
+        = '#ddffdd';
+    };
+
+These hooks can also be set as "group clear_hook" and "group set_hook"
+which are defined further above.
+
+If the confirm option is used ("group onevent" includes submit and
+"group no_confirm" is false), the errors will be displayed to the
+user.  If they choose OK they will be able to try and fix the errors.
+If they choose cancel, the form will submit anyway and will rely on
+the server to do the validation.  This is for fail safety to make sure
+that if the javascript didn't validate correctly, the user can still
+submit the data.
 
 =head1 THANKS
 
@@ -2091,6 +2196,6 @@ This module may be distributed under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-Paul Seamons <perl at seamons dot com>
+Paul Seamons <paul at seamons dot com>
 
 =cut
