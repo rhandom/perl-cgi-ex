@@ -109,17 +109,19 @@ function run_tests () {
   ok(! e, "No min_values error");
 
   // enum
-  var v = {text1:{'enum':[1, 2, 3]}, text2:{'enum':"1 || 2||3"}};
+  var v = {text1:{'enum':[1, 2, 3]}};
   e = validate({}, v);
   ok(e, "Got enum error");
   ok(e.text1_error == "The field text1 is not in the given list.", "Got the right enum error");
-  e = validate({text1:1, text2:1}, v);
+  e = validate({text1:1}, v);
   ok(! e, "No enum error");
-  e = validate({text1:1, text2:2}, v);
-  ok(! e, "No enum error");
-  e = validate({text1:1, text2:4}, v);
+  e = validate({text1:4}, v);
   ok(e, "Got enum error");
-  e = validate({text1:4, text2:1}, v);
+
+  v = {text2:{'enum':"1 || 2||3"}};
+  e = validate({text2:1}, v);
+  ok(! e, "No enum error");
+  e = validate({text2:4}, v);
   ok(e, "Got enum error");
 
   // equals
@@ -180,28 +182,28 @@ function run_tests () {
 
   v = {text1:{match:['m/^\\w+$/', 'm/^[a-z]+$/']}};
   e = validate({text1:"abc"}, v);
-  ok(! e, "No match error");
+  ok(! e, "No match error with multiple");
   e = validate({text1:"abc1"}, v);
-  ok(e, "Got a match error");
+  ok(e, "Got a match error with multiple");
 
   v = {text1:{match:'m/^\\w+$/ || m/^[a-z]+$/'}};
   e = validate({text1:"abc"}, v);
-  ok(! e, "No match error");
+  ok(! e, "No match error with multiple match string");
   e = validate({text1:"abc1"}, v);
-  ok(e, "Got a match error");
+  ok(e, "Got a match error with multiple match string");
 
   v = {text1:{match:'! m/^\\w+$/'}};
   e = validate({text1:"abc"}, v);
-  ok(e, "Got a match error");
+  ok(e, "Got a match error with not match string");
   e = validate({text1:"abc."}, v);
-  ok(! e, "No match error");
+  ok(! e, "No match error with not match string");
 
   v = {text1:{match:'m/^\\w+$/'}};
   e = validate({}, v);
-  ok(e, "Got an error "+e.text1_error);
+  ok(e, "Got an error with non-existing field");
   v = {text1:{match:'! m/^\w+$/'}};
   e = validate({}, v);
-  ok(! e, "No match error");
+  ok(! e, "No match error with non-existing field and not match string");
 
   // compare
   v = {text1:{compare:'> 0'}};
@@ -290,16 +292,16 @@ function run_tests () {
   // custom_js
   v = {text1:{custom_js:" value ? true : false "}};
   e = validate({}, v);
-  ok(e, "Got a custom_js error");
-  ok(e.text1_error == "The field text1 did not match custom_js check.", "Got the right custom_js error");
+  ok(e, "Got a custom_js error for eval type");
+  ok(e.text1_error == "The field text1 did not match custom_js check.", "Got the right custom_js error for eval type");
   e = validate({text1:"str"}, v);
-  ok(! e, "No custom_js error");
-  v = {text1:{custom_js:function (value, key) { return value ? true : false }}};
+  ok(! e, "No custom_js error for eval type");
+  v = {text1:{custom_js:function (args) { return args.value ? true : false }}};
   e = validate({}, v);
-  ok(e, "Got a custom_js error");
-  ok(e.text1_error == "The field text1 did not match custom_js check.", "Got the right custom_js error");
+  ok(e, "Got a custom_js error for function type");
+  ok(e.text1_error == "The field text1 did not match custom_js check.", "Got the right custom_js error for function type");
   e = validate({text1:"str"}, v);
-  ok(! e, "No custom_js error");
+  ok(! e, "No custom_js error for function type");
 
   // type checks
   v = {text1:{type:'ip'}};
