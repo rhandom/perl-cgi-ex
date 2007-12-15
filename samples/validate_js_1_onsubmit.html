@@ -145,8 +145,8 @@ document.validation = {
     name: "Email",
     required: 1,
     max_len: 100,
-    match: "m/^[^@]+@([\\w-]+\.)+\\w+$/",
-    match_error: "$name must be a valid email address."
+    type: 'email',
+    type_error: "$name must be a valid email address."
   },
   email2: {
     name: "Verify email",
@@ -175,10 +175,11 @@ document.validation = {
   'enum': {
     name: "Enum check",
     'enum': ["one", "two", "three", "four"],
-    enum_error: "$name must be one of one, two, three, or four.'"
+    enum_error: "$name must be one of one, two, three, or four."
   },
   compare: {
     required: 1,
+    required_error: "Please type a number",
     replace: "s/\\D//g",
     name: "Compare check",
     compare: ['> 99', '< 1000'],
