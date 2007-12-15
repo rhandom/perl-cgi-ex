@@ -1176,7 +1176,8 @@ anywhere using any type of controller.
 
 As opposed to other kitchen sync validation modules, CGI::Ex::Validate
 offers the simple types of validation, and makes it easy to add your
-own custom types.
+own custom types.  Asside from custom and custom_js, all validation
+markup is declarative.
 
 =head1 METHODS
 
