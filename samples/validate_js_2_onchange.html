@@ -30,7 +30,7 @@ if (! document.validate) {
 </tr>
 <tr id=password_row>
   <td valign=top>Password:</td>
-  <td><input type=password size=30 name=password></td>
+  <td><input type=password size=30 name=password><span id=password_strength style="font-size:smaller;color:blue"></span></td>
   <td id=password_img></td>
   <td id=password_error class=error></td>
 </tr>
@@ -107,7 +107,7 @@ if (! document.validate) {
 </tr>
 <tr>
   <td colspan=2 align=right>
-    <input type=submit>
+    <input type=submit value=Submit>
   </td>
 </tr>
 </table>
@@ -204,6 +204,25 @@ document.validation = {
   foo: {
     min_in_set: "2 of foo bar baz",
     max_in_set: "2 of foo bar baz"
+  },
+  pw_strength: { // separate from the pw validation
+    field: "password",
+    custom_js: function (args) {
+      var v = args.value;
+      var n = 0;
+      if (v.match(/[a-z]/)) n++;
+      if (v.match(/[A-Z]/)) n++;
+      if (v.match(/[0-9]/)) n++;
+      var sym = v.match(/[ ~!@#$%^&*()_,.?{}\[\]]/) ? 1 : 0;
+      var s = (! v.length)   ? ''
+            : (v.length < 3) ? 'weak'
+            : (v.length < 5) ? (sym || n == 3)  ? 'ok' : 'weak'
+            : (v.length < 9) ? (n < 3 && ! sym) ? 'ok' : 'good'
+            : sym ? 'excellent' : 'good';
+      document.getElementById('password_strength').innerHTML = s;
+      // we could return false to indicate the strength wasn't good enough
+      return 1;
+    }
   }
 };
 if (document.check_form) document.check_form('a');
