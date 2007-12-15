@@ -262,6 +262,7 @@ sub read_handler_json {
   open (IN, $file) || die "Couldn't open $file: $!";
   CORE::read(IN, my $text, -s $file);
   close IN;
+  require JSON;
   return scalar JSON::jsonToObj($text);
 }
 
