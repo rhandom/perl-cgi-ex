@@ -124,9 +124,13 @@ sub validate {
 
     ### Finally we have our arrayref of hashrefs that each have their 'field' key
     ### now lets do the validation
+    $self->{'was_checked'} = {};
+    $self->{'was_valid'} = {};
+    $self->{'had_error'} = {};
     my $found  = 1;
     my @errors;
     my $hold_error; # hold the error for a moment - to allow for an "OR" operation
+    my %checked;
     foreach (my $i = 0; $i < @$fields; $i++) {
         my $ref = $fields->[$i];
         if (! ref($ref) && $ref eq 'OR') {
@@ -135,15 +139,24 @@ sub validate {
             next;
         }
         $found = 1;
-        die "Missing field key during normal validation" if ! $ref->{'field'};
+        my $field = $ref->{'field'} || die "Missing field key during normal validation";
+        if (! $checked{$field}++) {
+            $self->{'was_checked'}->{$field} = 1;
+            $self->{'was_valid'}->{$field} = 1;
+            $self->{'had_error'}->{$field} = 0;
+        }
         local $ref->{'was_validated'} = 1;
-        my $err = $self->validate_buddy($form, $ref->{'field'}, $ref);
+        my $err = $self->validate_buddy($form, $field, $ref);
         if ($ref->{'was_validated'} && $what_was_validated) {
             push @$what_was_validated, $ref;
+        } else {
+            $self->{'was_valid'}->{$field} = 0;
         }
 
         ### test the error - if errors occur allow for OR - if OR fails use errors from first fail
         if ($err) {
+            $self->{'was_valid'}->{$field} = 0;
+            $self->{'had_error'}->{$field} = 0;
             if ($i < $#$fields && ! ref($fields->[$i + 1]) && $fields->[$i + 1] eq 'OR') {
                 $hold_error = $err;
             } else {
@@ -210,7 +223,11 @@ sub check_conditional {
         $found = 1; # reset
         next;
       } else {
-        if ($ref =~ s/^\s*!\s*//) {
+        if ($ref =~ /^function\s*\(/) {
+          next;
+        } elsif ($ref =~ /^(.*?)\s+(was_valid|had_error|was_checked)$/) {
+          $ref = {field => $1, $2 => 1};
+        } elsif ($ref =~ s/^\s*!\s*//) {
           $ref = {field => $ref, max_in_set => "0 of $ref"};
         } else {
           $ref = {field => $ref, required => 1};
@@ -260,6 +277,10 @@ sub validate_buddy {
     }
     return @errors ? \@errors : 0;
   }
+
+  if ($field_val->{was_valid}   && ! $self->{'_was_valid'}->{$field})   { return [[$field, 'was_valid',   $field_val, $ifs_match]]; }
+  if ($field_val->{had_error}   && ! $self->{'_had_error'}->{$field})   { return [[$field, 'had_error',   $field_val, $ifs_match]]; }
+  if ($field_val->{was_checked} && ! $self->{'_was_checked'}->{$field}) { return [[$field, 'was_checked', $field_val, $ifs_match]]; }
 
   my $values   = UNIVERSAL::isa($form->{$field},'ARRAY') ? $form->{$field} : [$form->{$field}];
   my $n_values = $#$values + 1;
