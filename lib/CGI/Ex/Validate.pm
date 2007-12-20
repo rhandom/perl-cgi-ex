@@ -2058,9 +2058,11 @@ inline error.  This gives full control over setting inline
 errors. samples/validate_js_2_onchange.html has a good example of
 using these hooks.
 
-    'group set_hook' => "function (key, val, val_hash, form) {
-      alert("Setting error to field "+key);
+    'group set_hook' => "function (args) {
+      alert("Setting error to field "+args.key);
     }",
+
+The args parameter includes key, value, val_hash, and form.
 
 The document.validate_set_hook option is probably the better option to use,
 as it helps to separate display functionality out into your html templates
@@ -2072,9 +2074,11 @@ Similar to set_hook, but called when inline error is cleared.  Its
 corresponding default is document.validate_clear_hook.  The clear hook
 is also sampled in samples/validate_js_2_onchange.html
 
-    'group clear_hook' => "function (key, val_hash, form) {
-      alert("Clear error on field "+key);
+    'group clear_hook' => "function (args) {
+      alert("Clear error on field "+args.key);
     }",
+
+The args parameter includes key, val_hash, form, and was_valid.
 
 =item C<no_inline>
 
@@ -2215,20 +2219,25 @@ to submit as normal (fail gracefully).
 
 Additionally, there are two hooks that are called when ever an inline
 error is set or cleared.  The following hooks are used in
-samples/validate_js_2_onchange.html.
+samples/validate_js_2_onchange.html to highlight the row and set an icon.
 
-    document.validate_set_hook = function (key, val, val_hash, form) {
-      document.getElementById(key+'_img').innerHTML
+    document.validate_set_hook = function (args) {
+      document.getElementById(args.key+'_img').innerHTML
         = '<span style="font-weight:bold;color:red">!</span>';
-      document.getElementById(key+'_row').style.background
+      document.getElementById(args.key+'_row').style.background
         = '#ffdddd';
     };
 
-    document.validate_clear_hook = function (key, val_hash, form) {
-      document.getElementById(key+'_img').innerHTML
-        = '<span style="font-weight:bold;color:green">+</span>';
-      document.getElementById(key+'_row').style.background
-        = '#ddffdd';
+    document.validate_clear_hook = function (args) {
+      if (args.was_valid) {
+       document.getElementById(args.key+'_img').innerHTML
+         = '<span style="font-weight:bold;color:green">+</span>';
+       document.getElementById(args.key+'_row').style.background
+         = '#ddffdd';
+      } else {
+       document.getElementById(args.key+'_img').innerHTML = '';
+       document.getElementById(args.key+'_row').style.background = '#fff';
+      }
     };
 
 These hooks can also be set as "group clear_hook" and "group set_hook"
