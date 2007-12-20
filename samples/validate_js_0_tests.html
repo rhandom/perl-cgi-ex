@@ -85,6 +85,26 @@ function run_tests () {
   ok(e, "Got validate_if error");
   ok(e.text1_error == "The field text1 is required.", "Got the right required error");
 
+  var v = {text1:{required:1, validate_if:'text2 was_valid'}, text2:{validate_if:'text3'}};
+  e = validate({}, v);
+  ok(! e, "Got no error on validate_if with was_valid");
+  e = validate({text2:1}, v);
+  ok(! e, "Got no error on validate_if with was_valid with non-validated data");
+  e = validate({text3:1}, v);
+  ok(! e, "Got no error on validate_if with was_valid with validated - bad data");
+  e = validate({text2:1, text3:1}, v);
+  ok(! e, "Got error on validate_if with was_valid with validated - good data");
+  e = validate({text1:1, text2:1, text3:1}, v);
+  ok(! e, "No error on validate_if with was_valid with validated - good data");
+
+  v = {text1:{required:1, validate_if:'text2 had_error'}, text2:{required:1}};
+  e = validate({}, v);
+  ok(e, "Got error on validate_if with had_error");
+  e = validate({text2:1}, v);
+  ok(! e, "No error on validate_if with had_error and bad_data");
+  e = validate({text1:1}, v);
+  ok(e && ! e.text1_error, "No error on validate_if with had_error and good data");
+
   // required_if
   e = validate({}, {text1:{required_if:'text2'}});
   ok(! e, "No required_if error");
@@ -109,7 +129,7 @@ function run_tests () {
   ok(! e, "No min_values error");
 
   // enum
-  var v = {text1:{'enum':[1, 2, 3]}};
+  v = {text1:{'enum':[1, 2, 3]}};
   e = validate({}, v);
   ok(e, "Got enum error");
   ok(e.text1_error == "The field text1 is not in the given list.", "Got the right enum error");
