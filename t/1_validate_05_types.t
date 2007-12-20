@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 104;
+use Test::More tests => 112;
 
 use_ok('CGI::Ex::Validate');
 
@@ -31,6 +31,27 @@ ok(! $e);
 
 $e = validate({bar => 1}, $v);
 ok($e);
+
+$v = {text1 => {required => 1, validate_if => 'text2 was_valid'}, text2 => {validate_if => 'text3'}};
+$e = validate({}, $v);
+ok(! $e, "Got no error on validate_if with was_valid");
+$e = validate({text2 => 1}, $v);
+ok(! $e, "Got no error on validate_if with was_valid with non-validated data");
+$e = validate({text3 => 1}, $v);
+ok(! $e, "Got no error on validate_if with was_valid with validated - bad data");
+$e = validate({text2 => 1, text3 => 1}, $v);
+ok(! $e, "Got error on validate_if with was_valid with validated - good data");
+$e = validate({text1 => 1, text2 => 1, text3 => 1}, $v);
+ok(! $e, "No error on validate_if with was_valid with validated - good data");
+
+$v = {text1 => {required => 1, validate_if => 'text2 had_error'}, text2 => {required => 1}};
+$e = validate({}, $v);
+ok($e, "Got error on validate_if with had_error");
+$e = validate({text2 => 1}, $v);
+ok(! $e, "No error on validate_if with had_error and bad_data");
+$e = validate({text1 => 1}, $v);
+ok($e && ! $e->as_hash->{text1_error}, "No error on validate_if with had_error and good data");
+
 
 ### required_if
 $v = {foo => {required_if => 'bar'}};
