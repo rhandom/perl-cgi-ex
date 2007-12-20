@@ -115,16 +115,21 @@ if (! document.validate) {
 
 <script src="../lib/CGI/Ex/validate.js"></script>
 <script>
-document.validate_set_hook = function (key) {
-  document.getElementById(key+'_img').innerHTML = '<span style="font-weight:bold;color:red">!</span>';
-  document.getElementById(key+'_row').style.background = '#ffdddd';
+document.validate_set_hook = function (args) {
+  document.getElementById(args.key+'_img').innerHTML = '<span style="font-weight:bold;color:red">!</span>';
+  document.getElementById(args.key+'_row').style.background = '#ffdddd';
 };
-document.validate_clear_hook = function (key) {
-  document.getElementById(key+'_img').innerHTML = '<span style="font-weight:bold;color:green">+</span>';
-  document.getElementById(key+'_row').style.background = '#ddffdd';
+document.validate_clear_hook = function (args) {
+  if (args.was_valid) {
+   document.getElementById(args.key+'_img').innerHTML = '<span style="font-weight:bold;color:green">+</span>';
+   document.getElementById(args.key+'_row').style.background = '#ddffdd';
+  } else {
+   document.getElementById(args.key+'_img').innerHTML = '';
+   document.getElementById(args.key+'_row').style.background = '#fff';
+  }
 };
 document.validation = {
-  "group onevent": 'blur,change,submit',
+  "group onevent": 'change,submit',
   "group no_confirm": 1,
   "group no_alert": 1,
   "group order": ["username", "password", "password2", "email", "email2", "state", "region", "s_r_combo", "enum", "compare", "checkone", "checktwo", "foo"],
@@ -143,6 +148,8 @@ document.validation = {
     match_error: "$name must contain both a letter and a number."
   },
   password2: {
+    validate_if: 'password was_valid',
+    vif_disable: 1,
     name: "Verify password",
     equals: "password",
     equals_name: "password"
@@ -155,6 +162,8 @@ document.validation = {
     type_error: "$name must be a valid email address."
   },
   email2: {
+    validate_if: 'email was_valid',
+    vif_disable: 1,
     name: "Verify email",
     equals: "email",
     equals_name: "email"
@@ -226,6 +235,9 @@ document.validation = {
   }
 };
 if (document.check_form) document.check_form('a');
+// do this in javascript to let the real form through without js
+document.a.password2.disabled = true;
+document.a.email2.disabled = true;
 </script>
 
 </html>
