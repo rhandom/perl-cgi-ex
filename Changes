@@ -1,5 +1,9 @@
-2.21
+2.23
+     2007-12-20
         * Add the onevent load option - make sure validate_if figures into dependencies
+        * Add was_valid, had_error, and was_checked validation options
+        * Add vif_disable option.
+        * Pass more information to clear/set hooks using named args
 
 2.22
      2007-12-14
