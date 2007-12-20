@@ -1512,6 +1512,18 @@ Allows for comparison of two form elements.  Can have an optional !.
       equals => '!domain2', # make sure the fields are not the same
     }
 
+=item C<had_error>
+
+Typically used by a validate_if.  Allows for checking if this item has had
+an error.
+
+    {
+       field => 'alt_password',
+       validate_if => {field => 'password', had_error => 1},
+    }
+
+This is basically the opposite of was_valid.
+
 =item C<match>
 
 Allows for regular expression comparison.  Multiple matches may
@@ -1625,6 +1637,10 @@ if the conditions are met.  Works in JS.
     # SAME as
     validate_if => {field => 'name', max_in_set => '0 of name'},
 
+    validate_if => 'name was_valid',
+    # SAME as
+    validate_if => {field => 'name', was_valid => 1},
+
     validate_if => {field => 'country', compare => "eq US"},
     # only if country's value is equal to US
 
@@ -1653,6 +1669,18 @@ the item after 'OR' will be tested instead.  If the item preceding 'OR'
 passes validation the item after 'OR' will not be tested.
 
     validate_if => [qw(zip OR postalcode)],
+
+=item C<was_valid>
+
+Typically used by a validate_if.  Allows for checking if this item has successfully
+been validated.
+
+    {
+       field => 'password2',
+       validate_if => {field => 'password', was_valid => 1},
+    }
+
+This is basically the opposite of was_valid.
 
 =back
 
@@ -1720,6 +1748,13 @@ being run in the cgi
       required    => 1,
       exclude_cgi => 1,
     }
+
+=item C<vif_disable>
+
+Only functions in javascript.  Will mark set the form element to
+disabled if validate_if fails.  It will mark it as enabled if
+validate_if is successful.  This item should normally only be used
+when onevent includes "change" or "blur".
 
 =back
 
@@ -1999,14 +2034,14 @@ a string that will be postpended on to the error string.
 =item C<onevent>
 
 Defaults to {submit => 1}.  This controls when the javascript validation
-will take place.  May be passed any or all or submit, change, or blur.
+will take place.  May be passed any or all or load, submit, change, or blur.
 Multiple events may be passed in the hash.
 
     'group onevent' => {submit => 1, change => 1}',
 
 A comma separated string of types may also be passed:
 
-    'group onevent' => 'submit,change,blur',
+    'group onevent' => 'submit,change,blur,load',
 
 Currently, change and blur will not work for dynamically matched
 field names such as 'm/\w+/'.  Support will be added.
