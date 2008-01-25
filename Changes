@@ -1,3 +1,5 @@
+        * Allow for smith.name
+
 2.23
      2007-12-20
         * Add the onevent load option - make sure validate_if figures into dependencies
