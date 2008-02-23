@@ -896,9 +896,10 @@ __END__
 
 =head1 DESCRIPTION
 
-CGI::Ex::Auth allows for auto-expiring, safe and easy web based logins.  Auth uses
-javascript modules that perform MD5 hashing to cram the password on
-the client side before passing them through the internet.
+CGI::Ex::Auth allows for auto-expiring, safe and easy web based
+logins.  Auth uses javascript modules that perform MD5 hashing to cram
+the password on the client side before passing them through the
+internet.
 
 For the stored cookie you can choose to use simple cram mechanisms,
 secure hash cram tokens, auto expiring logins (not cookie based),
@@ -906,12 +907,21 @@ and Crypt::Blowfish protection.  You can also choose to keep
 passwords plaintext and to use perl's crypt for testing
 passwords.
 
-A downside to this module is that it does not use a session to
-preserve state so get_pass_by_user has to happen on every request (any
-authenticated area has to verify authentication each time).  A plus is
-that you don't need to use a session if you don't want to.  It is up
-to the interested reader to add caching to the get_pass_by_user
+A theoretical downside to this module is that it does not use a
+session to preserve state so get_pass_by_user has to happen on every
+request (any authenticated area has to verify authentication each
+time).  In theory you should be checking the password everytime a user
+makes a request to make sure the password is still valid.  A definite
+plus is that you don't need to use a session if you don't want to.  It
+is up to the interested reader to add caching to the get_pass_by_user
 method.
+
+In the end, the only truly secure login method is across an https
+connection.  Any connection across non-https (non-secure) is
+susceptible to cookie hijacking or tcp hijacking - though the
+possibility of this is normally small and typically requires access to
+a machine somewhere in your TCP chain.  If in doubt - you should try
+to use https.
 
 =head1 METHODS
 
