@@ -334,19 +334,20 @@ sub no_cookies_print {
 sub login_print {
     my $self = shift;
     my $hash = $self->login_hash_common;
-    my $template = $self->login_template;
+    my $file = $self->login_template;
 
     ### allow for a hooked override
     if (my $meth = $self->{'login_print'}) {
-        $meth->($self, $template, $hash);
+        $meth->($self, $file, $hash);
         return 0;
     }
 
     ### process the document
-    require CGI::Ex::Template;
-    my $cet = CGI::Ex::Template->new($self->template_args);
+    my $args = $self->template_args;
+    $args->{'INCLUDE_PATH'} ||= $args->{'include_path'} || $self->template_include_path,
+    my $t = $self->template_obj($args);
     my $out = '';
-    $cet->process_simple($template, $hash, \$out) || die $cet->error;
+    $t->process_simple($file, $hash, \$out) || die $t->error;
 
     ### fill in form fields
     require CGI::Ex::Fill;
@@ -359,14 +360,17 @@ sub login_print {
     return 0;
 }
 
-sub template_args {
-    my $self = shift;
-    return $self->{'template_args'} ||= {
-        INCLUDE_PATH => $self->template_include_path,
+sub template_obj {
+    my ($self, $args) = @_;
+    return $self->{'template_obj'} || do {
+        require Template::Alloy;
+        Template::Alloy->new($args);
     };
 }
 
-sub template_include_path { shift->{'template_include_path'} || '' }
+sub template_args { $_[0]->{'template_args'} ||= {} }
+
+sub template_include_path { $_[0]->{'template_include_path'} || '' }
 
 sub login_hash_common {
     my $self = shift;
