@@ -969,6 +969,7 @@ described separately.
     secure_hash_keys
     template_args
     template_include_path
+    template_obj
     text_user
     text_pass
     text_save
