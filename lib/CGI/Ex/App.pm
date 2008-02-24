@@ -1,10 +1,9 @@
 package CGI::Ex::App;
 
-###----------------------------------------------------------------###
+###---------------------###
 #  See the perldoc in CGI/Ex/App.pod
 #  Copyright 2007 - Paul Seamons
 #  Distributed under the Perl Artistic License without warranty
-###----------------------------------------------------------------###
 
 use strict;
 use Carp qw(croak);
@@ -12,7 +11,6 @@ BEGIN {
     eval { use Time::HiRes qw(time) };
     eval { use Scalar::Util };
 }
-
 our $VERSION = '2.23';
 
 sub new {
@@ -56,7 +54,6 @@ sub navigate {
     $self->handle_error($@) if $@ && $@ ne "Long Jump\n"; # catch any errors
 
     $self->destroy;
-
     return $self;
 }
 
@@ -108,7 +105,6 @@ sub nav_loop {
 
         my $is_at_end = $self->{'path_i'} >= $#$path ? 1 : 0;
         $self->run_hook('refine_path', $step, $is_at_end); # no more steps - allow for this step to designate one to follow
-
         $self->unmorph($step);
     }
 
@@ -173,7 +169,7 @@ sub run_hook {
     my $resp = $self->$code($step, @_);
 
     if (! $self->{'no_history'}) {
-        $hist->{'elapsed'} = time - $hist->{'time'};
+        $hist->{'elapsed'}  = time - $hist->{'time'};
         $hist->{'response'} = $resp;
     }
 
@@ -205,20 +201,17 @@ sub run_step {
 sub prepared_print {
     my $self = shift;
     my $step = shift;
-
     my $hash_form = $self->run_hook('hash_form',   $step) || {};
     my $hash_base = $self->run_hook('hash_base',   $step) || {};
     my $hash_comm = $self->run_hook('hash_common', $step) || {};
-    my $hash_fill = $self->run_hook('hash_fill',   $step) || {};
     my $hash_swap = $self->run_hook('hash_swap',   $step) || {};
+    my $hash_fill = $self->run_hook('hash_fill',   $step) || {};
     my $hash_errs = $self->run_hook('hash_errors', $step) || {};
-
     $hash_errs->{$_} = $self->format_error($hash_errs->{$_}) foreach keys %$hash_errs;
     $hash_errs->{'has_errors'} = 1 if scalar keys %$hash_errs;
 
-    my $fill = {%$hash_form, %$hash_base, %$hash_comm, %$hash_fill};
     my $swap = {%$hash_form, %$hash_base, %$hash_comm, %$hash_swap, %$hash_errs};
-
+    my $fill = {%$hash_form, %$hash_base, %$hash_comm, %$hash_fill};
     $self->run_hook('print', $step, $swap, $fill);
 }
 
@@ -232,15 +225,11 @@ sub print {
 
 sub handle_error {
     my ($self, $err) = @_;
-
     die $err if $self->{'_handling_error'};
-    local $self->{'_handling_error'} = 1;
-    local $self->{'_recurse'} = 0; # allow for this next step - even if we hit a recurse error
-
+    local @{ $self }{'_handling_error', '_recurse' } = (1, 0); # allow for this next step - even if we hit a recurse error
     $self->stash->{'error_step'} = $self->current_step;
     $self->stash->{'error'}      = $err;
     $self->replace_path($self->error_step);
-
     eval { $self->jump };
     die $@ if $@ && $@ ne "Long Jump\n";
 }
@@ -363,6 +352,7 @@ sub add_to_fill          { my $self = shift; $self->add_to_hash($self->hash_fill
 sub add_to_form          { my $self = shift; $self->add_to_hash($self->hash_form,   @_) }
 sub add_to_path          { shift->append_path(@_) } # legacy
 sub add_to_swap          { my $self = shift; $self->add_to_hash($self->hash_swap,   @_) }
+sub append_path          { my $self = shift; push @{ $self->path }, @_ }
 sub cleanup_user         { my ($self, $user) = @_; $user }
 sub current_step         { $_[0]->step_by_path_index($_[0]->{'path_i'} || 0) }
 sub destroy              {}
@@ -405,8 +395,6 @@ sub add_to_hash {
     $old->{$_} = $new->{$_} foreach keys %$new;
 }
 
-sub append_path { my $self = shift; push @{ $self->path }, @_ }
-
 sub clear_app {
     my $self = shift;
     delete @{ $self }{qw(cgix cookies form hash_common hash_errors hash_fill hash_swap history
@@ -428,22 +416,17 @@ sub dump_history {
         my $note = ('    ' x ($row->{'level'} || 0))
             . join(' - ', $row->{'step'}, $row->{'meth'}, $row->{'found'}, sprintf('%.5f', $row->{'elapsed'}));
         my $resp = $row->{'response'};
-        if (ref($resp) eq 'HASH' && ! scalar keys %$resp) {
-            $note .= ' - {}';
-        } elsif (ref($resp) eq 'ARRAY' && ! @$resp) {
-            $note .= ' - []';
-        } elsif (! defined $resp) {
-            $note .= ' - undef';
-        } elsif (! ref $resp || ! $all) {
-            my $max = $self->{'history_max'} || 30;
-            if (length($resp) > $max) {
-                $resp = substr($resp, 0, $max);
-                $resp =~ s/\n.+//s;
-                $resp = "$resp ...";
-            }
-            $note .= " - $resp";
-        } else {
+        if ($all) {
             $note = [$note, $resp];
+        } else {
+            $note .= ! defined $resp                               ? ' - undef'
+                  : ref($resp) eq 'ARRAY' && ! @$resp             ? ' - []'
+                  : ref($resp) eq 'HASH'  && ! scalar keys %$resp ? ' - {}'
+                  : do {
+                      $resp = $1 if $resp =~ /^(.+)\n/;
+                      $resp = substr($resp, 0, $self->{'_history_max'} || 30);
+                      "$resp ...";
+                  };
         }
         push @$dump, $note;
     }
@@ -458,7 +441,6 @@ sub exit_nav_loop {
         $index = -1 if ! defined $index;
         $self->unmorph while $#$ref != $index;
     }
-
     die "Long Jump\n";
 }
 
@@ -509,7 +491,6 @@ sub jump {
     $self->replace_path(@replace);
 
     $self->{'jumps'} = ($self->{'jumps'} || 0) + 1;
-
     $self->{'path_i'}++; # move along now that the path is updated
     $self->nav_loop;     # recurse on the path
     $self->exit_nav_loop;
@@ -629,12 +610,10 @@ sub unmorph {
 
 sub file_print {
     my ($self, $step) = @_;
-
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
     my $_step    = $self->run_hook('name_step', $step) || croak "Missing name_step";
     $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
-
     foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
 
     return $base_dir . $module . $_step;
@@ -669,11 +648,8 @@ sub file_val {
 sub fill_template {
     my ($self, $step, $outref, $fill) = @_;
     return if ! $fill || ! scalar keys %$fill;
-
     my $args = $self->run_hook('fill_args', $step) || {};
-    local $args->{'text'} = $outref;
-    local $args->{'form'} = $fill;
-
+    local @{ $args }{'text', 'form'} = ($outref, $fill);
     require CGI::Ex::Fill;
     CGI::Ex::Fill::fill($args);
 }
@@ -719,12 +695,10 @@ sub info_complete {
 sub js_validation {
     my ($self, $step) = @_;
     return '' if $self->ext_val =~ /^html?$/; # let htm validation do it itself
-
     my $form_name = $_[2] || $self->run_hook('form_name', $step);
     my $hash_val  = $_[3] || $self->run_hook('hash_validation', $step);
     my $js_uri    = $self->js_uri_path;
     return '' if ! $form_name || ! ref($hash_val) || ! scalar keys %$hash_val;
-
     return $self->val_obj->generate_js($hash_val, $form_name, $js_uri);
 }
 
@@ -752,7 +726,6 @@ sub prepare    { 1 } # false means show step
 
 sub print_out {
     my ($self, $step, $out) = @_;
-
     $self->cgix->print_content_type($self->mimetype($step), $self->charset($step));
     print ref($out) eq 'SCALAR' ? $$out : $out;
 }
