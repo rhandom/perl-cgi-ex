@@ -42,16 +42,11 @@ sub navigate {
     $self->{'_time'} = time;
     eval {
         return $self if ! $self->{'_no_pre_navigate'} && $self->pre_navigate;
-
-        eval {
-            local $self->{'_morph_lineage_start_index'} = $#{$self->{'_morph_lineage'} || []};
-            $self->nav_loop;
-        };
-        croak $@ if $@ && $@ ne "Long Jump\n";
-
-        $self->post_navigate if ! $self->{'_no_post_navigate'};
+        local $self->{'_morph_lineage_start_index'} = $#{$self->{'_morph_lineage'} || []};
+        $self->nav_loop;
     };
     $self->handle_error($@) if $@ && $@ ne "Long Jump\n"; # catch any errors
+    $self->handle_error($@) if ! $self->{'_no_post_navigate'} && ! eval { $self->post_navigate; 1 } && $@ && $@ ne "Long Jump\n";
 
     $self->destroy;
     return $self;
@@ -419,14 +414,14 @@ sub dump_history {
         if ($all) {
             $note = [$note, $resp];
         } else {
-            $note .= ! defined $resp                               ? ' - undef'
-                  : ref($resp) eq 'ARRAY' && ! @$resp             ? ' - []'
-                  : ref($resp) eq 'HASH'  && ! scalar keys %$resp ? ' - {}'
+            $note .= ' - '
+                .(! defined $resp                                 ? 'undef'
+                  : ref($resp) eq 'ARRAY' && ! @$resp             ? '[]'
+                  : ref($resp) eq 'HASH'  && ! scalar keys %$resp ? '{}'
                   : do {
                       $resp = $1 if $resp =~ /^(.+)\n/;
-                      $resp = substr($resp, 0, $self->{'_history_max'} || 30);
-                      "$resp ...";
-                  };
+                      length($resp) > 30 ? substr($resp, 0, 30)." ..." : $resp;
+                  });
         }
         push @$dump, $note;
     }
