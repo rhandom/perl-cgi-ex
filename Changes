@@ -1,4 +1,6 @@
         * Allow for smith.name
+        * Simplify some code in App
+        * Allow for post_navigate to get called even in case of error.
 
 2.23
      2007-12-20
