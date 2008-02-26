@@ -922,14 +922,15 @@ local $ENV{'REQUEST_METHOD'} = 'POST';
 Foo11->new(form => {step => 'step1'})->navigate;
 ok($Foo::test_stdout eq 'step6_file_print', "Refine Path and set_ready_validate work ($Foo::test_stdout)");
 
-Foo11->set_ready_validate(1);
-ok(Foo11->ready_validate, "Is ready to validate");
-Foo11->set_ready_validate(0);
-ok(! Foo11->ready_validate, "Not ready to validate");
-Foo11->set_ready_validate(1);
-ok(Foo11->ready_validate, "Is ready to validate");
-Foo11->set_ready_validate('somestep', 0);
-ok(! Foo11->ready_validate, "Not ready to validate");
+$f = Foo11->new;
+$f->set_ready_validate(1);
+ok($f->ready_validate, "Is ready to validate");
+$f->set_ready_validate(0);
+ok(! $f->ready_validate, "Not ready to validate");
+$f->set_ready_validate(1);
+ok($f->ready_validate, "Is ready to validate");
+$f->set_ready_validate('somestep', 0);
+ok(! $f->ready_validate, "Not ready to validate");
 
 ###----------------------------------------------------------------###
 
