@@ -11,3 +11,6 @@ blib
 .cvsignore
 tmon\.out
 WrapEx.pm
+cover_db
+Var.pm
+Tutorial.pod
