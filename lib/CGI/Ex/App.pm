@@ -726,7 +726,16 @@ sub print_out {
     print ref($out) eq 'SCALAR' ? $$out : $out;
 }
 
-sub ready_validate { ($ENV{'REQUEST_METHOD'} && $ENV{'REQUEST_METHOD'} eq 'POST') ? 1 : 0 }
+sub ready_validate {
+    my ($self, $step) = @_;
+    if ($self->run_hook('validate_when_data', $step)) {
+        if (my @keys = keys %{ $self->run_hook('hash_validation', $step) || {} }) {
+            my $form = $self->form;
+            return (grep { exists $form->{$_} } @keys) ? 1 : 0;
+        }
+    }
+    return ($ENV{'REQUEST_METHOD'} && $ENV{'REQUEST_METHOD'} eq 'POST') ? 1 : 0;
+}
 
 sub refine_path {
     my ($self, $step, $is_at_end) = @_;
@@ -788,6 +797,8 @@ sub validate {
 
     return 1;
 }
+
+sub validate_when_data { $_[0]->{'validate_when_data'} }
 
 ###---------------------###
 # authentication
