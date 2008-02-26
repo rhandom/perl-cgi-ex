@@ -322,7 +322,7 @@ sub conf {
         my $hash = $self->conf_validation;
         if ($hash && scalar keys %$hash) {
             my $err_obj = $self->val_obj->validate($conf, $hash);
-            die $err_obj if $err_obj;
+            croak "$err_obj" if $err_obj;
         }
         $conf;
     }
