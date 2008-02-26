@@ -700,8 +700,8 @@ sub js_validation {
 sub morph_base { my $self = shift; ref($self) }
 sub morph_package {
     my ($self, $step) = @_;
-    my $cur = $self->morph_base || croak "Missing morph_base"; # default to using self as the base for morphed modules
-    my $new = $cur .'::'. ($step || croak "Missing step");
+    my $cur = $self->morph_base; # default to using self as the base for morphed modules
+    my $new = ($cur ? $cur .'::' : '') . ($step || croak "Missing step");
     $new =~ s/(\b|_+)(\w)/\u$2/g; # turn Foo::my_step_name into Foo::MyStepName
     return $new;
 }
