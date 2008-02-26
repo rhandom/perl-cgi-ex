@@ -5,6 +5,7 @@
         * Allow for post_navigate to get called even in case of error.
         * Added morph_base to App
         * Added validate_when_data hook.
+        * Added samples/app/app1 which is a path based application
 
 2.23
      2007-12-20
