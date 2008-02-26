@@ -256,6 +256,7 @@ during the run_step hook.
 
         ->info_complete (hook - ran if prepare was true)
             ->ready_validate (hook)
+                ->validate_when_data (hook)
                 # returns false from info_complete if ! ready_validate
             ->validate (hook - uses CGI::Ex::Validate to validate form info)
                 ->hash_validation (hook)
@@ -2102,6 +2103,13 @@ and check for its presence - such as the following:
 Changing the behavior of ready_validate can help in making wizard type
 applications.
 
+You can also use the validate_when_data hook to change the behavior of
+ready_validate.  If valiate_when_data returns true, then
+ready_validate will look for keys in the form matching keys that are
+in hash_validation - if they exist ready_validate will be true.  If
+there are no hash_validation keys, ready_validate uses its default
+behavior.
+
 =item refine_path (hook)
 
 Called at the end of nav_loop.  Passed a single value indicating
@@ -2278,8 +2286,11 @@ This method is not normally used.
 =item set_ready_validate (hook and method)
 
 Sets that the validation is ready (or not) to validate.  Should set the value
-checked by the hook ready_validate.  The following would complement the
-processing flag above:
+checked by the hook ready_validate.  Has no affect if validate_when_data
+flag is set.
+
+The following would complement the "processing" flag example given in
+ready_validate description:
 
     sub set_ready_validate {
         my $self = shift;
@@ -2465,6 +2476,14 @@ path.  A validation item of:
     {field => 'foo', required => 1, append_path => ['bar', 'baz']}
 
 would append 'bar' and 'baz' to the path should all validation succeed.
+
+=item validate_when_data (hook)
+
+Defaults to "validate_when_data" property which defaults to false.  Called
+during the ready_validate hook.  If returns true, ready_validate will look
+for keys in the form matching keys that are in hash_validation - if they exist
+ready_validate will be true.  If there are no hash_validation keys, ready_validate
+uses its default behavior.
 
 =item verify_user (method)
 
