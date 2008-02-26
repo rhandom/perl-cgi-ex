@@ -2,7 +2,7 @@ package App1::Thankyou;
 
 =head1 NAME
 
-App1::Thankyou - show the final page of the application
+App1::Thankyou - handle this step of the App1 app
 
 =cut
 

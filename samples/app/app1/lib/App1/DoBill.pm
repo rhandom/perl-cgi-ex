@@ -2,7 +2,7 @@ package App1::DoBill;
 
 =head1 NAME
 
-App1::DoBill - This step would process the billing
+App1::DoBill - handle this step of the App1 app
 
 =cut
 

@@ -26,11 +26,11 @@ sub post_navigate {
 
 ###----------------------------------------------------------------###
 
-sub load_conf       { 1 } # let configuration be read from a file
+sub load_conf       { 1 }
 sub conf_file       { "$Bin/app1.yaml" }
 sub conf_validation { {path => {required => 1, max_values => 100}} }
 
-sub allow_morph     { 1 } # allow each step to be in a separate file
+sub allow_morph     { 1 }
 
 sub name_module     { "" } # allow content files to be in /tt/ directory directly
 sub template_path   { "$Bin/tt" }

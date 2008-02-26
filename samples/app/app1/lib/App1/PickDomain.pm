@@ -2,7 +2,7 @@ package App1::PickDomain;
 
 =head1 NAME
 
-App1::PickDomain - usually the first step - pick a domain
+App1::PickDomain - handle this step of the App1 app
 
 =cut
 
