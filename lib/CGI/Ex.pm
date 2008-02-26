@@ -979,6 +979,10 @@ that the javascript will cache.  Takes either a full filename,
 or a shortened name which will be looked for in @INC. (ie /full/path/to/my.js
 or CGI/Ex/validate.js or CGI::Ex::validate)
 
+    #!/usr/bin/perl
+    use CGI::Ex;
+    CGI::Ex->print_js($ENV{'PATH_INFO'});
+
 =item C<-E<gt>swap_template>
 
 This is intended as a simple yet strong subroutine to swap
