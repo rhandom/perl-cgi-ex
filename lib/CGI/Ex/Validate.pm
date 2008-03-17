@@ -278,9 +278,9 @@ sub validate_buddy {
     return @errors ? \@errors : 0;
   }
 
-  if ($field_val->{was_valid}   && ! $self->{'_was_valid'}->{$field})   { return [[$field, 'was_valid',   $field_val, $ifs_match]]; }
-  if ($field_val->{had_error}   && ! $self->{'_had_error'}->{$field})   { return [[$field, 'had_error',   $field_val, $ifs_match]]; }
-  if ($field_val->{was_checked} && ! $self->{'_was_checked'}->{$field}) { return [[$field, 'was_checked', $field_val, $ifs_match]]; }
+  if ($field_val->{was_valid}   && ! $self->{'was_valid'}->{$field})   { return [[$field, 'was_valid',   $field_val, $ifs_match]]; }
+  if ($field_val->{had_error}   && ! $self->{'had_error'}->{$field})   { return [[$field, 'had_error',   $field_val, $ifs_match]]; }
+  if ($field_val->{was_checked} && ! $self->{'was_checked'}->{$field}) { return [[$field, 'was_checked', $field_val, $ifs_match]]; }
 
   my $values   = UNIVERSAL::isa($form->{$field},'ARRAY') ? $form->{$field} : [$form->{$field}];
   my $n_values = $#$values + 1;
