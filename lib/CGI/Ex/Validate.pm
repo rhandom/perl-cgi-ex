@@ -661,7 +661,7 @@ sub check_type {
     return 0 if $value =~ m/(\.\-|\-\.|\.\.)/;
     return 0 if length($value) > 255;
     return 0 if $value !~ s/\.([a-z]+)$//;
-    return 0 if $value !~ /^([a-z0-9][a-z0-9\-]{1,63} \.)* [a-z0-9][a-z0-9\-]{1,63}$/x;
+    return 0 if $value !~ /^([a-z0-9][a-z0-9\-]{0,63} \.)* [a-z0-9][a-z0-9\-]{0,63}$/x;
 
   ### validate a url
   } elsif ($type eq 'URL') {
