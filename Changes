@@ -1,3 +1,7 @@
+2.25
+        * Fix bugs in was_valid checking of Validate
+
+
 2.24
      2008-02-26
         * Allow for smith.name
