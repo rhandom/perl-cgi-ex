@@ -1674,7 +1674,7 @@ been validated.
        validate_if => {field => 'password', was_valid => 1},
     }
 
-This is basically the opposite of was_valid.
+This is basically the opposite of had_error.
 
 =back
 
