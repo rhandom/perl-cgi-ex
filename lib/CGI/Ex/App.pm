@@ -147,10 +147,14 @@ sub path {
 }
 
 sub run_hook {
-    my $self = shift;
-    my $hook = shift;
-    my $step = shift;
-    my ($code, $found) = @{ $self->find_hook($hook, $step) };
+    my ($self, $hook, $step, @args) = @_;
+    my ($code, $found);
+    if (ref $hook eq 'CODE') {
+        $code = $hook;
+        $hook = $found = 'coderef';
+    } else {
+        ($code, $found) = @{ $self->find_hook($hook, $step) };
+    }
     croak "Could not find a method named ${step}_${hook} or ${hook}" if ! $code;
     croak "Value for $hook ($found) is not a code ref ($code)" if ! UNIVERSAL::isa($code, 'CODE');
 
@@ -161,7 +165,7 @@ sub run_hook {
     }
     local $self->{'_level'} = 1 + ($self->{'_level'} || 0);
 
-    my $resp = $self->$code($step, @_);
+    my $resp = $self->$code($step, @args);
 
     if (! $self->{'no_history'}) {
         $hist->{'elapsed'}  = time - $hist->{'time'};
