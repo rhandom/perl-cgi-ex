@@ -1,5 +1,7 @@
 2.25
         * Fix bugs in was_valid checking of Validate
+        * Quote more keys in JSONDump
+        * Allow for passing a coderef instead of the step name to run_hook
 
 
 2.24
