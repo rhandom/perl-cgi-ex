@@ -75,7 +75,7 @@ sub _dump {
         return "{}" if ! @keys;
         return "{$self->{hash_nl}${prefix}$self->{indent}"
             . join(",$self->{hash_nl}${prefix}$self->{indent}",
-                   map  { $self->js_escape($_, "${prefix}$self->{indent}")
+                   map  { $self->js_escape($_, "${prefix}$self->{indent}", 1)
                               . $self->{'hash_sep'}
                               . $self->_dump($data->{$_}, "${prefix}$self->{indent}") }
                    @keys)
@@ -99,11 +99,11 @@ sub _dump {
 }
 
 sub js_escape {
-    my ($self, $str, $prefix) = @_;
+    my ($self, $str, $prefix, $no_num) = @_;
     return 'null'  if ! defined $str;
 
     ### allow things that look like numbers to show up as numbers (and those that aren't quite to not)
-    return $str if $str =~ /^ -? (?: [1-9][0-9]{0,12} | 0) (?: \. \d* [1-9])? $/x;
+    return $str if ! $no_num && $str =~ /^ -? (?: [1-9][0-9]{0,12} | 0) (?: \. \d* [1-9])? $/x;
 
     my $quote = $self->{'single_quote'} ? "'" : '"';
 
