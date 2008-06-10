@@ -417,7 +417,7 @@ sub time_calc {
         return time + ($m->{lc($3)} || 1) * "$1$2";
     } else {
         my @stat = stat $time;
-        die "Could not find file \"$time\" for time_calc.  You should pass one of \"now\", time(), \"[+-] \d+ [smhdwMy]\" or a filename." if $#stat == -1;
+        die "Could not find file \"$time\" for time_calc.  You should pass one of \"now\", time(), \"[+-] \\d+ [smhdwMy]\" or a filename." if $#stat == -1;
         return $stat[9];
     }
 }
