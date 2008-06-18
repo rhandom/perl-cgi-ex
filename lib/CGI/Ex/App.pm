@@ -45,7 +45,11 @@ sub navigate {
         local $self->{'_morph_lineage_start_index'} = $#{$self->{'_morph_lineage'} || []};
         $self->nav_loop;
     };
-    $self->handle_error($@) if $@ && $@ ne "Long Jump\n"; # catch any errors
+    my $err = $@;
+    if ($err && ! ref($err) && $err ne "Long Jump\n") { # catch any errors
+        die $err if ! $self->can('handle_error');
+        $self->handle_error($err);
+    }
     $self->handle_error($@) if ! $self->{'_no_post_navigate'} && ! eval { $self->post_navigate; 1 } && $@ && $@ ne "Long Jump\n";
 
     $self->destroy;
