@@ -263,7 +263,8 @@ sub read_handler_json {
   CORE::read(IN, my $text, -s $file);
   close IN;
   require JSON;
-  return scalar JSON::jsonToObj($text);
+  my $decode = JSON->VERSION > 1.98 ? 'decode' : 'jsonToObj';
+  return scalar JSON->new->$decode($text);
 }
 
 sub read_handler_storable {
@@ -545,7 +546,8 @@ sub write_handler_json {
   my $file = shift;
   my $ref  = shift;
   require JSON;
-  my $str = JSON::objToJson($ref, {pretty => 1, indent => 2});
+  my $encode = JSON->VERSION > 1.98 ? 'encode' : 'objToJSon';
+  my $str = JSON->new->$encode($ref, {pretty => 1, indent => 2});
   local *OUT;
   open (OUT, ">$file") || die $!;
   print OUT $str;
