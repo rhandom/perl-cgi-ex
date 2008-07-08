@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 219;
+use Test::More tests => 224;
 use strict;
 use warnings;
 
@@ -810,6 +810,21 @@ eval { $foo8->navigate };
 #debug $foo8->dump_history;
 ok($Foo::test_stdout =~ /^blah11 -/, "Got the right output for Foo8::Blah11");
 ok($Foo::test_stdout =~ m|Not/Exists/Blah11.pm.*\@INC|, "Got the right output for Foo8::Blah11") || diag $Foo::test_stdout;
+
+
+$foo8 = Foo8->new;
+$foo8->run_hook('morph', 'blah6', 1);
+is(ref($foo8), 'Foo8::Blah6', "Right package");
+$foo8->run_hook_as('run_step', 'blah7');
+is($Foo::test_stdout, 'blah7_file_print', "Got the right output for Foo8::Blah6::Blah7");
+$foo8->run_hook_as('run_step', 'Foo8::Blah6::Blah7');
+is($Foo::test_stdout, 'blah7_file_print', "Got the right output for Foo8::Blah6::Blah7");
+is(ref($foo8), 'Foo8::Blah6', "Right package");
+$foo8->run_hook('run_step', 'blah6');
+is($Foo::test_stdout, 'blah6_file_print', "Got the right output for Foo8::Blah6");
+$foo8->run_hook('unmorph', 'blah6');
+#use CGI::Ex::Dump qw(debug);
+#debug $foo8->dump_history;
 
 ###----------------------------------------------------------------###
 print "#-----------------------------------------\n";
