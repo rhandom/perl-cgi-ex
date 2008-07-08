@@ -183,6 +183,10 @@ sub run_hook {
 
 sub run_hook_as {
     my ($self, $hook, $step, @args) = @_;
+    $self->run_hook('morph', $step, 2, 2);
+    my $resp = $self->run_hook($hook, $step, @args);
+    $self->run_hook('unmorph', $step);
+    return $resp;
 }
 
 sub run_step {
@@ -521,27 +525,30 @@ sub js_uri_path {
 
 sub morph {
     my $self  = shift;
-    my $step  = shift || return;
-    my $time  = time;
     my $ref   = $self->history->[-1] || {};
-    my $allow = $self->run_hook('allow_morph', $step) || return;
+    my $step  = shift || return;
+    my $allow = shift || $self->run_hook('allow_morph', $step) || return;
     my $lin   = $self->{'_morph_lineage'} ||= [];
     my $ok    = 0;
     my $cur   = ref $self;
     my $new;
+    if ($step =~ /::/) { # allow passing in a package name from run_hook_as
+        ($new = $step) =~ s/^:://; # allow leading ::
+    }
+
     push @$lin, $cur; # store so subsequent unmorph calls can do the right thing
 
     # hash - but no step - record for unbless
     if (ref($allow) && ! ($allow = $allow->{$step})) {
         $ref->{'info'} = "not allowed to morph to that step";
 
-    } elsif ($#$lin != 0                                          # is this the second or greater morph call
-             && (! ($allow = $self->allow_nested_morph($step))    # not true
+    } elsif (@$lin > 1                                            # is this the second or greater morph call
+             && (! ($allow = shift || $self->allow_nested_morph($step))    # not true
                  || (ref($allow) && ! ($allow = $allow->{$step})) # hash - but no step
                  )) {
         $ref->{'info'} = $allow ? "not allowed to nested_morph to that step" : "nested_morph disabled";
 
-    } elsif (! ($new = $self->run_hook('morph_package', $step))) {
+    } elsif (! ($new ||= $self->run_hook('morph_package', $step))) {
         $ref->{'info'} = "Missing morph_package for step $step";
 
     } elsif ($cur eq $new) {
