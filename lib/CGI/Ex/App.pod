@@ -207,9 +207,9 @@ The nav_loop method will run as follows:
             ->require_auth (hook)
                 # exits nav_loop if true
 
-            ->morph
+            ->morph (hook)
                 # check ->allow_morph (hook)
-                # check ->allow_nested_morph
+                # check ->allow_nested_morph (hook)
                 # ->morph_package (hook - get the package to bless into)
                 # ->fixup_after_morph if morph_package exists
                 # if no package is found, process continues in current file
@@ -223,8 +223,7 @@ The nav_loop method will run as follows:
                 ->next_step (hook) # find next step and add to path
                 ->set_ready_validate(0) (hook)
 
-            ->unmorph
-                # only called if morph worked
+            ->unmorph (hook)
                 # ->fixup_before_unmorph if blessed to current package
 
             # exit loop if ->run_step returned true (page printed)
@@ -989,16 +988,27 @@ object into another package.  Default is false.  It is passed a single
 argument of the current step.  For more granularity, if true value is
 a hash, the step being morphed to must be in the hash.
 
+If the returned value is "1", and the module doesn't exist, then the
+App will continue to run blessed into the current package.  If there
+is an error requiring the module or if the module doesn't exist and
+the return value is "2" (true but not 1), then App will die with the
+appropriate error.
+
 To enable morphing for all steps, add the following:
+(Packages that don't exists won't be morphed to)
 
     sub allow_morph { 1 }
+
+To force morphing for all steps add the following:
+
+    sub allow_morph { 2 }
 
 To enable morph on specific steps, do either of the following:
 
     sub allow_morph {
         return {
             edit => 1,
-            delete => 1,
+            delete => 2, # must morph
         };
     }
 
@@ -1006,7 +1016,9 @@ To enable morph on specific steps, do either of the following:
 
     sub allow_morph {
         my ($self, $step) = @_;
-        return $step =~ /^(edit|delete)$/;
+        return 1 if $step eq 'edit';
+        return 2 if $step eq 'delete';
+        return;
     }
 
 See the morph "hook" for more information.
@@ -1761,7 +1773,7 @@ re-blesses the object into the original package.
 
 Samples of allowing morph:
 
-    sub allow_morph { 1 }
+    sub allow_morph { 1 } # value of 1 means try to find package, ok if not found
 
     sub allow_morph { {edit => 1} }
 
