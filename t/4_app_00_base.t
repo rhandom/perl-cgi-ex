@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 214;
+use Test::More tests => 219;
 use strict;
 use warnings;
 
@@ -338,6 +338,7 @@ ok($Foo::test_stdout eq 'JS', "Got the right output for Foo6");
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
+print "#-----------------------------------------\n";
 print "### Test Authorization Methods ###\n";
 
 local $ENV{'PATH_INFO'}   = '';
@@ -496,6 +497,7 @@ ok($Foo::test_stdout eq "Login Form", "Got the right output for Bar6 ($@)");
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
+print "#-----------------------------------------\n";
 print "### Test Configuration methods ###\n";
 
 {
@@ -552,6 +554,7 @@ ok($Foo::test_stdout eq "" && $@, "Got a conf_validation error");
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
+print "#-----------------------------------------\n";
 print "### Various other coverage tests\n";
 
 ok(Conf1->new->conf_obj, "Got a conf_obj");
@@ -672,6 +675,7 @@ ok(! eval { CGI::Ex::App->new->get_pass_by_user } && $@, "Got a good error for g
 ok(! eval { CGI::Ex::App->new->find_hook } && $@, "Got a good error for find_hook");
 
 ###----------------------------------------------------------------###
+print "#-----------------------------------------\n";
 print "### Some morph tests ###\n";
 
 {
@@ -706,69 +710,82 @@ print "### Some morph tests ###\n";
     our @ISA = qw(Foo8::Blah6);
     sub info_complete { 0 }
     sub file_print { \ 'blah7_file_print' }
+
+    package Foo8::Blah9;
+    our @ISA = qw(Foo8);
+    sub info_complete { 0 }
+    sub file_print { \ 'blah9_file_print' }
+
+    package Foo8;
+    sub __error_allow_morph { 0 }
+    sub __error_file_print { \ '[% error_step %] - [% error %]' }
+    $INC{'Foo8/Blah10.pm'} = 'internal'; # fake require - not a real App package
+
+    package Foo8;
+    sub blah11_morph_package { 'Not::Exists::Blah11' }
 }
 
 Foo8->new({form => {step => 'blah1'}})->navigate;
-ok($Foo::test_stdout eq 'blah1_pre', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah1_pre', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah1'}, allow_morph => 1})->navigate;
-ok($Foo::test_stdout eq 'blah1_pre', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah1_pre', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah2'}})->navigate;
-ok($Foo::test_stdout eq 'Main Content', "Got the right output for Foo8");
+is($Foo::test_stdout, 'Main Content', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah3'}})->navigate;
-ok($Foo::test_stdout eq 'blah3_post', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah3_post', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah4'}})->navigate;
-ok($Foo::test_stdout eq 'blah4_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah4_file_print', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah5'}})->navigate;
-ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah5_file_print', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah5'}, allow_morph => 1})->navigate;
-ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah5_file_print', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah5'}, allow_morph => 0})->navigate;
-ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah5_file_print', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah5'}, allow_morph => {}})->navigate;
-ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah5_file_print', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah5'}, allow_morph => {blah5 => 1}})->navigate;
-ok($Foo::test_stdout eq 'blah5_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah5_file_print', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah6'}})->navigate;
-ok($Foo::test_stdout eq 'blah6_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah6_file_print', "Got the right output for Foo8");
 
 Foo8->new({form => {step => 'blah8'}, allow_morph => 1})->navigate;
-ok($Foo::test_stdout eq 'blah8_file_print', "Got the right output for Foo8 ($Foo::test_stdout)");
+is($Foo::test_stdout, 'blah8_file_print', "Got the right output for Foo8 ($Foo::test_stdout)");
 
 my $foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => 1});
 $foo8->morph('blah6');
 $foo8->navigate;
-ok($Foo::test_stdout eq 'blah7_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah7_file_print', "Got the right output for Foo8");
 
 $foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => {blah7 => 1}});
 $foo8->morph('blah6');
 $foo8->navigate;
-ok($Foo::test_stdout eq 'blah7_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah7_file_print', "Got the right output for Foo8");
 
 $foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => {blah9 => 1}});
 $foo8->morph('blah6');
 $foo8->navigate;
-ok($Foo::test_stdout eq 'blah6_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah6_file_print', "Got the right output for Foo8");
 
 $foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => 0});
 $foo8->morph('blah6');
 $foo8->navigate;
-ok($Foo::test_stdout eq 'blah6_file_print', "Got the right output for Foo8");
+is($Foo::test_stdout, 'blah6_file_print', "Got the right output for Foo8");
 
 $foo8 = Foo8->new({form => {step => 'early_exit'}, no_history => 1});
 $foo8->morph('blah6');
 $foo8->navigate;
 ok($Foo::test_stdout eq 'early', "Got the right output for Foo8");
-ok(ref($foo8) eq 'Foo8::Blah6', 'Still is unmorphed right');
+is(ref($foo8), 'Foo8::Blah6', 'Still is unmorphed right');
 
 $foo8 = Foo8->new;
 $foo8->morph;
@@ -777,7 +794,25 @@ $foo8->morph('blah6');
 eval { $foo8->exit_nav_loop }; # coverage
 ok($@, "Got the die from exit_nav_loop");
 
+Foo8->new({form => {step => 'blah9'}, allow_morph => 2})->navigate;
+is($Foo::test_stdout, 'blah9_file_print', "Got the right output for Foo8::Blah9 ($Foo::test_stdout)");
+
+$foo8 = Foo8->new({form => {step => 'blah10'}, allow_morph => 2});
+eval { $foo8->navigate };
+#use CGI::Ex::Dump qw(debug);
+#debug $foo8->dump_history;
+ok($Foo::test_stdout =~ /^blah10 -/, "Got the right output for Foo8::Blah10");
+ok($Foo::test_stdout =~ m|Found package Foo8::Blah10|, "Got the right output for Foo8::Blah10") || diag $Foo::test_stdout;
+
+$foo8 = Foo8->new({form => {step => 'blah11'}, allow_morph => 2});
+eval { $foo8->navigate };
+#use CGI::Ex::Dump qw(debug);
+#debug $foo8->dump_history;
+ok($Foo::test_stdout =~ /^blah11 -/, "Got the right output for Foo8::Blah11");
+ok($Foo::test_stdout =~ m|Not/Exists/Blah11.pm.*\@INC|, "Got the right output for Foo8::Blah11") || diag $Foo::test_stdout;
+
 ###----------------------------------------------------------------###
+print "#-----------------------------------------\n";
 print "### Some path tests tests ###\n";
 
 {
@@ -996,3 +1031,4 @@ CGI::Ex::App->new(cgix => CGIX->new)->print_out('foo', \ "# the output\n");
 ok($Foo::test_stdout eq 'Print: text/html', "Got right header: $Foo::test_stdout");
 
 ###----------------------------------------------------------------###\
+print "#-----------------------------------------\n";
