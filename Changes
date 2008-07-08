@@ -6,6 +6,7 @@
         * Handle fatal errors more gracefully
         * Make morph and unmorph calls be hooks
         * Allow allow_morph to return 2 (which requires a morph)
+        * Add run_hook_as functionality
 
 2.24
      2008-02-26
