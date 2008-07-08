@@ -2275,6 +2275,21 @@ run_hook, it is possible to logically override methods on a step by
 step basis, or override a method for all of the steps, or even to
 break code out into separate modules.
 
+=item run_hook_as (method)
+
+Similar to run_hook - but allows for temporarily running a
+hook in another package.
+
+    sub blah_morph_package { 'SomeOther::Module' }
+    my $hash = $self->run_hook_as('hash_swap', 'blah'); # runs as SomeOther::Module
+
+    # OR
+
+    my $hash = $self->run_hook_as('hash_swap', 'SomeOther::Module');
+
+Note that the second form will use 'SomeOther::Module' as the step name
+which will be somewhat misleading in looking up names.
+
 =item run_step (hook)
 
 Runs all of the hooks specific to each step, beginning with pre_step
