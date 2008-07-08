@@ -1,8 +1,11 @@
 2.25
+     2008-07-08
         * Fix bugs in was_valid checking of Validate
         * Quote more keys in JSONDump
         * Allow for passing a coderef instead of the step name to run_hook
-
+        * Handle fatal errors more gracefully
+        * Make morph and unmorph calls be hooks
+        * Allow allow_morph to return 2 (which requires a morph)
 
 2.24
      2008-02-26
