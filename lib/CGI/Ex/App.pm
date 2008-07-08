@@ -48,7 +48,9 @@ sub navigate {
     my $err = $@;
     if ($err && ! ref($err) && $err ne "Long Jump\n") { # catch any errors
         die $err if ! $self->can('handle_error');
-        $self->handle_error($err);
+        if (! eval { $self->handle_error($err); 1 }) {
+            die "$err\nAdditionally, the following happened while calling handle_error: $@";
+        }
     }
     $self->handle_error($@) if ! $self->{'_no_post_navigate'} && ! eval { $self->post_navigate; 1 } && $@ && $@ ne "Long Jump\n";
 
@@ -83,7 +85,7 @@ sub nav_loop {
             return if (ref($req) ? $req->{$step} : $req) && ! $self->run_hook('get_valid_auth', $step);
         }
 
-        $self->morph($step); # let steps be in external modules
+        $self->run_hook('morph', $step); # let steps be in external modules
 
         if (my $info = $self->path_info) { # allow for mapping path_info pieces to form elements
             my $maps = $self->run_hook('path_info_map', $step) || [];
@@ -98,13 +100,13 @@ sub nav_loop {
         }
 
         if ($self->run_hook('run_step', $step)) {
-            $self->unmorph($step);
+            $self->run_hook('unmorph', $step);
             return;
         }
 
         my $is_at_end = $self->{'path_i'} >= $#$path ? 1 : 0;
         $self->run_hook('refine_path', $step, $is_at_end); # no more steps - allow for this step to designate one to follow
-        $self->unmorph($step);
+        $self->run_hook('unmorph', $step);
     }
 
     return if $self->post_loop($path);
@@ -179,6 +181,10 @@ sub run_hook {
     return $resp;
 }
 
+sub run_hook_as {
+    my ($self, $hook, $step, @args) = @_;
+}
+
 sub run_step {
     my $self = shift;
     my $step = shift;
@@ -232,8 +238,11 @@ sub handle_error {
     local @{ $self }{'_handling_error', '_recurse' } = (1, 0); # allow for this next step - even if we hit a recurse error
     $self->stash->{'error_step'} = $self->current_step;
     $self->stash->{'error'}      = $err;
-    $self->replace_path($self->error_step);
-    eval { $self->jump };
+    eval {
+        my $step = $self->error_step;
+        $self->morph($step); # let steps be in external modules
+        $self->run_hook('run_step', $step) && $self->unmorph($step);
+    };
     die $@ if $@ && $@ ne "Long Jump\n";
 }
 
@@ -430,6 +439,7 @@ sub dump_history {
                       $resp = $1 if $resp =~ /^(.+)\n/;
                       length($resp) > 30 ? substr($resp, 0, 30)." ..." : $resp;
                   });
+            $note .= ' - '.$row->{'info'} if defined $row->{'info'};
         }
         push @$dump, $note;
     }
@@ -512,61 +522,64 @@ sub js_uri_path {
 sub morph {
     my $self  = shift;
     my $step  = shift || return;
+    my $time  = time;
+    my $ref   = $self->history->[-1] || {};
     my $allow = $self->run_hook('allow_morph', $step) || return;
     my $lin   = $self->{'_morph_lineage'} ||= [];
-    my $cur   = ref $self; # what are we currently
-    push @$lin, $cur;     # store so subsequent unmorph calls can do the right thing
+    my $ok    = 0;
+    my $cur   = ref $self;
+    my $new;
+    push @$lin, $cur; # store so subsequent unmorph calls can do the right thing
 
-    my $hist = {step => $step, meth => 'morph', found => 'morph', time => time, elapsed => 0, response => 0};
-    push @{ $self->history }, $hist if ! $self->{'no_history'};
+    # hash - but no step - record for unbless
+    if (ref($allow) && ! ($allow = $allow->{$step})) {
+        $ref->{'info'} = "not allowed to morph to that step";
 
-    if (ref($allow) && ! $allow->{$step}) { # hash - but no step - record for unbless
-        $hist->{'found'} .= " (not allowed to morph to that step)";
-        return 0;
-    }
+    } elsif ($#$lin != 0                                          # is this the second or greater morph call
+             && (! ($allow = $self->allow_nested_morph($step))    # not true
+                 || (ref($allow) && ! ($allow = $allow->{$step})) # hash - but no step
+                 )) {
+        $ref->{'info'} = $allow ? "not allowed to nested_morph to that step" : "nested_morph disabled";
 
-    ### make sure we haven't already been reblessed
-    if ($#$lin != 0                                       # is this the second morph call
-        && (! ($allow = $self->allow_nested_morph($step)) # not true
-            || (ref($allow) && ! $allow->{$step})         # hash - but no step
-            )) {
-        $hist->{'found'} .= $allow ? " (not allowed to nested_morph to that step)" : " (nested_morph disabled)";
-        return 0; # just return - don't die so that we can morph early
-    }
+    } elsif (! ($new = $self->run_hook('morph_package', $step))) {
+        $ref->{'info'} = "Missing morph_package for step $step";
+
+    } elsif ($cur eq $new) {
+        $ref->{'info'} = "already isa $new";
+        $ok = 1;
 
     ### if we are not already that package - bless us there
-    my $new = $self->run_hook('morph_package', $step);
-    if ($cur ne $new) {
+    } else {
         (my $file = "$new.pm") =~ s|::|/|g;
-        if (UNIVERSAL::can($new, 'can')  # check if the package space exists
-            || eval { require $file }) { # check for a file that holds this package
-            bless $self, $new;           # become that package
-            $hist->{'found'} .= " (changed $cur to $new)";
+        if (UNIVERSAL::can($new, 'fixup_after_morph')  # check if the package space exists
+            || (eval { require $file }                 # check for a file that holds this package
+                && UNIVERSAL::can($new, 'fixup_after_morph'))) {
+            bless $self, $new;                         # become that package
             $self->fixup_after_morph($step);
+            $ref->{'info'} = "changed $cur to $new";
         } elsif ($@) {
-            if ($@ =~ /^\s*(Can\'t locate \S+ in \@INC)/) { # let us know what happened
-                $hist->{'found'} .= " (failed from $cur to $new: $1)";
+            if ($allow eq '1' && $@ =~ /^\s*(Can\'t locate \S+ in \@INC)/) { # let us know what happened
+                $ref->{'info'} = "failed from $cur to $new: $1";
             } else {
-                $hist->{'found'} .= " (failed from $cur to $new: $@)";
-                my $err = "Trouble while morphing to $file: $@";
-                warn $err;
+                $ref->{'info'} = "failed from $cur to $new: $@";
+                die "Trouble while morphing from $cur to $new: $@";
             }
+        } elsif ($allow ne '1') {
+            $ref->{'info'} = "package $new doesn't support CGI::Ex::App API";
+            die "Found package $new, but $new doesn't support CGI::Ex::App API";
         }
+        $ok = 1;
     }
 
-    $hist->{'response'} = 1;
-    return 1;
+    return $ok;
 }
 
 sub replace_path {
     my $self = shift;
     my $ref  = $self->path;
     my $i    = $self->{'path_i'} || 0;
-    if ($i + 1 > $#$ref) {
-        push @$ref, @_;
-    } else {
-        splice(@$ref, $i + 1, $#$ref - $i, @_); # replace remaining entries
-    }
+    if ($i + 1 > $#$ref) { push @$ref, @_; }
+    else { splice(@$ref, $i + 1, $#$ref - $i, @_); } # replace remaining entries
 }
 
 sub set_path {
@@ -587,25 +600,21 @@ sub step_by_path_index {
 sub unmorph {
     my $self = shift;
     my $step = shift || '_no_step';
+    my $ref  = $self->history->[-1] || {};
     my $lin  = $self->{'_morph_lineage'} || return;
     my $cur  = ref $self;
-
-    my $prev = pop(@$lin) || croak "unmorph called more times than morph - current ($cur)";
+    my $prev = pop(@$lin) || croak "unmorph called more times than morph (current: $cur)";
     delete $self->{'_morph_lineage'} if ! @$lin;
-
-    my $hist = {step => $step, meth => 'unmorph', found => 'unmorph', time => time, elapsed => 0, response => 0};
-    push @{ $self->history }, $hist if ! $self->{'no_history'};
 
     if ($cur ne $prev) {
         $self->fixup_before_unmorph($step);
         bless $self, $prev;
-        $hist->{'found'} .= " (changed from $cur to $prev)";
+        $ref->{'info'} = "changed from $cur to $prev";
     } else {
-        $hist->{'found'} .= " (already isa $cur)";
+        $ref->{'info'} = "already isa $cur";
     }
 
-    $hist->{'response'} = 1;
-    return $self;
+    return 1;
 }
 
 ###---------------------###
