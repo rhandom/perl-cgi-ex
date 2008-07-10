@@ -46,7 +46,7 @@ sub navigate {
         $self->nav_loop;
     };
     my $err = $@;
-    if ($err && ! ref($err) && $err ne "Long Jump\n") { # catch any errors
+    if ($err && (ref($err) || $err ne "Long Jump\n")) { # catch any errors
         die $err if ! $self->can('handle_error');
         if (! eval { $self->handle_error($err); 1 }) {
             die "$err\nAdditionally, the following happened while calling handle_error: $@";
