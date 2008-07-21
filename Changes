@@ -1,3 +1,7 @@
+2.26
+     2008-07-21
+        * Error handling bug again (accept refs in $@ again)
+
 2.25
      2008-07-08
         * Fix bugs in was_valid checking of Validate
