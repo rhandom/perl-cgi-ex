@@ -135,6 +135,7 @@ sub path {
 
         my $step = $self->form->{$self->step_key}; # make sure the step is valid
         if (defined $step) {
+            $step =~ s|^/+||; $step =~ s|/|__|g;
             if ($step =~ /^_/) {         # can't begin with _
                 $self->stash->{'forbidden_step'} = $step;
                 push @$path, $self->forbidden_step;
@@ -635,6 +636,7 @@ sub file_print {
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
     my $_step    = $self->run_hook('name_step', $step) || croak "Missing name_step";
+    $_step =~ s|\B__+|/|g;
     $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
     foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
 
@@ -652,6 +654,7 @@ sub file_val {
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
     my $_step    = $self->run_hook('name_step', $step) || croak "Missing name_step";
+    $_step =~ s|\B__+|/|g;
     $_step =~ s/\.\w+$//;
     $_step .= '.'. $self->ext_val;
 
@@ -729,7 +732,8 @@ sub morph_package {
     my ($self, $step) = @_;
     my $cur = $self->morph_base; # default to using self as the base for morphed modules
     my $new = ($cur ? $cur .'::' : '') . ($step || croak "Missing step");
-    $new =~ s/(\b|_+)(\w)/\u$2/g; # turn Foo::my_step_name into Foo::MyStepName
+    $new =~ s/\B__+/::/g; # turn Foo::my_nested__step info Foo::my_nested::step
+    $new =~ s/(?:_+|\b)(\w)/\u$1/g; # turn Foo::my_step_name into Foo::MyStepName
     return $new;
 }
 
