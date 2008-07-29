@@ -525,7 +525,10 @@ sub js_uri_path {
 
 sub morph {
     my $self  = shift;
-    my $ref   = $self->history->[-1] || {};
+    my $ref   = $self->history->[-1];
+    if (! $ref || ! $ref->{'meth'} || $ref->{'meth'} ne 'morph') {
+        push @{ $self->history }, ($ref = {meth => 'morph', found => 'morph', elapsed => 0, step => 'unknown'});
+    }
     my $step  = shift || return;
     my $allow = shift || $self->run_hook('allow_morph', $step) || return;
     my $lin   = $self->{'_morph_lineage'} ||= [];
