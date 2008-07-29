@@ -13,9 +13,10 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 224;
+use Test::More tests => 228;
 use strict;
 use warnings;
+use CGI::Ex::Dump qw(debug);
 
 {
     package Foo;
@@ -78,6 +79,10 @@ use warnings;
 
     sub step4_finalize { shift->append_path('step3') }
 
+    sub step5__part_a_file_print { return \ "Step 5 Nested ([% step %])" }
+
+    sub step5__part_a_info_complete { 0 }
+
 }
 
 ###----------------------------------------------------------------###
@@ -107,11 +112,18 @@ ok($app->morph_package('foo_bar') eq 'CGI::Ex::App::FooBar', "Got a good morph_p
 
 ok(ref($app->path), "Got a good path");
 ok(@{ $app->path } == 0, "Got a good path");
-ok($app->default_step   eq 'main',        "Got a good default_step");
-ok($app->login_step     eq '__login',     "Got a good login_step");
-ok($app->error_step     eq '__error',     "Got a good error_step");
-ok($app->forbidden_step eq '__forbidden', "Got a good forbidden_step");
-ok($app->js_step        eq 'js',          "Got a good js_step");
+is($app->default_step,   'main',        "Got a good default_step");
+is($app->login_step,     '__login',     "Got a good login_step");
+is($app->error_step,     '__error',     "Got a good error_step");
+is($app->forbidden_step, '__forbidden', "Got a good forbidden_step");
+is($app->js_step,        'js',          "Got a good js_step");
+
+# check for different step types
+is($app->run_hook('file_print', '__leading_underbars'), 'foo_bar/__leading_underbars.html', 'file_print - __ is preserved at beginning of step');
+is($app->run_hook('file_print', 'central__underbars'), 'foo_bar/central/underbars.html', 'file_print - __ is used in middle of step');
+my $ref = ref($app);
+is($app->run_hook('morph_package', '__leading_underbars'), "${ref}::LeadingUnderbars", 'morph_package - __ is works at beginning of step');
+is($app->run_hook('morph_package', 'central__underbars'), "${ref}::Central::Underbars", 'morph_package - __ is used in middle of step');
 
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
@@ -175,6 +187,8 @@ ok($Foo::test_stdout eq "Main Content post", "Got the right output for Foo2_4");
 Foo2_4->new({_no_post_navigate => 1})->navigate;
 ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo2_4");
 
+my $f;
+
 ###----------------------------------------------------------------###
 
 local $ENV{'REQUEST_METHOD'} = 'POST';
@@ -189,6 +203,16 @@ Foo->new({
     form => {step => 'step4'},
 })->navigate;
 ok($Foo::test_stdout =~ /Some step4 content.*wow is required.*<script>/s, "Got the right output for Foo (step4)");
+
+$f = Foo->new({
+    form => {step => 'step5/part_a'},
+})->navigate;
+is($Foo::test_stdout, 'Step 5 Nested (step5__part_a)', "Got the right output for Foo (step5__part_a)");
+
+$f = Foo->new({
+    form => {step => 'step5__part_a'},
+})->navigate;
+is($Foo::test_stdout, 'Step 5 Nested (step5__part_a)', "Got the right output for Foo (step5__part_a)");
 
 {
     package Foo3;
@@ -288,7 +312,7 @@ ok($Foo::test_stdout =~ /fatal error.+path_info_map/, "Got the right output for 
 #$ENV{'QUERY_STRING'}   = 'wow=something';
 local $ENV{'PATH_INFO'} = '/step2';
 
-my $f = Foo->new({
+$f = Foo->new({
     form=> {wow => 'something'},
 })->navigate;
 ok($Foo::test_stdout eq "All good", "Got the right output");
@@ -306,6 +330,14 @@ $f = Foo->new({
 ok($Foo::test_stdout eq "All good", "Got the right output");
 ok($f->form->{'step'} eq 'step2',     "Got the right variable set in form");
 ok($f->form->{'wow'}  eq 'something', "Got the right variable set in form");
+
+###----------------------------------------------------------------###
+
+local $ENV{'PATH_INFO'} = '/step5/part_a';
+$f = Foo->new({
+    path_info_map_base => [[qr{(.+)}, 'step']],
+})->navigate;
+is($Foo::test_stdout, 'Step 5 Nested (step5__part_a)', "Got the right output for Foo (step5/part_a)");
 
 ###----------------------------------------------------------------###
 
