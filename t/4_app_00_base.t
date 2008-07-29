@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 228;
+use Test::More tests => 231;
 use strict;
 use warnings;
 use CGI::Ex::Dump qw(debug);
