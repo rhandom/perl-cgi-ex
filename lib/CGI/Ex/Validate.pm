@@ -789,8 +789,8 @@ sub generate_js {
     my $json = CGI::Ex::JSONDump->new({pretty => 1})->dump($val_hash);
     return qq{<script src="$js_uri_path_validate"></script>
 <script>
-    document.validation = $json;
-    if (document.check_form) document.check_form("$form_name");
+document.validation = $json;
+if (document.check_form) document.check_form("$form_name");
 </script>
 };
 }
