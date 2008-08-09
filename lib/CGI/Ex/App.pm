@@ -690,6 +690,7 @@ sub hash_base {
             script_name     => $self->script_name,
             path_info       => $self->path_info,
             js_validation   => sub { $copy->run_hook('js_validation', $step, shift) },
+            generate_form   => sub { $copy->run_hook('generate_form', $step, (ref($_[0]) ? (undef, shift) : shift)) },
             form_name       => $self->run_hook('form_name', $step),
             $self->step_key => $step,
         };
@@ -719,12 +720,20 @@ sub info_complete {
 
 sub js_validation {
     my ($self, $step) = @_;
-    return '' if $self->ext_val =~ /^html?$/; # let htm validation do it itself
     my $form_name = $_[2] || $self->run_hook('form_name', $step);
     my $hash_val  = $_[3] || $self->run_hook('hash_validation', $step);
     my $js_uri    = $self->js_uri_path;
     return '' if ! $form_name || ! ref($hash_val) || ! scalar keys %$hash_val;
     return $self->val_obj->generate_js($hash_val, $form_name, $js_uri);
+}
+
+sub generate_form {
+    my ($self, $step) = @_;
+    my $form_name = $_[2] || $self->run_hook('form_name', $step);
+    my $args      = $_[3] || {};
+    my $hash_val  = $self->run_hook('hash_validation', $step);
+    return '' if ! $form_name || ! ref($hash_val) || ! scalar keys %$hash_val;
+    return $self->val_obj->generate_form($hash_val, $form_name);
 }
 
 sub morph_base { my $self = shift; ref($self) }
