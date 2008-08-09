@@ -486,7 +486,7 @@ sub print_js {
 
     ### get file info
     my $stat;
-    if ($js_file && $js_file =~ m|^/+?(\w+(?:/+\w+)*\.js)$|i) {
+    if ($js_file && $js_file =~ m|^/*(\w+(?:/+\w+)*\.js)$|i) {
         foreach my $path (@INC) {
             my $_file = "$path/$1";
             next if ! -f $_file;
