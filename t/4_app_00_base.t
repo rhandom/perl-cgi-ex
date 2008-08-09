@@ -1028,7 +1028,7 @@ ok(! $f->ready_validate, "Not ready to validate");
     sub step1_file_print { \ 'step1_file_print [% has_errors %]' }
 }
 
-ok(Foo13->new(ext_val => 'html')->navigate->js_validation('step0') eq '', 'Got right validation');
+ok(Foo13->new(ext_val => 'html')->navigate, 'Ran Foo13');
 ok($Foo::test_stdout eq 'Main Content', "Got the right content on Foo13 ($Foo::test_stdout)");
 
 Foo13->new(form => {step => 'step1'})->navigate->js_validation('step1');
