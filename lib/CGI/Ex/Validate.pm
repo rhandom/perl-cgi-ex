@@ -751,55 +751,73 @@ if (document.check_form) document.check_form("$form_name");
 }
 
 sub generate_form {
-    my ($self, $val_hash, $form_name, $action, $method) = @_;
-    my $args = {};
-    if (ref($form_name) eq 'HASH') {
-        $args = $form_name;
-        $form_name = undef;
-    }
+    my ($self, $val_hash, $form_name, $args) = @_;
+    ($args, $form_name) = ($form_name, $args) if ref($form_name) eq 'HASH';
 
     my ($fields, $ARGS) = $self->get_ordered_fields($val_hash);
-    $args = {%$ARGS, %$args};
+    $args = {%{ $ARGS->{'form_args'} || {}}, %{ $args || {} }};
 
-    $form_name ||= $args->{'form_name'} || die "Missing form_name";
-    $action    ||= $args->{'action'};
-    $method    ||= $args->{'method'} || 'POST';
+    $args->{'div'}       ||= "<div class=\"form_div\">\n";
+    $args->{'open'}      ||= "<form name=\"\$form_name\" id=\"\$form_name\" method=\"\$method\" action=\"\$action\"\$extra_form_attrs>\n";
+    $args->{'form_name'} ||= $form_name || die "Missing form_name";
+    $args->{'action'}    ||= '';
+    $args->{'method'}    ||= 'POST';
+    $args->{'submit'}    ||= "<input type=\"submit\" value=\"".($args->{'submit_name'} || 'Submit')."\">";
 
-    my $head  = $args->{'data_header'};
-    my $row   = $args->{'data_template'};
-    my $foot  = $args->{'data_footer'};
-    my $title = $args->{'title'};
-    $title =~ s/\"/&quot;/g if $title;
+    my $row   = $args->{'row_template'};
     if ($args->{'use_table'}) {
-        $head ||= "<table class=\"form_table\">\n";
-        $head .=  "  <tr class=\"header\"><th colspan=\"2\">$title</th></tr>\n" if $title;
+        $args->{'header'} ||= "<table class=\"form_table\">\n";
+        $args->{'header'} .=  "  <tr class=\"header\"><th colspan=\"2\">\$title</th></tr>\n" if $args->{'title'};
         $row  ||= "  <tr class=\"\$oddeven\"><td class=\"field\">\$field</td><td class=\"input\">\$input</td></tr>\n";
-        $foot ||= "</table>\n";
+        $args->{'footer'} ||= "  <tr class=\"submit_row\"><th colspan=\"2\">\$submit</th></tr>\n</table>\n";
     } else {
-        $head ||= "<fieldset class=\"form_table\"".($title ? " title=\"$title\"" : "").">\n";
-        $row  ||= "\$field\$input<br />\n";
-        $foot ||= "</fieldset>\n";
+        $args->{'header'} ||= "<fieldset class=\"form_table\">\n";
+        $args->{'header'} .= "<legend>\$title</legend>\n" if $args->{'title'};
+        $row  ||= "  <div class=\"\$oddeven\">\$field\$input</div>\n";
+        $args->{'footer'} ||= "<div class=\"submit_row\">\$submit</div>\n</fieldset>\n";
     }
 
-    my $txt = $args->{'form_header'} || "<form name=\"$form_name\" id=\"$form_name\"".($action ? " action=\"$action\"" : "")." method=\"$method\">\n";
-    $txt .= $head;
-    foreach my $field (@$fields) {
-        my $copy = $row;
-        my $input;
-        if (0) {
-        } else {
-            $input = "<input type=\"text\" name=\"$field->{'field'}\" id=\"$field->{'field'}\" value=\"\" />";
-        }
+    my $js = ! defined($args->{'use_js_validation'}) || $args->{'use_js_validation'};
 
+    $args->{'css'} = ".odd { background: #eee }\n"
+        . ".form_div { width: 30em; }\n"
+        . ".form_div div, .form_div td { padding:.5ex;}\n"
+        . ".form_div label { width: 10em; float: left; }\n"
+        . "table { border-spacing: 0px }\n"
+        . ".form_error { color: darkred }\n"
+        . ".submit_row { text-align: right }\n"
+        if ! defined $args->{'css'};
+
+    my $txt = ($args->{'css'} ? "<style>\n$args->{'css'}\n</style>\n" : '') . $args->{'div'} . $args->{'open'} . $args->{'header'};
+    s/\$(form_name|title|method|action|submit|extra_form_attrs)/$args->{$1}/g foreach $txt, $args->{'footer'};
+    my $n = 0;
+    foreach my $field (@$fields) {
+        my $attrs = $field->{'form_args'} || {};
+        my $input;
+        my $type = $attrs->{'type'} ? $attrs->{'type'} : $field->{'field'} =~ /^pass(?:|wd|word|\d+|_\w+)$/i ? 'password' : 'text';
+        if ($type eq 'textarea') {
+            $input = "<textarea name=\"$field->{'field'}\" id=\"$field->{'field'}\"></textarea>";
+        } else {
+            $input = "<input type=\"$type\" name=\"$field->{'field'}\" id=\"$field->{'field'}\" value=\"\" />";
+        }
+        $input .= "<br><span class=\"form_error\" id=\"$field->{'field'}_error\">[% $field->{'field'}_error %]</span>";
+
+        my $copy = $row;
+        $n++;
         my $name = $field->{'field'};
-        $name = $field->{'name'} || "The field $name";
+        $name = $field->{'name'} || do { $name =~ tr/_/ /; $name =~ s/\b(\w)/\u$1/g; $name };
         $name = "<label for=\"$field->{'field'}\">$name</label>";
         $copy =~ s/\$field/$name/g;
         $copy =~ s/\$input/$input/g;
+        $copy =~ s/\$oddeven/$n % 2 ? 'odd' : 'even'/eg;
         $txt .= $copy;
     }
-    $txt .= $foot;
-    $txt .= $args->{'form_footer'} || "</form>\n";
+    $txt .= $args->{'footer'} . ($args->{'close'} || "</form>\n") . ($args->{'div_close'} || "</div>\n");
+    if ($js) {
+        local  @{ $val_hash }{('general form_args', 'group form_args')};
+        delete @{ $val_hash }{('general form_args', 'group form_args')};
+        $txt .= $self->generate_js($val_hash, $args->{'form_name'}, $args->{'js_uri_path'});
+    }
     return $txt;
 }
 
