@@ -12,14 +12,12 @@ CGI::Ex::Validate - The "Just Right" form validator with javascript in parallel
 ###----------------------------------------------------------------###
 
 use strict;
-use vars qw(%DEFAULT_OPTIONS
-            $JS_URI_PATH
+use vars qw($JS_URI_PATH
             $JS_URI_PATH_VALIDATE
             );
 
-our $VERSION       = '2.26';
-our $DEFAULT_EXT   = 'val';
-our $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
+our $VERSION  = '2.26';
+our $QR_EXTRA = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
 our @UNSUPPORTED_BROWSERS = (qr/MSIE\s+5.0\d/i);
 
 ###----------------------------------------------------------------###
@@ -27,9 +25,6 @@ our @UNSUPPORTED_BROWSERS = (qr/MSIE\s+5.0\d/i);
 sub new {
     my $class = shift;
     my $self  = ref($_[0]) ? shift : {@_};
-
-    $self = {%DEFAULT_OPTIONS, %$self} if scalar keys %DEFAULT_OPTIONS;
-
     return bless $self, $class;
 }
 
@@ -39,28 +34,21 @@ sub validate {
     my $self = (! ref($_[0])) ? shift->new            # $class->validate
         : UNIVERSAL::isa($_[0], __PACKAGE__) ? shift  # $self->validate
         : __PACKAGE__->new;                           # &validate
-    my $form     = shift || die "Missing form hash";
-    my $val_hash = shift;
-    my $what_was_validated = shift; # allow for extra arrayref that stores what was validated
+    my ($form, $val_hash, $what_was_validated) = @_;
 
-    # turn the form into a form hash if doesn't look like one already
-    die "Invalid form hash or cgi object" if ! ref $form;
-    if (ref $form ne 'HASH') {
-        local $self->{cgi_object} = $form;
-        $form = $self->cgix->get_form($form);
-    }
+    die "Invalid form hash or cgi object" if ! $form || ! ref $form;
+    $form = $self->cgix->get_form($form) if ref $form ne 'HASH';
 
     my ($fields, $ARGS) = $self->get_ordered_fields($val_hash);
     return if ! @$fields;
 
-    # only validate this group if it is supposed to be checked
     return if $ARGS->{'validate_if'} && ! $self->check_conditional($form, $ARGS->{'validate_if'});
 
     # Finally we have our arrayref of hashrefs that each have their 'field' key
     # now lets do the validation
     $self->{'was_checked'} = {};
-    $self->{'was_valid'} = {};
-    $self->{'had_error'} = {};
+    $self->{'was_valid'}   = {};
+    $self->{'had_error'}   = {};
     my $found  = 1;
     my @errors;
     my $hold_error; # hold the error for a moment - to allow for an "OR" operation
@@ -103,7 +91,6 @@ sub validate {
     }
     push(@errors, @$hold_error) if $hold_error; # allow for final OR to work
 
-
     # optionally check for unused keys in the form
     if ($ARGS->{no_extra_fields} || $self->{no_extra_fields}) {
         my %keys = map { ($_->{'field'} => 1) } @$fields;
@@ -113,7 +100,6 @@ sub validate {
         }
     }
 
-    # return what they want
     if (@errors) {
         my @copy = grep {/$QR_EXTRA/o} keys %$self;
         @{ $ARGS }{@copy} = @{ $self }{@copy};
@@ -121,54 +107,47 @@ sub validate {
         my $err_obj = $self->new_error(\@errors, $ARGS);
         die    $err_obj if $ARGS->{'raise_error'};
         return $err_obj;
-    } else {
-        return;
     }
+
+    return; # success
 }
 
 sub get_ordered_fields {
-    my $self = shift;
-    my $val_hash = shift || die "Missing validation hash";
+    my ($self, $val_hash) = @_;
 
-    # make sure the validation is a hashref
-    # get_validation handle odd types
+    die "Missing validation hash" if ! $val_hash;
     if (ref $val_hash ne 'HASH') {
         $val_hash = $self->get_validation($val_hash) if ref $val_hash ne 'SCALAR' || ! ref $val_hash;
         die "Validation groups must be a hashref"    if ref $val_hash ne 'HASH';
     }
 
-    # parse keys that are group arguments - and those that are keys to validate
     my %ARGS;
     my @field_keys = grep { /^(?:group|general)\s+(\w+)/
-                            ? do {$ARGS{$1} = $val_hash->{$_} ; 0}
-                            : 1 }
-                     sort keys %$val_hash;
+                              ? do {$ARGS{$1} = $val_hash->{$_} ; 0}
+                              : 1 } sort keys %$val_hash;
 
     # Look first for items in 'group fields' or 'group order'
     my $fields;
-    if ($fields = $ARGS{'fields'} || $ARGS{'order'}) {
+    if (my $ref = $ARGS{'fields'} || $ARGS{'order'}) {
         my $type = $ARGS{'fields'} ? 'group fields' : 'group order';
-        die "Validation '$type' must be an arrayref when passed"
-            if ! UNIVERSAL::isa($fields, 'ARRAY');
-        my @temp;
-        foreach my $field (@$fields) {
+        die "Validation '$type' must be an arrayref when passed" if ! UNIVERSAL::isa($ref, 'ARRAY');
+        foreach my $field (@$ref) {
             die "Non-defined value in '$type'" if ! defined $field;
             if (ref $field) {
                 die "Found nonhashref value in '$type'" if ref($field) ne 'HASH';
                 die "Element missing \"field\" key/value in '$type'" if ! defined $field->{'field'};
-                push @temp, $field;
+                push @$fields, $field;
             } elsif ($field eq 'OR') {
-                push @temp, 'OR';
+                push @$fields, 'OR';
             } else {
                 die "No element found in '$type' for $field" if ! exists $val_hash->{$field};
                 die "Found nonhashref value in '$type'" if ref($val_hash->{$field}) ne 'HASH';
-                push @temp, { %{ $val_hash->{$field} }, field => $field }; # copy the values to add the key
+                push @$fields, { %{ $val_hash->{$field} }, field => $field }; # copy the values to add the key
             }
         }
-        $fields = \@temp;
 
         # limit the keys that need to be searched to those not in fields or order
-        my %found = map { $_->{'field'} => 1 } @temp;
+        my %found = map { $_->{'field'} => 1 } @$fields;
         @field_keys = grep { ! $found{$_} } @field_keys;
     }
 
@@ -348,12 +327,6 @@ sub validate_buddy {
     if ($modified) {
         if ($n_values == 1) {
             $form->{$field} = $values->[0];
-            $self->{cgi_object}->param(-name => $field, -value => $values->[0])
-                if $self->{cgi_object};
-        } else {
-            # values in @{ $form->{$field} } were modified directly
-            $self->{cgi_object}->param(-name => $field, -value => $values)
-                if $self->{cgi_object};
         }
     }
 
@@ -602,12 +575,6 @@ sub validate_buddy {
             $_ = /(.*)/ ? $1 : die "Couldn't match?" foreach @$values;
             if ($n_values == 1) {
                 $form->{$field} = $values->[0];
-                $self->{cgi_object}->param(-name => $field, -value => $values->[0])
-                    if $self->{cgi_object};
-            } else {
-                # values in @{ $form->{$field} } were modified directly
-                $self->{cgi_object}->param(-name => $field, -value => $values)
-                    if $self->{cgi_object};
             }
         }
     }
@@ -697,10 +664,9 @@ sub check_type {
 ###----------------------------------------------------------------###
 
 sub get_validation {
-    my $self = shift;
-    my $val  = shift;
+    my ($self, $val) = @_;
     require CGI::Ex::Conf;
-    return CGI::Ex::Conf::conf_read($val, {html_key => 'validation', default_ext => $DEFAULT_EXT});
+    return CGI::Ex::Conf::conf_read($val, {html_key => 'validation', default_ext => 'val'});
 }
 
 ### returns all keys from all groups - even if group has validate_if
@@ -709,10 +675,7 @@ sub get_validation_keys {
 
     if ($form) {
         die "Invalid form hash or cgi object" if ! ref $form;
-        if (ref $form ne 'HASH') {
-            local $self->{cgi_object} = $form;
-            $form = $self->cgix->get_form($form);
-        }
+        $form = $self->cgix->get_form($form) if ref $form ne 'HASH';
     }
 
     my ($fields, $ARGS) = $self->get_ordered_fields($val_hash);
@@ -1880,10 +1843,6 @@ commonly used so support has been deprecated as of the 2.10 release).
 Group options will also be looked for in the Validate object ($self)
 and can be set when instantiating the object ($self->{raise_error} is
 equivalent to $valhash->{'group raise_error'}).
-
-Options may also be set globally before calling validate by
-populating the %DEFAULT_OPTIONS global hash.  However, only the options
-set properly in the $valhash will be passed to the javascript.
 
 =over 4
 
