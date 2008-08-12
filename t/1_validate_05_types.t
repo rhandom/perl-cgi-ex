@@ -19,18 +19,18 @@ sub validate { scalar &CGI::Ex::Validate::validate(@_) }
 ### required
 $v = {foo => {required => 1}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'required => 1 - fail');
 
 $e = validate({foo => 1}, $v);
-ok(! $e);
+ok(! $e, 'required => 1 - good');
 
 ### validate_if
 $v = {foo => {required => 1, validate_if => 'bar'}};
 $e = validate({}, $v);
-ok(! $e);
+ok(! $e, 'validate_if - true');
 
 $e = validate({bar => 1}, $v);
-ok($e);
+ok($e, 'validate_if - false');
 
 $v = {text1 => {required => 1, validate_if => 'text2 was_valid'}, text2 => {validate_if => 'text3'}};
 $e = validate({}, $v);
@@ -56,255 +56,255 @@ ok($e && ! $e->as_hash->{text1_error}, "No error on validate_if with had_error a
 ### required_if
 $v = {foo => {required_if => 'bar'}};
 $e = validate({}, $v);
-ok(! $e);
+ok(! $e, 'required_if - false');
 
 $e = validate({bar => 1}, $v);
-ok($e);
+ok($e , 'required_if - true');
 
 ### max_values
 $v = {foo => {required => 1}};
 $e = validate({foo => [1,2]}, $v);
-ok($e);
+ok($e, 'max_values');
 
 $v = {foo => {max_values => 2}};
 $e = validate({}, $v);
-ok(! $e);
+ok(! $e, 'max_values');
 
 $e = validate({foo => "str"}, $v);
-ok(! $e);
+ok(! $e, 'max_values');
 
 $e = validate({foo => [1]}, $v);
-ok(! $e);
+ok(! $e, 'max_values');
 
 $e = validate({foo => [1,2]}, $v);
-ok(! $e);
+ok(! $e, 'max_values');
 
 $e = validate({foo => [1,2,3]}, $v);
-ok($e);
+ok($e, 'max_values');
 
 ### min_values
 $v = {foo => {min_values => 3, max_values => 10}};
 $e = validate({foo => [1,2,3]}, $v);
-ok(! $e);
+ok(! $e, 'min_values');
 
 $e = validate({foo => [1,2,3,4]}, $v);
-ok(! $e);
+ok(! $e, 'min_values');
 
 $e = validate({foo => [1,2]}, $v);
-ok($e);
+ok($e, 'min_values');
 
 $e = validate({foo => "str"}, $v);
-ok($e);
+ok($e, 'min_values');
 
 $e = validate({}, $v);
-ok($e);
+ok($e, 'min_values');
 
 ### enum
 $v = {foo => {enum => [1, 2, 3]}, bar => {enum => "1 || 2||3"}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'enum');
 
 $e = validate({foo => 1, bar => 1}, $v);
-ok(! $e);
+ok(! $e, 'enum');
 
 $e = validate({foo => 1, bar => 2}, $v);
-ok(! $e);
+ok(! $e, 'enum');
 
 $e = validate({foo => 1, bar => 3}, $v);
-ok(! $e);
+ok(! $e, 'enum');
 
 $e = validate({foo => 1, bar => 4}, $v);
-ok($e);
+ok($e, 'enum');
 
 # equals
 $v = {foo => {equals => 'bar'}};
 $e = validate({}, $v);
-ok(! $e);
+ok(! $e, 'equals');
 
 $e = validate({foo => 1}, $v);
-ok($e);
+ok($e, 'equals');
 
 $e = validate({bar => 1}, $v);
-ok($e);
+ok($e, 'equals');
 
 $e = validate({foo => 1, bar => 2}, $v);
-ok($e);
+ok($e, 'equals');
 
 $e = validate({foo => 1, bar => 1}, $v);
-ok(! $e);
+ok(! $e, 'equals');
 
 $v = {foo => {equals => '"bar"'}};
 $e = validate({foo => 1, bar => 1}, $v);
-ok($e);
+ok($e, 'equals');
 
 $e = validate({foo => 'bar', bar => 1}, $v);
-ok(! $e);
+ok(! $e, 'equals');
 
 ### min_len
 $v = {foo => {min_len => 10}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'min_len');
 
 $e = validate({foo => ""}, $v);
-ok($e);
+ok($e, 'min_len');
 
 $e = validate({foo => "123456789"}, $v);
-ok($e);
+ok($e, 'min_len');
 
 $e = validate({foo => "1234567890"}, $v);
-ok(! $e);
+ok(! $e, 'min_len');
 
 ### max_len
 $v = {foo => {max_len => 10}};
 $e = validate({}, $v);
-ok(! $e);
+ok(! $e, 'max_len');
 
 $e = validate({foo => ""}, $v);
-ok(! $e);
+ok(! $e, 'max_len');
 
 $e = validate({foo => "1234567890"}, $v);
-ok(! $e);
+ok(! $e, 'max_len');
 
 $e = validate({foo => "12345678901"}, $v);
-ok($e);
+ok($e, 'max_len');
 
 ### match
 $v = {foo => {match => qr/^\w+$/}};
 $e = validate({foo => "abc"}, $v);
-ok(! $e);
+ok(! $e, 'match');
 
 $e = validate({foo => "abc."}, $v);
-ok($e);
+ok($e, 'match');
 
 $v = {foo => {match => [qr/^\w+$/, qr/^[a-z]+$/]}};
 $e = validate({foo => "abc"}, $v);
-ok(! $e);
+ok(! $e, 'match');
 
 $e = validate({foo => "abc1"}, $v);
-ok($e);
+ok($e, 'match');
 
 $v = {foo => {match => 'm/^\w+$/'}};
 $e = validate({foo => "abc"}, $v);
-ok(! $e);
+ok(! $e, 'match');
 
 $e = validate({foo => "abc."}, $v);
-ok($e);
+ok($e, 'match');
 
 $v = {foo => {match => 'm/^\w+$/ || m/^[a-z]+$/'}};
 $e = validate({foo => "abc"}, $v);
-ok(! $e);
+ok(! $e, 'match');
 
 $e = validate({foo => "abc1"}, $v);
-ok($e);
+ok($e, 'match');
 
 $v = {foo => {match => '! m/^\w+$/'}};
 $e = validate({foo => "abc"}, $v);
-ok($e);
+ok($e, 'match');
 
 $e = validate({foo => "abc."}, $v);
-ok(! $e);
+ok(! $e, 'match');
 
 $v = {foo => {match => 'm/^\w+$/'}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'match');
 
 $v = {foo => {match => '! m/^\w+$/'}};
 $e = validate({}, $v);
-ok(! $e);
+ok(! $e, 'match');
 
 ### compare
 $v = {foo => {compare => '> 0'}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'compare');
 $v = {foo => {compare => '== 0'}};
 $e = validate({}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 $v = {foo => {compare => '< 0'}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'compare');
 
 $v = {foo => {compare => '> 10'}};
 $e = validate({foo => 11}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 $e = validate({foo => 10}, $v);
-ok($e);
+ok($e, 'compare');
 
 $v = {foo => {compare => '== 10'}};
 $e = validate({foo => 11}, $v);
-ok($e);
+ok($e, 'compare');
 $e = validate({foo => 10}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 
 $v = {foo => {compare => '< 10'}};
 $e = validate({foo => 9}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 $e = validate({foo => 10}, $v);
-ok($e);
+ok($e, 'compare');
 
 $v = {foo => {compare => '>= 10'}};
 $e = validate({foo => 10}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 $e = validate({foo => 9}, $v);
-ok($e);
+ok($e, 'compare');
 
 $v = {foo => {compare => '!= 10'}};
 $e = validate({foo => 10}, $v);
-ok($e);
+ok($e, 'compare');
 $e = validate({foo => 9}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 
 $v = {foo => {compare => '<= 10'}};
 $e = validate({foo => 11}, $v);
-ok($e);
+ok($e, 'compare');
 $e = validate({foo => 10}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 
 
 $v = {foo => {compare => 'gt ""'}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'compare');
 $v = {foo => {compare => 'eq ""'}};
 $e = validate({}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 $v = {foo => {compare => 'lt ""'}};
 $e = validate({}, $v);
-ok($e); # 68
+ok($e, 'compare'); # 68
 
 $v = {foo => {compare => 'gt "c"'}};
 $e = validate({foo => 'd'}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 $e = validate({foo => 'c'}, $v);
-ok($e);
+ok($e, 'compare');
 
 $v = {foo => {compare => 'eq c'}};
 $e = validate({foo => 'd'}, $v);
-ok($e);
+ok($e, 'compare');
 $e = validate({foo => 'c'}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 
 $v = {foo => {compare => 'lt c'}};
 $e = validate({foo => 'b'}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 $e = validate({foo => 'c'}, $v);
-ok($e);
+ok($e, 'compare');
 
 $v = {foo => {compare => 'ge c'}};
 $e = validate({foo => 'c'}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 $e = validate({foo => 'b'}, $v);
-ok($e);
+ok($e, 'compare');
 
 $v = {foo => {compare => 'ne c'}};
 $e = validate({foo => 'c'}, $v);
-ok($e);
+ok($e, 'compare');
 $e = validate({foo => 'b'}, $v);
-ok(! $e);
+ok(! $e, 'compare');
 
 $v = {foo => {compare => 'le c'}};
 $e = validate({foo => 'd'}, $v);
-ok($e);
+ok($e, 'compare');
 $e = validate({foo => 'c'}, $v);
-ok(! $e); # 80
+ok(! $e, 'compare'); # 80
 
 ### sql
 ### can't really do anything here without prompting for a db connection
@@ -313,75 +313,75 @@ ok(! $e); # 80
 my $n = 1;
 $v = {foo => {custom => $n}};
 $e = validate({}, $v);
-ok(! $e);
+ok(! $e, 'custom');
 $e = validate({foo => "str"}, $v);
-ok(! $e);
+ok(! $e, 'custom');
 
 $n = 0;
 $v = {foo => {custom => $n}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'custom');
 $e = validate({foo => "str"}, $v);
-ok($e);
+ok($e, 'custom');
 
 $n = sub { my ($key, $val) = @_; return defined($val) ? 1 : 0};
 $v = {foo => {custom => $n}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'custom');
 $e = validate({foo => "str"}, $v);
-ok(! $e);
+ok(! $e, 'custom');
 
 ### type checks
 $v = {foo => {type => 'ip'}};
 $e = validate({foo => '209.108.25'}, $v);
-ok($e);
+ok($e, 'type');
 $e = validate({foo => '209.108.25.111'}, $v);
-ok(! $e);
+ok(! $e, 'type');
 
 ### min_in_set checks
 $v = {foo => {min_in_set => '2 of foo bar baz', max_values => 5}};
 $e = validate({foo => 1}, $v);
-ok($e);
+ok($e, 'min_in_set');
 $e = validate({foo => 1, bar => 1}, $v);
-ok(! $e);
+ok(! $e, 'min_in_set');
 $e = validate({foo => 1, bar => ''}, $v); # empty string doesn't count as value
-ok($e);
+ok($e, 'min_in_set');
 $e = validate({foo => 1, bar => 0}, $v);
-ok(! $e);
+ok(! $e, 'min_in_set');
 $e = validate({foo => [1, 2]}, $v);
-ok(! $e);
+ok(! $e, 'min_in_set');
 $e = validate({foo => [1]}, $v);
-ok($e);
+ok($e, 'min_in_set');
 $v = {foo => {min_in_set => '2 foo bar baz', max_values => 5}};
 $e = validate({foo => 1, bar => 1}, $v);
-ok(! $e);
+ok(! $e, 'min_in_set');
 
 ### max_in_set checks
 $v = {foo => {max_in_set => '2 of foo bar baz', max_values => 5}};
 $e = validate({foo => 1}, $v);
-ok(! $e);
+ok(! $e, 'max_in_set');
 $e = validate({foo => 1, bar => 1}, $v);
-ok(! $e);
+ok(! $e, 'max_in_set');
 $e = validate({foo => 1, bar => 1, baz => 1}, $v);
-ok($e);
+ok($e, 'max_in_set');
 $e = validate({foo => [1, 2]}, $v);
-ok(! $e);
+ok(! $e, 'max_in_set');
 $e = validate({foo => [1, 2, 3]}, $v);
-ok($e);
+ok($e, 'max_in_set');
 
 ### validate_if revisited (but negated - uses max_in_set)
 $v = {foo => {required => 1, validate_if => '! bar'}};
 $e = validate({}, $v);
-ok($e);
+ok($e, 'validate_if - negated');
 
 $e = validate({bar => 1}, $v);
-ok(! $e);
+ok(! $e, 'validate_if - negated');
 
 ### default value
 my $f = {};
 $v = {foo => {required => 1, default => 'hmmmm'}};
 $e = validate($f, $v);
-ok(! $e);
+ok(! $e, 'default');
 
-ok($f->{foo} && $f->{foo} eq 'hmmmm');
+ok($f->{foo} && $f->{foo} eq 'hmmmm', 'had right default');
 
