@@ -173,15 +173,8 @@ sub new_error {
 ### allow for optional validation on groups and on individual items
 sub check_conditional {
     my ($self, $form, $ifs, $ifs_match) = @_;
-
-    # can pass a single hash - or an array ref of hashes
-    if (! $ifs) {
-        die "Need reference passed to check_conditional";
-    } elsif (! ref($ifs)) {
-        $ifs = [$ifs];
-    } elsif (UNIVERSAL::isa($ifs,'HASH')) {
-        $ifs = [$ifs];
-    }
+    die "Need reference passed to check_conditional" if ! $ifs;
+    $ifs = [$ifs] if ! ref($ifs) || UNIVERSAL::isa($ifs,'HASH');
 
     local $self->{'_check_conditional'} = 1;
 
@@ -222,16 +215,11 @@ sub check_conditional {
 
 ### this is where the main checking goes on
 sub validate_buddy {
-    my $self = shift;
-    my ($form, $field, $field_val, $ifs_match) = @_;
-
+    my ($self, $form, $field, $field_val, $ifs_match) = @_;
     local $self->{'_recurse'} = ($self->{'_recurse'} || 0) + 1;
     die "Max dependency level reached 10" if $self->{'_recurse'} > 10;
+    my @errors;
 
-    my @errors = ();
-    my $types  = [sort keys %$field_val];
-
-    # allow for not running some tests in the cgi
     if ($field_val->{'exclude_cgi'}) {
         delete $field_val->{'was_validated'};
         return 0;
@@ -251,12 +239,12 @@ sub validate_buddy {
         return @errors ? \@errors : 0;
     }
 
-    if ($field_val->{was_valid}   && ! $self->{'was_valid'}->{$field})   { return [[$field, 'was_valid',   $field_val, $ifs_match]]; }
-    if ($field_val->{had_error}   && ! $self->{'had_error'}->{$field})   { return [[$field, 'had_error',   $field_val, $ifs_match]]; }
-    if ($field_val->{was_checked} && ! $self->{'was_checked'}->{$field}) { return [[$field, 'was_checked', $field_val, $ifs_match]]; }
+    if ($field_val->{'was_valid'}   && ! $self->{'was_valid'}->{$field})   { return [[$field, 'was_valid',   $field_val, $ifs_match]]; }
+    if ($field_val->{'had_error'}   && ! $self->{'had_error'}->{$field})   { return [[$field, 'had_error',   $field_val, $ifs_match]]; }
+    if ($field_val->{'was_checked'} && ! $self->{'was_checked'}->{$field}) { return [[$field, 'was_checked', $field_val, $ifs_match]]; }
 
     my $values   = UNIVERSAL::isa($form->{$field},'ARRAY') ? $form->{$field} : [$form->{$field}];
-    my $n_values = $#$values + 1;
+    my $n_values = @$values;
 
     # allow for default value
     if (exists $field_val->{'default'}) {
@@ -287,8 +275,14 @@ sub validate_buddy {
             $modified = 1;
         }
     }
+
+    my %types;
+    foreach (sort keys %$field_val) {
+        push @{$types{$1}}, $_ if /^ (compare|custom|equals|match|max_in_set|min_in_set|replace|required_if|sql|type|validate_if) _?\d* $/x;
+    }
+
     # allow for inline specified modifications (ie s/foo/bar/)
-    foreach my $type (grep {/^replace_?\d*$/} @$types) {
+    if ($types{'replace'}) { foreach my $type (@{ $types{'replace'} }) {
         my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
         : [split(/\s*\|\|\s*/,$field_val->{$type})];
         foreach my $rx (@$ref) {
@@ -322,7 +316,7 @@ sub validate_buddy {
                 }
             }
         }
-    }
+    } }
     # put them back into the form if we have modified it
     if ($modified) {
         if ($n_values == 1) {
@@ -333,12 +327,12 @@ sub validate_buddy {
     # only continue if a validate_if is not present or passes test
     my $needs_val = 0;
     my $n_vif = 0;
-    foreach my $type (grep {/^validate_if_?\d*$/} @$types) {
+    if ($types{'validate_if'}) { foreach my $type (@{ $types{'validate_if'} }) {
         $n_vif ++;
         my $ifs = $field_val->{$type};
         my $ret = $self->check_conditional($form, $ifs, $ifs_match);
         $needs_val ++ if $ret;
-    }
+    } }
     if (! $needs_val && $n_vif) {
         delete $field_val->{'was_validated'};
         return 0;
@@ -348,12 +342,12 @@ sub validate_buddy {
     # optionally check only if another condition is met
     my $is_required = $field_val->{'required'} ? 'required' : '';
     if (! $is_required) {
-        foreach my $type (grep {/^required_if_?\d*$/} @$types) {
+        if ($types{'required_if'}) { foreach my $type (@{ $types{'required_if'} }) {
             my $ifs = $field_val->{$type};
             next if ! $self->check_conditional($form, $ifs, $ifs_match);
             $is_required = $type;
             last;
-        }
+        } }
     }
     if ($is_required
         && ($n_values == 0 || ($n_values == 1 && (! defined($values->[0]) || ! length $values->[0])))) {
@@ -377,14 +371,13 @@ sub validate_buddy {
     }
 
     # max_in_set and min_in_set checks
-    my @min = grep {/^min_in_set_?\d*$/} @$types;
-    my @max = grep {/^max_in_set_?\d*$/} @$types;
-    foreach ([min => \@min],
-             [max => \@max]) {
-        my ($minmax, $keys) = @$_;
+    foreach ([min => $types{'min_in_set'}],
+             [max => $types{'max_in_set'}]) {
+        my $keys   = $_->[1] || next;
+        my $minmax = $_->[0];
         foreach my $type (@$keys) {
             $field_val->{$type} =~ m/^\s*(\d+)(?i:\s*of)?\s+(.+)\s*$/
-                || die "Invalid in_set check $field_val->{$type}";
+                || die "Invalid ${minmax}_in_set check $field_val->{$type}";
             my $n = $1;
             foreach my $_field (split /[\s,]+/, $2) {
                 my $ref = UNIVERSAL::isa($form->{$_field},'ARRAY') ? $form->{$_field} : [$form->{$_field}];
@@ -421,7 +414,7 @@ sub validate_buddy {
         }
 
         # field equality test
-        foreach my $type (grep {/^equals_?\d*$/} @$types) {
+        if ($types{'equals'}) { foreach my $type (@{ $types{'equals'} }) {
             my $field2  = $field_val->{$type};
             my $not     = ($field2 =~ s/^!\s*//) ? 1 : 0;
             my $success = 0;
@@ -438,7 +431,7 @@ sub validate_buddy {
                 push @errors, [$field, $type, $field_val, $ifs_match];
             }
             $content_checked = 1;
-        }
+        } }
 
         # length min check
         if (exists $field_val->{'min_len'}) {
@@ -459,7 +452,7 @@ sub validate_buddy {
         }
 
         # now do match types
-        foreach my $type (grep {/^match_?\d*$/} @$types) {
+        if ($types{'match'}) { foreach my $type (@{ $types{'match'} }) {
             my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
             : UNIVERSAL::isa($field_val->{$type}, 'Regexp') ? [$field_val->{$type}]
                 : [split(/\s*\|\|\s*/,$field_val->{$type})];
@@ -484,10 +477,10 @@ sub validate_buddy {
                 }
             }
             $content_checked = 1;
-        }
+        } }
 
         # allow for comparison checks
-        foreach my $type (grep {/^compare_?\d*$/} @$types) {
+        if ($types{'compare'}) { foreach my $type (@{ $types{'compare'} }) {
             my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
             : [split(/\s*\|\|\s*/,$field_val->{$type})];
             foreach my $comp (@$ref) {
@@ -523,10 +516,10 @@ sub validate_buddy {
                 }
             }
             $content_checked = 1;
-        }
+        } }
 
         # server side sql type
-        foreach my $type (grep {/^sql_?\d*$/} @$types) {
+        if ($types{'sql'}) { foreach my $type (@{ $types{'sql'} }) {
             my $db_type = $field_val->{"${type}_db_type"};
             my $dbh = ($db_type) ? $self->{dbhs}->{$db_type} : $self->{dbh};
             if (! $dbh) {
@@ -544,25 +537,25 @@ sub validate_buddy {
                 push @errors, [$field, $type, $field_val, $ifs_match];
             }
             $content_checked = 1;
-        }
+        } }
 
         # server side custom type
-        foreach my $type (grep {/^custom_?\d*$/} @$types) {
+        if ($types{'custom'}) { foreach my $type (@{ $types{'custom'} }) {
             my $check = $field_val->{$type};
             next if UNIVERSAL::isa($check, 'CODE') ? &$check($field, $value, $field_val, $type) : $check;
             return [] if $self->{'_check_conditional'};
             push @errors, [$field, $type, $field_val, $ifs_match];
             $content_checked = 1;
-        }
+        } }
 
         # do specific type checks
-        foreach my $type (grep {/^type_?\d*$/} @$types) {
+        if ($types{'type'}) { foreach my $type (@{ $types{'type'} }) {
             if (! $self->check_type($value,$field_val->{'type'},$field,$form)){
                 return [] if $self->{'_check_conditional'};
                 push @errors, [$field, $type, $field_val, $ifs_match];
             }
             $content_checked = 1;
-        }
+        } }
     }
 
     # allow for the data to be "untainted"
