@@ -1,27 +1,30 @@
 #!/usr/bin/perl -w
 
+# As of JSON switch to 2.0 and new JSON interface
 # Benchmark: running cejd, json, zejd for at least 2 CPU seconds...
-#       cejd:  4 wallclock secs ( 2.18 usr +  0.00 sys =  2.18 CPU) @ 7045.87/s (n=15360)
-#       json:  3 wallclock secs ( 2.16 usr +  0.00 sys =  2.16 CPU) @ 6634.26/s (n=14330)
-#       zejd:  3 wallclock secs ( 2.16 usr +  0.00 sys =  2.16 CPU) @ 6634.26/s (n=14330)
-#        Rate zejd json cejd
-# zejd 6634/s   --   0%  -6%
-# json 6634/s   0%   --  -6%
-# cejd 7046/s   6%   6%   --
+#       cejd:  3 wallclock secs ( 2.17 usr +  0.00 sys =  2.17 CPU) @ 7078.34/s (n=15360)
+#       json:  3 wallclock secs ( 2.24 usr +  0.00 sys =  2.24 CPU) @ 8723.21/s (n=19540)
+#       zejd:  3 wallclock secs ( 2.16 usr +  0.00 sys =  2.16 CPU) @ 7111.11/s (n=15360)
+#        Rate cejd zejd json
+# cejd 7078/s   --  -0% -19%
+# zejd 7111/s   0%   -- -18%
+# json 8723/s  23%  23%   --
 #
 # Benchmark: running cejd, json for at least 2 CPU seconds...
-#       cejd:  3 wallclock secs ( 2.04 usr +  0.00 sys =  2.04 CPU) @ 5690.20/s (n=11608)
-#       json:  2 wallclock secs ( 2.06 usr +  0.00 sys =  2.06 CPU) @ 5291.75/s (n=10901)
-#        Rate json cejd
-# json 5292/s   --  -7%
-# cejd 5690/s   8%   --
+#       cejd:  3 wallclock secs ( 2.08 usr +  0.00 sys =  2.08 CPU) @ 5800.48/s (n=12065)
+#       json:  2 wallclock secs ( 2.13 usr +  0.00 sys =  2.13 CPU) @ 7206.57/s (n=15350)
+#        Rate cejd json
+# cejd 5800/s   -- -20%
+# json 7207/s  24%   --
 #
 # Benchmark: running cejd, json for at least 2 CPU seconds...
-#       cejd:  4 wallclock secs ( 2.21 usr +  0.00 sys =  2.21 CPU) @ 24320.81/s (n=53749)
-#       json:  3 wallclock secs ( 2.14 usr +  0.00 sys =  2.14 CPU) @ 10048.13/s (n=21503)
+#       cejd:  2 wallclock secs ( 2.06 usr +  0.00 sys =  2.06 CPU) @ 30656.31/s (n=63152)
+#       json:  2 wallclock secs ( 2.08 usr +  0.00 sys =  2.08 CPU) @ 24666.35/s (n=51306)
 #         Rate json cejd
-# json 10048/s   -- -59%
-# cejd 24321/s 142%   --
+# json 24666/s   -- -20%
+# cejd 30656/s  24%   --
+
+
 
 use strict;
 
@@ -29,8 +32,10 @@ use Benchmark qw(cmpthese timethese);
 use JSON;
 use CGI::Ex::JSONDump;
 
-my $json = JSON->new(pretty => 0, keysort => 0);
-my $cejd = CGI::Ex::JSONDump->new({pretty => 0, no_sort => 1});
+my $json = JSON->new;
+$json->canonical(1);
+#$json->pretty;
+my $cejd = CGI::Ex::JSONDump->new;
 
 
 my $data = {
@@ -41,18 +46,20 @@ my $data = {
     six   => undef,
 };
 
-print "JSON\n--------------------\n". $json->objToJson($data)."\n----------------------------\n";
+print "JSON\n--------------------\n". $json->encode($data)."\n----------------------------\n";
 print "CEJD\n--------------------\n". $cejd->dump($data)     ."\n----------------------------\n";
 
 cmpthese timethese(-2, {
-    json => sub { my $a = $json->objToJson($data) },
+    json => sub { my $a = $json->encode($data) },
     cejd => sub { my $a = $cejd->dump($data) },
     zejd => sub { my $a = $cejd->dump($data) },
 });
 
 ###----------------------------------------------------------------###
 
-$json = JSON->new(pretty => 1, keysort => 1);
+$json = JSON->new;
+$json->canonical(1);
+$json->pretty;
 $cejd = CGI::Ex::JSONDump->new({pretty => 1});
 
 $data = {
@@ -64,25 +71,27 @@ $data = {
     seven => undef,
 };
 
-print "JSON\n--------------------\n". $json->objToJson($data)."\n----------------------------\n";
+print "JSON\n--------------------\n". $json->encode($data)."\n----------------------------\n";
 print "CEJD\n--------------------\n". $cejd->dump($data)     ."\n----------------------------\n";
 
 cmpthese timethese(-2, {
-    json => sub { my $a = $json->objToJson($data) },
+    json => sub { my $a = $json->encode($data) },
     cejd => sub { my $a = $cejd->dump($data) },
 });
 
 ###----------------------------------------------------------------###
 
-$json = JSON->new(pretty => 1);
-$cejd = CGI::Ex::JSONDump->new({pretty => 1});
+$json = JSON->new;
+$json->canonical(1);
+$json->pretty;
+$cejd = CGI::Ex::JSONDump->new({pretty => 1, no_tag_splitting => 1});
 
 $data = ["foo\n<script>\nThis is sort of \"odd\"\n</script>"];
 
-print "JSON\n--------------------\n". $json->objToJson($data)."\n----------------------------\n";
+print "JSON\n--------------------\n". $json->encode($data)."\n----------------------------\n";
 print "CEJD\n--------------------\n". $cejd->dump($data)     ."\n----------------------------\n";
 
 cmpthese timethese(-2, {
-    json => sub { my $a = $json->objToJson($data) },
+    json => sub { my $a = $json->encode($data) },
     cejd => sub { my $a = $cejd->dump($data) },
 });
