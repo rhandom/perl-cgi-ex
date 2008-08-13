@@ -7,14 +7,14 @@
 =cut
 
 use strict;
-use Test::More tests => 112;
+use Test::More tests => 120;
 
 use_ok('CGI::Ex::Validate');
 
 my $v;
 my $e;
 
-sub validate { scalar &CGI::Ex::Validate::validate(@_) }
+sub validate { scalar CGI::Ex::Validate::validate(@_) }
 
 ### required
 $v = {foo => {required => 1}};
@@ -334,9 +334,28 @@ ok(! $e, 'custom');
 ### type checks
 $v = {foo => {type => 'ip'}};
 $e = validate({foo => '209.108.25'}, $v);
-ok($e, 'type');
+ok($e, 'type ip');
 $e = validate({foo => '209.108.25.111'}, $v);
-ok(! $e, 'type');
+ok(! $e, 'type ip');
+
+$v = {foo => {type => 'domain'}};
+$e = validate({foo => 'bar.com'}, $v);
+ok(! $e, 'type domain');
+$e = validate({foo => 'bing.bar.com'}, $v);
+ok(! $e, 'type domain');
+$e = validate({foo => 'bi-ng.com'}, $v);
+ok(! $e, 'type domain');
+$e = validate({foo => '123456789012345678901234567890123456789012345678901234567890123.com'}, $v);
+ok(! $e, 'type domain');
+
+$e = validate({foo => 'com'}, $v);
+ok($e, 'type domain');
+$e = validate({foo => 'bi-.com'}, $v);
+ok($e, 'type domain');
+$e = validate({foo => 'bi..com'}, $v);
+ok($e, 'type domain');
+$e = validate({foo => '1234567890123456789012345678901234567890123456789012345678901234.com'}, $v);
+ok($e, 'type domain');
 
 ### min_in_set checks
 $v = {foo => {min_in_set => '2 of foo bar baz', max_values => 5}};
