@@ -10,7 +10,7 @@
 use strict;
 use Test::More tests => 14;
 use FindBin qw($Bin);
-use lib ($Bin =~ /(.+)/ ? "$1/../lib" : ''); # add bin - but untaint it
+use lib ($Bin =~ /(.+)/ ? (-e "$1/../blib" ? "$1/../blib" : "$1/../lib") : ''); # add bin - but untaint it
 
 ### Set up taint checking
 sub is_tainted { local $^W; eval { eval("#" . substr(join("", @_), 0, 0)); 1; } ? 0 : 1 }
