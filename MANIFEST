@@ -13,6 +13,7 @@ lib/CGI/Ex/sha1.js
 lib/CGI/Ex/Template.pm
 lib/CGI/Ex/validate.js
 lib/CGI/Ex/Validate.pm
+lib/CGI/Ex/Validate.pod
 lib/CGI/Ex/yaml_load.js
 Makefile.PL
 MANIFEST
