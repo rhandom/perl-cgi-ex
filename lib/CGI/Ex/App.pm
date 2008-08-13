@@ -2,7 +2,7 @@ package CGI::Ex::App;
 
 ###---------------------###
 #  See the perldoc in CGI/Ex/App.pod
-#  Copyright 2007 - Paul Seamons
+#  Copyright 2008 - Paul Seamons
 #  Distributed under the Perl Artistic License without warranty
 
 use strict;
@@ -730,10 +730,11 @@ sub js_validation {
 sub generate_form {
     my ($self, $step) = @_;
     my $form_name = $_[2] || $self->run_hook('form_name', $step);
-    my $args      = $_[3] || {};
+    my $args      = ref($_[3]) eq 'HASH' ? $_[3] : {};
     my $hash_val  = $self->run_hook('hash_validation', $step);
     return '' if ! $form_name || ! ref($hash_val) || ! scalar keys %$hash_val;
-    return $self->val_obj->generate_form($hash_val, $form_name);
+    local $args->{'js_uri_path'} = $self->js_uri_path;
+    return $self->val_obj->generate_form($hash_val, $form_name, $args);
 }
 
 sub morph_base { my $self = shift; ref($self) }
