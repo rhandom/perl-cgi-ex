@@ -250,20 +250,17 @@ sub validate_buddy {
     foreach my $value (@$values) {
         next if ! defined $value;
         if (! $field_val->{'do_not_trim'}) { # whitespace
-            $value =~ s/^\s+//;
-            $value =~ s/\s+$//;
-            $modified = 1;
+            $modified = 1 if  $value =~ s/( ^\s+ | \s+$ )//xg;
         }
         if ($field_val->{'trim_control_chars'}) {
-            $value =~ y/\t/ /;
-            $value =~ y/\x00-\x1F//d;
-            $modified = 1;
+            $modified = 1 if $value =~ y/\t/ /;
+            $modified = 1 if $value =~ y/\x00-\x1F//d;
         }
         if ($field_val->{'to_upper_case'}) { # uppercase
-            $value = uc($value);
+            $value = uc $value;
             $modified = 1;
         } elsif ($field_val->{'to_lower_case'}) { # lowercase
-            $value = lc($value);
+            $value = lc $value;
             $modified = 1;
         }
     }
@@ -285,27 +282,20 @@ sub validate_buddy {
             die "The e option cannot be used in swap on field $field" if $opt =~ /e/;
             my $global = $opt =~ s/g//g;
             $swap =~ s/\\n/\n/g;
-            if ($global) {
-                foreach my $value (@$values) {
-                    $value =~ s{(?$opt:$pat)}{
-                        my @match = (undef, $1, $2, $3, $4, $5, $6); # limit on the number of matches
-                        my $copy = $swap;
-                        $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
-                        $modified = 1;
-                        $copy; # return of the swap
-                    }eg;
-                }
-            }else{
-                foreach my $value (@$values) {
-                    next if ! defined $value;
-                    $value =~ s{(?$opt:$pat)}{
-                        my @match = (undef, $1, $2, $3, $4, $5, $6); # limit on the number of matches
-                        my $copy = $swap;
-                        $copy =~ s/\$(\d+)/defined($match[$1]) ? $match[$1] : ""/ge;
-                        $modified = 1;
-                        $copy; # return of the swap
-                    }e;
-                }
+            my $expand = sub { # code similar to Template::Alloy::VMethod::vmethod_replace
+                my ($text, $start, $end) = @_;
+                my $copy = $swap;
+                $copy =~ s{ \\(\\|\$) | \$ (\d+) }{
+                    $1 ? $1
+                        : ($2 > $#$start || $2 == 0) ? ''
+                        : substr($text, $start->[$2], $end->[$2] - $start->[$2]);
+                }exg;
+                $modified = 1;
+                $copy;
+            };
+            foreach my $value (@$values) {
+                if ($global) { $value =~ s{(?$opt:$pat)}{ $expand->($value, [@-], [@+]) }eg }
+                else         { $value =~ s{(?$opt:$pat)}{ $expand->($value, [@-], [@+]) }e  }
             }
         }
     } }
