@@ -518,9 +518,10 @@ sub js_uri_path {
     my $self   = shift;
     my $script = $self->script_name;
     my $js_step = $self->js_step;
-    return ($self->can('path') == \&CGI::Ex::App::path)
+    return ($self->can('path') == \&CGI::Ex::App::path
+            && $self->can('path_info_map_base') == \&CGI::Ex::App::path_info_map_base)
         ? $script .'/'. $js_step # try to use a cache friendly URI (if path is our own)
-        : $script . '?'.$self->step_key.'='.$js_step.'&js='; # use one that works with more paths
+        : $script .'?'. $self->step_key .'='. $js_step .'&js='; # use one that works with more paths
 }
 
 
