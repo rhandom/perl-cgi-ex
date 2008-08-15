@@ -142,11 +142,11 @@ __END__
 
     use CGI::Ex::JSONDump;
 
-    my $js = JSONDump(\%complex_data, {pretty => 0});
+    my $js = JSONDump(\%complex_data, {pretty => 1});
 
     ### OR
 
-    my $js = CGI::Ex::JSONDump->new({pretty => 0})->dump(\%complex_data);
+    my $js = CGI::Ex::JSONDump->new({pretty => 1})->dump(\%complex_data);
 
 =head1 DESCRIPTION
 
