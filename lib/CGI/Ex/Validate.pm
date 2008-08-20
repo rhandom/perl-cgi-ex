@@ -424,7 +424,7 @@ sub validate_buddy {
         # now do match types
         if ($types{'match'}) { foreach my $type (@{ $types{'match'} }) {
             my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
-            : UNIVERSAL::isa($field_val->{$type}, 'Regexp') ? [$field_val->{$type}]
+                : UNIVERSAL::isa($field_val->{$type}, 'Regexp')   ? [$field_val->{$type}]
                 : [split(/\s*\|\|\s*/,$field_val->{$type})];
             foreach my $rx (@$ref) {
                 if (UNIVERSAL::isa($rx,'Regexp')) {
@@ -435,12 +435,11 @@ sub validate_buddy {
                     if ($rx !~ m/^(!\s*|)m([^\s\w])(.*)\2([eigsmx]*)$/s) {
                         die "Not sure how to parse that match ($rx)";
                     }
-                    my ($not,$pat,$opt) = ($1,$3,$4);
+                    my ($not, $pat, $opt) = ($1, $3, $4);
                     $opt =~ tr/g//d;
                     die "The e option cannot be used on validation keys on field $field" if $opt =~ /e/;
                     if ( (     $not && (  defined($value) && $value =~ m/(?$opt:$pat)/))
-                         || (! $not && (! defined($value) || $value !~ m/(?$opt:$pat)/))
-                         ) {
+                         || (! $not && (! defined($value) || $value !~ m/(?$opt:$pat)/)) ) {
                         return [] if $self->{'_check_conditional'};
                         push @errors, [$field, $type, $field_val, $ifs_match];
                     }
@@ -675,7 +674,7 @@ sub generate_form {
 
     $args->{'div'}       ||= "<div class=\"form_div\">\n";
     $args->{'open'}      ||= "<form name=\"\$form_name\" id=\"\$form_name\" method=\"\$method\" action=\"\$action\"\$extra_form_attrs>\n";
-    $args->{'form_name'} ||= $form_name || die "Missing form_name";
+    $args->{'form_name'} ||= $form_name || 'the_form_'.int(rand * 1000);
     $args->{'action'}    ||= '';
     $args->{'method'}    ||= 'POST';
     $args->{'submit'}    ||= "<input type=\"submit\" value=\"".($args->{'submit_name'} || 'Submit')."\">";
@@ -696,9 +695,9 @@ sub generate_form {
     my $js = ! defined($args->{'use_js_validation'}) || $args->{'use_js_validation'};
 
     $args->{'css'} = ".odd { background: #eee }\n"
-        . ".form_div { width: 30em; }\n"
+        . ".form_div { width: 40em; }\n"
         . ".form_div div, .form_div td { padding:.5ex;}\n"
-        . ".form_div label { width: 10em; float: left; }\n"
+        . ".form_div label { width: 10em }\n"
         . "table { border-spacing: 0px }\n"
         . ".form_error { color: darkred }\n"
         . ".submit_row { text-align: right }\n"
@@ -708,13 +707,39 @@ sub generate_form {
     s/\$(form_name|title|method|action|submit|extra_form_attrs)/$args->{$1}/g foreach $txt, $args->{'footer'};
     my $n = 0;
     foreach my $field (@$fields) {
-        my $attrs = $field->{'form_args'} || {};
         my $input;
-        my $type = $attrs->{'type'} ? $attrs->{'type'} : $field->{'field'} =~ /^pass(?:|wd|word|\d+|_\w+)$/i ? 'password' : 'text';
-        if ($type eq 'textarea') {
-            $input = "<textarea name=\"$field->{'field'}\" id=\"$field->{'field'}\"></textarea>";
+        my $type = $field->{'htype'} ? $field->{'htype'} : $field->{'field'} =~ /^pass(?:|wd|word|\d+|_\w+)$/i ? 'password' : 'text';
+        if ($type eq 'textarea' || $field->{'rows'} || $field->{'cols'}) {
+            my $r = $field->{'rows'} ? " rows=\"$field->{'rows'}\"" : '';
+            my $c = $field->{'cols'} ? " cols=\"$field->{'cols'}\"" : '';
+            my $w = $field->{'wrap'} ? " wrap=\"$field->{'wrap'}\"" : '';
+            $input = "<textarea name=\"$field->{'field'}\" id=\"$field->{'field'}\"$r$c$w></textarea>";
+        } elsif ($type eq 'radio' || $type eq 'checkbox') {
+            my $e = $field->{'enum'}  || [];
+            my $l = $field->{'label'} || $e;
+            my $I = @$e > @$l ? $#$e : $#$l;
+            for (my $i = 0; $i <= $I; $i++) {
+                my $_e = $e->[$i];
+                $_e =~ s/\"/&quot;/g;
+                $input .= "<input type=\"$type\" name=\"$field->{'field'}\" id=\"$field->{'field'}_$i\" value=\"$_e\">"
+                    ." <label for=\"id=\"$field->{'field'}_$i\">".(defined($l->[$i]) ? $l->[$i] : '')."</label><br />\n";
+            }
+        } elsif ($type eq 'select' || $field->{'enum'} || $field->{'label'}) {
+            $input = "<select name=\"$field->{'field'}\" id=\"$field->{'field'}\">\n";
+            my $e = $field->{'enum'}  || [];
+            my $l = $field->{'label'} || $e;
+            my $I = @$e > @$l ? $#$e : $#$l;
+            for (my $i = 0; $i <= $I; $i++) {
+                $input .= "<option".(defined($e->[$i]) ? " value=\"".do { my $_e = $e->[$i]; $_e =~ s/\"/&quot;/g; $_e }.'"' : '').">"
+                    .(defined($l->[$i]) ? $l->[$i] : '')."</option>\n";
+            }
+            $input .= "</select>\n";
         } else {
             $input = "<input type=\"$type\" name=\"$field->{'field'}\" id=\"$field->{'field'}\" value=\"\" />";
+        }
+        if ($type eq 'hidden') {
+            $txt .= "$input\n";
+            next;
         }
         $input .= "<br><span class=\"form_error\" id=\"$field->{'field'}_error\">[% $field->{'field'}_error %]</span>";
 
