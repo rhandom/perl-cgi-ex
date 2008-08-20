@@ -546,8 +546,15 @@ sub write_handler_json {
   my $file = shift;
   my $ref  = shift;
   require JSON;
-  my $encode = JSON->VERSION > 1.98 ? 'encode' : 'objToJSon';
-  my $str = JSON->new->$encode($ref, {pretty => 1, indent => 2});
+  my $str;
+  if (JSON->VERSION > 1.98) {
+      my $j = JSON->new;
+      $j->canonical(1);
+      $j->pretty;
+      $str = $j->encode($ref);
+  } else {
+      $str = JSON->new->objToJSon($ref, {pretty => 1, indent => 2});
+  }
   local *OUT;
   open (OUT, ">$file") || die $!;
   print OUT $str;
