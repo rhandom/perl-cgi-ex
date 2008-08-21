@@ -638,20 +638,30 @@ sub get_validation_keys {
 
 ###---------------------###
 
-### spit out a chunk that will do the validation
 sub generate_js {
-    # allow for some browsers to not receive the validation js
     return "<!-- JS validation not supported in this browser $_ -->"
         if $ENV{'HTTP_USER_AGENT'} && grep {$ENV{'HTTP_USER_AGENT'} =~ $_} @UNSUPPORTED_BROWSERS;
 
-    my $self        = shift;
-    my $val_hash    = shift || die "Missing validation";
-    my $form_name   = shift || die "Missing form name";
-    my $js_uri_path = shift || $JS_URI_PATH;
-    $val_hash = $self->get_validation($val_hash);
+    my $self = shift;
+    my $val_hash = shift || croak "Missing validation hash";
+    if (ref $val_hash ne 'HASH') {
+        $val_hash = $self->get_validation($val_hash) if ref $val_hash ne 'SCALAR' || ! ref $val_hash;
+        croak "Validation groups must be a hashref"    if ref $val_hash ne 'HASH';
+    }
+
+    my ($args, $form_name, $js_uri_path);
+    croak "Missing args or form_name" if ! $_[0];
+    if (ref($_[0]) eq 'HASH') {
+        $args = shift;
+    } else {
+        ($args, $form_name, $js_uri_path) = ({}, @_);
+    }
+
+    $form_name   ||= $args->{'form_name'}   || croak 'Missing form_name';
+    $js_uri_path ||= $args->{'js_uri_path'};
 
     my $js_uri_path_validate = $JS_URI_PATH_VALIDATE || do {
-        die "Missing \$js_uri_path" if ! $js_uri_path;
+        croak 'Missing js_uri_path' if ! $js_uri_path;
         "$js_uri_path/CGI/Ex/validate.js";
     };
 
@@ -667,7 +677,7 @@ if (document.check_form) document.check_form("$form_name");
 
 sub generate_form {
     my ($self, $val_hash, $form_name, $args) = @_;
-    ($args, $form_name) = ($form_name, $args) if ref($form_name) eq 'HASH';
+    ($args, $form_name) = ($form_name, undef) if ref($form_name) eq 'HASH';
 
     my ($fields, $ARGS) = $self->get_ordered_fields($val_hash);
     $args = {%{ $ARGS->{'form_args'} || {}}, %{ $args || {} }};
@@ -756,7 +766,7 @@ sub generate_form {
     if ($js) {
         local  @{ $val_hash }{('general form_args', 'group form_args')};
         delete @{ $val_hash }{('general form_args', 'group form_args')};
-        $txt .= $self->generate_js($val_hash, $args->{'form_name'}, $args->{'js_uri_path'});
+        $txt .= $self->generate_js($val_hash, $args);
     }
     return $txt;
 }
