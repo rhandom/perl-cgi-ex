@@ -672,34 +672,32 @@ sub generate_form {
     my ($fields, $ARGS) = $self->get_ordered_fields($val_hash);
     $args = {%{ $ARGS->{'form_args'} || {}}, %{ $args || {} }};
 
+    my $cols = ($args->{'no_inline_error'} || ($args->{'columns'} && $args->{'columns'} == 2)) ? 2 : 3;
     $args->{'div'}       ||= "<div class=\"form_div\">\n";
     $args->{'open'}      ||= "<form name=\"\$form_name\" id=\"\$form_name\" method=\"\$method\" action=\"\$action\"\$extra_form_attrs>\n";
     $args->{'form_name'} ||= $form_name || 'the_form_'.int(rand * 1000);
     $args->{'action'}    ||= '';
     $args->{'method'}    ||= 'POST';
     $args->{'submit'}    ||= "<input type=\"submit\" value=\"".($args->{'submit_name'} || 'Submit')."\">";
-
-    my $row   = $args->{'row_template'};
-    if ($args->{'use_table'}) {
-        $args->{'header'} ||= "<table class=\"form_table\">\n";
-        $args->{'header'} .=  "  <tr class=\"header\"><th colspan=\"2\">\$title</th></tr>\n" if $args->{'title'};
-        $row  ||= "  <tr class=\"\$oddeven\"><td class=\"field\">\$field</td><td class=\"input\">\$input</td></tr>\n";
-        $args->{'footer'} ||= "  <tr class=\"submit_row\"><th colspan=\"2\">\$submit</th></tr>\n</table>\n";
-    } else {
-        $args->{'header'} ||= "<fieldset class=\"form_table\">\n";
-        $args->{'header'} .= "<legend>\$title</legend>\n" if $args->{'title'};
-        $row  ||= "  <div class=\"\$oddeven\">\$field\$input</div>\n";
-        $args->{'footer'} ||= "<div class=\"submit_row\">\$submit</div>\n</fieldset>\n";
-    }
+    $args->{'header'}    ||= "<table class=\"form_table\">\n";
+    $args->{'header'}    .=  "  <tr class=\"header\"><th colspan=\"$cols\">\$title</th></tr>\n" if $args->{'title'};
+    $args->{'footer'}    ||= "  <tr class=\"submit_row\"><th colspan=\"2\">\$submit</th></tr>\n</table>\n";
+    $args->{'row_template'} ||= "  <tr class=\"\$oddeven\" id=\"\$field_row\">\n"
+        ."    <td class=\"field\">\$name</td>\n"
+        ."    <td class=\"input\">\$input"
+        . ($cols == 2
+             ? ($args->{'no_inline_error'} ? '' : "<br /><span class=\"error\" id=\"\$field_error\">[% \$field_error %]</span></td>\n")
+             : "</td>\n    <td class=\"error\" id=\"\$field_error\">[% \$field_error %]</td>\n")
+        ."  </tr>\n";
 
     my $js = ! defined($args->{'use_js_validation'}) || $args->{'use_js_validation'};
 
     $args->{'css'} = ".odd { background: #eee }\n"
         . ".form_div { width: 40em; }\n"
-        . ".form_div div, .form_div td { padding:.5ex;}\n"
+        . ".form_div td { padding:.5ex;}\n"
         . ".form_div label { width: 10em }\n"
+        . ".form_div .error { color: darkred }\n"
         . "table { border-spacing: 0px }\n"
-        . ".form_error { color: darkred }\n"
         . ".submit_row { text-align: right }\n"
         if ! defined $args->{'css'};
 
@@ -709,7 +707,10 @@ sub generate_form {
     foreach my $field (@$fields) {
         my $input;
         my $type = $field->{'htype'} ? $field->{'htype'} : $field->{'field'} =~ /^pass(?:|wd|word|\d+|_\w+)$/i ? 'password' : 'text';
-        if ($type eq 'textarea' || $field->{'rows'} || $field->{'cols'}) {
+        if ($type eq 'hidden') {
+            $txt .= "$input\n";
+            next;
+        } elsif ($type eq 'textarea' || $field->{'rows'} || $field->{'cols'}) {
             my $r = $field->{'rows'} ? " rows=\"$field->{'rows'}\"" : '';
             my $c = $field->{'cols'} ? " cols=\"$field->{'cols'}\"" : '';
             my $w = $field->{'wrap'} ? " wrap=\"$field->{'wrap'}\"" : '';
@@ -721,8 +722,8 @@ sub generate_form {
             for (my $i = 0; $i <= $I; $i++) {
                 my $_e = $e->[$i];
                 $_e =~ s/\"/&quot;/g;
-                $input .= "<input type=\"$type\" name=\"$field->{'field'}\" id=\"$field->{'field'}_$i\" value=\"$_e\">"
-                    ." <label for=\"id=\"$field->{'field'}_$i\">".(defined($l->[$i]) ? $l->[$i] : '')."</label><br />\n";
+                $input .= "<div class=\"option\"><input type=\"$type\" name=\"$field->{'field'}\" id=\"$field->{'field'}_$i\" value=\"$_e\">"
+                    .(defined($l->[$i]) ? $l->[$i] : '')."</div>\n";
             }
         } elsif ($type eq 'select' || $field->{'enum'} || $field->{'label'}) {
             $input = "<select name=\"$field->{'field'}\" id=\"$field->{'field'}\">\n";
@@ -730,25 +731,23 @@ sub generate_form {
             my $l = $field->{'label'} || $e;
             my $I = @$e > @$l ? $#$e : $#$l;
             for (my $i = 0; $i <= $I; $i++) {
-                $input .= "<option".(defined($e->[$i]) ? " value=\"".do { my $_e = $e->[$i]; $_e =~ s/\"/&quot;/g; $_e }.'"' : '').">"
+                $input .= "    <option".(defined($e->[$i]) ? " value=\"".do { my $_e = $e->[$i]; $_e =~ s/\"/&quot;/g; $_e }.'"' : '').">"
                     .(defined($l->[$i]) ? $l->[$i] : '')."</option>\n";
             }
             $input .= "</select>\n";
         } else {
-            $input = "<input type=\"$type\" name=\"$field->{'field'}\" id=\"$field->{'field'}\" value=\"\" />";
+            my $s = $field->{'size'} ? " size=\"$field->{'size'}\"" : '';
+            my $m = $field->{'maxlength'} || $field->{'max_len'}; $m = $m ? " maxlength=\"$m\"" : '';
+            $input = "<input type=\"$type\" name=\"$field->{'field'}\" id=\"$field->{'field'}\"$s$m value=\"\" />";
         }
-        if ($type eq 'hidden') {
-            $txt .= "$input\n";
-            next;
-        }
-        $input .= "<br><span class=\"form_error\" id=\"$field->{'field'}_error\">[% $field->{'field'}_error %]</span>";
 
-        my $copy = $row;
         $n++;
+        my $copy = $args->{'row_template'};
         my $name = $field->{'field'};
         $name = $field->{'name'} || do { $name =~ tr/_/ /; $name =~ s/\b(\w)/\u$1/g; $name };
         $name = "<label for=\"$field->{'field'}\">$name</label>";
-        $copy =~ s/\$field/$name/g;
+        $copy =~ s/\$field/$field->{'field'}/g;
+        $copy =~ s/\$name/$name/g;
         $copy =~ s/\$input/$input/g;
         $copy =~ s/\$oddeven/$n % 2 ? 'odd' : 'even'/eg;
         $txt .= $copy;
@@ -906,12 +905,10 @@ sub get_error_text {
 
     # type can look like "required" or "required2" or "required100023"
     # allow for fallback from required100023_error through required_error
-    my @possible_error_keys = ("${type}_error");
-    unshift @possible_error_keys, "${type}${dig}_error" if length($dig);
 
     # look in the passed hash or self first
     my $return;
-    foreach my $key (@possible_error_keys){
+    foreach my $key ((length($dig) ? "${type}${dig}_error" : ()), "${type}_error", 'error') {
         $return = $field_val->{$key} || $extra->{$key} || next;
         $return =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
         $return =~ s/\$field/$field/g;
