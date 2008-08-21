@@ -70,9 +70,10 @@ use CGI::Ex::Validate;
     my $errobj = $vob->validate($form, "/somefile/somewhere.val");
 
     if ($errobj) {
+        # get errors back in any of several useful ways
         my $error_heading = $errobj->as_string; # OR "$errobj";
-    my $error_list    = $errobj->as_array;  # ordered list of what when wrong
-    my $error_hash    = $errobj->as_hash;   # hash of arrayrefs of errors
+        my $error_list    = $errobj->as_array;  # ordered list of what when wrong
+        my $error_hash    = $errobj->as_hash;   # hash of arrayrefs of errors
     } else {
         # the form passed validation
     }
@@ -81,10 +82,14 @@ use CGI::Ex::Validate;
     my $vob = CGI::Ex::Validate->new({no_extra_keys => 1});
     my $errobj = $vob->validate($form, $val_hash);
 
-
     my $js_uri_path = '/js/';     # static or dynamic URI path to find CGI/Ex/validate.js
     my $form_name   = "the_form"; # name of the form to attach javascript to
+
+    # generate javascript to validate an existing form
     my $javascript  = $vob->generate_js($val_hash, $form_name, $js_uri_path);
+
+    # OR let Validate create the form and javascript for you
+    my $form = $vob->generate_form($val_hash, {js_uri_path => $js_uri_path, form_name => $form_name});
 
 
 =head1 DESCRIPTION
