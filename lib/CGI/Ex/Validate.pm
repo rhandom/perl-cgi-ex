@@ -672,7 +672,7 @@ sub generate_form {
     my ($fields, $ARGS) = $self->get_ordered_fields($val_hash);
     $args = {%{ $ARGS->{'form_args'} || {}}, %{ $args || {} }};
 
-    my $cols = ($args->{'no_inline_error'} || ($args->{'columns'} && $args->{'columns'} == 2)) ? 2 : 3;
+    my $cols = ($args->{'no_inline_error'} || ! $args->{'columns'} || $args->{'columns'} != 3) ? 2 : 3;
     $args->{'div'}       ||= "<div class=\"form_div\">\n";
     $args->{'open'}      ||= "<form name=\"\$form_name\" id=\"\$form_name\" method=\"\$method\" action=\"\$action\"\$extra_form_attrs>\n";
     $args->{'form_name'} ||= $form_name || 'the_form_'.int(rand * 1000);
