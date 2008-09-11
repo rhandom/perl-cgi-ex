@@ -17,15 +17,16 @@ use vars qw($VERSION);
 use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
+use Carp qw(croak);
 
 $VERSION = '2.26';
 
 ###----------------------------------------------------------------###
 
 sub new {
-    my $class = shift || __PACKAGE__;
-    my $args  = shift || {};
-    return bless {%$args}, $class;
+    my $class = shift || croak "Usage: ".__PACKAGE__."->new";
+    my $self  = ref($_[0]) ? shift() : (@_ % 2) ? {} : {@_};
+    return bless {%$self}, $class;
 }
 
 sub get_valid_auth {
@@ -67,12 +68,13 @@ sub get_valid_auth {
 
     ### look first in form, then in cookies for valid tokens
     my $had_form_data;
+    my $verify_form_user;
     foreach ([$form,          $self->key_user,   1],
              [$self->cookies, $self->key_cookie, 0],
              ) {
         my ($hash, $key, $is_form) = @$_;
         next if ! defined $hash->{$key};
-        last if ! $is_form && $had_form_data;  # if form info was passed in - we must use it only
+        last if ! $is_form && $had_form_data && ! $verify_form_user;  # if form info was passed in - we must use it only
         $had_form_data = 1 if $is_form;
         next if ! length $hash->{$key};
 
@@ -83,9 +85,7 @@ sub get_valid_auth {
             $self->new_auth_data({user => delete($form->{$key_u})});
             $had_form_data = 0;
             next;
-        } elsif ($is_form
-            && $hash->{$key} !~ m|^[^/]+/| # looks like a cram token
-            && defined $hash->{ $self->key_pass }) {
+        } elsif ($is_form && defined($hash->{ $self->key_pass })) {
             $data = $self->verify_token({
                 token => {
                     user        => delete $hash->{$key},
@@ -94,30 +94,31 @@ sub get_valid_auth {
                 },
                 from => 'form',
             }) || next;
-
         } else {
-            $data = $self->verify_token({token => $hash->{$key}, from => ($is_form ? 'form' : 'cookie')}) || next;
+            $data = $self->verify_token({token => $hash->{$key}, from => ($is_form ? 'form' : 'cookie')}) if length $hash->{$key};
+            if (! $data) {
+                $verify_form_user = $hash->{$key} if $is_form;
+                next;
+            }
             delete $hash->{$key} if $is_form;
         }
 
-        ### generate a fresh cookie if they submitted info on plaintext types
-        if ($is_form
-            && ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt'))) {
-            my $save = defined($data->{'expires_min'}) && $data->{'expires_min'} <= 0 ? 0 : 1;
-            $self->set_cookie({
-                key        => $self->key_cookie,
-                val        => $self->generate_token($data),
-                no_expires => $save, # make it a session cookie unless they ask for saving
-            });
-
-        ### always generate a cookie on types that have expiration
-        } else {
-            $self->set_cookie({
-                key        => $self->key_cookie,
-                val        => $self->generate_token($data),
-                no_expires => 0,
-            });
+        # allow passing in just the user - if a valid cookie exists - then the token is fine
+        if ($verify_form_user
+            && $self->cleanup_user($verify_form_user) ne $data->{'user'}) {
+            last; # no success
         }
+
+        # non-cram cookie types are session cookies unless save was set (thus setting expires_min)
+        my $no_expires = 0;
+        if ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
+            $no_expires = 1 if ! defined($data->{'expires_min'});
+        }
+        $self->set_cookie({
+            key        => $self->key_cookie,
+            val        => $self->generate_token($data),
+            no_expires => $no_expires,
+        });
 
         ### successful login
         return $self->handle_success({is_form => $is_form});
