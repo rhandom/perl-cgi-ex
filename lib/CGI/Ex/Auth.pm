@@ -277,7 +277,7 @@ sub set_cookie {
     $self->cgix->set_cookie({
         -name    => $key,
         -value   => $val,
-        -path    => $self->cookie_path($key, $val) || '/',
+        -path    => $args->{'path'} || $self->cookie_path($key, $val) || '/',
         ($dom ? (-domain => $dom) : ()),
         ($args->{'expires'} ? (-expires => $args->{'expires'}): ()),
     });
