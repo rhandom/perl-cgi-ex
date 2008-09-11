@@ -103,10 +103,11 @@ sub get_valid_auth {
         ### generate a fresh cookie if they submitted info on plaintext types
         if ($is_form
             && ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt'))) {
+            my $save = defined($data->{'expires_min'}) && $data->{'expires_min'} <= 0 ? 0 : 1;
             $self->set_cookie({
                 key        => $self->key_cookie,
                 val        => $self->generate_token($data),
-                no_expires => ($data->{ $self->key_save } ? 0 : 1), # make it a session cookie unless they ask for saving
+                no_expires => $save, # make it a session cookie unless they ask for saving
             });
 
         ### always generate a cookie on types that have expiration
@@ -226,7 +227,7 @@ sub check_valid_auth {
 
 ###----------------------------------------------------------------###
 
-sub script_name { shift->{'script_name'} || $ENV{'SCRIPT_NAME'} || die "Missing SCRIPT_NAME" }
+sub script_name { shift->{'script_name'} || $ENV{'SCRIPT_NAME'} || '' }
 
 sub path_info { shift->{'path_info'} || $ENV{'PATH_INFO'} || '' }
 
@@ -254,27 +255,27 @@ sub delete_cookie {
     my $self = shift;
     my $args = shift;
     return $self->{'delete_cookie'}->($self, $args) if $self->{'delete_cookie'};
-    my $key  = $args->{'key'};
-    $self->cgix->set_cookie({
-        -name    => $key,
-        -value   => '',
-        -expires => '-10y',
-        -path    => '/',
-    });
-    delete $self->cookies->{$key};
+    local $args->{'val'}     = '';
+    local $args->{'expires'} = '-10y' if ! $self->cookie_no_expires($args->{'key'}, '');
+    $self->set_cookie($args);
+    delete $self->cookies->{$args->{'key'}};
 }
 
 sub set_cookie {
     my $self = shift;
     my $args = shift;
     return $self->{'set_cookie'}->($self, $args) if $self->{'set_cookie'};
-    my $key  = $args->{'key'};
+    my $key  = $args->{'key'} || $args->{'name'};
     my $val  = $args->{'val'};
+    my $dom  = $args->{'domain'} || $self->cookie_domain;
     $self->cgix->set_cookie({
         -name    => $key,
         -value   => $val,
-        ($args->{'no_expires'} ? () : (-expires => '+20y')), # let the expires time take care of things for types that self expire
-        -path    => '/',
+        -path    => $self->cookie_path($key, $val) || '/',
+        ($dom ? (-domain => $dom) : ()),
+        ($args->{'expires'} ? (-expires => $args->{'expires'})
+          : $args->{'no_expires'} || $self->cookie_no_expires($key, $val) ? ()
+          : (-expires => '+20y')),
     });
     $self->cookies->{$key} = $val;
 }
@@ -309,6 +310,9 @@ sub use_plaintext    { my $s = shift; $s->use_crypt || ($s->{'use_plaintext'} ||
 sub use_base64       { my $s = shift; $s->{'use_base64'}  = 1      if ! defined $s->{'use_base64'};  $s->{'use_base64'}  }
 sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined $s->{'expires_min'}; $s->{'expires_min'} }
 sub failed_sleep     { shift->{'failed_sleep'}     ||= 0              }
+sub cookie_path      { shift->{'cookie_path'}      }
+sub cookie_domain    { shift->{'cookie_domain'}    }
+sub cookie_no_expires { shift->{'cookie_no_expires'} }
 sub disable_simple_cram { shift->{'disable_simple_cram'} }
 
 sub logout_redirect {
@@ -408,11 +412,14 @@ sub login_hash_common {
 sub verify_token {
     my $self  = shift;
     my $args  = shift;
+    if (my $meth = $self->{'verify_token'}) {
+        return $meth->($self, $args);
+    }
     my $token = delete $args->{'token'}; die "Missing token" if ! length $token;
     my $data  = $self->new_auth_data({token => $token, %$args});
     my $meth;
 
-    ### make sure the token is parsed to usable data
+    # make sure the token is parsed to usable data
     if (ref $token) { # token already parsed
         $data->add_data({%$token, armor => 'none'});
 
@@ -429,20 +436,20 @@ sub verify_token {
     }
 
 
-    ### verify the user
+    # verify the user
     if (! defined($data->{'user'})) {
         $data->error('Missing user');
-
+    } elsif (! defined($data->{'user'} = $self->cleanup_user($data->{'user'}))
+             || ! length($data->{'user'})) {
+        $data->error('Missing cleaned user');
     } elsif (! defined $data->{'test_pass'}) {
         $data->error('Missing test_pass');
-
-    } elsif (! $self->verify_user($data->{'user'} = $self->cleanup_user($data->{'user'}))) {
+    } elsif (! $self->verify_user($data->{'user'})) {
         $data->error('Invalid user');
-
     }
     return $data if $data->error;
 
-    ### get the pass
+    # get the pass
     my $pass;
     if (! defined($pass = eval { $self->get_pass_by_user($data->{'user'}) })) {
         $data->add_data({details => $@});
@@ -459,7 +466,7 @@ sub verify_token {
     $data->add_data({real_pass => $pass}); # store - to allow generate_token to not need to relookup the pass
 
 
-    ### validate the pass
+    # validate the pass
     if ($meth = $self->{'verify_password'}) {
         if (! $meth->($self, $pass, $data)) {
             $data->error('Password failed verification') if ! $data->error;
@@ -472,7 +479,7 @@ sub verify_token {
     return $data if $data->error;
 
 
-    ### validate the payload
+    # validate the payload
     if ($meth = $self->{'verify_payload'}) {
         if (! $meth->($self, $data->{'payload'}, $data)) {
             $data->error('Payload failed custom verification') if ! $data->error;
@@ -494,11 +501,11 @@ sub new_auth_data {
 sub parse_token {
     my ($self, $token, $data) = @_;
     my $found;
-    my $key;
-    for my $armor ('none', 'base64', 'blowfish') { # try with and without base64 encoding
-        my $copy = ($armor eq 'none')           ? $token
-            : ($armor eq 'base64')         ? eval { local $^W; decode_base64($token) }
-        : ($key = $self->use_blowfish) ? decrypt_blowfish($token, $key)
+    my $bkey;
+    for my $armor ('none', 'base64', 'blowfish') {
+        my $copy = ($armor eq 'none')       ? $token
+            : ($armor eq 'base64')          ? eval { local $^W; decode_base64($token) }
+            : ($bkey = $self->use_blowfish) ? decrypt_blowfish($token, $bkey)
             : next;
         if ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
             $data->add_data({
@@ -598,7 +605,7 @@ sub generate_token {
     my $self  = shift;
     my $data  = shift || $self->last_auth_data;
     die "Can't generate a token off of a failed auth" if ! $data;
-
+    die "Can't generate a token for a user which contains a \"/\"" if $data->{'user'} =~ m{/};
     my $token;
 
     ### do kinds that require staying plaintext
@@ -725,58 +732,48 @@ sub login_template {
     my $self = shift;
     return $self->{'login_template'} if $self->{'login_template'};
 
-    my $text = ""
-        . $self->login_header
-        . $self->login_form
-        . $self->login_script
-        . $self->login_footer;
+    my $text = join '',
+        map {ref $_ ? $$_ : /\[%/ ? $_ : $_ ? "[% TRY; PROCESS '$_'; CATCH %]<!-- [% error %] -->[% END %]\n" : ''}
+        $self->login_header, $self->login_form, $self->login_script, $self->login_footer;
     return \$text;
 }
 
-sub login_header {
-    return shift->{'login_header'} || q {
-    [%~ TRY ; PROCESS 'login_header.tt' ; CATCH %]<!-- [% error %] -->[% END ~%]
-    };
-}
-
-sub login_footer {
-    return shift->{'login_footer'} || q {
-    [%~ TRY ; PROCESS 'login_footer.tt' ; CATCH %]<!-- [% error %] -->[% END ~%]
-    };
-}
+sub login_header { shift->{'login_header'} || 'login_header.tt' }
+sub login_footer { shift->{'login_footer'} || 'login_footer.tt' }
 
 sub login_form {
-    return shift->{'login_form'} || q {
-    <div class="login_chunk">
-    <span class="login_error">[% error %]</span>
-    <form class="login_form" name="[% form_name %]" method="POST" action="[% script_name %][% path_info %]">
-    <input type="hidden" name="[% key_redirect %]" value="">
-    <input type="hidden" name="[% key_time %]" value="">
-    <input type="hidden" name="[% key_expires_min %]" value="">
-    <table class="login_table">
-    <tr class="login_username">
-      <td>[% text_user %]</td>
-      <td><input name="[% key_user %]" type="text" size="30" value=""></td>
-    </tr>
-    <tr class="login_password">
-      <td>[% text_pass %]</td>
-      <td><input name="[% key_pass %]" type="password" size="30" value=""></td>
-    </tr>
-    [% IF ! hide_save ~%]
-    <tr class="login_save">
-      <td colspan="2">
-        <input type="checkbox" name="[% key_save %]" value="1"> [% text_save %]
-      </td>
-    </tr>
-    [%~ END %]
-    <tr class="login_submit">
-      <td colspan="2" align="right">
-        <input type="submit" value="[% text_submit %]">
-      </td>
-    </tr>
-    </table>
-    </form>
-    </div>
+    my $self = shift;
+    return $self->{'login_form'} if defined $self->{'login_form'};
+    return \q{<div class="login_chunk">
+<span class="login_error">[% error %]</span>
+<form class="login_form" name="[% form_name %]" method="POST" action="[% script_name %][% path_info %]">
+<input type="hidden" name="[% key_redirect %]" value="">
+<input type="hidden" name="[% key_time %]" value="">
+<input type="hidden" name="[% key_expires_min %]" value="">
+<table class="login_table">
+<tr class="login_username">
+  <td>[% text_user %]</td>
+  <td><input name="[% key_user %]" type="text" size="30" value=""></td>
+</tr>
+<tr class="login_password">
+  <td>[% text_pass %]</td>
+  <td><input name="[% key_pass %]" type="password" size="30" value=""></td>
+</tr>
+[% IF ! hide_save ~%]
+<tr class="login_save">
+  <td colspan="2">
+    <input type="checkbox" name="[% key_save %]" value="1"> [% text_save %]
+  </td>
+</tr>
+[%~ END %]
+<tr class="login_submit">
+  <td colspan="2" align="right">
+    <input type="submit" value="[% text_submit %]">
+  </td>
+</tr>
+</table>
+</form>
+</div>
 };
 }
 
@@ -788,33 +785,32 @@ sub text_submit { my $self = shift; return defined($self->{'text_submit'}) ? $se
 
 sub login_script {
     my $self = shift;
-    return $self->{'login_script'} if $self->{'login_script'};
+    return $self->{'login_script'} if defined $self->{'login_script'};
     return '' if $self->use_plaintext || $self->disable_simple_cram;
-    return q {
-    <form name="[% form_name %]_jspost" style="margin:0px" method="POST">
-    <input type="hidden" name="[% key_user %]"><input type="hidden" name="[% key_redirect %]">
-    </form>
-    <script src="[% md5_js_path %]"></script>
-    <script>
-    if (document.md5_hex) document.[% form_name %].onsubmit = function () {
-      var f = document.[% form_name %];
-      var u = f.[% key_user %].value;
-      var p = f.[% key_pass %].value;
-      var t = f.[% key_time %].value;
-      var s = f.[% key_save %] && f.[% key_save %].checked ? -1 : f.[% key_expires_min %].value;
+    return \q{<form name="[% form_name %]_jspost" style="margin:0px" method="POST">
+<input type="hidden" name="[% key_user %]"><input type="hidden" name="[% key_redirect %]">
+</form>
+<script src="[% md5_js_path %]"></script>
+<script>
+if (document.md5_hex) document.[% form_name %].onsubmit = function () {
+  var f = document.[% form_name %];
+  var u = f.[% key_user %].value;
+  var p = f.[% key_pass %].value;
+  var t = f.[% key_time %].value;
+  var s = f.[% key_save %] && f.[% key_save %].checked ? -1 : f.[% key_expires_min %].value;
 
-      var str = u+'/'+t+'/'+s+'/'+'';
-      var sum = document.md5_hex(str +'/' + document.md5_hex(p));
+  var str = u+'/'+t+'/'+s+'/'+'';
+  var sum = document.md5_hex(str +'/' + document.md5_hex(p));
 
-      var f2 = document.[% form_name %]_jspost;
-      f2.[% key_user %].value = str +'/'+ sum;
-      f2.[% key_redirect %].value = f.[% key_redirect %].value;
-      f2.action = f.action;
-      f2.submit();
-      return false;
-    }
-    </script>
-  };
+  var f2 = document.[% form_name %]_jspost;
+  f2.[% key_user %].value = str +'/'+ sum;
+  f2.[% key_redirect %].value = f.[% key_redirect %].value;
+  f2.action = f.action;
+  f2.submit();
+  return false;
+}
+</script>
+};
 }
 
 ###----------------------------------------------------------------###
