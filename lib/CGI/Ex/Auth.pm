@@ -34,7 +34,7 @@ sub get_valid_auth {
     $self = $self->new(@_) if ! ref $self;
     delete $self->{'_last_auth_data'};
 
-    ### shortcut that will print a js file as needed (such as the md5.js)
+    # shortcut that will print a js file as needed (such as the md5.js)
     if ($self->script_name . $self->path_info eq $self->js_uri_path . "/CGI/Ex/md5.js") {
         $self->cgix->print_js('CGI/Ex/md5.js');
         eval { die "Printed Javascript" };
@@ -43,7 +43,7 @@ sub get_valid_auth {
 
     my $form = $self->form;
 
-    ### allow for logout
+    # allow for logout
     if ($form->{$self->key_logout} && ! $self->{'_logout_looking_for_user'}) {
         local $self->{'_logout_looking_for_user'} = 1;
         local $self->{'no_set_cookie'}    = 1;
@@ -66,7 +66,7 @@ sub get_valid_auth {
         }
     }
 
-    ### look first in form, then in cookies for valid tokens
+    # look first in form, then in cookies for valid tokens
     my $had_form_data;
     my $verify_form_user;
     foreach ([$form,          $self->key_user,   1],
@@ -78,7 +78,7 @@ sub get_valid_auth {
         $had_form_data = 1 if $is_form;
         next if ! length $hash->{$key};
 
-        ### if it looks like a bare username (as in they didn't have javascript) - add in other items
+        # if it looks like a bare username (as in they didn't have javascript) - add in other items
         my $data;
         if ($is_form && delete $form->{$self->key_loggedout}) { # don't validate the form on a logout
             my $key_u = $self->key_user;
@@ -96,31 +96,36 @@ sub get_valid_auth {
             }) || next;
         } else {
             $data = $self->verify_token({token => $hash->{$key}, from => ($is_form ? 'form' : 'cookie')}) if length $hash->{$key};
-            if (! $data) {
+
+            # allow passing in just the user - if a valid cookie exists - then the token is fine
+            if (defined($verify_form_user)
+                && (! defined($data->{'user'})
+                    || $self->cleanup_user($verify_form_user) ne $data->{'user'})) {
+                $data->{'form_user'} = $verify_form_user;
+                $data->error('User passed in form did not match cookie');
+                last; # no success
+            } elsif (! $data) {
                 $verify_form_user = $hash->{$key} if $is_form;
                 next;
             }
+
             delete $hash->{$key} if $is_form;
         }
 
-        # allow passing in just the user - if a valid cookie exists - then the token is fine
-        if ($verify_form_user
-            && $self->cleanup_user($verify_form_user) ne $data->{'user'}) {
-            last; # no success
-        }
-
         # non-cram cookie types are session cookies unless save was set (thus setting expires_min)
-        my $no_expires = 0;
+        my $_key = $self->key_cookie;
+        my $_val = $self->generate_token($data);
+        my $no_expires = $self->cookie_no_expires($_key, $_val);
         if ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
-            $no_expires = 1 if ! defined($data->{'expires_min'});
+            $no_expires = 1 if ! defined($no_expires) && ! defined($data->{'expires_min'});
         }
         $self->set_cookie({
-            key        => $self->key_cookie,
-            val        => $self->generate_token($data),
-            no_expires => $no_expires,
+            key     => $_key,
+            val     => $_val,
+            expires => ($no_expires ? '' : '+20y'),
         });
 
-        ### successful login
+        # successful login
         return $self->handle_success({is_form => $is_form});
     }
 
@@ -135,18 +140,18 @@ sub handle_success {
     }
     my $form = $self->form;
 
-    ### bounce to redirect
+    # bounce to redirect
     if (my $redirect = $form->{ $self->key_redirect }) {
         $self->location_bounce($redirect);
         eval { die "Success login - bouncing to redirect" };
         return;
 
-    ### if they have cookies we are done
+    # if they have cookies we are done
     } elsif (scalar(keys %{$self->cookies}) || $self->no_cookie_verify) {
         $self->success_hook;
         return $self;
 
-    ### need to verify cookies are set-able
+    # need to verify cookies are set-able
     } elsif ($args->{'is_form'}) {
         $form->{$self->key_verify} = $self->server_time;
         my $url = $self->script_name . $self->path_info . "?". $self->cgix->make_form($form);
@@ -181,11 +186,11 @@ sub handle_failure {
     }
     my $form = $self->form;
 
-    ### make sure the cookie is gone
+    # make sure the cookie is gone
     my $key_c = $self->key_cookie;
     $self->delete_cookie({key => $key_c}) if $self->cookies->{$key_c};
 
-    ### no valid login and we are checking for cookies - see if they have cookies
+    # no valid login and we are checking for cookies - see if they have cookies
     if (my $value = delete $form->{$self->key_verify}) {
         if (abs(time() - $value) < 15) {
             $self->no_cookies_print;
@@ -193,7 +198,7 @@ sub handle_failure {
         }
     }
 
-    ### oh - you're still here - well then - ask for login credentials
+    # oh - you're still here - well then - ask for login credentials
     my $key_r = $self->key_redirect;
     local $form->{$key_r} = $form->{$key_r} || $self->script_name . $self->path_info . (scalar(keys %$form) ? "?".$self->cgix->make_form($form) : '');
     local $form->{'had_form_data'} = $args->{'had_form_data'} || 0;
@@ -201,7 +206,7 @@ sub handle_failure {
     my $data = $self->last_auth_data;
     eval { die defined($data) ? $data : "Requesting credentials" };
 
-    ### allow for a sleep to help prevent brute force
+    # allow for a sleep to help prevent brute force
     sleep($self->failed_sleep) if defined($data) && $data->error ne 'Login expired' && $self->failed_sleep;
     $self->failure_hook;
 
@@ -274,9 +279,7 @@ sub set_cookie {
         -value   => $val,
         -path    => $self->cookie_path($key, $val) || '/',
         ($dom ? (-domain => $dom) : ()),
-        ($args->{'expires'} ? (-expires => $args->{'expires'})
-          : $args->{'no_expires'} || $self->cookie_no_expires($key, $val) ? ()
-          : (-expires => '+20y')),
+        ($args->{'expires'} ? (-expires => $args->{'expires'}): ()),
     });
     $self->cookies->{$key} = $val;
 }
@@ -902,23 +905,26 @@ For the stored cookie you can choose to use simple cram mechanisms,
 secure hash cram tokens, auto expiring logins (not cookie based),
 and Crypt::Blowfish protection.  You can also choose to keep
 passwords plaintext and to use perl's crypt for testing
-passwords.
+passwords.  Or you can completely replace the cookie parsing/generating
+and let Auth handle requesting, setting, and storing the cookie.
 
 A theoretical downside to this module is that it does not use a
 session to preserve state so get_pass_by_user has to happen on every
-request (any authenticated area has to verify authentication each
-time).  In theory you should be checking the password everytime a user
-makes a request to make sure the password is still valid.  A definite
-plus is that you don't need to use a session if you don't want to.  It
-is up to the interested reader to add caching to the get_pass_by_user
-method.
+request (any authenticated area has to verify authentication each time
+- unless the verify_token method is completely overridden).  In theory
+you should be checking the password everytime a user makes a request
+to make sure the password is still valid.  A definite plus is that you
+don't need to use a session if you don't want to.  It is up to the
+interested reader to add caching to the get_pass_by_user method.
 
 In the end, the only truly secure login method is across an https
 connection.  Any connection across non-https (non-secure) is
 susceptible to cookie hijacking or tcp hijacking - though the
 possibility of this is normally small and typically requires access to
 a machine somewhere in your TCP chain.  If in doubt - you should try
-to use https.
+to use https - but even then you need to guard the logged in area
+against cross-site javascript exploits.  A discussion of all security
+issues is far beyond the scope of this documentation.
 
 =head1 METHODS
 
@@ -943,6 +949,9 @@ described separately.
 
     cgix
     cleanup_user
+    cookie_domain
+    cookie_no_expires
+    cookie_path
     cookies
     expires_min
     form
@@ -986,6 +995,7 @@ described separately.
     use_blowfish
     use_crypt
     use_plaintext
+    verify_token
     verify_payload
     verify_user
 
