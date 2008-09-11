@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 35;
+use Test::More tests => 47;
 
 use_ok('CGI::Ex::Auth');
 
@@ -46,13 +46,16 @@ my $cookie_bad   = { cea_user => 'test/123qw'  };
 my $cookie_good  = { cea_user => 'test/123qwe' };
 my $cookie_good2 = { cea_user => $token };
 
-sub form_good    { Auth->get_valid_auth({form => {%$form_good},  cookies => {}              }) }
-sub form_good2   { Auth->get_valid_auth({form => {%$form_good2}, cookies => {}              }) }
-sub form_good3   { Aut2->get_valid_auth({form => {%$form_good3}, cookies => {}              }) }
-sub form_bad     { Auth->get_valid_auth({form => {%$form_bad},   cookies => {}              }) }
-sub cookie_good  { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good} }) }
-sub cookie_good2 { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good2}}) }
-sub cookie_bad   { Auth->get_valid_auth({form => {},             cookies => {%$cookie_bad}  }) }
+sub form_good     { Auth->get_valid_auth({form => {%$form_good},  cookies => {}              }) }
+sub form_good2    { Auth->get_valid_auth({form => {%$form_good2}, cookies => {}              }) }
+sub form_good3    { Aut2->get_valid_auth({form => {%$form_good3}, cookies => {}              }) }
+sub form_bad      { Auth->get_valid_auth({form => {%$form_bad},   cookies => {}              }) }
+sub cookie_good   { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good} }) }
+sub cookie_good2  { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good2}}) }
+sub cookie_bad    { Auth->get_valid_auth({form => {},             cookies => {%$cookie_bad}  }) }
+sub combined_good { Auth->get_valid_auth({form => {cea_user => "test"},  cookies => {%$cookie_good}}) }
+sub combined_bad  { Auth->get_valid_auth({form => {cea_user => "test2"}, cookies => {%$cookie_good}}) }
+sub combined_bad2 { Auth->get_valid_auth({form => {cea_user => "test"},  cookies => {%$cookie_bad}}) }
 
 $Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(form_good(), "Got good auth");
@@ -94,7 +97,30 @@ $Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(! cookie_bad(), "Got bad auth");
 ok($Auth::printed, "Printed was set");
 ok(! $Auth::set_cookie, "Set_cookie was not called");
-ok($Auth::deleted_cookie, "deleted_cookie was not called");
+ok($Auth::deleted_cookie, "deleted_cookie was called");
+
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
+ok(combined_good(), "Got good auth") || do {
+    my $e = $@;
+    use CGI::Ex::Dump qw(debug);
+    debug $e;
+    die;
+};
+ok(! $Auth::printed, "Printed was not set");
+ok($Auth::set_cookie, "Set_cookie was called");
+ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
+
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
+ok(! combined_bad(), "Got bad auth");
+ok($Auth::printed, "Printed was set");
+ok(! $Auth::set_cookie, "Set_cookie was not called");
+ok($Auth::deleted_cookie, "deleted_cookie was called");
+
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
+ok(! combined_bad2(), "Got bad auth");
+ok($Auth::printed, "Printed was set");
+ok(! $Auth::set_cookie, "Set_cookie was not called");
+ok($Auth::deleted_cookie, "deleted_cookie was called");
 
 
 my $auth = Aut2->get_valid_auth({form => {%$form_good3}});
