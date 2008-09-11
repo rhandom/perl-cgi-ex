@@ -254,33 +254,32 @@ sub handle_error {
 ###---------------------###
 # read only accessors
 
-sub allow_morph          { $_[0]->{'allow_morph'} }
-sub allow_nested_morph   { $_[0]->{'allow_nested_morph'} }
-sub auth_args            { $_[0]->{'auth_args'} }
-sub charset              { $_[0]->{'charset'}        ||  '' }
-sub conf_args            { $_[0]->{'conf_args'} }
-sub conf_die_on_fail     { $_[0]->{'conf_die_on_fail'} || ! defined $_[0]->{'conf_die_on_fail'} }
-sub conf_path            { $_[0]->{'conf_path'}      ||  $_[0]->base_dir_abs }
-sub conf_validation      { $_[0]->{'conf_validation'} }
-sub default_step         { $_[0]->{'default_step'}   || 'main'        }
-sub error_step           { $_[0]->{'error_step'}     || '__error'     }
-sub fill_args            { $_[0]->{'fill_args'} }
-sub forbidden_step       { $_[0]->{'forbidden_step'} || '__forbidden' }
-sub form_name            { $_[0]->{'form_name'}      || 'theform'     }
-sub history              { $_[0]->{'history'}        ||= []           }
-sub js_step              { $_[0]->{'js_step'}        || 'js'          }
-sub login_step           { $_[0]->{'login_step'}     || '__login'     }
-sub mimetype             { $_[0]->{'mimetype'}       ||  'text/html'  }
-sub path_info            { $_[0]->{'path_info'}      ||  $ENV{'PATH_INFO'}   || '' }
-sub path_info_map_base   { $_[0]->{'path_info_map_base'} ||[[qr{/(\w+)}, $_[0]->step_key]] }
-sub recurse_limit        { $_[0]->{'recurse_limit'}  ||  15                   }
-sub script_name          { $_[0]->{'script_name'}    ||  $ENV{'SCRIPT_NAME'} || $0 }
-sub stash                { $_[0]->{'stash'}          ||= {}    }
-sub step_key             { $_[0]->{'step_key'}       || 'step' }
-sub template_args        { $_[0]->{'template_args'} }
-sub template_path        { $_[0]->{'template_path'}  ||  $_[0]->base_dir_abs  }
-sub val_args             { $_[0]->{'val_args'} }
-sub val_path             { $_[0]->{'val_path'}       ||  $_[0]->template_path }
+sub allow_morph        { $_[0]->{'allow_morph'} }
+sub auth_args          { $_[0]->{'auth_args'} }
+sub charset            { $_[0]->{'charset'}        ||  '' }
+sub conf_args          { $_[0]->{'conf_args'} }
+sub conf_die_on_fail   { $_[0]->{'conf_die_on_fail'} || ! defined $_[0]->{'conf_die_on_fail'} }
+sub conf_path          { $_[0]->{'conf_path'}      ||  $_[0]->base_dir_abs }
+sub conf_validation    { $_[0]->{'conf_validation'} }
+sub default_step       { $_[0]->{'default_step'}   || 'main'        }
+sub error_step         { $_[0]->{'error_step'}     || '__error'     }
+sub fill_args          { $_[0]->{'fill_args'} }
+sub forbidden_step     { $_[0]->{'forbidden_step'} || '__forbidden' }
+sub form_name          { $_[0]->{'form_name'}      || 'theform'     }
+sub history            { $_[0]->{'history'}        ||= []           }
+sub js_step            { $_[0]->{'js_step'}        || 'js'          }
+sub login_step         { $_[0]->{'login_step'}     || '__login'     }
+sub mimetype           { $_[0]->{'mimetype'}       ||  'text/html'  }
+sub path_info          { $_[0]->{'path_info'}      ||  $ENV{'PATH_INFO'}   || '' }
+sub path_info_map_base { $_[0]->{'path_info_map_base'} ||[[qr{/(\w+)}, $_[0]->step_key]] }
+sub recurse_limit      { $_[0]->{'recurse_limit'}  ||  15                   }
+sub script_name        { $_[0]->{'script_name'}    ||  $ENV{'SCRIPT_NAME'} || $0 }
+sub stash              { $_[0]->{'stash'}          ||= {}    }
+sub step_key           { $_[0]->{'step_key'}       || 'step' }
+sub template_args      { $_[0]->{'template_args'} }
+sub template_path      { $_[0]->{'template_path'}  ||  $_[0]->base_dir_abs  }
+sub val_args           { $_[0]->{'val_args'} }
+sub val_path           { $_[0]->{'val_path'}       ||  $_[0]->template_path }
 
 sub conf_obj {
     my $self = shift;
@@ -546,12 +545,6 @@ sub morph {
     # hash - but no step - record for unbless
     if (ref($allow) && ! ($allow = $allow->{$step})) {
         $ref->{'info'} = "not allowed to morph to that step";
-
-    } elsif (@$lin > 1                                            # is this the second or greater morph call
-             && (! ($allow = shift || $self->allow_nested_morph($step))    # not true
-                 || (ref($allow) && ! ($allow = $allow->{$step})) # hash - but no step
-                 )) {
-        $ref->{'info'} = $allow ? "not allowed to nested_morph to that step" : "nested_morph disabled";
 
     } elsif (! ($new ||= $self->run_hook('morph_package', $step))) {
         $ref->{'info'} = "Missing morph_package for step $step";

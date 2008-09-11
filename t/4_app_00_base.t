@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 231;
+use Test::More tests => 228;
 use strict;
 use warnings;
 use CGI::Ex::Dump qw(debug);
@@ -793,25 +793,10 @@ is($Foo::test_stdout, 'blah6_file_print', "Got the right output for Foo8");
 Foo8->new({form => {step => 'blah8'}, allow_morph => 1})->navigate;
 is($Foo::test_stdout, 'blah8_file_print', "Got the right output for Foo8 ($Foo::test_stdout)");
 
-my $foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => 1});
+my $foo8 = Foo8->new({form => {step => 'blah7'}});
 $foo8->morph('blah6');
 $foo8->navigate;
 is($Foo::test_stdout, 'blah7_file_print', "Got the right output for Foo8");
-
-$foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => {blah7 => 1}});
-$foo8->morph('blah6');
-$foo8->navigate;
-is($Foo::test_stdout, 'blah7_file_print', "Got the right output for Foo8");
-
-$foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => {blah9 => 1}});
-$foo8->morph('blah6');
-$foo8->navigate;
-is($Foo::test_stdout, 'blah6_file_print', "Got the right output for Foo8");
-
-$foo8 = Foo8->new({form => {step => 'blah7'}, allow_nested_morph => 0});
-$foo8->morph('blah6');
-$foo8->navigate;
-is($Foo::test_stdout, 'blah6_file_print', "Got the right output for Foo8");
 
 $foo8 = Foo8->new({form => {step => 'early_exit'}, no_history => 1});
 $foo8->morph('blah6');

@@ -209,7 +209,6 @@ The nav_loop method will run as follows:
 
             ->morph (hook)
                 # check ->allow_morph (hook)
-                # check ->allow_nested_morph (hook)
                 # ->morph_package (hook - get the package to bless into)
                 # ->fixup_after_morph if morph_package exists
                 # if no package is found, process continues in current file
@@ -1023,17 +1022,6 @@ To enable morph on specific steps, do either of the following:
 
 See the morph "hook" for more information.
 
-=item allow_nested_morph (method)
-
-Similar to the allow_morph hook, but allows for one more level of morphing.
-This is useful in cases where the base class was morphed early on, or
-if a step needs to call a sub-step but morph first.
-
-See the allow_morph and the morph method for more information.
-
-Should return a boolean value or hash of allowed steps - just as the
-allow_morph method does.
-
 =item append_path (method)
 
 Arguments are the steps to append.  Can be called any time.  Adds more
@@ -1661,21 +1649,16 @@ default "path" handler.
 
 =item js_validation (hook)
 
-Requires JSON or YAML.  Will return Javascript that is capable of
-validating the form.  This is done using the capabilities of
-CGI::Ex::Validate.  This will call the hook hash_validation which will
-then be encoded either json or into yaml and placed in a javascript
-string.  It will also call the hook form_name to determine which html
-form to attach the validation to.  The method js_uri_path is called to
-determine the path to the appropriate validate.js files.  If the
-method ext_val is htm, then js_validation will return an empty string
-as it assumes the htm file will take care of the validation itself.
-In order to make use of js_validation, it must be added to the
-variables returned by either the hash_base, hash_common, hash_swap or
-hash_form hook (see examples of hash_base used in this doc).
-
-By default it will try and use JSON first and then fail to YAML and
-then will fail to returning an html comment that does nothing.
+Will return Javascript that is capable of validating the form.  This
+is done using the capabilities of CGI::Ex::Validate and
+CGI::Ex::JSONDump.  This will call the hook hash_validation which will
+then be encoded into json and placed in a javascript string.  It will
+also call the hook form_name to determine which html form to attach
+the validation to.  The method js_uri_path is called to determine the
+path to the appropriate validate.js files.  In order to make use of
+js_validation, it must be added to the variables returned by either
+the hash_base (default), hash_common, hash_swap or hash_form hook (see
+examples of hash_base used in this doc).
 
 =item jump (method)
 
@@ -1753,9 +1736,9 @@ the step name to allow_morph.
 
 The morph call occurs at the beginning of the step loop.  A
 corresponding unmorph call occurs before the loop is exited.  An
-object can morph several levels deep if allow_nested_morph returns
-true. For example, an object running as Foo::Bar that is looping on
-the step "my_step" that has allow_morph = 1, will do the following:
+object can morph several levels deep.  For example, an object running
+as Foo::Bar that is looping on the step "my_step" that has allow_morph
+= 1, will do the following:
 
     Call the morph_package hook (which would default to returning
     Foo::Bar::MyStep in this case)
@@ -1810,16 +1793,13 @@ Base/Ball.pm -- you could then access it using cgi/base/ball.  You
 would be able to pass it steps using either cgi/base/ball/step_name or
 cgi/base/ball?step=step_name - Or Base/Ball.pm could implement its
 own path.  It should be noted that if you do an early morph, it is
-suggested to provide a call to unmorph. And if you want to let your
-early morphed object morph again - you will need to provide
+suggested to provide a call to unmorph.
 
-    sub allow_nested_morph { 1 }
-
-With allow_nested_morph enabled you could create the file
-Base/Ball/StepName.pm which inherits Base/Ball.pm.  The Base.pm, with
-the custom init and default path method, would automatically morph us
-first into a Base::Ball object (during init) and then into a
-Base::Ball::StepName object (during the navigation loop).
+You could create the file Base/Ball/StepName.pm which inherits
+Base/Ball.pm.  The Base.pm, with the custom init and default path
+method, would automatically morph us first into a Base::Ball object
+(during init) and then into a Base::Ball::StepName object (during the
+navigation loop).
 
 Since it is complicated to explain - it may be a bit complicated to
 those who will try to follow your code later.  CGI::Ex::App provides
