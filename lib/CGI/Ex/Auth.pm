@@ -120,8 +120,8 @@ sub get_valid_auth {
             $no_expires = 1 if ! defined($no_expires) && ! defined($data->{'expires_min'});
         }
         $self->set_cookie({
-            key     => $_key,
-            val     => $_val,
+            name    => $_key,
+            value   => $_val,
             expires => ($no_expires ? '' : '+20y'),
         });
 
@@ -188,7 +188,7 @@ sub handle_failure {
 
     # make sure the cookie is gone
     my $key_c = $self->key_cookie;
-    $self->delete_cookie({key => $key_c}) if $self->cookies->{$key_c};
+    $self->delete_cookie({name => $key_c}) if $self->cookies->{$key_c};
 
     # no valid login and we are checking for cookies - see if they have cookies
     if (my $value = delete $form->{$self->key_verify}) {
@@ -261,18 +261,18 @@ sub delete_cookie {
     my $self = shift;
     my $args = shift;
     return $self->{'delete_cookie'}->($self, $args) if $self->{'delete_cookie'};
-    local $args->{'val'}     = '';
-    local $args->{'expires'} = '-10y' if ! $self->cookie_no_expires($args->{'key'}, '');
+    local $args->{'value'}   = '';
+    local $args->{'expires'} = '-10y' if ! $self->cookie_no_expires($args->{'name'}, '');
     $self->set_cookie($args);
-    delete $self->cookies->{$args->{'key'}};
+    delete $self->cookies->{$args->{'name'}};
 }
 
 sub set_cookie {
     my $self = shift;
     my $args = shift;
     return $self->{'set_cookie'}->($self, $args) if $self->{'set_cookie'};
-    my $key  = $args->{'key'} || $args->{'name'};
-    my $val  = $args->{'val'} || $args->{'value'};
+    my $key  = $args->{'name'};
+    my $val  = $args->{'value'};
     my $dom  = $args->{'domain'} || $self->cookie_domain;
     $self->cgix->set_cookie({
         -name    => $key,
