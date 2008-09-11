@@ -272,7 +272,7 @@ sub set_cookie {
     my $args = shift;
     return $self->{'set_cookie'}->($self, $args) if $self->{'set_cookie'};
     my $key  = $args->{'key'} || $args->{'name'};
-    my $val  = $args->{'val'};
+    my $val  = $args->{'val'} || $args->{'value'};
     my $dom  = $args->{'domain'} || $self->cookie_domain;
     $self->cgix->set_cookie({
         -name    => $key,
