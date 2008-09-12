@@ -866,21 +866,23 @@ my $c = Foo9->new(form => {step => 'one'});
 $c->add_to_path('three', 'four', 'five');
 $c->insert_path('one', 'two');
 $c->navigate;
-ok($Foo::test_stdout eq 'First(one) Previous(two) Current(three) Next(four) Last(five)', "Got the right content for Foo9");
+is($Foo::test_stdout, 'First(one) Previous(two) Current(three) Next(four) Last(five)', "Got the right content for Foo9");
 ok(! eval { $c->set_path("more") }, "Can't call set_path after nav started");
 
 $c = Foo9->new(form => {step => 'five'});
 $c->set_path('one', 'two', 'three', 'four', 'five');
 $c->navigate;
-ok($Foo::test_stdout eq 'First(one) Previous(two) Current(three) Next(four) Last(five)', "Got the right content for Foo9");
+is($Foo::test_stdout, 'First(one) Previous(two) Current(three) Next(four) Last(five)', "Got the right content for Foo9");
 
 $c = Foo9->new;
 $c->append_path('one');
 eval { $c->jump('FIRST') };
-ok($Foo::test_stdout eq '', "Can't jump without nav_loop");
+is($Foo::test_stdout, 'Main Content', "Can jump without nav_loop started");
 
-eval { Foo9->new(form => {step => 'invalid'})->navigate };
-ok($Foo::test_stdout =~ /fatal.*invalid jump index/si, "Can't jump with invalid step");
+$c = Foo9->new;
+$c->set_path('one');
+eval { $c->jump('main') };
+is($Foo::test_stdout, 'Main Content', "Can jump to step not on the path");
 
 ###----------------------------------------------------------------###
 
@@ -950,7 +952,7 @@ ok($Foo::test_stdout =~ /fatal.*invalid jump index/si, "Can't jump with invalid 
 
 my $Foo10 = Foo10->new(form => {step => 'a'});
 $Foo10->navigate;
-ok($Foo10->join_path eq 'aababacdae(z)', 'Followed good path: '.$Foo10->join_path);
+is($Foo10->join_path, 'aababacdae(z)', 'Followed good path');
 
 ###----------------------------------------------------------------###
 
