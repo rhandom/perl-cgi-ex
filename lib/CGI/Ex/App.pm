@@ -871,21 +871,16 @@ sub check_valid_auth {
 
 sub get_valid_auth {
     my $self = shift;
-
     return $self->_do_auth({
         login_print => sub { # use CGI::Ex::Auth - but use our formatting and printing
             my ($auth, $template, $hash) = @_;
-            my $step = $self->login_step;
-            my $hash_base = $self->run_hook('hash_base',   $step) || {};
-            my $hash_comm = $self->run_hook('hash_common', $step) || {};
-            my $hash_swap = $self->run_hook('hash_swap',   $step) || {};
-            my $swap = {%$hash_base, %$hash_comm, %$hash_swap, %$hash};
-            my $out  = $self->run_hook('swap_template', $step, $template, $swap);
-            $self->run_hook('fill_template', $step, \$out, $hash);
-            $self->run_hook('print_out', $step, \$out);
+            local $self->{'__login_file_print'}  = $template;
+            local $self->{'__login_hash_common'} = $hash;
+            return $self->jump($self->login_step);
         }
     });
 }
+
 
 sub _do_auth {
     my ($self, $extra) = @_;
@@ -904,7 +899,6 @@ sub _do_auth {
 
     my $obj  = $self->auth_obj($args);
     my $resp = $obj->get_valid_auth;
-
     my $data = $obj->last_auth_data;
     delete $data->{'real_pass'} if defined $data; # data may be defined but false
     $self->auth_data($data); # failed authentication may still have auth_data
@@ -925,13 +919,20 @@ sub js_run_step { # step that allows for printing javascript libraries that are 
     return 1;
 }
 
+sub __forbidden_allow_morph { shift->allow_morph(@_) && 1 }
 sub __forbidden_info_complete { 0 } # step that will be used the path method determines it is forbidden
-sub __forbidden_hash_swap  { shift->stash }
+sub __forbidden_hash_common  { shift->stash }
 sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the step <b>\"[% forbidden_step %]\"</b>" }
 
+sub __error_allow_morph { shift->allow_morph(@_) && 1 }
 sub __error_info_complete { 0 } # step that is used by the default handle_error
-sub __error_hash_swap  { shift->stash }
+sub __error_hash_common  { shift->stash }
 sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
+
+sub __login_allow_morph { shift->allow_morph(@_) && 1 }
+sub __login_info_complete { 0 } # step used by default authentication
+sub __login_hash_common { shift->{'__login_hash_common'} || {error => "hash_common not set during default __login"} }
+sub __login_file_print { shift->{'__login_file_print'} || \ "file_print not set during default __login<br>[% login_error %]" }
 
 1;
 
