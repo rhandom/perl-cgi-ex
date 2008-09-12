@@ -140,7 +140,7 @@ sub parse_path_info {
     return if ! $maps;
     croak "Usage: sub $type { [] }" if ! UNIVERSAL::isa($maps, 'ARRAY');
     foreach my $map (@$maps) {
-        croak "Usage: sub $type { [[qr{/path_info/(\w+)}, 'keyname']] }" if ! UNIVERSAL::isa($map, 'ARRAY');
+        croak "Usage: sub $type { [[qr{/path_info/(\\w+)}, 'keyname']] }" if ! UNIVERSAL::isa($map, 'ARRAY');
         my @match = $info =~ $map->[0];
         next if ! @match;
         if (UNIVERSAL::isa($map->[1], 'CODE')) {
