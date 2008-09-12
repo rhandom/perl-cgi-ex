@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 5;
+use Test::More tests => 10;
 use strict;
 
 use_ok('CGI::Ex::Validate');
@@ -34,6 +34,7 @@ ok(! $e, "Didn't get error");
 my $form = {
   key1 => 'Bu-nch @of characte#rs^',
   key2 => '123 456 7890',
+  key3 => '123',
 };
 
 
@@ -44,7 +45,8 @@ $v = {
 };
 
 $e = validate($form, $v);
-ok(! $e && $form->{key1} eq 'Bunch of characters', "No error and key1 updated");
+ok(! $e, "No error");
+is($form->{'key1'}, 'Bunch of characters',  "key1 updated");
 
 $v = {
   key2 => {
@@ -53,7 +55,8 @@ $v = {
 };
 
 $e = validate($form, $v);
-ok(! $e && $form->{key2} eq '(123) 456-7890', "No error and phone updated");
+ok(! $e, "No error");
+is($form->{'key2'}, '(123) 456-7890', "Phone updated");
 
 $v = {
   key2 => {
@@ -63,5 +66,14 @@ $v = {
 };
 
 $e = validate($form, $v);
-ok($e && $form->{key2} eq '', "Error with all replaced");
+ok($e, "Error");
+is($form->{'key2'}, '', "All replaced");
 
+$v = {
+    key3 => {
+        replace => 's/\d//',
+    },
+};
+$e = validate($form, $v);
+ok(! $e, "No error");
+is($form->{'key3'}, '23', "Non-global is fine");
