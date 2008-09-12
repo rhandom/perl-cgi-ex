@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 233;
+use Test::More tests => 234;
 use strict;
 use warnings;
 use CGI::Ex::Dump qw(debug);
@@ -47,7 +47,7 @@ use CGI::Ex::Dump qw(debug);
 
     sub main_info_complete { 0 }
 
-    sub main_file_print { return \ "Main Content" }
+    sub main_file_print { return \ "Main Content [%~ extra %]" }
 
     sub main_path_info_map { shift->{'main_path_info_map'} }
 
@@ -65,7 +65,7 @@ use CGI::Ex::Dump qw(debug);
 
     sub step3_info_complete { 0 }
 
-    sub step3_file_print { return \ "All good" }
+    sub step3_file_print { return \ "All good [%~ extra %]" }
 
     sub step4_file_val { return {wow => {required => 1, required_error => 'wow is required'}} }
 
@@ -303,6 +303,14 @@ eval { Foo->new({
     main_path_info_map => [{}],
 })->navigate };
 ok($Foo::test_stdout =~ /fatal error.+path_info_map/, "Got the right output for Foo");
+
+###----------------------------------------------------------------###
+
+local $ENV{'PATH_INFO'} = '/whatever';
+$f = Foo->new({
+    path_info_map_base => [[qr{(.+)}, sub { my ($form, $m1) = @_; $form->{'step'} = 'step3'; $form->{'extra'} = $m1 }]],
+})->navigate;
+is($Foo::test_stdout, 'All good/whatever', "Got the right output path_info_map_base with a code ref");
 
 ###----------------------------------------------------------------###
 
