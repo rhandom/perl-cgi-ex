@@ -484,19 +484,26 @@ sub jump {
     my $self   = shift;
     my $i      = @_ == 1 ? shift : 1;
     my $path   = $self->path;
-    my $path_i = $self->{'path_i'}; croak "Can't jump if nav_loop not started" if ! defined $path_i;
+    my $path_i = $self->{'path_i'} || 0;
+
 
     if (   $i eq 'FIRST'   ) { $i = - $path_i - 1 }
     elsif ($i eq 'LAST'    ) { $i = $#$path - $path_i }
     elsif ($i eq 'NEXT'    ) { $i = 1  }
     elsif ($i eq 'CURRENT' ) { $i = 0  }
     elsif ($i eq 'PREVIOUS') { $i = -1 }
-    else { # look for a step by that name
-        for (my $j = $#$path; $j >= 0; $j --) {
+    elsif ($i !~ /^-?\d+/) { # look for a step by that name
+        my $found;
+        for (my $j = $#$path; $j >= 0; $j--) {
             if ($path->[$j] eq $i) {
                 $i = $j - $path_i;
+                $found = 1;
                 last;
             }
+        }
+        if (! $found) {
+            push @$path, $i;
+            $i = $#$path;
         }
     }
     croak "Invalid jump index ($i)" if $i !~ /^-?\d+$/;
