@@ -841,7 +841,7 @@ completed (various methods determine the definition of "completed").
 This preset type of path can also be automated using the CGI::Path
 module.  Rather than using a preset path, CGI::Ex::App also has
 methods that allow for dynamic changing of the path, so that each step
-can determine which step to do next (see the jump, append_path,
+can determine which step to do next (see the goto_step, append_path,
 insert_path, and replace_path methods).
 
 During development it would be nice to see what happened during the
@@ -1284,7 +1284,7 @@ using it on a regular basis.  Essentially it is a "goto" that allows
 for a long jump to the end of all nav_loops (even if they are
 recursively nested).  This effectively short circuits all remaining
 hooks for the current and remaining steps.  It is used to allow the
-->jump functionality.  If the application has morphed, it will be
+->goto_step functionality.  If the application has morphed, it will be
 unmorphed before returning.  Also - the post_navigate method will
 still be called.
 
@@ -1491,6 +1491,63 @@ Full customization of the login process and the login template can
 be done via the auth_args hash.  See the auth_args method and
 CGI::Ex::Auth perldoc for more information.
 
+=item goto_step (method)
+
+This method is not normally used but can solve some difficult issues.
+It provides for moving to another step at any point during the
+nav_loop.  Once a goto_step has been called, the entire nav_loop will
+be exited (to simply replace a portion of a step, you can simply
+run_hook('run_step', 'other_step')).  The method goto_step effectively
+short circuits the remaining hooks for the current step.  It does
+increment the recursion counter (which has a limit of ->recurse_limit
+- default 15).  Normally you would allow the other hooks in the loop
+to carry on their normal functions and avoid goto_step.  (Essentially,
+this hook behaves like a goto method to bypass everything else and
+continue at a different location in the path - there are times when it
+is necessary or useful to do this).
+
+The method jump is an alias for this method.
+
+Goto_step takes a single argument which is the location in the path to
+jump to.  This argument may be either a step name, the special strings
+"FIRST, LAST, CURRENT, PREVIOUS, OR NEXT" or the number of steps to
+jump forward (or backward) in the path.  The default value, 1,
+indicates that CGI::Ex::App should jump to the next step (the default
+action for goto_step).  A value of 0 would repeat the current step
+(watch out for recursion).  A value of -1 would jump to the previous
+step.  The special value of "LAST" will jump to the last step.  The
+special value of "FIRST" will jump back to the first step.  In each of
+these cases, the path array returned by ->path is modified to allow
+for the jumping (the path is modified so that the path history is not
+destroyed - if we were on step 3 and jumped to one, that path would
+contain 1, 2, 3, *1, 2, 3, 4, etc and we would be at the *).  If a
+step name is not currently on the path, it will be replace any remaining
+steps of the path.
+
+    # goto previous step (repeat it)
+    $self->goto_step($self->previous_step);
+    $self->goto_step('PREVIOUS');
+    $self->goto_step(-1);
+
+    # goto next step
+    $self->goto_step($self->next_step);
+    $self->goto_step('NEXT');
+    $self->goto_step(1);
+    $self->goto_step;
+
+    # goto current step (repeat)
+    $self->goto_step($self->current_step);
+    $self->goto_step('CURRENT');
+    $self->goto_step(0);
+
+    # goto last step
+    $self->goto_step($self->last_step);
+    $self->goto_step('LAST');
+
+    # goto first step (repeat it)
+    $self->goto_step($self->first_step);
+    $self->goto_step('FIRST');
+
 =item handle_error (method)
 
 If anything dies during execution, handle_error will be called with
@@ -1662,58 +1719,11 @@ examples of hash_base used in this doc).
 
 =item jump (method)
 
-This method should not normally be used but is fine to use it on a
-regular basis.  It provides for moving to the next step at any point
-during the nav_loop.  It effectively short circuits the remaining
-hooks for the current step.  It does increment the recursion counter
-(which has a limit of ->recurse_limit - default 15).  It is normally
-better to allow the other hooks in the loop to carry on their normal
-functions and avoid jumping.  (Essentially, this hook behaves like a
-goto method to bypass everything else and continue at a different
-location in the path - there are times when it is necessary or useful
-to do this).
-
-Jump takes a single argument which is the location in the path to jump
-to.  This argument may be either a step name, the special strings
-"FIRST, LAST, CURRENT, PREVIOUS, OR NEXT" or the number of steps to
-jump forward (or backward) in the path.  The default value, 1,
-indicates that CGI::Ex::App should jump to the next step (the default
-action for jump).  A value of 0 would repeat the current step (watch
-out for recursion).  A value of -1 would jump to the previous step.
-The special value of "LAST" will jump to the last step.  The special
-value of "FIRST" will jump back to the first step.  In each of these
-cases, the path array returned by ->path is modified to allow for the
-jumping (the path is modified so that the path history is not destroyed
-- if we were on step 3 and jumped to one, that path would contain
-1, 2, 3, *1, 2, 3, 4, etc and we would be at the *).
-
-    ### goto previous step
-    $self->jump($self->previous_step);
-    $self->jump('PREVIOUS');
-    $self->jump(-1);
-
-    ### goto next step
-    $self->jump($self->next_step);
-    $self->jump('NEXT');
-    $self->jump(1);
-    $self->jump;
-
-    ### goto current step (repeat)
-    $self->jump($self->current_step);
-    $self->jump('CURRENT');
-    $self->jump(0);
-
-    ### goto last step
-    $self->jump($self->last_step);
-    $self->jump('LAST');
-
-    ### goto first step
-    $self->jump($self->first_step);
-    $self->jump('FIRST');
+Alias for the goto_step method.
 
 =item last_step (method)
 
-Returns the last step of the path.  Can be used to jump to the last step.
+Returns the last step of the path.
 
 =item load_conf (method)
 
@@ -1841,11 +1851,8 @@ object has been blessed to allow for any other initilizations.
 
 =item next_step (hook and method)
 
-Returns the next step in the path.  If there is no next step, it
-returns the default_step.
-
-It can be used as a method to return the next step in the path
-to pass to a method such as ->jump.
+As a method it returns the next step in the path - if the path
+has more steps left.
 
 It is also used as a hook by the refine_path hook.  If there is no
 more steps, it will call the next_step hook to try and find a step to
@@ -2079,11 +2086,11 @@ go to the _edit_success step.
 =item recurse_limit (method)
 
 Default 15.  Maximum number of times to allow nav_loop to call itself.
-The recurse level will increase every time that ->jump is called, or if
+The recurse level will increase every time that ->goto_step is called, or if
 the end of the nav_loop is reached and the process tries to add the
 default_step and run it again.
 
-If ->jump is used often - the recurse_limit will be reached more
+If ->goto_step is used often - the recurse_limit will be reached more
 quickly.  It is safe to raise this as high as is necessary - so long
 as it is intentional.
 
