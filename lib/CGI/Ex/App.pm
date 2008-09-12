@@ -75,8 +75,7 @@ sub nav_loop {
         my $step = $path->[$self->{'path_i'}];
         if ($step !~ /^([^\W0-9]\w*)$/) {
             $self->stash->{'forbidden_step'} = $step;
-            $self->replace_path($self->forbidden_step);
-            next;
+            $self->jump($self->forbidden_step);
         }
         $step = $1; # untaint
 
@@ -516,7 +515,10 @@ sub jump {
 
     $self->{'jumps'} = ($self->{'jumps'} || 0) + 1;
     $self->{'path_i'}++; # move along now that the path is updated
-    $self->nav_loop;     # recurse on the path
+
+    my $lin  = $self->{'_morph_lineage'} || [];
+    $self->unmorph if @$lin;
+    $self->nav_loop;  # recurse on the path
     $self->exit_nav_loop;
 }
 
@@ -535,7 +537,7 @@ sub morph {
     my $self  = shift;
     my $ref   = $self->history->[-1];
     if (! $ref || ! $ref->{'meth'} || $ref->{'meth'} ne 'morph') {
-        push @{ $self->history }, ($ref = {meth => 'morph', found => 'morph', elapsed => 0, step => 'unknown'});
+        push @{ $self->history }, ($ref = {meth => 'morph', found => 'morph', elapsed => 0, step => 'unknown', level => $self->{'_level'}});
     }
     my $step  = shift || return;
     my $allow = shift || $self->run_hook('allow_morph', $step) || return;
@@ -613,6 +615,9 @@ sub unmorph {
     my $self = shift;
     my $step = shift || '_no_step';
     my $ref  = $self->history->[-1] || {};
+    if (! $ref || ! $ref->{'meth'} || $ref->{'meth'} ne 'unmorph') {
+        push @{ $self->history }, ($ref = {meth => 'unmorph', found => 'unmorph', elapsed => 0, step => $step, level => $self->{'_level'}});
+    }
     my $lin  = $self->{'_morph_lineage'} || return;
     my $cur  = ref $self;
     my $prev = pop(@$lin) || croak "unmorph called more times than morph (current: $cur)";
@@ -929,6 +934,7 @@ sub __error_info_complete { 0 } # step that is used by the default handle_error
 sub __error_hash_common  { shift->stash }
 sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
 
+sub __login_require_auth { 0 }
 sub __login_allow_morph { shift->allow_morph(@_) && 1 }
 sub __login_info_complete { 0 } # step used by default authentication
 sub __login_hash_common { shift->{'__login_hash_common'} || {error => "hash_common not set during default __login"} }
