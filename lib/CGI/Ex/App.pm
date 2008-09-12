@@ -182,10 +182,13 @@ sub run_hook {
 }
 
 sub run_hook_as {
-    my ($self, $hook, $step, @args) = @_;
-    $self->run_hook('morph', $step, 2, 2);
+    my ($self, $hook, $step, $pkg, @args) = @_;
+    croak "Missing hook"    if ! $hook;
+    croak "Missing step"    if ! $step;
+    croak "Missing package" if ! $pkg;
+    $self->morph($step, 2, $pkg);
     my $resp = $self->run_hook($hook, $step, @args);
-    $self->run_hook('unmorph', $step);
+    $self->unmorph;
     return $resp;
 }
 
@@ -542,13 +545,10 @@ sub morph {
     }
     my $step  = shift || return;
     my $allow = shift || $self->run_hook('allow_morph', $step) || return;
+    my $new   = shift; # optionally allow passing in the package to morph to
     my $lin   = $self->{'_morph_lineage'} ||= [];
     my $ok    = 0;
     my $cur   = ref $self;
-    my $new;
-    if ($step =~ /::/) { # allow passing in a package name from run_hook_as
-        ($new = $step) =~ s/^:://; # allow leading ::
-    }
 
     push @$lin, $cur; # store so subsequent unmorph calls can do the right thing
 
