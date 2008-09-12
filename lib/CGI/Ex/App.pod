@@ -1762,49 +1762,6 @@ Samples of allowing morph:
 
     sub allow_morph { my ($self, $step) = @_; return $step eq 'edit' }
 
-It is possible to call morph earlier on in the program.  An example of
-a useful early use of morph would be as in the following code:
-
-    sub allow_morph { 1 }
-
-    sub pre_navigate {
-        my $self = shift;
-        if ($ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ s|^/(\w+)||) {
-            my $step = $1;
-            $self->morph($step);
-            $ENV{'PATH_INFO'} = "/$step";
-            $self->stash->{'base_morphed'} = 1;
-        }
-        return 0;
-    }
-
-    sub post_navigate {
-        my $self = shift;
-        $self->unmorph if $self->stash->{'base_morphed'};
-    }
-
-If this code was in a module Base.pm and the cgi running was cgi/base
-and called:
-
-    Base->navigate;
-
-and you created a sub module that inherited Base.pm called
-Base/Ball.pm -- you could then access it using cgi/base/ball.  You
-would be able to pass it steps using either cgi/base/ball/step_name or
-cgi/base/ball?step=step_name - Or Base/Ball.pm could implement its
-own path.  It should be noted that if you do an early morph, it is
-suggested to provide a call to unmorph.
-
-You could create the file Base/Ball/StepName.pm which inherits
-Base/Ball.pm.  The Base.pm, with the custom init and default path
-method, would automatically morph us first into a Base::Ball object
-(during init) and then into a Base::Ball::StepName object (during the
-navigation loop).
-
-Since it is complicated to explain - it may be a bit complicated to
-those who will try to follow your code later.  CGI::Ex::App provides
-many ways to do things, but use the best one for your situation.
-
 =item morph_package (hook)
 
 Used by morph.  Return the package name to morph into during a morph
