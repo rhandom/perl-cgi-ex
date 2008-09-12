@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 232;
+use Test::More tests => 233;
 use strict;
 use warnings;
 use CGI::Ex::Dump qw(debug);
@@ -830,12 +830,16 @@ ok($Foo::test_stdout =~ m|Not/Exists/Blah11.pm.*\@INC|, "Got the right output fo
 $foo8 = Foo8->new;
 $foo8->run_hook('morph', 'blah6', 1);
 is(ref($foo8), 'Foo8::Blah6', "Right package");
-$foo8->run_hook_as('run_step', 'blah7');
-is($Foo::test_stdout, 'blah7_file_print', "Got the right output for Foo8::Blah6::Blah7");
-$foo8->run_hook_as('run_step', 'Foo8::Blah6::Blah7');
+
+$foo8->run_hook_as('run_step', 'blah7', 'Foo8::Blah6::Blah7');
 is($Foo::test_stdout, 'blah7_file_print', "Got the right output for Foo8::Blah6::Blah7");
 is(ref($foo8), 'Foo8::Blah6', "Right package");
-$foo8->run_hook('run_step', 'blah6');
+
+$foo8->run_hook_as('run_step', 'main', 'Foo8');
+is($Foo::test_stdout, 'Main Content', "Got the right output for Foo8");
+is(ref($foo8), 'Foo8::Blah6', "Right package");
+
+$foo8->run_hook_as('run_step', 'blah6', 'Foo8::Blah6');
 is($Foo::test_stdout, 'blah6_file_print', "Got the right output for Foo8::Blah6");
 $foo8->run_hook('unmorph', 'blah6');
 #use CGI::Ex::Dump qw(debug);
@@ -856,7 +860,7 @@ $foo8->run_hook('unmorph', 'blah6');
 
     package Baz::Bstep2;
     our @ISA = qw(Baz);
-    sub hash_swap { shift->jump('bstep3') } # hijack it here
+    sub hash_swap { shift->goto_step('bstep3') } # hijack it here
 
     package Baz::Bstep3;
     our @ISA = qw(Baz);
@@ -888,7 +892,7 @@ print "### Some path tests ###\n";
     sub one_skip { 1 }
     sub two_skip { 1 }
     sub info_complete { 0 }
-    sub invalid_run_step { shift->jump('::') }
+    sub invalid_run_step { shift->goto_step('::') }
 }
 ok(Foo9->new->previous_step eq '', 'No previous step if not navigating');
 
@@ -906,12 +910,12 @@ is($Foo::test_stdout, 'First(one) Previous(two) Current(three) Next(four) Last(f
 
 $c = Foo9->new;
 $c->append_path('one');
-eval { $c->jump('FIRST') };
+eval { $c->goto_step('FIRST') };
 is($Foo::test_stdout, 'Main Content', "Can jump without nav_loop started");
 
 $c = Foo9->new;
 $c->set_path('one');
-eval { $c->jump('main') };
+eval { $c->goto_step('main') };
 is($Foo::test_stdout, 'Main Content', "Can jump to step not on the path");
 
 ###----------------------------------------------------------------###
