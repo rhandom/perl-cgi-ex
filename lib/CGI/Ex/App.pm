@@ -492,9 +492,9 @@ sub jump {
     elsif ($i eq 'NEXT'    ) { $i = 1  }
     elsif ($i eq 'CURRENT' ) { $i = 0  }
     elsif ($i eq 'PREVIOUS') { $i = -1 }
-    elsif ($i !~ /^-?\d+/) { # look for a step by that name
+    elsif ($i !~ /^-?\d+/) { # look for a step by that name in the current remaining path
         my $found;
-        for (my $j = $#$path; $j >= 0; $j--) {
+        for (my $j = $path_i; $j < @$path; $j++) {
             if ($path->[$j] eq $i) {
                 $i = $j - $path_i;
                 $found = 1;
@@ -502,7 +502,7 @@ sub jump {
             }
         }
         if (! $found) {
-            push @$path, $i;
+            $self->replace_path($i);
             $i = $#$path;
         }
     }
