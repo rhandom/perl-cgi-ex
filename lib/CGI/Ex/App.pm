@@ -75,7 +75,7 @@ sub nav_loop {
         my $step = $path->[$self->{'path_i'}];
         if ($step !~ /^([^\W0-9]\w*)$/) {
             $self->stash->{'forbidden_step'} = $step;
-            $self->jump($self->forbidden_step);
+            $self->goto_step($self->forbidden_step);
         }
         $step = $1; # untaint
 
@@ -479,12 +479,13 @@ sub insert_path {
     else                 { splice(@$ref, $i + 1, 0, @_) } # insert a path at the current location
 }
 
-sub jump {
+sub jump { shift->goto_step(@_) }
+
+sub goto_step {
     my $self   = shift;
     my $i      = @_ == 1 ? shift : 1;
     my $path   = $self->path;
     my $path_i = $self->{'path_i'} || 0;
-
 
     if (   $i eq 'FIRST'   ) { $i = - $path_i - 1 }
     elsif ($i eq 'LAST'    ) { $i = $#$path - $path_i }
@@ -881,7 +882,7 @@ sub get_valid_auth {
             my ($auth, $template, $hash) = @_;
             local $self->{'__login_file_print'}  = $template;
             local $self->{'__login_hash_common'} = $hash;
-            return $self->jump($self->login_step);
+            return $self->goto_step($self->login_step);
         }
     });
 }
