@@ -383,7 +383,8 @@ sub template_include_path { $_[0]->{'template_include_path'} || '' }
 sub login_hash_common {
     my $self = shift;
     my $form = $self->form;
-    my $data = $self->last_auth_data || {};
+    my $data = $self->last_auth_data;
+    $data = {no_data => 1} if ! ref $data;
 
     return {
         %$form,
