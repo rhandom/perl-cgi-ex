@@ -13,7 +13,7 @@ we do try to put it through most paces.
 
 =cut
 
-use Test::More tests => 228;
+use Test::More tests => 232;
 use strict;
 use warnings;
 use CGI::Ex::Dump qw(debug);
@@ -87,8 +87,7 @@ use CGI::Ex::Dump qw(debug);
 
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
-###----------------------------------------------------------------###
-###----------------------------------------------------------------###
+print "#-----------------------------------------\n";
 print "### Test some basic returns ###\n";
 
 ok(! eval { CGI::Ex::App::new()  }, "Invalid new");
@@ -127,8 +126,7 @@ is($app->run_hook('morph_package', 'central__underbars'), "${ref}::Central::Unde
 
 ###----------------------------------------------------------------###
 ###----------------------------------------------------------------###
-###----------------------------------------------------------------###
-###----------------------------------------------------------------###
+print "#-----------------------------------------\n";
 print "### Test basic step selection/form input/validation/filling/template swapping methods ###\n";
 
 #$ENV{'REQUEST_METHOD'} = 'GET';
@@ -380,7 +378,7 @@ Foo->new({
     form => {},
     require_auth => 1,
 })->navigate;
-ok($Foo::test_stdout eq "Login Form", "Got the right output");
+is($Foo::test_stdout, "Login Form", "Got the right output");
 
 Foo->new({
     form => {},
@@ -843,9 +841,41 @@ $foo8->run_hook('unmorph', 'blah6');
 #use CGI::Ex::Dump qw(debug);
 #debug $foo8->dump_history;
 
+
+
+{
+    package Baz;
+    our @ISA = qw(Foo);
+    sub default_step { 'bazmain' }
+    sub info_complete { 0 }
+    sub file_print { my ($self, $step) = @_; return \qq{\u$step Content} }
+    sub allow_morph { 1 }
+
+    package Baz::Bstep1;
+    our @ISA = qw(Baz);
+
+    package Baz::Bstep2;
+    our @ISA = qw(Baz);
+    sub hash_swap { shift->jump('bstep3') } # hijack it here
+
+    package Baz::Bstep3;
+    our @ISA = qw(Baz);
+}
+
+Baz->navigate;
+is($Foo::test_stdout, 'Bazmain Content', "Got the right output for Foo8::Blah6");
+Baz->navigate({form => {step => 'bstep1'}});
+is($Foo::test_stdout, 'Bstep1 Content', "Got the right output for Foo8::Blah6");
+
+my $baz = Baz->new({form => {step => 'bstep2'}});
+eval { $baz->navigate };
+is($Foo::test_stdout, 'Bstep3 Content', "Got the right output for Foo8::Blah6");
+is(ref($baz), 'Baz', "And back to the correct object type");
+#debug $baz->dump_history;
+
 ###----------------------------------------------------------------###
 print "#-----------------------------------------\n";
-print "### Some path tests tests ###\n";
+print "### Some path tests ###\n";
 
 {
     package Foo9;
@@ -955,6 +985,8 @@ $Foo10->navigate;
 is($Foo10->join_path, 'aababacdae(z)', 'Followed good path');
 
 ###----------------------------------------------------------------###
+print "#-----------------------------------------\n";
+print "### Integrated validation tests ###\n";
 
 {
     package Foo11;
@@ -1027,6 +1059,8 @@ ok(Foo13->new->js_validation('step1', 'foo', {}) eq '', "No validation found");
 ok(Foo13->new->js_validation('step1', 'foo', {foo => {required => 1}}), "Validation found");
 
 ###----------------------------------------------------------------###
+print "#-----------------------------------------\n";
+print "### Header tests ###\n";
 
 {
     package CGIX;
