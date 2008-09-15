@@ -78,7 +78,7 @@ sub get_valid_auth {
                 token => {
                     user        => $form_user,
                     test_pass   => delete $form->{ $self->key_pass },
-                    expires_min => delete($form->{ $self->key_save }) ? -1 : delete($form->{ $self->key_expires_min }) || $self->expires_min,
+                    expires_min => delete($form->{ $self->key_save }) ? -1 : delete($form->{ $self->key_expires_min }) || undef,
                 },
                 from => 'form',
             });
@@ -90,7 +90,8 @@ sub get_valid_auth {
     }
 
     # no valid form data ? look in the cookie
-    if (! $data) {
+    if (! ref($data)  # no form
+        || ($data->error && $data->{'allow_cookie_match'})) { # had form with error - but we can check if form user matches existing cookie
         my $cookie = $self->cookies->{$self->key_cookie};
         if (defined($cookie) && length($cookie)) {
             my $form_data = $data;
@@ -98,7 +99,7 @@ sub get_valid_auth {
             if (defined $form_user) { # they had form data
                 my $user = $self->cleanup_user($form_user);
                 if (! $data || $user ne $data->{'user'}) { # but the cookie didn't match
-                    $data = $self->{'_last_auth_data'} = $form_data; # already a failure
+                    $data = $self->{'_last_auth_data'} = $form_data; # restore old form data failure
                     $data->{'user'} = $user if ! defined $data->{'user'};
                 }
             }
@@ -113,14 +114,14 @@ sub get_valid_auth {
     # success
     my $_key = $self->key_cookie;
     my $_val = $self->generate_token($data);
-    my $no_expires = $self->cookie_no_expires($_key, $_val);
+    my $use_session = $self->use_session_cookie($_key, $_val); # default false
     if ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
-        $no_expires = 1 if ! defined($no_expires) && ! defined($data->{'expires_min'});
+        $use_session = 1 if ! defined($use_session) && ! defined($data->{'expires_min'});
     }
     $self->set_cookie({
         name    => $_key,
         value   => $_val,
-        expires => ($no_expires ? '' : '+20y'), # non-cram cookie types are session cookies unless save was set (thus setting expires_min)
+        expires => ($use_session ? '' : '+20y'), # non-cram cookie types are session cookies unless save was set (thus setting expires_min)
     });
 
     return $self->handle_success({is_form => ($data->{'from'} eq 'form' ? 1 : 0)});
@@ -256,7 +257,7 @@ sub delete_cookie {
     my $args = shift;
     return $self->{'delete_cookie'}->($self, $args) if $self->{'delete_cookie'};
     local $args->{'value'}   = '';
-    local $args->{'expires'} = '-10y' if ! $self->cookie_no_expires($args->{'name'}, '');
+    local $args->{'expires'} = '-10y' if ! $self->use_session_cookie($args->{'name'}, '');
     $self->set_cookie($args);
     delete $self->cookies->{$args->{'name'}};
 }
@@ -310,7 +311,7 @@ sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined 
 sub failed_sleep     { shift->{'failed_sleep'}     ||= 0              }
 sub cookie_path      { shift->{'cookie_path'}      }
 sub cookie_domain    { shift->{'cookie_domain'}    }
-sub cookie_no_expires { shift->{'cookie_no_expires'} }
+sub use_session_cookie { shift->{'use_session_cookie'} }
 sub disable_simple_cram { shift->{'disable_simple_cram'} }
 
 sub logout_redirect {
@@ -425,11 +426,13 @@ sub verify_token {
     } elsif (my $meth = $self->{'parse_token'}) {
         if (! $meth->($self, $args)) {
             $data->error('Invalid custom parsed token') if ! $data->error; # add error if not already added
+            $data->{'allow_cookie_match'} = 1;
             return $data;
         }
     } else {
         if (! $self->parse_token($token, $data)) {
             $data->error('Invalid token') if ! $data->error; # add error if not already added
+            $data->{'allow_cookie_match'} = 1;
             return $data;
         }
     }
@@ -945,7 +948,6 @@ described separately.
     cgix
     cleanup_user
     cookie_domain
-    cookie_no_expires
     cookie_path
     cookies
     expires_min
@@ -990,6 +992,7 @@ described separately.
     use_blowfish
     use_crypt
     use_plaintext
+    use_session_cookie
     verify_token
     verify_payload
     verify_user
