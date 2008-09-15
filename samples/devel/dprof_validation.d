@@ -10,18 +10,20 @@ my $form = {
 };
 
 my $val_hash_ce = {
+    'group no_alert'   => 1,
+    'group no_confirm' => 1,
     username => {
         required => 1,
-        match    => 'm/^\w+$/',
-        match_error => '$name may only contain letters and numbers',
-        untaint  => 1,
+        match2    => 'm/^\w+$/',
+        match2_error => '$name may only contain letters and numbers',
+#        untaint  => 1,
     },
     password => {
         required => 1,
         min_len  => 6,
         max_len  => 30,
         match    => 'm/^[ -~]+$/',
-        untaint  => 1,
+#        untaint  => 1,
     },
     password2 => {
         validate_if => 'password',
@@ -30,7 +32,7 @@ my $val_hash_ce = {
     email => {
         required => 1,
         match    => 'm/^[\w\.\-]+\@[\w\.\-]+$/',
-        untaint  => 1,
+#        untaint  => 1,
     },
 };
 
