@@ -134,12 +134,14 @@ sub get_ordered_fields {
             } else {
                 die "No element found in '$type' for $field" if ! exists $val_hash->{$field};
                 die "Found nonhashref value in '$type'" if ref($val_hash->{$field}) ne 'HASH';
-                push @$fields, { %{ $val_hash->{$field} }, field => $field }; # copy the values to add the key
+                my $val = $val_hash->{$field};
+                $val = {%$val, field => $field} if ! $val->{'field'};  # copy the values to add the key
+                push @$fields, $val;
             }
         }
 
         # limit the keys that need to be searched to those not in fields or order
-        my %found = map { $_->{'field'} => 1 } @$fields;
+        my %found = map { ref($_) ? ($_->{'field'} => 1) : () } @$fields;
         @field_keys = grep { ! $found{$_} } @field_keys;
     }
 
