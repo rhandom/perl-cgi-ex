@@ -912,7 +912,13 @@ sub get_error_text {
     }
 
     # the the name of this thing
-    my $name = $field_val->{'name'} || "The field $field";
+    my $name = $field_val->{'name'};
+    $name = "The field $field" if ! $name && ($field =~ /\W/ || ($field =~ /\d/ && $field =~ /\D/));
+    if (! $name) {
+        $name = $field;
+        $name =~ tr/_/ /;
+        $name =~ s/\b(\w)/\u$1/g;
+    }
     $name =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
 
     # type can look like "required" or "required2" or "required100023"
