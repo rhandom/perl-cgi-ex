@@ -21,6 +21,7 @@ use CGI::Ex::Validate;
 
     # simplest
     my $val_hash = {
+        'group order' => [qw(username email email2)],
         username => {
             required => 1,
             max_len  => 30,
@@ -37,17 +38,9 @@ use CGI::Ex::Validate;
         },
     };
 
-    # ordered (only onevent submit needs order)
+    # ordered
     my $val_hash = {
-        'group order' => [qw(username email email2)],
-        username => {required => 1, max_len => 30},
-        email    => ...,
-        email2   => ...,
-    };
-
-    # ordered again
-    my $val_hash = {
-        'group fields' => [{
+        'group order' => [{
             field    => 'username', # field is not optional in this case
             required => 1,
             max_len  => 30,
@@ -64,11 +57,6 @@ use CGI::Ex::Validate;
 
     my $vob    = CGI::Ex::Validate->new;
     my $errobj = $vob->validate($form, $val_hash);
-
-    # OR #
-    # import config using any type CGI::Ex::Conf supports
-    my $errobj = $vob->validate($form, "/somefile/somewhere.val");
-
     if ($errobj) {
         # get errors back in any of several useful ways
         my $error_heading = $errobj->as_string; # OR "$errobj";
@@ -78,18 +66,21 @@ use CGI::Ex::Validate;
         # the form passed validation
     }
 
-    # will add an error for any form key not found in $val_hash
-    my $vob = CGI::Ex::Validate->new({no_extra_keys => 1});
-    my $errobj = $vob->validate($form, $val_hash);
 
     my $js_uri_path = '/js/';     # static or dynamic URI path to find CGI/Ex/validate.js
     my $form_name   = "the_form"; # name of the form to attach javascript to
 
     # generate javascript to validate an existing form
-    my $javascript  = $vob->generate_js($val_hash, $form_name, $js_uri_path);
+    my $javascript = $vob->generate_js($val_hash, {
+        form_name   => $form_name,
+        js_uri_path => $js_uri_path,
+    });
 
     # OR let Validate create the form and javascript for you
-    my $form = $vob->generate_form($val_hash, {js_uri_path => $js_uri_path, form_name => $form_name});
+    my $form = $vob->generate_form($val_hash, {
+        form_name   => $form_name,   # will use a random name if not passed
+        js_uri_path => $js_uri_path,
+    });
 
 
 =head1 DESCRIPTION
@@ -163,6 +154,16 @@ CGI::Ex::validate::Error object as the value.
     eval { $self->validate($form, $val_hash) };
     if ($@) { my $err_obj = $@; }
 
+=item C<generate_form>
+
+Takes a validation hash, and additional arguments and generates an HTML form suitable
+for inclusion in a web based application.
+
+    my $html = $self->generate_form($val_hash, {
+        form_name   => 'my_form',
+        js_uri_path => '/cgi-bin/js', # will be used by generate_js
+    });
+
 =item C<generate_js>
 
 Works with CGI::Ex::JSONDump.
@@ -183,7 +184,12 @@ CGI/Ex/validate.js.  When generating the js code, generate_js will
 look in $JS_URI_PATH_VALIDATE.  If this is not set,
 generate_js will use "$JS_URI_PATH/CGI/Ex/validate.js".
 
-    $self->generate_js($val_hash, 'my_form', "/cgi-bin/js")
+    my $js = $self->generate_js($val_hash, 'my_form', "/cgi-bin/js")
+    # OR
+    my $js = $self->generate_js($val_hash, {
+        form_name   => 'my_form',
+        js_uri_path => '/cgi-bin/js',
+    });
 
     # would generate something like the following...
 
@@ -236,7 +242,7 @@ programming to pass in a hashref.  If the validation "hash" is a
 filename or a YAML string, it will be translated into a hash using
 CGI::Ex::Conf.
 
-Keys matching the regex m/^(general|group)\s+(\w+)$/ such as "group
+Keys matching the regex m/^group \s+ (\w+)$/x such as "group
 onevent" are reserved and are counted as GROUP OPTIONS.  Other keys
 (if any, should be field names that need validation).
 
@@ -246,24 +252,24 @@ only be validated if the conditions of the validate_if are met.  If
 proceed.  See the validate_if VALIDATION type for more information.
 
 Each of the items listed in the validation will be validated.  The
-validation order is determined in one of three ways:
+validation order is determined the following ways:
 
 =over 4
 
-=item Specify 'group fields' arrayref.
+=item Specify 'group order' arrayref with hashrefs.
 
     # order will be (username, password, 'm/\w+_foo/', somethingelse)
     {
         'group title' => "User Information",
-        'group fields' => [
-                               {field => 'username',   required => 1},
-                               {field => 'password',   required => 1},
-                               {field => 'm/\w+_foo/', required => 1},
-                           ],
-            somethingelse => {required => 1},
+        'group order' => [
+            {field => 'username',   required => 1},
+            {field => 'password',   required => 1},
+            {field => 'm/\w+_foo/', required => 1},
+        ],
+        somethingelse => {required => 1},
         }
 
-=item Specify 'group order' arrayref.
+=item Specify 'group order' arrayref with field key names.
 
     # order will be (username, password, 'm/\w+_foo/', somethingelse)
     {
@@ -288,16 +294,16 @@ validation order is determined in one of three ways:
 
 =back
 
-Optionally the 'group fields' or the 'group order' may contain the
-word 'OR' as a special keyword.  If the item preceding 'OR' fails
-validation the item after 'OR' will be tested instead.  If the item
-preceding 'OR' passes validation the item after 'OR' will not be
-tested.
+Optionally the 'group order' may contain the word 'OR' as a special
+keyword.  If the item preceding 'OR' fails validation the item after
+'OR' will be tested instead.  If the item preceding 'OR' passes
+validation the item after 'OR' will not be tested.
 
     'group order' => [qw(zip OR postalcode state OR region)],
 
-At this time, only "group onevent" submit works with this option.  Using
-OR is deprecated.  Instead you should use min_in_set or max_in_set.
+At this time, only "group onevent" submit works with this option.
+Using OR is not needed if testing for one or more values -- instead you
+should use min_in_set or max_in_set (OR is still useful for other cases).
 
     'zip' => {
       max_in_set: '1 of zip, postalcode',
@@ -596,11 +602,11 @@ This is basically the opposite of had_error.
 
 =item C<field>
 
-Specify which field to work on.  Key may be a regex in the form 'm/\w+_user/'.
-This key is required if 'group fields' is used or if validate_if or required_if
-are used.  It can optionally be used with other types to specify a different form
-element to operate on.  On errors, if a non-default error is found, $field
-will be swapped with the value found in field.
+Specify which field to work on.  Key may be a regex in the form
+'m/\w+_user/'.  This key is required in a hashref passed to 'group
+order'.  It can optionally be used with other types to specify a
+different form element to operate on.  On errors, if a non-default
+error is found, $field will be swapped with the value found in field.
 
 The field name may also be a regular expression in the
 form of 'm/somepattern/'.  If a regular expression is used, all keys
@@ -815,13 +821,11 @@ to force the stringification is 'as_hash_join'.
 =head1 GROUP OPTIONS
 
 Any key in a validation hash matching the pattern
-m/^(group|general)\s+(\w+)$/ is considered a group option (the reason
+m/^group \s+ (\w+)$/x is considered a group option (the reason
 that either group or general may be used is that CGI::Ex::Validate
 used to have the concept of validation groups - these were not
-commonly used so support has been deprecated as of the 2.10 release).
-Group options will also be looked for in the Validate object ($self)
-and can be set when instantiating the object ($self->{raise_error} is
-equivalent to $valhash->{'group raise_error'}).
+commonly used so support has been removed as of the 2.10 release).
+(the old name of 'general' vs 'group' is still supported but deprecated)
 
 =over 4
 
@@ -838,17 +842,19 @@ Order in which to validate key/value pairs of group.
 
     'group order' => [qw(user pass email OR phone)],
 
-=item C<fields>
+    # OR
 
-Arrayref of validation items to validate.
-
-    'group fields' => [{
+    'group order' => [{
         field    => 'field1',
         required => 1,
     }, {
         field    => 'field2',
         required => 1,
     }],
+
+=item C<fields>
+
+Alias for 'group order'.
 
 =item C<validate_if>
 
