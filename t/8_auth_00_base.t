@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 47;
+use Test::More tests => 56;
 
 use_ok('CGI::Ex::Auth');
 
@@ -15,9 +15,9 @@ use_ok('CGI::Ex::Auth');
     package Auth;
     use base qw(CGI::Ex::Auth);
     use strict;
-    use vars qw($printed $set_cookie $deleted_cookie);
+    use vars qw($printed $set_cookie $deleted_cookie $failed_login_user);
 
-    sub login_print      { $printed = 1 }
+    sub login_print      { $failed_login_user = shift->login_hash_common->{'cea_user'}; $printed = 1 }
     sub set_cookie       { $set_cookie = 1 }
     sub delete_cookie    { $deleted_cookie = 1 }
     sub get_pass_by_user { '123qwe' }
@@ -47,58 +47,57 @@ my $cookie_good  = { cea_user => 'test/123qwe' };
 my $cookie_good2 = { cea_user => $token };
 
 sub form_good     { Auth->get_valid_auth({form => {%$form_good},  cookies => {}              }) }
-sub form_good2    { Auth->get_valid_auth({form => {%$form_good2}, cookies => {}              }) }
-sub form_good3    { Aut2->get_valid_auth({form => {%$form_good3}, cookies => {}              }) }
-sub form_bad      { Auth->get_valid_auth({form => {%$form_bad},   cookies => {}              }) }
-sub cookie_good   { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good} }) }
-sub cookie_good2  { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good2}}) }
-sub cookie_bad    { Auth->get_valid_auth({form => {},             cookies => {%$cookie_bad}  }) }
-sub combined_good { Auth->get_valid_auth({form => {cea_user => "test"},  cookies => {%$cookie_good}}) }
-sub combined_bad  { Auth->get_valid_auth({form => {cea_user => "test2"}, cookies => {%$cookie_good}}) }
-sub combined_bad2 { Auth->get_valid_auth({form => {cea_user => "test"},  cookies => {%$cookie_bad}}) }
-
 $Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(form_good(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
 ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
+sub form_good2    { Auth->get_valid_auth({form => {%$form_good2}, cookies => {}              }) }
 $Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(form_good2(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
 ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
+sub form_good3    { Aut2->get_valid_auth({form => {%$form_good3}, cookies => {}              }) }
 $Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(form_good3(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
 ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
-$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
+sub form_bad      { Auth->get_valid_auth({form => {%$form_bad},   cookies => {}              }) }
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = $Auth::failed_login_user = 0;
 ok(! form_bad(), "Got bad auth");
 ok($Auth::printed, "Printed was set");
 ok(! $Auth::set_cookie, "set_cookie called");
 ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
+is($Auth::failed_login_user, 'test', 'correct user on failed passed information');
 
+sub cookie_good   { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good} }) }
 $Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(cookie_good(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
 ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
+sub cookie_good2  { Auth->get_valid_auth({form => {},             cookies => {%$cookie_good2}}) }
 $Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(cookie_good2(), "Got good auth");
 ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie called");
 ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
-$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
+sub cookie_bad    { Auth->get_valid_auth({form => {},             cookies => {%$cookie_bad}  }) }
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = $Auth::failed_login_user = 0;
 ok(! cookie_bad(), "Got bad auth");
 ok($Auth::printed, "Printed was set");
 ok(! $Auth::set_cookie, "Set_cookie was not called");
 ok($Auth::deleted_cookie, "deleted_cookie was called");
+is($Auth::failed_login_user, 'test', 'correct user on failed passed information');
 
+sub combined_good { Auth->get_valid_auth({form => {cea_user => "test"},  cookies => {%$cookie_good}}) }
 $Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
 ok(combined_good(), "Got good auth") || do {
     my $e = $@;
@@ -110,18 +109,29 @@ ok(! $Auth::printed, "Printed was not set");
 ok($Auth::set_cookie, "Set_cookie was called");
 ok(! $Auth::deleted_cookie, "deleted_cookie was not called");
 
-$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
+sub combined_bad  { Auth->get_valid_auth({form => {cea_user => "test2"}, cookies => {%$cookie_good}}) }
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = $Auth::failed_login_user = 0;
 ok(! combined_bad(), "Got bad auth");
 ok($Auth::printed, "Printed was set");
 ok(! $Auth::set_cookie, "Set_cookie was not called");
 ok($Auth::deleted_cookie, "deleted_cookie was called");
+is($Auth::failed_login_user, 'test2', 'correct user on failed passed information');
 
-$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = 0;
+sub combined_bad2 { Auth->get_valid_auth({form => {cea_user => "test"},  cookies => {%$cookie_bad}}) }
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = $Auth::failed_login_user = 0;
 ok(! combined_bad2(), "Got bad auth");
 ok($Auth::printed, "Printed was set");
 ok(! $Auth::set_cookie, "Set_cookie was not called");
 ok($Auth::deleted_cookie, "deleted_cookie was called");
+is($Auth::failed_login_user, 'test', 'correct user on failed passed information');
 
+sub combined_bad3 { Auth->get_valid_auth({form => {cea_user => "test2/123"}, cookies => {%$cookie_good}}) }
+$Auth::printed = $Auth::set_cookie = $Auth::deleted_cookie = $Auth::failed_login_user = 0;
+ok(! combined_bad3(), "Got bad auth");
+ok($Auth::printed, "Printed was set");
+ok(! $Auth::set_cookie, "Set_cookie was not called");
+ok($Auth::deleted_cookie, "deleted_cookie was called");
+is($Auth::failed_login_user, 'test2', 'correct user on failed passed information');
 
 my $auth = Aut2->get_valid_auth({form => {%$form_good3}});
 my $data = $auth->last_auth_data;
