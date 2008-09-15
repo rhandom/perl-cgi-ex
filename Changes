@@ -1,16 +1,40 @@
+2.27
+    2008-09-15
+        * (App) Fix morph history during errors or other direct morph calls
+        * (App) Allow for step=foo/bar to look for file foo/bar.html
+        * (App) Allow for step=foo/bar to use internal name of foo__bar
+        * (App) Allow for step=foo/bar to morph to package App::Foo::Bar
+        * (Validate) Added the set_all_hook and clear_all_hook in validate.js
+        * (Validate) Streamline validate
+        * (Validate) Added generate_form to Validate
+        * (App) Added hooks in App to generate_form
+        * (Validate) Allow for "error" parameter in validation that is the general error message
+        * (Auth) Allow passing filename in Auth login_header, login_form, login_script and login_footer
+        * (Auth) Allow verify_token to be easily overridable
+        * (Auth) Allow passing cookie_domain, cookie_path, cookie_no_expires (force session cookie) in Auth for much more granular control
+        * (Auth) Allow for passing user without password to verify user matches a previously set cookie
+        * (App) Remove allow_nested_morph since allow_morph is more than capable of filling this role
+        * (App) Allow step name to be "jumped" to even if not in the path
+        * (App) Make jump unmorph if in the middle of lineage, deprecates some early morph cases.
+        * (Auth) Don't blank out form user field on failure (fixed bug in Auth login_hash_common)
+        * (App) Cleanup run_hook_as
+        * (App) Allow path_info_map to have second argument be a code ref that is passed form and matches
+        * (Validate) validate.js updates to make in sync more with Validate.pm (such as fields and order are synonymous)
+        * (Validate) Make validation names prettier by default
+
 2.26
      2008-07-21
-        * Error handling bug again (accept refs in $@ again)
+        * (App) Error handling bug again (accept refs in $@ again)
 
 2.25
      2008-07-08
-        * Fix bugs in was_valid checking of Validate
-        * Quote more keys in JSONDump
-        * Allow for passing a coderef instead of the step name to run_hook
-        * Handle fatal errors more gracefully
-        * Make morph and unmorph calls be hooks
-        * Allow allow_morph to return 2 (which requires a morph)
-        * Add run_hook_as functionality
+        * (Validate) Fix bugs in was_valid checking of Validate
+        * (JSONDump) Quote more keys in JSONDump
+        * (App) Allow for passing a coderef instead of the step name to run_hook
+        * (App) Handle fatal errors more gracefully
+        * (App) Make morph and unmorph calls be hooks
+        * (App) Allow allow_morph to return 2 (which requires a morph)
+        * (App) Add run_hook_as functionality
 
 2.24
      2008-02-26
