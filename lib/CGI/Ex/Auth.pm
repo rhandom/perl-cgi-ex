@@ -66,70 +66,64 @@ sub get_valid_auth {
         }
     }
 
-    # look first in form, then in cookies for valid tokens
-    my $had_form_data;
-    my $verify_form_user;
-    foreach ([$form,          $self->key_user,   1],
-             [$self->cookies, $self->key_cookie, 0],
-             ) {
-        my ($hash, $key, $is_form) = @$_;
-        next if ! defined $hash->{$key};
-        last if ! $is_form && $had_form_data && ! $verify_form_user;  # if form info was passed in - we must use it only
-        $had_form_data = 1 if $is_form;
-        next if ! length $hash->{$key};
+    my $data;
 
-        # if it looks like a bare username (as in they didn't have javascript) - add in other items
-        my $data;
-        if ($is_form && delete $form->{$self->key_loggedout}) { # don't validate the form on a logout
-            my $key_u = $self->key_user;
-            $self->new_auth_data({user => delete($form->{$key_u})});
-            $had_form_data = 0;
-            next;
-        } elsif ($is_form && defined($hash->{ $self->key_pass })) {
+    # look in form first
+    my $form_user = delete $form->{$self->key_user};
+    if (defined $form_user) {
+        if (delete $form->{$self->key_loggedout}) { # don't validate the form on a logout
+            $data = $self->new_auth_data({user => $form_user, error => 'Logged out'});
+        } elsif (defined $form->{ $self->key_pass }) {
             $data = $self->verify_token({
                 token => {
-                    user        => delete $hash->{$key},
-                    test_pass   => delete $hash->{ $self->key_pass },
-                    expires_min => delete($hash->{ $self->key_save }) ? -1 : delete($hash->{ $self->key_expires_min }) || $self->expires_min,
+                    user        => $form_user,
+                    test_pass   => delete $form->{ $self->key_pass },
+                    expires_min => delete($form->{ $self->key_save }) ? -1 : delete($form->{ $self->key_expires_min }) || $self->expires_min,
                 },
                 from => 'form',
-            }) || next;
+            });
+        } elsif (! length $form_user) {
+            $data = $self->new_auth_data({user => '', error => 'Invalid user'});
         } else {
-            $data = $self->verify_token({token => $hash->{$key}, from => ($is_form ? 'form' : 'cookie')}) if length $hash->{$key};
-
-            # allow passing in just the user - if a valid cookie exists - then the token is fine
-            if (defined($verify_form_user)
-                && (! defined($data->{'user'})
-                    || $self->cleanup_user($verify_form_user) ne $data->{'user'})) {
-                $data->{'form_user'} = $verify_form_user;
-                $data->error('User passed in form did not match cookie');
-                last; # no success
-            } elsif (! $data) {
-                $verify_form_user = $hash->{$key} if $is_form;
-                next;
-            }
-
-            delete $hash->{$key} if $is_form;
+            $data = $self->verify_token({token => $form_user, from => 'form'});
         }
-
-        # non-cram cookie types are session cookies unless save was set (thus setting expires_min)
-        my $_key = $self->key_cookie;
-        my $_val = $self->generate_token($data);
-        my $no_expires = $self->cookie_no_expires($_key, $_val);
-        if ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
-            $no_expires = 1 if ! defined($no_expires) && ! defined($data->{'expires_min'});
-        }
-        $self->set_cookie({
-            name    => $_key,
-            value   => $_val,
-            expires => ($no_expires ? '' : '+20y'),
-        });
-
-        # successful login
-        return $self->handle_success({is_form => $is_form});
     }
 
-    return $self->handle_failure({had_form_data => $had_form_data});
+    # no valid form data ? look in the cookie
+    if (! $data) {
+        my $cookie = $self->cookies->{$self->key_cookie};
+        if (defined($cookie) && length($cookie)) {
+            my $form_data = $data;
+            $data = $self->verify_token({token => $cookie, from => 'cookie'});
+            if (defined $form_user) { # they had form data
+                my $user = $self->cleanup_user($form_user);
+                if (! $data || $user ne $data->{'user'}) { # but the cookie didn't match
+                    $data = $self->{'_last_auth_data'} = $form_data; # already a failure
+                    $data->{'user'} = $user if ! defined $data->{'user'};
+                }
+            }
+        }
+    }
+
+    # failure
+    if (! $data) {
+        return $self->handle_failure({had_form_data => defined($form_user)});
+    }
+
+    # success
+    my $_key = $self->key_cookie;
+    my $_val = $self->generate_token($data);
+    my $no_expires = $self->cookie_no_expires($_key, $_val);
+    if ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
+        $no_expires = 1 if ! defined($no_expires) && ! defined($data->{'expires_min'});
+    }
+    $self->set_cookie({
+        name    => $_key,
+        value   => $_val,
+        expires => ($no_expires ? '' : '+20y'), # non-cram cookie types are session cookies unless save was set (thus setting expires_min)
+    });
+
+    return $self->handle_success({is_form => ($data->{'from'} eq 'form' ? 1 : 0)});
 }
 
 sub handle_success {
