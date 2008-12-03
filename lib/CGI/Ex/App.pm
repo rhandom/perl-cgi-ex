@@ -691,17 +691,18 @@ sub finalize  { 1 } # false means show step
 sub hash_base {
     my ($self, $step) = @_;
 
-    return $self->{'hash_base'} ||= do {
-        my $copy = $self;  eval { require Scalar::Util; Scalar::Util::weaken($copy) };
-        my $hash = {
-            script_name     => $self->script_name,
-            path_info       => $self->path_info,
-            js_validation   => sub { $copy->run_hook('js_validation', $step, shift) },
-            generate_form   => sub { $copy->run_hook('generate_form', $step, (ref($_[0]) ? (undef, shift) : shift)) },
-            form_name       => $self->run_hook('form_name', $step),
-            $self->step_key => $step,
-        };
+    my $hash = $self->{'hash_base'} ||= {
+        script_name => $self->script_name,
+        path_info   => $self->path_info,
     };
+
+    my $copy = $self;  eval { require Scalar::Util; Scalar::Util::weaken($copy) };
+    $hash->{'js_validation'} = sub { $copy->run_hook('js_validation', $step, shift) };
+    $hash->{'generate_form'} = sub { $copy->run_hook('generate_form', $step, (ref($_[0]) ? (undef, shift) : shift)) };
+    $hash->{'form_name'}     = $self->run_hook('form_name', $step);
+    $hash->{$self->step_key} = $step;
+
+    return $hash;
 }
 
 sub hash_common { $_[0]->{'hash_common'} ||= {} }
