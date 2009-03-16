@@ -521,6 +521,16 @@ sub parse_token {
             });
             $found = 1;
             last;
+        } elsif ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) $|x) {
+            $data->add_data({
+                user         => $1,
+                plain_time   => $2,
+                expires_min  => $3,
+                test_pass    => $4,
+                armor        => $armor,
+            });
+            $found = 1;
+            last;
         } elsif ($copy =~ m|^ ([^/]+) / (.*) $|x) {
             $data->add_data({
                 user         => $1,
@@ -576,6 +586,12 @@ sub verify_password {
             $err = 'Invalid login';
         }
 
+    ### expiring plain
+    } elsif ($data->{'plain_time'}
+             && $data->{'expires_min'} > 0
+             && ($self->server_time - $data->{'plain_time'}) > $data->{'expires_min'} * 60) {
+        $err = 'Login expired';
+
     ### plaintext_crypt
     } elsif ($pass =~ m|^([./0-9A-Za-z]{2})([./0-9A-Za-z]{11})$|
              && crypt($data->{'test_pass'}, $1) eq $pass) {
@@ -609,20 +625,20 @@ sub generate_token {
     die "Can't generate a token off of a failed auth" if ! $data;
     die "Can't generate a token for a user which contains a \"/\"" if $data->{'user'} =~ m{/};
     my $token;
+    my $exp = defined($data->{'expires_min'}) ? $data->{'expires_min'} : $self->expires_min;
 
     ### do kinds that require staying plaintext
     if (   (defined($data->{'use_plaintext'}) ?  $data->{'use_plaintext'} : $self->use_plaintext) # ->use_plaintext is true if ->use_crypt is
         || (defined($data->{'use_crypt'})     && $data->{'use_crypt'})
         || (defined($data->{'type'})          && $data->{'type'} eq 'crypt')) {
         my $pass = defined($data->{'test_pass'}) ? $data->{'test_pass'} : $data->{'real_pass'};
-        $token = $data->{'user'} .'/'. $pass;
+        $token = join('/', $data->{'user'}, $self->server_time, $exp, $pass);
 
     ### all other types go to cram - secure_hash_cram, simple_cram, plaintext and md5
     } else {
         my $user = $data->{'user'} || die "Missing user";
         my $real = defined($data->{'real_pass'})   ? ($data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'}))
                                                    : die "Missing real_pass";
-        my $exp  = defined($data->{'expires_min'}) ? $data->{'expires_min'} : $self->expires_min;
         my $load = $self->generate_payload($data);
         die "Payload can not contain a \"/\.  Please escape it in generate_payload." if $load =~ m|/|;
         die "User can not contain a \"/\."                                           if $user =~ m|/|;
