@@ -19,7 +19,7 @@ use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 use Carp qw(croak);
 
-$VERSION = '2.27';
+$VERSION = '2.28';
 
 ###----------------------------------------------------------------###
 
@@ -313,6 +313,7 @@ sub cookie_path      { shift->{'cookie_path'}      }
 sub cookie_domain    { shift->{'cookie_domain'}    }
 sub use_session_cookie { shift->{'use_session_cookie'} }
 sub disable_simple_cram { shift->{'disable_simple_cram'} }
+sub complex_plaintext { shift->{'complex_plaintext'} }
 
 sub logout_redirect {
     my ($self, $user) = @_;
@@ -509,7 +510,18 @@ sub parse_token {
             : ($armor eq 'base64')          ? eval { local $^W; decode_base64($token) }
             : ($bkey = $self->use_blowfish) ? decrypt_blowfish($token, $bkey)
             : next;
-        if ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
+        if ($self->complex_plaintext && $copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / ([^/]*) / (.*) $|x) {
+            $data->add_data({
+                user         => $1,
+                plain_time   => $2,
+                expires_min  => $3,
+                payload      => $4,
+                test_pass    => $5,
+                armor        => $armor,
+            });
+            $found = 1;
+            last;
+        } elsif ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / ([^/]*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
             $data->add_data({
                 user         => $1,
                 cram_time    => $2,
@@ -517,16 +529,6 @@ sub parse_token {
                 payload      => $4,
                 test_pass    => $5,
                 secure_hash  => $6 || '',
-                armor        => $armor,
-            });
-            $found = 1;
-            last;
-        } elsif ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) $|x) {
-            $data->add_data({
-                user         => $1,
-                plain_time   => $2,
-                expires_min  => $3,
-                test_pass    => $4,
                 armor        => $armor,
             });
             $found = 1;
@@ -561,7 +563,7 @@ sub verify_password {
         } else {
             my $rand1 = $1;
             my $rand2 = $2;
-            my $real  = $pass =~ /^[a-f0-9]{32}$/ ? lc($pass) : md5_hex($pass);
+            my $real  = $pass =~ /^[a-fA-F0-9]{32}$/ ? lc($pass) : md5_hex($pass);
             my $str  = join("/", @{$data}{qw(user cram_time expires_min payload)});
             my $sum = md5_hex($str .'/'. $real .('/sh.'.$array->[$rand1].'.'.$rand2));
             if ($data->{'expires_min'} > 0
@@ -576,7 +578,7 @@ sub verify_password {
     } elsif ($data->{'cram_time'}) {
         $data->add_data(type => 'simple_cram');
         die "Type simple_cram disabled during verify_password" if $self->disable_simple_cram;
-        my $real = $pass =~ /^[a-f0-9]{32}$/ ? lc($pass) : md5_hex($pass);
+        my $real = $pass =~ /^[a-fA-F0-9]{32}$/ ? lc($pass) : md5_hex($pass);
         my $str  = join("/", @{$data}{qw(user cram_time expires_min payload)});
         my $sum  = md5_hex($str .'/'. $real);
         if ($data->{'expires_min'} > 0
@@ -600,12 +602,12 @@ sub verify_password {
     ### failed plaintext crypt
     } elsif ($self->use_crypt) {
         $err = 'Invalid login';
-        $data->add_data(type => 'crypt', was_plaintext => ($data->{'test_pass'} =~ /^[a-f0-9]{32}$/ ? 0 : 1));
+        $data->add_data(type => 'crypt', was_plaintext => ($data->{'test_pass'} =~ /^[a-fA-F0-9]{32}$/ ? 0 : 1));
 
     ### plaintext and md5
     } else {
-        my $is_md5_t = $data->{'test_pass'} =~ /^[a-f0-9]{32}$/;
-        my $is_md5_r = $pass =~ /^[a-f0-9]{32}$/;
+        my $is_md5_t = $data->{'test_pass'} =~ /^[a-fA-F0-9]{32}$/;
+        my $is_md5_r = $pass =~ /^[a-fA-F0-9]{32}$/;
         my $test = $is_md5_t ? lc($data->{'test_pass'}) : md5_hex($data->{'test_pass'});
         my $real = $is_md5_r ? lc($pass) : md5_hex($pass);
         $data->add_data(type => ($is_md5_r ? 'md5' : 'plaintext'), was_plaintext => ($is_md5_t ? 0 : 1));
@@ -627,22 +629,22 @@ sub generate_token {
     my $token;
     my $exp = defined($data->{'expires_min'}) ? $data->{'expires_min'} : $self->expires_min;
 
+    my $user = $data->{'user'} || die "Missing user";
+    my $load = $self->generate_payload($data);
+    die "User can not contain a \"/\."                                           if $user =~ m|/|;
+    die "Payload can not contain a \"/\.  Please encode it in generate_payload." if $load =~ m|/|;
+
     ### do kinds that require staying plaintext
     if (   (defined($data->{'use_plaintext'}) ?  $data->{'use_plaintext'} : $self->use_plaintext) # ->use_plaintext is true if ->use_crypt is
         || (defined($data->{'use_crypt'})     && $data->{'use_crypt'})
         || (defined($data->{'type'})          && $data->{'type'} eq 'crypt')) {
         my $pass = defined($data->{'test_pass'}) ? $data->{'test_pass'} : $data->{'real_pass'};
-        $token = join('/', $data->{'user'}, $self->server_time, $exp, $pass);
+        $token = $self->complex_plaintext ? join('/', $user, $self->server_time, $exp, $load, $pass) : "$user/$pass";
 
     ### all other types go to cram - secure_hash_cram, simple_cram, plaintext and md5
     } else {
-        my $user = $data->{'user'} || die "Missing user";
-        my $real = defined($data->{'real_pass'})   ? ($data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'}))
-                                                   : die "Missing real_pass";
-        my $load = $self->generate_payload($data);
-        die "Payload can not contain a \"/\.  Please escape it in generate_payload." if $load =~ m|/|;
-        die "User can not contain a \"/\."                                           if $user =~ m|/|;
-
+        my $real = defined($data->{'real_pass'}) ? ($data->{'real_pass'} =~ /^[a-fA-F0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'}))
+                                                 : die "Missing real_pass";
         my $array;
         if (! $data->{'prefer_simple_cram'}
             && ($array = eval { $self->secure_hash_keys })
