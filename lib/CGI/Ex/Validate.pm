@@ -564,6 +564,7 @@ sub check_type {
     # the "username" portion of an email address - sort of arbitrary
     } elsif ($type eq 'local_part') {
         return 0 if ! defined($value) || ! length($value);
+        # ignoring all valid quoted string local parts
         return 0 if $value =~ m/[^\w.~!\#\$%\^&*\-=+?]/;
 
     # standard IP address
