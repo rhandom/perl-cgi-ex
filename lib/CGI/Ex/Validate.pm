@@ -564,10 +564,7 @@ sub check_type {
     # the "username" portion of an email address - sort of arbitrary
     } elsif ($type eq 'local_part') {
         return 0 if ! defined($value) || ! length($value);
-        return 0 if $value =~ m/[^A-Za-z0-9_.\-\^=?\#!&+]/
-            || $value =~ m/^[\.\-]/
-            || $value =~ m/[\.\-\&]$/
-            || $value =~ m/(\.\-|\-\.|\.\.)/;
+        return 0 if $value =~ m/[^\w.~!\#\$%\^&*\-=+?]/;
 
     # standard IP address
     } elsif ($type eq 'ip') {
