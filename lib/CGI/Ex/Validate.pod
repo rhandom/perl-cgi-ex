@@ -444,7 +444,7 @@ be concatenated with ||.  Available in JS.
     {
         field   => 'my_ip',
         match   => 'm/^\d{1,3}(\.\d{1,3})3$/',
-        match_2 => '!/^0\./ || !/^192\./',
+        match_2 => '!m/^0\./ || !m/^192\./',
     }
 
 =item C<max_in_set> and C<min_in_set>
