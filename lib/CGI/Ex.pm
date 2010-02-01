@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.28';
+    $VERSION               = '2.29';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -163,7 +163,7 @@ sub make_form {
         my $val = $form->{$key};
         $key =~ s/([^\w.\-\ ])/sprintf('%%%02X', ord $1)/eg;
         $key =~ y/ /+/;
-        foreach (ref($val) ? @$val : $val) {
+        foreach (ref($val) eq 'ARRAY' ? @$val : $val) {
             my $_val = $_; # make a copy
             $_val =~ s/([^\w.\-\ ])/sprintf('%%%02X', ord $1)/eg;
             $_val =~ y/ /+/;
