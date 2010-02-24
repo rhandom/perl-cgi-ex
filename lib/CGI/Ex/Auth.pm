@@ -269,11 +269,13 @@ sub set_cookie {
     my $key  = $args->{'name'};
     my $val  = $args->{'value'};
     my $dom  = $args->{'domain'} || $self->cookie_domain;
+    my $sec  = $args->{'secure'} || $self->cookie_secure;
     $self->cgix->set_cookie({
         -name    => $key,
         -value   => $val,
         -path    => $args->{'path'} || $self->cookie_path($key, $val) || '/',
         ($dom ? (-domain => $dom) : ()),
+        ($sec ? (-secure => $sec) : ()),
         ($args->{'expires'} ? (-expires => $args->{'expires'}): ()),
     });
     $self->cookies->{$key} = $val;
@@ -311,6 +313,7 @@ sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined 
 sub failed_sleep     { shift->{'failed_sleep'}     ||= 0              }
 sub cookie_path      { shift->{'cookie_path'}      }
 sub cookie_domain    { shift->{'cookie_domain'}    }
+sub cookie_secure    { shift->{'cookie_secure'}    }
 sub use_session_cookie { shift->{'use_session_cookie'} }
 sub disable_simple_cram { shift->{'disable_simple_cram'} }
 sub complex_plaintext { shift->{'complex_plaintext'} }
@@ -966,6 +969,7 @@ described separately.
     cgix
     cleanup_user
     cookie_domain
+    cookie_secure
     cookie_path
     cookies
     expires_min
