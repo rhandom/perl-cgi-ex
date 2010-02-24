@@ -1,3 +1,11 @@
+2.31
+    2010-02-24
+        * (Auth) allow for secure flag via cookie_secure
+        * Allow validate.js to use change and blur on individual elements
+        * Allow validate.js to not strip trailing whitespace on change
+        * (Validate) Allow more items in local parts
+        * (Ex) Make sure make_form doesn't die on non-arrayref keys
+
 2.27
     2008-09-15
         * (App) Fix morph history during errors or other direct morph calls
