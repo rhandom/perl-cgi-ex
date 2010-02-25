@@ -1,3 +1,7 @@
+2.32
+    2010-02-25
+        * (Validate) Allow for default to be an arrayref
+
 2.31
     2010-02-24
         * (Auth) allow for secure flag via cookie_secure

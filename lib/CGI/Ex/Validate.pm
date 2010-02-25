@@ -8,7 +8,7 @@ package CGI::Ex::Validate;
 use strict;
 use Carp qw(croak);
 
-our $VERSION  = '2.31';
+our $VERSION  = '2.32';
 our $QR_EXTRA = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
 our @UNSUPPORTED_BROWSERS = (qr/MSIE\s+5.0\d/i);
 our $JS_URI_PATH;
@@ -237,15 +237,15 @@ sub validate_buddy {
     if ($field_val->{'had_error'}   && ! $self->{'had_error'}->{$field})   { return [[$field, 'had_error',   $field_val, $ifs_match]]; }
     if ($field_val->{'was_checked'} && ! $self->{'was_checked'}->{$field}) { return [[$field, 'was_checked', $field_val, $ifs_match]]; }
 
+    # allow for default value
+    if (defined($field_val->{'default'})
+        && (!defined($form->{$field})
+            || (UNIVERSAL::isa($form->{$field},'ARRAY') ? !@{ $form->{$field} } : !length($form->{$field})))) {
+        $form->{$field} = $field_val->{'default'};
+    }
+
     my $values   = UNIVERSAL::isa($form->{$field},'ARRAY') ? $form->{$field} : [$form->{$field}];
     my $n_values = @$values;
-
-    # allow for default value
-    if (exists $field_val->{'default'}) {
-        if ($n_values == 0 || ($n_values == 1 && (! defined($values->[0]) || ! length($values->[0])))) {
-            $form->{$field} = $values->[0] = $field_val->{'default'};
-        }
-    }
 
     # allow for a few form modifiers
     my $modified = 0;

@@ -11,7 +11,7 @@ BEGIN {
     eval { use Time::HiRes qw(time) };
     eval { use Scalar::Util };
 }
-our $VERSION = '2.31';
+our $VERSION = '2.32';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
