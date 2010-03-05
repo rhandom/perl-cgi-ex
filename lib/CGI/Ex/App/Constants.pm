@@ -6,10 +6,12 @@ CGI::Ex::App::Constants - Easier access to magic App values
 
 =cut
 
-use vars qw(%constants @EXPORT @EXPORT_OK %EXPORT_TAGS);
+use vars qw(%constants @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION);
 use strict;
 use warnings;
 use base qw(Exporter);
+
+$VERSION = '2.32';
 
 BEGIN {
 my $all = {
