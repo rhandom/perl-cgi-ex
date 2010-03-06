@@ -266,9 +266,12 @@ sub cookie_path      { shift->{'cookie_path'}   }
 sub cookie_domain    { shift->{'cookie_domain'} }
 sub cookie_secure    { shift->{'cookie_secure'} }
 sub js_uri_path      { $_[0]->{'js_uri_path'} ||= $_[0]->script_name ."/js" }
-sub use_session_cookie  { shift->{'use_session_cookie'}  }
-sub disable_simple_cram { shift->{'disable_simple_cram'} }
-sub complex_plaintext   { shift->{'complex_plaintext'}   }
+sub use_session_cookie    { shift->{'use_session_cookie'}  }
+sub disable_simple_cram   { shift->{'disable_simple_cram'} }
+sub complex_plaintext     { shift->{'complex_plaintext'}   }
+sub template_obj          { shift->{'template_obj'} || do { require Template::Alloy; Template::Alloy->new(@_) } }
+sub template_args         { $_[0]->{'template_args'}         ||= {} }
+sub template_include_path { $_[0]->{'template_include_path'} || ''  }
 
 ###----------------------------------------------------------------###
 
@@ -302,24 +305,11 @@ sub login_print {
     return;
 }
 
-sub template_obj {
-    my ($self, $args) = @_;
-    return $self->{'template_obj'} || do {
-        require Template::Alloy;
-        Template::Alloy->new($args);
-    };
-}
-
-sub template_args { $_[0]->{'template_args'} ||= {} }
-
-sub template_include_path { $_[0]->{'template_include_path'} || '' }
-
 sub login_hash_common {
     my $self = shift;
     my $form = $self->form;
     my $data = $self->last_auth_data;
     $data = {no_data => 1} if ! ref $data;
-
     return {
         %$form,
         error              => ($form->{'had_form_data'}) ? "Login Failed" : "",
