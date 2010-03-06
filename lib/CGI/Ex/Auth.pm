@@ -14,7 +14,6 @@ CGI::Ex::Auth - Handle logins nicely.
 use strict;
 use vars qw($VERSION);
 
-use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 use Carp qw(croak);
@@ -237,7 +236,7 @@ sub logout_hook      {}
 sub failure_hook     {}
 sub script_name      { shift->{'script_name'} || $ENV{'SCRIPT_NAME'} || '' }
 sub path_info        { shift->{'path_info'}   || $ENV{'PATH_INFO'}   || '' }
-sub server_time      { time }
+sub server_time      { shift->{'server_time'} || time }
 sub cgix             { (@_ == 2) ? $_[0]->{'cgix'}    = pop : $_[0]->{'cgix'}    ||= CGI::Ex->new }
 sub form             { (@_ == 2) ? $_[0]->{'form'}    = pop : $_[0]->{'form'}    ||= $_[0]->cgix->get_form    }
 sub cookies          { (@_ == 2) ? $_[0]->{'cookies'} = pop : $_[0]->{'cookies'} ||= $_[0]->cgix->get_cookies }
@@ -613,6 +612,9 @@ sub decrypt_blowfish {
     $str =~ s/\x00+$//;
     return $str
 }
+
+sub encode_base64 { require MIME::Base64; MIME::Base64::encode_base64(@_) }
+sub decode_base64 { require MIME::Base64; MIME::Base64::decode_base64(@_) }
 
 ###----------------------------------------------------------------###
 
