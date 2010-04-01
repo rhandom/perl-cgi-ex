@@ -92,7 +92,7 @@ sub get_valid_auth {
             $data = $self->verify_token({token => $cookie, from => 'cookie'});
             if (defined $form_user) { # they had form data
                 my $user = $self->cleanup_user($form_user);
-                if (! $data || $user ne $data->{'user'}) { # but the cookie didn't match
+                if (! $data || !$self->check_form_user_against_cookie($user, $data->{'user'}, $data)) { # but the cookie didn't match
                     $data = $self->{'_last_auth_data'} = $form_data; # restore old form data failure
                     $data->{'user'} = $user if ! defined $data->{'user'};
                 }
@@ -118,7 +118,7 @@ sub get_valid_auth {
         value   => $_val,
         expires => ($use_session ? '' : '+20y'), # non-cram cookie types are session cookies unless save was set (thus setting expires_min)
     });
-    my $args = {is_form => ($data->{'from'} eq 'form' ? 1 : 0)};
+    my $args = {is_form => ($data->{'from'} && $data->{'from'} eq 'form' ? 1 : 0)};
     return $self->{'handle_success'} ? $self->{'handle_success'}->($self, $args) : $self->handle_success($args);
 }
 
@@ -567,6 +567,12 @@ sub cleanup_user {
     my ($self, $user) = @_;
     return $self->{'cleanup_user'}->($self, $user) if $self->{'cleanup_user'};
     return $user;
+}
+
+sub check_form_user_against_cookie {
+    my ($self, $form_user, $cookie_user, $data) = @_;
+    return if ! defined($form_user) || ! defined($cookie_user);
+    return $form_user eq $cookie_user;
 }
 
 sub get_pass_by_user {
