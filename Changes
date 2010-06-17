@@ -1,3 +1,11 @@
+2.34
+        * (Auth) Add maximum_min in addition to expires_min
+        * (Auth) Cleanup codebase - no more key_expires_min
+
+2.33
+    2010-04-01
+        * (Auth) Allow for custom form user vs valid cookie check
+
 2.32
     2010-02-25
         * (Validate) Allow for default to be an arrayref
