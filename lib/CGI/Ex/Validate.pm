@@ -588,11 +588,11 @@ sub check_type {
         return 0 if $value && ! $self->check_type($value,'uri');
 
     # validate a uri - the path portion of a request
-    } elsif ($type eq 'URI') {
+    } elsif ($type eq 'uri') {
         return 0 if ! $value;
         return 0 if $value =~ m/\s+/;
 
-    } elsif ($type eq 'CC') {
+    } elsif ($type eq 'cc') {
         return 0 if ! $value;
         return 0 if $value =~ /[^\d\-\ ]/;
         $value =~ s/\D//g;
