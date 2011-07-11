@@ -11,7 +11,7 @@ BEGIN {
     eval { use Time::HiRes qw(time) };
     eval { use Scalar::Util };
 }
-our $VERSION = '2.32';
+our $VERSION = '2.35';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
@@ -926,6 +926,7 @@ sub js_run_step { # step that allows for printing javascript libraries that are 
     return 1;
 }
 
+sub __forbidden_require_auth { 0 }
 sub __forbidden_allow_morph { shift->allow_morph(@_) && 1 }
 sub __forbidden_info_complete { 0 } # step that will be used the path method determines it is forbidden
 sub __forbidden_hash_common  { shift->stash }
