@@ -930,7 +930,7 @@ sub __forbidden_require_auth { 0 }
 sub __forbidden_allow_morph { shift->allow_morph(@_) && 1 }
 sub __forbidden_info_complete { 0 } # step that will be used the path method determines it is forbidden
 sub __forbidden_hash_common  { shift->stash }
-sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the step <b>\"[% forbidden_step %]\"</b>" }
+sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the step <b>\"[% forbidden_step.html %]\"</b>" }
 
 sub __error_allow_morph { shift->allow_morph(@_) && 1 }
 sub __error_info_complete { 0 } # step that is used by the default handle_error
