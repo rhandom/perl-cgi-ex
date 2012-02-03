@@ -16,13 +16,31 @@ we do try to put it through most paces.
 use Test::More tests => 234;
 use strict;
 use warnings;
-use CGI::Ex::Dump qw(debug);
+use CGI::Ex::Dump qw(debug caller_trace);
 
+{
+    package CGIXFail;
+    use vars qw($AUTOLOAD);
+    sub new { bless {}, __PACKAGE__ }
+    sub DESTROY {}
+    sub AUTOLOAD {
+        my $self = shift;
+        my $meth = ($AUTOLOAD =~ /::(\w+$)/) ? $1 : die "Invalid method $AUTOLOAD";
+        die "Not calling CGI::Ex method $meth while testing App";
+    }
+}
 {
     package Foo;
 
     use base qw(CGI::Ex::App);
     use vars qw($test_stdout);
+    use CGI::Ex::Dump qw(debug caller_trace);
+
+    sub cgix { shift->{'cgix'} ||= CGIXFail->new } # for our tests try not to access external
+
+    sub form { shift->{'form'} ||= {} }
+
+    sub cookies { shift->{'cookies'} ||= {} }
 
     sub init { $test_stdout = '' }
 
@@ -693,7 +711,7 @@ foreach my $type (qw(base
         if $type ne 'form';
 
     my $meth2 = "add_to_$type";
-    my $c = CGI::Ex::App->new;
+    my $c = CGI::Ex::App->new({cgix => CGI::Ex->new({form=>{}})});
     $c->$meth2({bing => 'bang'});
     $c->$meth2(bong => 'beng');
 
