@@ -8,7 +8,7 @@ package CGI::Ex::Validate;
 use strict;
 use Carp qw(croak);
 
-our $VERSION  = '2.35';
+our $VERSION  = '2.36';
 our $QR_EXTRA = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
 our @UNSUPPORTED_BROWSERS = (qr/MSIE\s+5.0\d/i);
 our $JS_URI_PATH;
@@ -552,7 +552,6 @@ sub validate_buddy {
 ### used to validate specific types
 sub check_type {
     my ($self, $value, $type) = @_;
-    $type = lc $type;
 
     if ($type eq 'email') {
         return 0 if ! $value;
@@ -588,11 +587,11 @@ sub check_type {
         return 0 if $value && ! $self->check_type($value,'uri');
 
     # validate a uri - the path portion of a request
-    } elsif ($type eq 'uri') {
+    } elsif ($type eq 'URI') {
         return 0 if ! $value;
         return 0 if $value =~ m/\s+/;
 
-    } elsif ($type eq 'cc') {
+    } elsif ($type eq 'CC') {
         return 0 if ! $value;
         return 0 if $value =~ /[^\d\-\ ]/;
         $value =~ s/\D//g;
