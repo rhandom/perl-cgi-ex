@@ -17,10 +17,10 @@ use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION
 use strict;
 use Exporter;
 
-$VERSION   = '2.35';
+$VERSION   = '2.36';
 @ISA       = qw(Exporter);
 @EXPORT    = qw(dex dex_warn dex_text dex_html ctrace dex_trace);
-@EXPORT_OK = qw(dex dex_warn dex_text dex_html ctrace dex_trace debug caller_trace);
+@EXPORT_OK = qw(dex dex_warn dex_text dex_html ctrace dex_trace debug);
 
 ### is on or off
 sub on  { $ON = 1 };
@@ -102,7 +102,7 @@ sub _what_is_this {
   } else {
     my $html = "<pre class=debug><span class=debughead><b>$called: $file line $line_n</b></span>\n";
     for (0 .. $#dump) {
-      $dump[$_] =~ s/(?<!\\)\\n/\n/g;
+      $dump[$_] =~ s/\\n/\n/g;
       $dump[$_] = _html_quote($dump[$_]);
       $dump[$_] =~ s|\$VAR1|<span class=debugvar><b>$var[$_]</b></span>|g;
       $html .= $dump[$_];
@@ -113,7 +113,6 @@ sub _what_is_this {
     CGI::Ex::print_content_type();
     print $html;
   }
-  return @_[0..$#_];
 }
 
 ### some aliases
@@ -160,8 +159,6 @@ sub ctrace {
   }
   return \@i;
 }
-
-*caller_trace = \&ctrace;
 
 sub dex_trace {
   _what_is_this(ctrace(1));
