@@ -200,6 +200,13 @@ function run_tests () {
   ok(e, "Got a match error");
   ok(e.text1_error == "The field text1 contains invalid characters.", "Got the right match error");
 
+  v = {text1:{match_2:'m/^\\w+$/',match_2_error:'Bad'}};
+  e = validate({text1:"abc"}, v);
+  ok(! e, "No match error");
+  e = validate({text1:"abc."}, v);
+  ok(e, "Got a match error");
+  ok(e.text1_error == "Bad", "Got the right match error");
+
   v = {text1:{match:['m/^\\w+$/', 'm/^[a-z]+$/']}};
   e = validate({text1:"abc"}, v);
   ok(! e, "No match error with multiple");
