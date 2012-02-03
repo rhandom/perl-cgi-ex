@@ -483,7 +483,11 @@ to allow more than one item by any given name).
 =item C<required>
 
 Requires the form field to have some value.  If the field is not present,
-no other checks will be run.
+no other checks will be run and an error will be given.
+
+It has been common for code to try C<required => 0> which essentially has
+no effect - instead use C<validate_if => 'fieldname', required => 1>.  This
+results in the fieldname only being required if the fieldname is present.
 
 =item C<required_if>
 
@@ -495,6 +499,9 @@ as saying:
     required    => 1
 
     required_if => 'some_condition',
+
+It is different in that other checks will run - whereas validate_if skips
+all validation if some condition is not met.
 
 If a regex is used for the field name, the required_if
 field will have any match patterns swapped in.
