@@ -1,6 +1,17 @@
+2.36
+    2010-06-10
+        * (Auth) Make delete_cookie always delete, even for session Apps.
+
+2.35
+    2010-05-24
+        * (Auth) More robust cookie reading and writing and deleting.
+        * Workaround CGI::Cookie->parse weird empty cookie implementation.
+        * (Auth) Allow cookie_domain to be modified more gracefully.
+        * (Auth) Consider case with multiple cookies for the same name.
+
 2.34
-        * (Auth) Add maximum_min in addition to expires_min
-        * (Auth) Cleanup codebase - no more key_expires_min
+    2010-04-23
+        * (Auth) Don't attempted to decode base64 armor unless use_base64
 
 2.33
     2010-04-01
