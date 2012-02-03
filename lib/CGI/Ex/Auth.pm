@@ -19,7 +19,7 @@ use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 use Carp qw(croak);
 
-$VERSION = '2.35';
+$VERSION = '2.36';
 
 ###----------------------------------------------------------------###
 
@@ -257,7 +257,7 @@ sub delete_cookie {
     my $args = shift;
     return $self->{'delete_cookie'}->($self, $args) if $self->{'delete_cookie'};
     local $args->{'value'}   = '';
-    local $args->{'expires'} = '-10y' if ! $self->use_session_cookie($args->{'name'}, '');
+    local $args->{'expires'} = '-10y';
     if (my $dom = $ENV{HTTP_HOST}) {
         $dom =~ s/:\d+$//;
         do {
