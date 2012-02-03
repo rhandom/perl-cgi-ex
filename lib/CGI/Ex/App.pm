@@ -11,7 +11,7 @@ BEGIN {
     eval { use Time::HiRes qw(time) };
     eval { use Scalar::Util };
 }
-our $VERSION = '2.35';
+our $VERSION = '2.36';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
@@ -935,7 +935,7 @@ sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the ste
 sub __error_allow_morph { shift->allow_morph(@_) && 1 }
 sub __error_info_complete { 0 } # step that is used by the default handle_error
 sub __error_hash_common  { shift->stash }
-sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
+sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step.html %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
 
 sub __login_require_auth { 0 }
 sub __login_allow_morph { shift->allow_morph(@_) && 1 }
