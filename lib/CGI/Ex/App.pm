@@ -33,6 +33,15 @@ sub init_from_conf {
     return;
 }
 
+sub import { # only ever called with explicit use CGI::Ex::App qw() - not with use base
+    my $class = shift;
+    if (@_ = grep { /^:?App($|__)/ } @_) {
+        require CGI::Ex::App::Constants;
+        unshift @_, 'CGI::Ex::App::Constants';
+        goto &CGI::Ex::App::Constants::import;
+    }
+}
+
 ###---------------------###
 
 sub navigate {
