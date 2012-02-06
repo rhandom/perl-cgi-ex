@@ -518,7 +518,7 @@ sub validate_buddy {
                 my $ok;
                 $err = "$@" if ! eval { $ok = $check->($field, $value, $field_val, $type, $form); 1 };
                 next if $ok;
-                chomp($err) if !ref($@);
+                chomp($err) if !ref($@) && defined($err);
             } else {
                 next if $check;
             }
