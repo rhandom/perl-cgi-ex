@@ -593,8 +593,10 @@ sub check_type {
 
     } elsif ($type eq 'int') {
         return 0 if $value !~ /^-? (?: 0 | [1-9]\d*) $/x;
+        return 0 if ($value < 0) ? $value < -2**31 : $value > 2**31-1;
     } elsif ($type eq 'uint') {
         return 0 if $value !~ /^   (?: 0 | [1-9]\d*) $/x;
+        return 0 if $value > 2**32-1;
     } elsif ($type eq 'num') {
         return 0 if $value !~ /^-? (?: 0 | [1-9]\d* (?:\.\d+)? | 0?\.\d+) $/x;
 
