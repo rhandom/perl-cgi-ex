@@ -513,9 +513,17 @@ sub validate_buddy {
         # server side custom type
         if ($types{'custom'}) { foreach my $type (@{ $types{'custom'} }) {
             my $check = $field_val->{$type};
-            next if UNIVERSAL::isa($check, 'CODE') ? &$check($field, $value, $field_val, $type) : $check;
+            my $err;
+            if (UNIVERSAL::isa($check, 'CODE')) {
+                my $ok;
+                $err = "$@" if ! eval { $ok = $check->($field, $value, $field_val, $type); 1 };
+                next if $ok;
+                chomp($err) if !ref($@);
+            } else {
+                next if $check;
+            }
             return [] if $self->{'_check_conditional'};
-            push @errors, [$field, $type, $field_val, $ifs_match];
+            push @errors, [$field, $type, $field_val, $ifs_match, (defined($err) ? $err : ())];
             $content_checked = 1;
         } }
 
@@ -908,7 +916,8 @@ sub get_error_text {
     my $self  = shift;
     my $err   = shift;
     my $extra = $self->{extra} || {};
-    my ($field, $type, $field_val, $ifs_match) = @$err;
+    my ($field, $type, $field_val, $ifs_match, $custom_err) = @$err;
+    return $custom_err if defined($custom_err) && length($custom_err);
     my $dig     = ($type =~ s/(_?\d+)$//) ? $1 : '';
     my $type_lc = lc($type);
 
