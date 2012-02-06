@@ -1,6 +1,7 @@
 2.37
     2012-02-06
         * (Validate) Make match_2 work in the javascript layer (as shown in perldoc)
+        * (Validate) Add int, uint, and num types with range checking on int and uint
         * (App) Fix the test suite to not require installation of CGI
         * (App) Add CGI::Ex::App::Constants module supporting constants as a source of documentation
         * (App) Allow for access to constants via use CGI::Ex::App qw(:App); or use MyApp qw(:App);
