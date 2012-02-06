@@ -516,7 +516,7 @@ sub validate_buddy {
             my $err;
             if (UNIVERSAL::isa($check, 'CODE')) {
                 my $ok;
-                $err = "$@" if ! eval { $ok = $check->($field, $value, $field_val, $type); 1 };
+                $err = "$@" if ! eval { $ok = $check->($field, $value, $field_val, $type, $form); 1 };
                 next if $ok;
                 chomp($err) if !ref($@);
             } else {
