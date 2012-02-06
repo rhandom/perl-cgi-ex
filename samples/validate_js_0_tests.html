@@ -376,6 +376,18 @@ function run_tests () {
   ok(e, "Got cc error");
   e = validate({text1:'4241-4242-4242'}, {text1:{type:'cc'}});
   ok(e, "Got cc error");
+  for (var $_ in {"0":1, "2":1, "23":1, "-0":1, "-2":1, "-23":1, "0.0":1, ".1":1, "0.1":1, "0.10":1, "1.0":1, "1.01":1})
+    ok(!validate({text1: $_}, {text1: {type: 'num'}}),  "Type num "+$_)
+  for (var $_ in {"0":1, "2":1, "23":1, "-0":1, "-2":1, "-23":1})
+    ok(!validate({text1: $_}, {text1: {type: 'int'}}),  "Type int "+$_);
+  for (var $_ in {"0":1, "2":1, "23":1})
+    ok(!validate({text1: $_}, {text1: {type: 'uint'}}), "Type uint "+$_);
+  for (var $_ in {"0a":1, "a2":1, "-0a":1, "0..0":1, "00":1, "001":1, "1.":1})
+    ok(validate({text1: $_},  {text1: {type: 'num'}}),  "Type num invalid "+$_);
+  for (var $_ in {"1.1":1, "0.1":1, "0.0":1, "-1.1":1, "0a":1, "a2":1, "a":1, "00":1, "001":1})
+    ok(validate({text1: $_},  {text1: {type: 'int'}}),  "Type int invalid "+$_);
+  for (var $_ in {"-1":1, "-0":1, "1.1":1, "0.1":1, "0.0":1, "-1.1":1, "0a":1, "a2":1, "a":1, "00":1, "001":1})
+    ok(validate({text1: $_},  {text1: {type: 'uint'}}), "Type uint invalid "+$_);
 
   // min_in_set checks
   v = {text1:{min_in_set:'2 of text1 text2 password1', max_values:5}};
