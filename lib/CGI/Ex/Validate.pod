@@ -366,22 +366,41 @@ validation and an error is added.
     {
         field => 'username',
         custom => sub {
-            my ($key, $val, $type, $field_val_hash) = @_;
+            my ($key, $val, $field_val_hash, $checktype, $form) = @_;
             # do something here
             return 0;
         },
+        custom_error => '$name was not valid',
+    }
+
+Often it is desirable to specify a different message depending upon
+the code passed to custom.  To use a custom error message simply die
+with the error message.  Note that you will want to add a newline or
+else perl will add the line number and file for you -
+CGI::Ex::Validate will remove the trailing newline.
+
+    {
+        field => 'username',
+        custom => sub {
+            my ($key, $val) = @_;
+            die "Custom error message 1\n" if $val eq '1';
+            die "Custom error message 2\n" if $val eq '2';
+            return 0;
+        },
+        custom_error => '$name default custom error message',
     }
 
 =item C<custom_js>
 
-Custom value - only available in JS.  Allows for extra programming types.
-May be a javascript function (if fully declared in javascript), a string containing
-a javascript function (that will be eval'ed into a real function),
-a boolean value pre-determined before calling validate, or may be
-section of javascript that will be eval'ed (the last value of
-the eval'ed javascript will determine if validation passed).  A false response indicates
-the value did not pass validation.  A true response indicates that it did.  See
-the samples/validate_js_0_tests.html page for a sample of usages.
+Custom value - only available in JS.  Allows for extra programming
+types.  May be a javascript function (if fully declared in
+javascript), a string containing a javascript function (that will be
+eval'ed into a real function), a boolean value pre-determined before
+calling validate, or may be section of javascript that will be eval'ed
+(the last value of the eval'ed javascript will determine if validation
+passed).  A false response indicates the value did not pass
+validation.  A true response indicates that it did.  See the
+samples/validate_js_0_tests.html page for a sample of usages.
 
     {
         field => 'date',
@@ -389,15 +408,29 @@ the samples/validate_js_0_tests.html page for a sample of usages.
         match    => 'm|^\d\d\d\d/\d\d/\d\d$|',
         match_error => 'Please enter date in YYYY/MM/DD format',
         custom_js => "function (args) {
-            var t=new Date();
-            var y=t.getYear()+1900;
-            var m=t.getMonth() + 1;
-            var d=t.getDate();
-            if (m<10) m = '0'+m;
-            if (d<10) d = '0'+d;
+            var t = new Date();
+            var y = t.getYear()+1900;
+            var m = t.getMonth() + 1;
+            var d = t.getDate();
+            if (m < 10) m = '0'+m;
+            if (d < 10) d = '0'+d;
             (args.value > ''+y+'/'+m+'/'+d) ? 1 : 0;
         }",
         custom_js_error => 'The date was not greater than today.',
+    }
+
+Often it is desirable to specify a different message depending upon
+the function passed to custom_js.  To use a custom error message simply throw
+the error message.
+
+    {
+        field => 'username',
+        custom_js => 'function (args) {
+            if (args.value == 1) throw "Custom error message 1";
+            if (args.value == 2) throw "Custom error message 2";
+            return 0;
+        }',
+        custom_js_error => '$name default custom error message',
     }
 
 =item C<enum>
@@ -531,14 +564,65 @@ $self->{dbh} is a coderef - they will be called and should return a dbh.
 =item C<type>
 
 Allows for more strict type checking.  Currently supported types
-include CC (credit card), EMAIL, DOMAIN, IP, URL.  Other types will be
-added upon request provided we can add a perl and a javascript
-version.
+include CC (credit card), EMAIL, DOMAIN, IP, URL, INT, UINT, and NUM.
+Other types will be added upon request provided we can add a perl and
+a javascript version (extra types often aren't necessary as the custom and
+custom_js options give arbitrary checking).
 
     {
         field => 'credit_card',
         type  => 'CC',
     }
+
+=over 4
+
+item C<CC>
+
+Simple Luhn-10 check.  Note that spaces and dashes are left in place.
+
+=item C<EMAIL>
+
+Very basic check to see if the value looks like an address.  The local part
+must only contain [\w.~!\#\$%\^&*\-=+?] and the domain must be a domain or ip.
+If you want full fledged RFC compliant checking consider something like:
+
+    {
+        field => 'email',
+        custom => sub {
+            my ($key, $val, $fv, $type, $form) = @_;
+            require Mail::Address;
+            my @a = Mail::Address->parse($val);
+            die "Invalid address\n" if @a != 1;
+            return $form->{$key} = $a[0]->address;
+         },
+     }
+
+=item C<DOMAIN>
+
+Checks for a valid domain name - does no lookup of the domain.  For that use
+a custom sub.
+
+=item C<IP>
+
+Basic IPv4 check.
+
+=item C<URL>
+
+Basic check that string matches something resembling an http or https url.
+
+=item C<INT>
+
+Checks for an integer between -2147483648 and -2147483648
+
+=item C<UINT>
+
+Checks for an unsigned integer between 0 and 4294967295.
+
+=item C<NUM>
+
+Checks for something that looks like a number.  Scientic notation is not allowed.  No range enforced.
+
+=back
 
 =item C<validate_if>
 
