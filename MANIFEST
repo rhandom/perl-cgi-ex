@@ -1,6 +1,7 @@
 Changes
 lib/CGI/Ex.pm
 lib/CGI/Ex/App.pm
+lib/CGI/Ex/App/Constants.pm
 lib/CGI/Ex/App.pod
 lib/CGI/Ex/Auth.pm
 lib/CGI/Ex/Conf.pm
