@@ -9,6 +9,7 @@ CGI::Ex::App::Constants - Easier access to magic App values
 use vars qw(%constants @EXPORT @EXPORT_OK %EXPORT_TAGS $VERSION);
 use strict;
 use warnings;
+use Exporter qw(import); # allow for goto from CGI::Ex::App
 use base qw(Exporter);
 
 $VERSION = '2.37';
