@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 174;
+use Test::More tests => 176;
 
 use_ok('CGI::Ex::Validate');
 
@@ -330,6 +330,10 @@ $e = validate({}, $v);
 ok($e, 'custom');
 $e = validate({foo => "str"}, $v);
 ok(! $e, 'custom');
+
+$e = validate({foo => "str"}, {foo => {custom => sub { my ($k, $v) = @_; die "Always fail ($v)\n" }}});
+ok($e, 'Got an error');
+is($e->as_hash->{'foo_error'}, "Always fail (str)", "Passed along the message from die");
 
 ### type checks
 $v = {foo => {type => 'ip'}};
