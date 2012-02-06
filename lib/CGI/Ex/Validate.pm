@@ -552,7 +552,7 @@ sub validate_buddy {
 ### used to validate specific types
 sub check_type {
     my ($self, $value, $type) = @_;
-
+    $type = lc $type;
     if ($type eq 'email') {
         return 0 if ! $value;
         my ($local_p,$dom) = ($value =~ /^(.+)\@(.+?)$/) ? ($1,$2) : return 0;
@@ -587,11 +587,18 @@ sub check_type {
         return 0 if $value && ! $self->check_type($value,'uri');
 
     # validate a uri - the path portion of a request
-    } elsif ($type eq 'URI') {
+    } elsif ($type eq 'uri') {
         return 0 if ! $value;
         return 0 if $value =~ m/\s+/;
 
-    } elsif ($type eq 'CC') {
+    } elsif ($type eq 'int') {
+        return 0 if $value !~ /^-? (?: 0 | [1-9]\d*) $/x;
+    } elsif ($type eq 'uint') {
+        return 0 if $value !~ /^   (?: 0 | [1-9]\d*) $/x;
+    } elsif ($type eq 'num') {
+        return 0 if $value !~ /^-? (?: 0 | [1-9]\d* (?:\.\d+)? | 0?\.\d+) $/x;
+
+    } elsif ($type eq 'cc') {
         return 0 if ! $value;
         return 0 if $value =~ /[^\d\-\ ]/;
         $value =~ s/\D//g;
