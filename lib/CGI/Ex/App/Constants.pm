@@ -11,7 +11,7 @@ use strict;
 use warnings;
 use base qw(Exporter);
 
-$VERSION = '2.32';
+$VERSION = '2.37';
 
 BEGIN {
 my $all = {
@@ -95,6 +95,7 @@ while (my ($method, $val) = each %$all) {
     $constants{$tag}->{$name} = $val;
 
     my $tags = $EXPORT_TAGS{"App__${tag}"} ||= [];
+    push @{ $EXPORT_TAGS{"App"} }, $method;
     push @$tags,     $method;
     push @EXPORT,    $method;
     push @EXPORT_OK, $method;
@@ -133,6 +134,8 @@ __END__
 
     use base qw(CGI::Ex::App);
     use CGI::Ex::App::Constants; # load all
+    use CGI::Ex::App::Constants qw(:App); # also load all
+    use CGI::Ex::App qw(:App); # also load all
 
     __PACKAGE__->navigate;
 
@@ -148,11 +151,11 @@ __END__
 
     # you can request only certain tags
     use CGI::Ex::App::Constants qw(:App__run_step);
-
+    use CGI::Ex::App qw(:App__run_step);
 
     # you can request only certain constants
     use CGI::Ex::App::Constants qw(App__run_step__request_completed);
-
+    use CGI::Ex::App qw(App__run_step__request_completed);
 
 =head1 CONSTANTS
 
