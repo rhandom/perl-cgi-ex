@@ -330,6 +330,15 @@ function run_tests () {
   e = validate({text1:"str"}, v);
   ok(! e, "No custom_js error for function type");
 
+  e = validate({text1: "str"}, {text1: {custom_js:"throw 'Always fail ('+value+')'"}});
+  ok(e, 'Got an error');
+  ok(e.text1_error == "Always fail (str)", "Passed along the message from throw");
+  e = validate({text1: "str2"}, {text1: {custom_js:function (args) { throw "Always fail2 ("+args.value+")" }}});
+  ok(e, 'Got an error');
+  ok(e.text1_error == "Always fail2 (str2)", "Passed along the message from throw");
+
+
+
   // type checks
   v = {text1:{type:'ip'}};
   e = validate({text1:'209.108.25'}, v);
