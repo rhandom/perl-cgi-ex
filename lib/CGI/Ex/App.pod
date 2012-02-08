@@ -20,7 +20,7 @@ A basic example:
         return \ "Hello World!";
     }
 
-Well, you should put your content in an external file...
+Properly put content in an external file...
 
     -------- File: /cgi-bin/my_cgi --------
 
@@ -38,7 +38,7 @@ Well, you should put your content in an external file...
 
     Hello World!
 
-How about if we want to add substitutions...
+Adding substitutions...
 
     -------- File: /cgi-bin/my_cgi --------
 
@@ -65,7 +65,7 @@ How about if we want to add substitutions...
     [% greeting %] World! ([% date %])
 
 
-How about a form with validation (inluding javascript validation)...
+Add forms and  validation (inluding javascript validation)...
 
     -------- File: /cgi-bin/my_cgi --------
 
@@ -975,6 +975,24 @@ If allow_morph is set to true, the same methods are searched for but it becomes
 possible to move some of those methods into an external package.
 
 See the discussions under the methods named "find_hook" and "run_hook" for more details.
+
+Some hooks expect "magic" values to be replaced.  Often they are
+intuitive, but sometimes it is easy to forget.  For example, the
+finalize hook should return true (default) to indicate the step is
+complete and false to indicate that it failed and the page should be
+redisplayed.  You can import a set of constants that allows for human
+readible names.
+
+    use CGI::Ex::App qw(:App__finalize);
+    OR
+    use MyAppPkg qw(:App__finalize); # if it is a subclass of CGI::Ex::App
+
+This would import the following constants:
+App__finalize__failed_and_show_page (0),
+App__finalize__finished_and_move_to_next_step => (1 - default), and
+App__finalize__finished_but_show_page ("" - still false).  These
+constants are provided by CGI::Ex::App::Constants which also contains
+more options for usage.
 
 The following is the alphabetical list of methods and hooks.
 
