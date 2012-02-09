@@ -7,7 +7,7 @@ CGI::Ex::Dump - A debug utility
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2007 - Paul Seamons                                     #
+#  Copyright 2004-2012 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -17,7 +17,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION
 use strict;
 use Exporter;
 
-$VERSION   = '2.36';
+$VERSION   = '2.37';
 @ISA       = qw(Exporter);
 @EXPORT    = qw(dex dex_warn dex_text dex_html ctrace dex_trace);
 @EXPORT_OK = qw(dex dex_warn dex_text dex_html ctrace dex_trace debug caller_trace);
