@@ -372,7 +372,7 @@ sub validate_buddy {
     # at this point @errors should still be empty
     my $content_checked; # allow later for possible untainting (only happens if content was checked)
 
-    foreach my $value (@$values) {
+    OUTER: foreach my $value (@$values) {
 
         if (exists $field_val->{'enum'}) {
             my $ref = ref($field_val->{'enum'}) ? $field_val->{'enum'} : [split(/\s*\|\|\s*/,$field_val->{'enum'})];
@@ -383,6 +383,7 @@ sub validate_buddy {
             if (! $found) {
                 return [] if $self->{'_check_conditional'};
                 push @errors, [$field, 'enum', $field_val, $ifs_match];
+                next OUTER;
             }
             $content_checked = 1;
         }
@@ -403,6 +404,17 @@ sub validate_buddy {
             if ($not ? $success : ! $success) {
                 return [] if $self->{'_check_conditional'};
                 push @errors, [$field, $type, $field_val, $ifs_match];
+                next OUTER;
+            }
+            $content_checked = 1;
+        } }
+
+        # do specific type checks
+        if ($types{'type'}) { foreach my $type (@{ $types{'type'} }) {
+            if (! $self->check_type($value,$field_val->{'type'},$field,$form)){
+                return [] if $self->{'_check_conditional'};
+                push @errors, [$field, $type, $field_val, $ifs_match];
+                next OUTER;
             }
             $content_checked = 1;
         } }
@@ -527,14 +539,6 @@ sub validate_buddy {
             $content_checked = 1;
         } }
 
-        # do specific type checks
-        if ($types{'type'}) { foreach my $type (@{ $types{'type'} }) {
-            if (! $self->check_type($value,$field_val->{'type'},$field,$form)){
-                return [] if $self->{'_check_conditional'};
-                push @errors, [$field, $type, $field_val, $ifs_match];
-            }
-            $content_checked = 1;
-        } }
     }
 
     # allow for the data to be "untainted"
