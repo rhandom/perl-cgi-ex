@@ -567,7 +567,8 @@ Allows for more strict type checking.  Currently supported types
 include CC (credit card), EMAIL, DOMAIN, IP, URL, INT, UINT, and NUM.
 Other types will be added upon request provided we can add a perl and
 a javascript version (extra types often aren't necessary as the custom and
-custom_js options give arbitrary checking).
+custom_js options give arbitrary checking).  If a type checks fails - other
+compare, custom, or length checks will not be ran.
 
     {
         field => 'credit_card',
