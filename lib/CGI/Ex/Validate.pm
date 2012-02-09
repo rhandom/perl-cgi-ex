@@ -388,6 +388,16 @@ sub validate_buddy {
             $content_checked = 1;
         }
 
+        # do specific type checks
+        if (exists $field_val->{'type'}) {
+            if (! $self->check_type($value, $field_val->{'type'}, $field, $form)){
+                return [] if $self->{'_check_conditional'};
+                push @errors, [$field, 'type', $field_val, $ifs_match];
+                next OUTER;
+            }
+            $content_checked = 1;
+        }
+
         # field equals another field
         if ($types{'equals'}) { foreach my $type (@{ $types{'equals'} }) {
             my $field2  = $field_val->{$type};
@@ -402,16 +412,6 @@ sub validate_buddy {
                 $success = 1; # occurs if they are both undefined
             }
             if ($not ? $success : ! $success) {
-                return [] if $self->{'_check_conditional'};
-                push @errors, [$field, $type, $field_val, $ifs_match];
-                next OUTER;
-            }
-            $content_checked = 1;
-        } }
-
-        # do specific type checks
-        if ($types{'type'}) { foreach my $type (@{ $types{'type'} }) {
-            if (! $self->check_type($value,$field_val->{'type'},$field,$form)){
                 return [] if $self->{'_check_conditional'};
                 push @errors, [$field, $type, $field_val, $ifs_match];
                 next OUTER;
