@@ -340,12 +340,16 @@ function run_tests () {
 
 
   // type checks
-  v = {text1:{type:'ip'}};
-  e = validate({text1:'209.108.25'}, v);
-  ok(e, "Got type ip error");
-  ok(e.text1_error == "The field text1 did not match type ip.", "Got the right type ip error");
-  e = validate({text1:'209.108.25.111'}, v);
-  ok(! e, "No type ip error");
+  v = {text1: {type: 'ip', match: 'm/^203\./'}};
+  e = validate({text1: '209.108.25'}, v);
+  ok(e, 'type ip - with short circuit');
+  ok(e.text1_error == 'The field text1 did not match type ip.', 'type ip - was: '+e.text1_error); // make sure they short circuit
+  e = validate({text1: '209.108.25.111'}, v);
+  ok(e, 'type ip - but had match error');
+  ok(e.text1_error == 'The field text1 contains invalid characters.', 'type ip');
+  e = validate({text1: '203.108.25.111'}, v);
+  ok(! e, 'type ip');
+
   v = {text1:{type:'email'}};
   e = validate({text1:'foo.bar.com'}, v)
   ok(e, "Got an email error");
