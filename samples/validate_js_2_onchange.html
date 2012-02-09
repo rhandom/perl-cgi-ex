@@ -145,7 +145,23 @@ document.validation = {
     min_len: 6,
     max_len: 30,
     match: ["m/\\d/", "m/[a-z]/"],
-    match_error: "$name must contain both a letter and a number."
+    match_error: "$name must contain both a letter and a number.",
+    custom_js: function (args) {
+      var v = args.value;
+      var n = 0;
+      if (v.match(/[a-z]/)) n++;
+      if (v.match(/[A-Z]/)) n++;
+      if (v.match(/[0-9]/)) n++;
+      var sym = v.match(/[ ~!@#$%^&*()_,.?{}\[\]]/) ? 1 : 0;
+      var s = (! v.length)   ? ''
+            : (v.length < 6) ? 'weak'
+            : (v.length < 7) ? (sym || n == 3)  ? 'ok' : 'weak'
+            : (v.length < 10) ? (n < 3 && ! sym) ? 'ok' : 'good'
+            : sym ? 'excellent' : 'good';
+      document.getElementById('password_strength').innerHTML = s;
+      if (s === 'weak') throw "Cannot use a weak password.  Try increasing the length or adding variation.";
+      return 1;
+    }
   },
   password2: {
     validate_if: 'password was_valid',
@@ -195,7 +211,8 @@ document.validation = {
   compare: {
     required: 1,
     required_error: "Please type a number",
-    replace: "s/\\D//g",
+    type: 'num',
+    type_error: 'Please type a valid number',
     name: "Compare check",
     compare: ['> 99', '< 1000'],
     compare_error: '$name must be greater than 99 and less than 1000.'
@@ -213,25 +230,6 @@ document.validation = {
   foo: {
     min_in_set: "2 of foo bar baz",
     max_in_set: "2 of foo bar baz"
-  },
-  pw_strength: { // separate from the pw validation
-    field: "password",
-    custom_js: function (args) {
-      var v = args.value;
-      var n = 0;
-      if (v.match(/[a-z]/)) n++;
-      if (v.match(/[A-Z]/)) n++;
-      if (v.match(/[0-9]/)) n++;
-      var sym = v.match(/[ ~!@#$%^&*()_,.?{}\[\]]/) ? 1 : 0;
-      var s = (! v.length)   ? ''
-            : (v.length < 3) ? 'weak'
-            : (v.length < 5) ? (sym || n == 3)  ? 'ok' : 'weak'
-            : (v.length < 9) ? (n < 3 && ! sym) ? 'ok' : 'good'
-            : sym ? 'excellent' : 'good';
-      document.getElementById('password_strength').innerHTML = s;
-      // we could return false to indicate the strength wasn't good enough
-      return 1;
-    }
   }
 };
 if (document.check_form) document.check_form('a');
