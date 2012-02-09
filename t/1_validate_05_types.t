@@ -14,7 +14,7 @@ use_ok('CGI::Ex::Validate');
 my $v;
 my $e;
 
-sub validate { scalar CGI::Ex::Validate::validate(@_) }
+sub validate { scalar CGI::Ex::Validate->new({as_array_title=>'',as_string_join=>"\n"})->validate(@_) }
 
 ### required
 $v = {foo => {required => 1}};
@@ -110,11 +110,14 @@ ok(! $e, 'enum');
 $e = validate({foo => 1, bar => 2}, $v);
 ok(! $e, 'enum');
 
-$e = validate({foo => 1, bar => 3}, $v);
-ok(! $e, 'enum');
-
-$e = validate({foo => 1, bar => 4}, $v);
+$v->{'foo'}->{'match'} = 'm/3/';
+$e = validate({foo => 1, bar => 2}, $v);
 ok($e, 'enum');
+is($e, "Foo contains invalid characters.", 'enum shortcircuit');
+
+$e = validate({foo => 4, bar => 1}, $v);
+ok($e, 'enum');
+is($e, "Foo is not in the given list.", 'enum shortcircuit');
 
 # equals
 $v = {foo => {equals => 'bar'}};
@@ -336,10 +339,14 @@ ok($e, 'Got an error');
 is($e->as_hash->{'foo_error'}, "Always fail (str)", "Passed along the message from die");
 
 ### type checks
-$v = {foo => {type => 'ip'}};
+$v = {foo => {type => 'ip', match => 'm/^203\./'}};
 $e = validate({foo => '209.108.25'}, $v);
 ok($e, 'type ip');
+is($e, 'Foo did not match type ip.', 'type ip'); # make sure they short circuit
 $e = validate({foo => '209.108.25.111'}, $v);
+ok($e, 'type ip - but had match error');
+is($e, 'Foo contains invalid characters.', 'type ip');
+$e = validate({foo => '203.108.25.111'}, $v);
 ok(! $e, 'type ip');
 
 $v = {foo => {type => 'domain'}};
