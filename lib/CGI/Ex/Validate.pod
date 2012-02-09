@@ -335,8 +335,8 @@ This section lists the available validation types.  Multiple instances
 of the same type may be used for some validation types by adding a
 number to the type (ie match, match2, match232).  Multiple instances
 are validated in sorted order.  Types that allow multiple values are:
-compare, custom, custom_js, equals, enum, match, required_if, sql,
-type, validate_if, and replace (replace is a MODIFICATION TYPE).
+compare, custom, custom_js, equals, match, required_if, sql, validate_if,
+and replace (replace is a MODIFICATION TYPE).
 
 =over 4
 
