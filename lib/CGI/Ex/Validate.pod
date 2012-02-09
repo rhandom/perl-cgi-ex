@@ -1170,19 +1170,36 @@ samples/validate_js_2_onchange.html to highlight the row and set an icon.
         = '<span style="font-weight:bold;color:red">!</span>';
       document.getElementById(args.key+'_row').style.background
         = '#ffdddd';
-};
+    };
 
-document.validate_clear_hook = function (args) {
-    if (args.was_valid) {
+    document.validate_clear_hook = function (args) {
+      if (args.was_valid) {
         document.getElementById(args.key+'_img').innerHTML
             = '<span style="font-weight:bold;color:green">+</span>';
         document.getElementById(args.key+'_row').style.background
             = '#ddffdd';
-    } else {
+      } else {
         document.getElementById(args.key+'_img').innerHTML = '';
         document.getElementById(args.key+'_row').style.background = '#fff';
-    }
-};
+      }
+    };
+
+If you have jquery that looks like:
+
+    document.validate_set_hook = function (args) {
+      $('#'+args.key+'_img').html('<span style="font-weight:bold;color:red">!</span>');
+      $('#'+args.key+'_row').css('backgroundColor', '#ffdddd');
+    };
+
+    document.validate_clear_hook = function (args) {
+      if (args.was_valid) {
+        $('#'+args.key+'_img').html('<span style="font-weight:bold;color:green">+</span>');
+        $('#'+args.key+'_row').css('backgroundColor', '#ddffdd');
+      } else {
+        $('#'+args.key+'_img').html('');
+        $('#'+args.key+'_row').css('backgroundColor', '#fff');
+      }
+    };
 
 These hooks can also be set as "group clear_hook" and "group set_hook"
     which are defined further above.
