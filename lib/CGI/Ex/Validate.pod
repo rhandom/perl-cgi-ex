@@ -1195,11 +1195,6 @@ These hooks can also be set as "group clear_hook" and "group set_hook"
     that if the javascript didn't validate correctly, the user can still
 submit the data.
 
-=head1 THANKS
-
-Thanks to Eamon Daly for providing bug fixes for bugs in validate.js
-caused by HTML::Prototype.
-
 =head1 LICENSE
 
 This module may be distributed under the same terms as Perl itself.
