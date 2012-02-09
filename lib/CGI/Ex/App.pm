@@ -2,7 +2,7 @@ package CGI::Ex::App;
 
 ###---------------------###
 #  See the perldoc in CGI/Ex/App.pod
-#  Copyright 2008 - Paul Seamons
+#  Copyright 2004-2012 - Paul Seamons
 #  Distributed under the Perl Artistic License without warranty
 
 use strict;
@@ -11,7 +11,7 @@ BEGIN {
     eval { use Time::HiRes qw(time) };
     eval { use Scalar::Util };
 }
-our $VERSION = '2.36';
+our $VERSION = '2.37';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
