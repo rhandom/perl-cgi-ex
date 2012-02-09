@@ -1,5 +1,5 @@
 2.37
-    2012-02-06
+    2012-02-09
         * (Validate) Make match_2 work in the javascript layer (as shown in perldoc)
         * (Validate) Add int, uint, and num types with range checking on int and uint
         * (Validate) Allow for custom => sub { my ($k, $v) = @_; die "Always fail\n" } to pass the result of the failure via the value of die.
