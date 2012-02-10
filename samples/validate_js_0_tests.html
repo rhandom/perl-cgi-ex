@@ -135,8 +135,15 @@ function run_tests () {
   ok(e.text1_error == "The field text1 is not in the given list.", "Got the right enum error");
   e = validate({text1:1}, v);
   ok(! e, "No enum error");
+
+  v = {text1:{'enum':[1, 2, 3],match:'m/3/'}};
+  e = validate({text1:1}, v);
+  ok(e, 'enum');
+  ok(e.text1_error == "The field text1 contains invalid characters.", 'enum shortcircuit');
+
   e = validate({text1:4}, v);
-  ok(e, "Got enum error");
+  ok(e, 'enum');
+  ok(e.text1_error == "The field text1 is not in the given list.", 'enum shortcircuit2');
 
   v = {text2:{'enum':"1 || 2||3"}};
   e = validate({text2:1}, v);
