@@ -29,7 +29,7 @@ use vars qw($VERSION
             );
 @EXPORT_OK = qw(conf_read conf_write in_cache);
 
-$VERSION = '2.37';
+$VERSION = '2.38';
 
 $DEFAULT_EXT = 'conf';
 

@@ -1,3 +1,7 @@
+2.38
+    2012-03-02
+        * No functional changes, just fixes for newer versions of perl that have changed the way that "is" works.
+
 2.37
     2012-02-09
         * (Validate) Make match_2 work in the javascript layer (as shown in perldoc)

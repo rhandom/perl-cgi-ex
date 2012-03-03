@@ -12,7 +12,7 @@ use warnings;
 use Exporter qw(import); # allow for goto from CGI::Ex::App
 use base qw(Exporter);
 
-$VERSION = '2.37';
+$VERSION = '2.38';
 
 BEGIN {
 my $all = {
