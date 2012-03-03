@@ -113,11 +113,11 @@ ok(! $e, 'enum');
 $v->{'foo'}->{'match'} = 'm/3/';
 $e = validate({foo => 1, bar => 2}, $v);
 ok($e, 'enum');
-is($e, "Foo contains invalid characters.", 'enum shortcircuit');
+is("$e", "Foo contains invalid characters.", 'enum shortcircuit');
 
 $e = validate({foo => 4, bar => 1}, $v);
 ok($e, 'enum');
-is($e, "Foo is not in the given list.", 'enum shortcircuit');
+is("$e", "Foo is not in the given list.", 'enum shortcircuit');
 
 # equals
 $v = {foo => {equals => 'bar'}};
@@ -342,10 +342,10 @@ is($e->as_hash->{'foo_error'}, "Always fail (str)", "Passed along the message fr
 $v = {foo => {type => 'ip', match => 'm/^203\./'}};
 $e = validate({foo => '209.108.25'}, $v);
 ok($e, 'type ip');
-is($e, 'Foo did not match type ip.', 'type ip'); # make sure they short circuit
+is("$e", 'Foo did not match type ip.', 'type ip'); # make sure they short circuit
 $e = validate({foo => '209.108.25.111'}, $v);
 ok($e, 'type ip - but had match error');
-is($e, 'Foo contains invalid characters.', 'type ip');
+is("$e", 'Foo contains invalid characters.', 'type ip');
 $e = validate({foo => '203.108.25.111'}, $v);
 ok(! $e, 'type ip');
 
