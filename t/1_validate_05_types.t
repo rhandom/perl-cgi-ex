@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 181;
+use Test::More tests => 183;
 
 use_ok('CGI::Ex::Validate');
 
@@ -142,6 +142,13 @@ ok($e, 'equals');
 
 $e = validate({foo => 'bar', bar => 1}, $v);
 ok(! $e, 'equals');
+
+$e = validate({text1 => "foo", text2 =>  "bar"}, {'m/^(tex)t1$/' => {equals => '$1t2'}});
+ok($e, "equals - had error");
+
+$e = validate({text1 => "foo", text2 => "foo"}, {'m/^(tex)t1$/' => {equals => '$1t2'}});
+ok(!$e, "equals - no error");
+
 
 ### min_len
 $v = {foo => {min_len => 10}};
