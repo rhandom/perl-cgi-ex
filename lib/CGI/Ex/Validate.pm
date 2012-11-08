@@ -406,10 +406,13 @@ sub validate_buddy {
             if ($field2 =~ m/^([\"\'])(.*)\1$/) {
                 my $test = $2;
                 $success = (defined($value) && $value eq $test);
-            } elsif (exists($form->{$field2}) && defined($form->{$field2})) {
-                $success = (defined($value) && $value eq $form->{$field2});
-            } elsif (! defined($value)) {
-                $success = 1; # occurs if they are both undefined
+            } else {
+                $field2 =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+                if (exists($form->{$field2}) && defined($form->{$field2})) {
+                    $success = (defined($value) && $value eq $form->{$field2});
+                } elsif (! defined($value)) {
+                    $success = 1; # occurs if they are both undefined
+                }
             }
             if ($not ? $success : ! $success) {
                 return [] if $self->{'_check_conditional'};
