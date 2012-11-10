@@ -53,32 +53,50 @@ sub validate {
             next;
         }
         $found = 1;
-        my $field = $ref->{'field'} || die "Missing field key during normal validation";
-        if (! $checked{$field}++) {
-            $self->{'was_checked'}->{$field} = 1;
-            $self->{'was_valid'}->{$field} = 1;
-            $self->{'had_error'}->{$field} = 0;
-        }
-        local $ref->{'was_validated'} = 1;
-        my $err = $self->validate_buddy($form, $field, $ref);
-        if ($ref->{'was_validated'} && $what_was_validated) {
-            push @$what_was_validated, $ref;
-        } else {
-            $self->{'was_valid'}->{$field} = 0;
-        }
+        my $key = $ref->{'field'} || die "Missing field key during normal validation";
 
-        # test the error - if errors occur allow for OR - if OR fails use errors from first fail
-        if ($err) {
-            $self->{'was_valid'}->{$field} = 0;
-            $self->{'had_error'}->{$field} = 0;
-            if ($i < $#$fields && ! ref($fields->[$i + 1]) && $fields->[$i + 1] eq 'OR') {
-                $hold_error = $err;
-            } else {
-                push @errors, $hold_error ? @$hold_error : @$err;
-                $hold_error = undef;
+        # allow for field names that contain regular expressions
+        my @keys;
+        if ($key =~ m/^(!\s*|)m([^\s\w])(.*)\2([eigsmx]*)$/s) {
+            my ($not,$pat,$opt) = ($1,$3,$4);
+            $opt =~ tr/g//d;
+            die "The e option cannot be used on validation keys on field $key" if $opt =~ /e/;
+            foreach my $_key (sort keys %$form) {
+                next if ($not && $_key =~ m/(?$opt:$pat)/) || (! $not && $_key !~ m/(?$opt:$pat)/);
+                push @keys, [$_key, [undef, $1, $2, $3, $4, $5]];
             }
         } else {
-            $hold_error = undef;
+            @keys = ([$key]);
+        }
+
+        foreach my $r (@keys) {
+            my ($field, $ifs_match) = @$r;
+            if (! $checked{$field}++) {
+                $self->{'was_checked'}->{$field} = 1;
+                $self->{'was_valid'}->{$field} = 1;
+                $self->{'had_error'}->{$field} = 0;
+            }
+            local $ref->{'was_validated'} = 1;
+            my $err = $self->validate_buddy($form, $field, $ref, $ifs_match);
+            if ($ref->{'was_validated'}) {
+                push @$what_was_validated, $ref if $what_was_validated;
+            } else {
+                $self->{'was_valid'}->{$field} = 0;
+            }
+
+            # test the error - if errors occur allow for OR - if OR fails use errors from first fail
+            if ($err) {
+                $self->{'was_valid'}->{$field} = 0;
+                $self->{'had_error'}->{$field} = 0;
+                if ($i < $#$fields && ! ref($fields->[$i + 1]) && $fields->[$i + 1] eq 'OR') {
+                    $hold_error = $err;
+                } else {
+                    push @errors, $hold_error ? @$hold_error : @$err;
+                    $hold_error = undef;
+                }
+            } else {
+                $hold_error = undef;
+            }
         }
     }
     push(@errors, @$hold_error) if $hold_error; # allow for final OR to work
@@ -179,7 +197,7 @@ sub check_conditional {
         my $ref = $ifs->[$i];
         if (! ref $ref) {
             if ($ref eq 'OR') {
-                $i ++ if $found; # if found skip the OR altogether
+                $i++ if $found; # if found skip the OR altogether
                 $found = 1; # reset
                 next;
             } else {
@@ -201,6 +219,7 @@ sub check_conditional {
         $field =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
 
         my $errs = $self->validate_buddy($form, $field, $ref);
+
         $found = 0 if $errs;
     }
     return $found;
@@ -226,8 +245,7 @@ sub validate_buddy {
         die "The e option cannot be used on validation keys on field $field" if $opt =~ /e/;
         foreach my $_field (sort keys %$form) {
             next if ($not && $_field =~ m/(?$opt:$pat)/) || (! $not && $_field !~ m/(?$opt:$pat)/);
-            my @match = (undef, $1, $2, $3, $4, $5); # limit to the matches
-            my $errs = $self->validate_buddy($form, $_field, $field_val, \@match);
+            my $errs = $self->validate_buddy($form, $_field, $field_val, [undef, $1, $2, $3, $4, $5]);
             push @errors, @$errs if $errs;
         }
         return @errors ? \@errors : 0;
@@ -236,6 +254,7 @@ sub validate_buddy {
     if ($field_val->{'was_valid'}   && ! $self->{'was_valid'}->{$field})   { return [[$field, 'was_valid',   $field_val, $ifs_match]]; }
     if ($field_val->{'had_error'}   && ! $self->{'had_error'}->{$field})   { return [[$field, 'had_error',   $field_val, $ifs_match]]; }
     if ($field_val->{'was_checked'} && ! $self->{'was_checked'}->{$field}) { return [[$field, 'was_checked', $field_val, $ifs_match]]; }
+
 
     # allow for default value
     if (defined($field_val->{'default'})
