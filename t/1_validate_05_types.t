@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 183;
+use Test::More tests => 190;
 
 use_ok('CGI::Ex::Validate');
 
@@ -52,6 +52,26 @@ ok(! $e, "No error on validate_if with had_error and bad_data");
 $e = validate({text1 => 1}, $v);
 ok($e && ! $e->as_hash->{text1_error}, "No error on validate_if with had_error and good data");
 
+$e = validate({text1 => ""}, {'m/^(tex)t1$/' => {required => 1, validate_if => '$1t2'}});
+ok(!$e, "validate_ifstr - no error");
+
+$e = validate({text1 => "", text2 => 1}, {'m/^(tex)t1$/' => {required => 1, validate_if => '$1t2'}});
+ok($e, "validate_ifstr - had error");
+
+$e = validate({text1 => ""}, {'m/^(tex)t1$/' => {required => 1, validate_if => {field => '$1t2',required => 1}}});
+ok(!$e, "validate_if - no error");
+
+$e = validate({text1 => "", text2 => 1}, {'m/^(tex)t1$/' => {required => 1, validate_if => {field => '$1t2',required => 1}}});
+ok($e, "validate_if - had error");
+
+$e = validate({text1 => ""}, {'m/^(tex)t1$/' => {required => 1, validate_if => '$1t2 was_valid'}});
+ok(!$e, "was valid - no error");
+
+$e = validate({text1 => "", text2 => 1}, {'m/^(tex)t1$/' => {required => 1, validate_if => '$1t2 was_valid'}});
+ok(!$e, "was valid - no error");
+
+$e = validate({text1 => "", text2 => 1}, {'m/^(tex)t1$/' => {required => 1, validate_if => '$1t2 was_valid'}, text2 => {required => 1}, 'group order' => [qw(text2)]});
+ok($e, "was valid - had error");
 
 ### required_if
 $v = {foo => {required_if => 'bar'}};
