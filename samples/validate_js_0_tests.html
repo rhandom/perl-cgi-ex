@@ -28,7 +28,6 @@ Test Form
 </div>
 <div id="output"></div>
 </body>
-</html>
 <script>
 var ok_i = 0;
 var nok  = 0;
@@ -469,6 +468,36 @@ function run_tests () {
   ok(! e, "No error - just replaced");
   ok(document.the_form.textarea1.value == "W0W", "Got right value ("+document.the_form.textarea1.value+")");
 
+  // match field names
+  e = validate({text1: " hey "}, {'m/^text1$/':{required:1}});
+  ok(! e, "complexname - no error");
+
+  e = validate({text1: ""}, {'m/^text1$/':{required:1}});
+  ok(e, "complexname - had error");
+
+  e = validate({text1: ""}, {'m/^(tex)t1$/':{required:1, validate_if:'$1t2'}});
+  ok(!e, "validate_ifstr - no error");
+
+  e = validate({text1: "", text2: 1}, {'m/^(tex)t1$/':{required:1, validate_if:'$1t2'}});
+  ok(e, "validate_ifstr - had error");
+
+  e = validate({text1: ""}, {'m/^(tex)t1$/':{required:1, validate_if:{field:'$1t2',required:1}}});
+  ok(!e, "validate_if - no error");
+
+  e = validate({text1: "", text2: 1}, {'m/^(tex)t1$/':{required:1, validate_if:{field:'$1t2',required:1}}});
+  ok(e, "validate_if - had error");
+
+  e = validate({text1: ""}, {'m/^(tex)t1$/':{required:1, validate_if:'$1t2 was_valid'}});
+  ok(!e, "was valid - no error");
+
+  e = validate({text1: "", text2: 1}, {'m/^(tex)t1$/':{required:1, validate_if:'$1t2 was_valid'}, text2:{required:1}, 'group order':['text2']});
+  ok(e, "was valid - had error");
+
+  e = validate({text1: "foo", text2: "bar"}, {'m/^(tex)t1$/':{equals:'$1t2'}});
+  ok(e, "equals - had error");
+
+  e = validate({text1: "foo", text2: "foo"}, {'m/^(tex)t1$/':{equals:'$1t2'}});
+  ok(!e, "equals - no error");
 
   //alert(_form_value(form.text2));
   //form.text2[0].value = "text1";
@@ -487,3 +516,4 @@ function run_tests () {
 
 window.onload = run_tests;
 </script>
+</html>
