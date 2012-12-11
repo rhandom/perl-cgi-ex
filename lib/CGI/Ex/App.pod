@@ -2246,7 +2246,7 @@ hook in another package.
 
     # OR
 
-    my $hash = $self->run_hook_as('hash_swap', 'SomeOther::Module');
+    my $hash = $self->run_hook_as('hash_swap', 'step', 'SomeOther::Module');
 
 Note that the second form will use 'SomeOther::Module' as the step name
 which will be somewhat misleading in looking up names.
