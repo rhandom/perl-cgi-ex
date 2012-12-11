@@ -325,6 +325,9 @@ not specified, the key from the top level hash will be used.
     real_key_name2 => {
         required => 1,
     },
+    'm/\w+/' => { # this will apply to all fields matching this regex
+        required => 1,
+    },
 
 Each of the individual field validation hashrefs should contain the
 types listed in VALIDATION TYPES.
@@ -658,7 +661,14 @@ if the conditions are met.  Works in JS.
         field       => 'm/^(\w+)_pass/',
         validate_if => '$1_user',
         required    => 1,
+    },
+    {
+        field       => 'm/^(\w+)_pass2/',
+        validate_if => '$1_pass',
+        equals      => '$1_pass',
+        required    => 1,
     }
+
     # will validate foo_pass only if foo_user was present.
 
 The validate_if may also contain an arrayref of validation items.  So that
