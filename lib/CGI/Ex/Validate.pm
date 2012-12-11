@@ -15,9 +15,8 @@ our $JS_URI_PATH;
 our $JS_URI_PATH_VALIDATE;
 
 sub new {
-    my $class = shift || croak "Usage: ".__PACKAGE__."->new";
-    my $self  = ref($_[0]) ? shift : {@_};
-    return bless $self, $class;
+    my $class = shift;
+    return bless ref($_[0]) ? shift : {@_}, $class;
 }
 
 sub cgix { shift->{'cgix'} ||= do { require CGI::Ex; CGI::Ex->new } }
