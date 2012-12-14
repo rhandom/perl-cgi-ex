@@ -643,7 +643,7 @@ ok($dh->dump_history('all'), "Can call dump_history");
     sub hash_fill {}
     sub hash_swap {}
     sub hash_errors {}
-    sub find_hook { my ($self, $hook, $step) = @_; return $self->SUPER::find_hook($hook, $step) if $step eq 'main'; return ["non_code",1] }
+    sub find_hook { my ($self, $hook, $step) = @_; return $self->SUPER::find_hook($hook, $step) if $step eq 'main'; return ("non_code",1) }
 }
 Foo7->new({no_history => 1})->navigate;
 ok($Foo::test_stdout eq "Main Content", "Got the right output for Foo7 ($Foo::test_stdout)");
