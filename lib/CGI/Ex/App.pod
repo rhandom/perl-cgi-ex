@@ -1418,7 +1418,7 @@ should return an arrayref containing the code_ref to run, and the
 name of the method looked for.  It uses ->can to find the appropriate
 hook.
 
-    my $code = $self->hook('finalize', 'main');
+    my $code = $self->find_hook('finalize', 'main');
     ### will look first for $self->main_finalize;
     ### will then look  for $self->finalize;
 
