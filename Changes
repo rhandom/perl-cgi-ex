@@ -1,3 +1,10 @@
+2.39
+    2012-12-17
+        * Validation fixes for regex based keys
+        * Allow for HTML5 types
+        * Make sure that default values always stringify
+        * App find_hook now returns a list
+
 2.38
     2012-03-02
         * No functional changes, just fixes for newer versions of perl that have changed the way that "is" works.
