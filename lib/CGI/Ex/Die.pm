@@ -12,8 +12,7 @@ CGI::Ex::Die - A CGI::Carp::FatalsToBrowser type utility.
 ###----------------------------------------------------------------###
 
 use strict;
-use vars qw($VERSION
-            $no_recurse
+use vars qw($no_recurse
             $EXTENDED_ERRORS $SHOW_TRACE $IGNORE_EVAL
             $ERROR_TEMPLATE
             $LOG_HANDLER $FINAL_HANDLER
@@ -23,7 +22,6 @@ use CGI::Ex;
 use CGI::Ex::Dump qw(debug ctrace dex_html);
 
 BEGIN {
-  $VERSION = '2.38';
   $SHOW_TRACE = 0      if ! defined $SHOW_TRACE;
   $IGNORE_EVAL = 0     if ! defined $IGNORE_EVAL;
   $EXTENDED_ERRORS = 1 if ! defined $EXTENDED_ERRORS;
@@ -186,6 +184,6 @@ This module may distributed under the same terms as Perl itself.
 
 =head1 AUTHORS
 
-Paul Seamons <perl at seamons dot com>
+Paul Seamons <paul@seamons.com>
 
 =cut
