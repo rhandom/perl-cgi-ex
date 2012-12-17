@@ -19,7 +19,7 @@ use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 use Carp qw(croak);
 
-$VERSION = '2.38';
+$VERSION = '2.39';
 
 ###----------------------------------------------------------------###
 
@@ -1402,6 +1402,6 @@ This module may be distributed under the same terms as Perl itself.
 
 =head1 AUTHORS
 
-Paul Seamons <perl at seamons dot com>
+Paul Seamons <paul@seamons.com>
 
 =cut
