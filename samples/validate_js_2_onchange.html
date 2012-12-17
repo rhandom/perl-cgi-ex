@@ -105,6 +105,17 @@ if (! document.validate) {
   <td id=foo_img></td>
   <td id=foo_error class=error></td>
 </tr>
+<tr><td colspan=2><hr></td></tr>
+<tr id=cplx_row>
+  <td valign=top>Complete:</td>
+  <td>
+    <input type=text name=cplx value="" size=8>
+    <input type=text name=cplx_a value="" size=8>
+    <input type=text name=cplx_b value="" size=8>
+  </td>
+  <td id=cplx_img></td>
+  <td id=cplx_error class=error></td>
+</tr>
 <tr>
   <td colspan=2 align=right>
     <input type=submit value=Submit>
@@ -116,10 +127,12 @@ if (! document.validate) {
 <script src="../lib/CGI/Ex/validate.js"></script>
 <script>
 document.validate_set_hook = function (args) {
+  if (!document.getElementById(args.key+'_img')) alert('cannot set '+args.key);
   document.getElementById(args.key+'_img').innerHTML = '<span style="font-weight:bold;color:red">!</span>';
   document.getElementById(args.key+'_row').style.background = '#ffdddd';
 };
 document.validate_clear_hook = function (args) {
+  if (!document.getElementById(args.key+'_img')) alert('cannot clear '+args.key);
   if (args.was_valid) {
    document.getElementById(args.key+'_img').innerHTML = '<span style="font-weight:bold;color:green">+</span>';
    document.getElementById(args.key+'_row').style.background = '#ddffdd';
@@ -230,6 +243,24 @@ document.validation = {
   foo: {
     min_in_set: "2 of foo bar baz",
     max_in_set: "2 of foo bar baz"
+  },
+  'm/^(c\\w+x)$/': {
+    required:1,
+    name: 'Field one'
+  },
+  'm/^(c\\w+x)_a$/': {
+    validate_if: '$1',
+    equals: '$1',
+    equals_name: 'field one',
+    delegate_error: '$1',
+    name: 'Field two'
+  },
+  'm/^(c\\w+x)_b$/': {
+    validate_if: '$1_a was_valid',
+    equals: '$1_a',
+    equals_name: 'field two',
+    delegate_error: '$1',
+    name: 'Field three'
   }
 };
 if (document.check_form) document.check_form('a');
