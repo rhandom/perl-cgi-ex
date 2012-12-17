@@ -236,10 +236,10 @@ is($Foo::test_stdout, 'Step 5 Nested (step5__part_a)', "Got the right output for
     sub main_info_complete { 1 }
 }
 eval { Foo3->navigate };
-ok($Foo::test_stdout =~ /recurse_limit \(15\)/, "Got the right output for Foo3");
+like($Foo::test_stdout, qr/recurse_limit \(15\)/, "Got the right output for Foo3");
 
 eval { Foo3->new({recurse_limit => 10})->navigate };
-ok($Foo::test_stdout =~ /recurse_limit \(10\)/, "Got the right output for Foo3");
+like($Foo::test_stdout, qr/recurse_limit \(10\)/, "Got the right output for Foo3");
 
 ###----------------------------------------------------------------###
 
@@ -1033,19 +1033,19 @@ print "### Integrated validation tests ###\n";
 }
 
 local $ENV{'SCRIPT_NAME'} = '/cgi/ralph.pl';
-ok(Foo11->new->file_print("george") eq 'ralph/george.html', 'file_print: '. Foo11->new->file_print("george"));
-ok(Foo11->new->file_val("george") =~ m|\Q/ralph/george.val\E|, 'file_val: '. Foo11->new->file_val("george"));
-ok(ref(Foo12->new->file_val("george")) eq 'HASH', 'file_val: no such path');
-ok(Foo11->new(val_path => '../'        )->file_val("george") eq '../ralph/george.val', 'file_val');
-ok(Foo11->new(val_path => sub {'../'}  )->file_val("george") eq '../ralph/george.val', 'file_val');
-ok(Foo11->new(val_path => ['../']      )->file_val("george") eq '../ralph/george.val', 'file_val');
-ok(Foo11->new(val_path => ['../', './'])->file_val("george") eq '../ralph/george.val', 'file_val');
+is(Foo11->new->file_print("george"), 'ralph/george.html', 'file_print: '. Foo11->new->file_print("george"));
+like(Foo11->new->file_val("george"), qr|\Q/ralph/george.val\E|, 'file_val: '. Foo11->new->file_val("george"));
+is(ref(Foo12->new->file_val("george")), 'HASH', 'file_val: no such path');
+is(Foo11->new(val_path => '../'        )->file_val("george"), '../ralph/george.val', 'file_val');
+is(Foo11->new(val_path => sub {'../'}  )->file_val("george"), '../ralph/george.val', 'file_val');
+is(Foo11->new(val_path => ['../']      )->file_val("george"), '../ralph/george.val', 'file_val');
+is(Foo11->new(val_path => ['../', './'])->file_val("george"), '../ralph/george.val', 'file_val');
 
 ok(! eval { Foo11->new->file_print("step2") } && $@, 'Bad name_step');
 ok(! eval { Foo11->new->file_val("step2") } && $@, 'Bad name_step');
 
-ok(Foo11->new->file_print("step3") eq 'ralph/foo.htm', 'file_print: '. Foo11->new->file_print("step3"));
-ok(Foo11->new->file_val("step3") =~ m|\Q/ralph/foo.val\E|, 'file_val: '. Foo11->new->file_val("step3"));
+is(Foo11->new->file_print("step3"), 'ralph/foo.htm', 'file_print: '. Foo11->new->file_print("step3"));
+like(Foo11->new->file_val("step3"), qr|\Q/ralph/foo.val\E|, 'file_val: '. Foo11->new->file_val("step3"));
 
 
 local $ENV{'REQUEST_METHOD'} = 'POST';
