@@ -145,7 +145,7 @@ sub parse_path_info {
 
 sub run_hook {
     my ($self, $hook, $step, @args) = @_;
-    my ($code, $found) = (ref $hook eq 'CODE') ? ($hook, $hook = 'coderef') : ($self->find_hook($hook, $step));
+    my ($code, $found) = (ref $hook eq 'CODE') ? ($_[1], $hook = 'coderef') : ($self->find_hook($hook, $step));
     croak "Could not find a method named ${step}_${hook} or ${hook}" if ! $code;
 
     return scalar $self->$code($step, @args) if !$self->{'no_history'};
