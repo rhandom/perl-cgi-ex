@@ -10,8 +10,7 @@ use strict;
 use warnings;
 use Template::Alloy 1.016;
 use base qw(Template::Alloy);
-use vars qw($VERSION
-            $QR_PRIVATE
+use vars qw($QR_PRIVATE
             $WHILE_MAX
             $MAX_EVAL_RECURSE
             $MAX_MACRO_RECURSE
@@ -24,8 +23,6 @@ use vars qw($VERSION
             $HASH_OPS
             $VOBJS
             );
-
-$VERSION = '2.38';
 
 ### install true symbol table aliases that can be localized
 *QR_PRIVATE        = *Template::Alloy::QR_PRIVATE;
