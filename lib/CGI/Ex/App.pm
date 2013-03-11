@@ -148,7 +148,7 @@ sub run_hook {
     my ($code, $found) = (ref $hook eq 'CODE') ? ($_[1], $hook = 'coderef') : ($self->find_hook($hook, $step));
     croak "Could not find a method named ${step}_${hook} or ${hook}" if ! $code;
 
-    return scalar $self->$code($step, @args) if !$self->{'no_history'};
+    return scalar $self->$code($step, @args) if $self->{'no_history'};
 
     push @{ $self->history }, my $hist = {step => $step, meth => $hook, found => $found, time => time, level => $self->{'_level'}, elapsed => 0};
     local $self->{'_level'} = 1 + ($self->{'_level'} || 0);
