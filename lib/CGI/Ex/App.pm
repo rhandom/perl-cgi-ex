@@ -858,18 +858,23 @@ sub js_run_step { # step that allows for printing javascript libraries that are 
 }
 
 sub __forbidden_require_auth { 0 }
-sub __forbidden_allow_morph { shift->allow_morph(@_) && 1 }
+sub __forbidden_allow_morph {
+    my ($self, $step) = @_;
+    my $allow = $self->allow_morph($step);
+    $allow = (ref($allow) ? $allow->{$step} : $allow) && 1; # if there is a global override of allow_morph 2 - don't force internals steps to morph
+    return $allow;
+}
 sub __forbidden_info_complete { 0 } # step that will be used the path method determines it is forbidden
 sub __forbidden_hash_common  { shift->stash }
 sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the step <b>\"[% forbidden_step.html %]\"</b>" }
 
-sub __error_allow_morph { shift->allow_morph(@_) && 1 }
+sub __error_allow_morph { __forbidden_allow_morph(@_) }
 sub __error_info_complete { 0 } # step that is used by the default handle_error
 sub __error_hash_common  { shift->stash }
 sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step.html %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
 
 sub __login_require_auth { 0 }
-sub __login_allow_morph { shift->allow_morph(@_) && 1 }
+sub __login_allow_morph { __forbidden_allow_morph(@_) }
 sub __login_info_complete { 0 } # step used by default authentication
 sub __login_hash_common { shift->{'__login_hash_common'} || {error => "hash_common not set during default __login"} }
 sub __login_file_print { shift->{'__login_file_print'} || \ "file_print not set during default __login<br>[% login_error %]" }
