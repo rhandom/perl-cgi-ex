@@ -59,6 +59,32 @@ sub navigate {
     return $self;
 }
 
+sub start {
+    my ($self, $args) = @_;
+    my $action = $ARGV[0] || '';
+    return $self->navigate($args) if $ENV{'REQUEST_METHOD'} || $action eq 'cgi';
+    return $self->psgi_app($args, (caller)[1]) if $ENV{'PLACK_ENV'} || $action eq 'psgi';
+    if ($action eq 'daemon' || $action eq 'prefork') {
+        local @ARGV = @ARGV[1..$#ARGV];
+        require Net::Server::HTTP;
+        return Net::Server::HTTP->run(app => [['/' => sub { $self->navigate($args) }]], port => 3000, server_type => 'PreFork');
+    }
+    die "Usage: $0\n  daemon - Start a Net::Server::HTTP daemon\n  cgi    - Run a cgi request\n  psgi   - Force running as psgi\n";
+}
+
+sub psgi_app {
+    my ($self, $args, $psgi_file) = @_;
+    require CGI::Ex;
+    sub { CGI::Ex->psgi_capture(shift, sub {
+        my $cgix = shift;
+        local *ENV = shift;
+        my $copy = ref($self) ? {%$self} : $self->new($args);
+        local $copy->{'cgix'} = $cgix;
+        local $copy->{'psgi_file'} = $psgi_file;
+        $copy->navigate;
+    }) };
+}
+
 sub nav_loop {
     my $self = shift;
     local $self->{'_recurse'} = $self->{'_recurse'} || 0;
@@ -260,7 +286,7 @@ sub mimetype           { $_[0]->{'mimetype'}       ||  'text/html'  }
 sub path_info          { $_[0]->{'path_info'}      ||  $ENV{'PATH_INFO'}   || '' }
 sub path_info_map_base { $_[0]->{'path_info_map_base'} ||[[qr{/(\w+)}, $_[0]->step_key]] }
 sub recurse_limit      { $_[0]->{'recurse_limit'}  ||  15    }
-sub script_name        { $_[0]->{'script_name'}    ||  $ENV{'SCRIPT_NAME'} || $0 }
+sub script_name        { $_[0]->{'script_name'}    ||  $ENV{'SCRIPT_NAME'} || ($_[0]->{'psgi_file'} ? '' : $0) }
 sub stash              { $_[0]->{'stash'}          ||= {}    }
 sub step_key           { $_[0]->{'step_key'}       || 'step' }
 sub template_args      { $_[0]->{'template_args'} }
@@ -704,8 +730,11 @@ sub morph_package {
 
 sub name_module {
     my ($self, $step) = @_;
-    return $self->{'name_module'} ||= ($self->script_name =~ m/ (\w+) (?:\.\w+)? $/x)
-        ? $1 : die "Could not determine module name from \"name_module\" lookup (".($step||'').")\n";
+    return $self->{'name_module'} ||= do {
+        my $sn = $self->script_name;
+        $sn = $self->{'psgi_file'} || $0 if $sn eq '' || $sn eq '/';
+        ($sn =~ m/ (\w+) (?:\.\w+)? $/x) ? $1 : die "Could not find name_module via script_name ($sn) (step: ".($step||'').")\n";
+    };
 }
 
 sub name_step  { my ($self, $step) = @_; $step }
