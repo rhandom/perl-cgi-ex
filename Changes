@@ -1,3 +1,7 @@
+3.00
+    2013-08-14
+        * Allow for field:key in comparison valiation
+
 2.39
     2012-12-17
         * Validation fixes for regex based keys
