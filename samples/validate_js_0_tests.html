@@ -39,6 +39,7 @@ function ok (is_ok, str) {
   el.innerHTML = str + el.innerHTML;
 }
 
+var last_err;
 function validate (vars, vals) {
   var f = document.the_form;
   f.text1.value     = typeof(vars.text1    ) != 'undefined' ? vars.text1     : '';
@@ -54,8 +55,13 @@ function validate (vars, vals) {
         if (vars.checkbox2[i] == f.checkbox2[j].value) f.checkbox2[j].checked = true;
 
   var err_obj = v_validate(f, vals);
-  if (err_obj) return err_obj.as_hash();
-  return false;
+  if (err_obj) {
+    last_err = err_obj.as_string();
+    return err_obj.as_hash();
+  } else {
+    last_err = '';
+    return false;
+  }
 }
 
 function run_tests () {
@@ -321,6 +327,27 @@ function run_tests () {
   ok(e, "Got compare error le c");
   e = validate({text1:'c'}, v);
   ok(! e, "No compare error le c");
+
+  v = {text1: {compare: 'le field:text2'}};
+  e = validate({text1: 'd', text2: 'c'}, v);
+  ok(e, 'compare le field:text2');
+  e = validate({text1: 'c', text2: 'c'}, v);
+  ok(! e, 'compare le field:text2');
+  e = validate({text1: 'c'}, v);
+  ok(e, 'compare le field:text2');
+  e = validate({text1: ''}, v);
+  ok(!e, 'compare le field:text2');
+
+  v = {text1: {compare: '<= field:text2'}};
+  e = validate({text1: 3, text2: 2}, v);
+  ok(e, 'compare <= field:text2');
+  e = validate({text1: 2, text2: 2}, v);
+  ok(! e, 'compare <= field:text2');
+  e = validate({text1: 2}, v);
+  ok(e, 'compare <= field:text2');
+  e = validate({text1: 0}, v);
+  ok(!e, 'compare <= field:text2');
+
 
   // custom_js
   v = {text1:{custom_js:" value ? true : false "}};
