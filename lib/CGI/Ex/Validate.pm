@@ -255,6 +255,14 @@ sub validate_buddy {
     if ($field_val->{'was_checked'} && ! $self->{'was_checked'}->{$field}) { return [[$field, 'was_checked', $field_val, $ifs_match]]; }
 
 
+    if (!exists($form->{$field}) && $field_val->{'alias'}) {
+        foreach my $alias (ref($field_val->{'alias'}) ? @{$field_val->{'alias'}} : $field_val->{'alias'}) {
+            next if ! exists $form->{$alias};
+            $form->{$field} = delete $form->{$alias};
+            last;
+        }
+    }
+
     # allow for default value
     if (defined($field_val->{'default'})
         && (!defined($form->{$field})
