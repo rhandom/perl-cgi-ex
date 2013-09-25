@@ -493,25 +493,34 @@ sub validate_buddy {
 
         # allow for comparison checks
         if ($types{'compare'}) { foreach my $type (@{ $types{'compare'} }) {
-            my $ref = UNIVERSAL::isa($field_val->{$type},'ARRAY') ? $field_val->{$type}
-            : [split(/\s*\|\|\s*/,$field_val->{$type})];
+            my $ref = ref($field_val->{$type}) eq 'ARRAY' ? $field_val->{$type} : [split(/\s*\|\|\s*/, $field_val->{$type})];
             foreach my $comp (@$ref) {
                 next if ! $comp;
                 my $test  = 0;
-                if ($comp =~ /^\s*(>|<|[><!=]=)\s*([\d\.\-]+)\s*$/) {
+                if ($comp =~ /^\s*(>|<|[><!=]=)\s*([\d\.\-]+|field:(.+))\s*$/) {
+                    my ($op, $value2, $field2) = ($1, $2, $3);
+                    if ($field2) {
+                        $field2 =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+                        $value2 = exists($form->{$field2}) ? $form->{$field2} * 1 : 0;
+                    }
                     my $val = $value || 0;
                     $val *= 1;
-                    if    ($1 eq '>' ) { $test = ($val >  $2) }
-                    elsif ($1 eq '<' ) { $test = ($val <  $2) }
-                    elsif ($1 eq '>=') { $test = ($val >= $2) }
-                    elsif ($1 eq '<=') { $test = ($val <= $2) }
-                    elsif ($1 eq '!=') { $test = ($val != $2) }
-                    elsif ($1 eq '==') { $test = ($val == $2) }
+                    if    ($op eq '>' ) { $test = ($val >  $value2) }
+                    elsif ($op eq '<' ) { $test = ($val <  $value2) }
+                    elsif ($op eq '>=') { $test = ($val >= $value2) }
+                    elsif ($op eq '<=') { $test = ($val <= $value2) }
+                    elsif ($op eq '!=') { $test = ($val != $value2) }
+                    elsif ($op eq '==') { $test = ($val == $value2) }
 
-                } elsif ($comp =~ /^\s*(eq|ne|gt|ge|lt|le)\s+(.+?)\s*$/) {
+                } elsif ($comp =~ /^\s*(eq|ne|gt|ge|lt|le)\s+(field:(.+)|.+?)\s*$/) {
                     my $val = defined($value) ? $value : '';
-                    my ($op, $value2) = ($1, $2);
-                    $value2 =~ s/^([\"\'])(.*)\1$/$2/;
+                    my ($op, $value2, $field2) = ($1, $2, $3);
+                    if ($field2) {
+                        $field2 =~ s/\$(\d+)/defined($ifs_match->[$1]) ? $ifs_match->[$1] : ''/eg if $ifs_match;
+                        $value2 = defined($form->{$field2}) ? $form->{$field2} : '';
+                    } else {
+                        $value2 =~ s/^([\"\'])(.*)\1$/$2/;
+                    }
                     if    ($op eq 'gt') { $test = ($val gt $value2) }
                     elsif ($op eq 'lt') { $test = ($val lt $value2) }
                     elsif ($op eq 'ge') { $test = ($val ge $value2) }
@@ -520,7 +529,7 @@ sub validate_buddy {
                     elsif ($op eq 'eq') { $test = ($val eq $value2) }
 
                 } else {
-                    die "Not sure how to compare \"$comp\"";
+                    die "Not sure how to compare \"$comp\"\n";
                 }
                 if (! $test) {
                     return [] if $self->{'_check_conditional'};
