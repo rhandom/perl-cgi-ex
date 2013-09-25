@@ -48,10 +48,10 @@ $cgix->form($form);
 $cgix->cookies($form);
 
 $form = $cgix->form;
-ok($form->{'foo'} eq 'bar', "Could set form");
+is($form->{'foo'}, 'bar', "Could set form");
 
 my $cookies = $cgix->cookies;
-ok($cookies->{'foo'} eq 'bar', "Could set form");
+is($cookies->{'foo'}, 'bar', "Could set form");
 
 ### try print_content_type
 if (eval { require Tie::Handle }) {
@@ -99,11 +99,11 @@ if (eval { require Tie::Handle }) {
 
 ### try out make_form
 my $str = $cgix->make_form($form);
-ok($str =~ /foo=bar/, "Make form works");
-ok($str =~ /mult=a&mult=b&mult=c/, "Make form works 2");
+like($str, qr/foo=bar/, "Make form works");
+like($str, qr/mult=a&mult=b&mult=c/, "Make form works 2");
 
 $str = $cgix->make_form($form, ['foo']);
-ok($str eq 'foo=bar', "Make form works with keys");
+is($str, 'foo=bar', "Make form works with keys");
 
 ### can't test these without being in apache (well we could test STDOUT - but that is for another day - TODO)
 foreach my $meth (qw(
@@ -127,12 +127,12 @@ foreach my $meth (qw(
 
 ### try out time_calc
 my $sec;
-ok(($sec = CGI::Ex::time_calc('1m'))    == time + 60, "Time_calc ($sec)");
-ok(($sec = CGI::Ex::time_calc('-1m'))   == time - 60, "Time_calc ($sec)");
-ok(($sec = CGI::Ex::time_calc('1 m'))   == time + 60, "Time_calc ($sec)");
-ok(($sec = CGI::Ex::time_calc('1 min')) == time + 60, "Time_calc ($sec)");
-ok(($sec = CGI::Ex::time_calc('1'))     == 1, "Time_calc ($sec)");
-ok(($sec = CGI::Ex::time_calc('now'))   == time, "Time_calc ($sec)");
+is(($sec = CGI::Ex::time_calc('1m')),    time + 60, "Time_calc ($sec)"); # race conditions here
+is(($sec = CGI::Ex::time_calc('-1m')),   time - 60, "Time_calc ($sec)");
+is(($sec = CGI::Ex::time_calc('1 m')),   time + 60, "Time_calc ($sec)");
+is(($sec = CGI::Ex::time_calc('1 min')), time + 60, "Time_calc ($sec)");
+is(($sec = CGI::Ex::time_calc('1')),     1, "Time_calc ($sec)");
+is(($sec = CGI::Ex::time_calc('now')),   time, "Time_calc ($sec)");
 ok(($sec = CGI::Ex::time_calc(__FILE__)), "Time_calc ($sec)");
 
 ###----------------------------------------------------------------###
