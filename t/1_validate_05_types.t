@@ -7,7 +7,7 @@
 =cut
 
 use strict;
-use Test::More tests => 190;
+use Test::More tests => 220;
 
 use_ok('CGI::Ex::Validate');
 
@@ -17,11 +17,14 @@ my $e;
 sub validate { scalar CGI::Ex::Validate->new({as_array_title=>'',as_string_join=>"\n"})->validate(@_) }
 
 ### required
-$v = {foo => {required => 1}};
+$v = {foo => {required => 1, alias => 'ffoooo'}};
 $e = validate({}, $v);
 ok($e, 'required => 1 - fail');
 
 $e = validate({foo => 1}, $v);
+ok(! $e, 'required => 1 - good');
+
+$e = validate({ffoooo => 1}, $v);
 ok(! $e, 'required => 1 - good');
 
 ### validate_if
@@ -334,7 +337,29 @@ $v = {foo => {compare => 'le c'}};
 $e = validate({foo => 'd'}, $v);
 ok($e, 'compare');
 $e = validate({foo => 'c'}, $v);
-ok(! $e, 'compare'); # 80
+ok(! $e, 'compare');
+
+
+$v = {foo => {compare => 'le field:bar'}};
+$e = validate({foo => 'd', bar => 'c'}, $v);
+ok($e, 'compare');
+$e = validate({foo => 'c', bar => 'c'}, $v);
+ok(! $e, 'compare');
+$e = validate({foo => 'c'}, $v);
+ok($e, 'compare') || debug $e;
+$e = validate({foo => ''}, $v);
+ok(!$e, 'compare') || debug $e;
+
+
+$v = {foo => {compare => '<= field:bar'}};
+$e = validate({foo => 3, bar => 2}, $v);
+ok($e, 'compare');
+$e = validate({foo => 2, bar => 2}, $v);
+ok(! $e, 'compare');
+$e = validate({foo => 2}, $v);
+ok($e, 'compare') || debug $e;
+$e = validate({foo => 0}, $v);
+ok(!$e, 'compare') || debug $e;
 
 ### sql
 ### can't really do anything here without prompting for a db connection
@@ -448,4 +473,135 @@ $e = validate($f, $v);
 ok(! $e, 'default');
 
 ok($f->{foo} && $f->{foo} eq 'hmmmm', 'had right default');
+
+
+
+
+
+
+
+###----------------------------------------------------------------###
+
+### test single group for extra fields
+$v = {
+  'group no_extra_fields' => 1,
+  foo => {max_len => 10},
+};
+
+$e = validate({}, $v);
+ok(! $e);
+
+$e = validate({foo => "foo"}, $v);
+ok(! $e);
+
+$e = validate({foo => "foo", bar => "bar"}, $v);
+ok($e);
+
+$e = validate({bar => "bar"}, $v);
+ok($e);
+
+
+### test on failed validate if
+$v = {
+  'group no_extra_fields' => 1,
+  'group validate_if' => 'baz',
+  foo => {max_len => 10},
+};
+
+$e = validate({}, $v);
+ok(! $e);
+
+$e = validate({foo => "foo"}, $v);
+ok(! $e);
+
+$e = validate({foo => "foo", bar => "bar"}, $v);
+ok(! $e);
+
+$e = validate({bar => "bar"}, $v);
+ok(! $e);
+
+### test on successful validate if
+$v = {
+  'group no_extra_fields' => 1,
+  'group validate_if' => 'baz',
+  foo => {max_len => 10},
+  baz => {max_len => 10},
+};
+
+$e = validate({baz => 1}, $v);
+ok(! $e);
+
+$e = validate({baz => 1, foo => "foo"}, $v);
+ok(! $e);
+
+$e = validate({baz => 1, foo => "foo", bar => "bar"}, $v);
+ok($e);
+
+$e = validate({baz => 1, bar => "bar"}, $v);
+ok($e);
+
+
+
+
+###----------------------------------------------------------------###
+
+$v = {
+  foo => {
+    max_len => 10,
+    replace => 's/[^\d]//g',
+  },
+};
+
+$e = validate({
+  foo => '123-456-7890',
+}, $v);
+ok(! $e, "Didn't get error");
+
+
+my $form = {
+  key1 => 'Bu-nch @of characte#rs^',
+  key2 => '123 456 7890',
+  key3 => '123',
+};
+
+
+$v = {
+  key1 => {
+    replace => 's/[^\s\w]//g',
+  },
+};
+
+$e = validate($form, $v);
+ok(! $e, "No error");
+is($form->{'key1'}, 'Bunch of characters',  "key1 updated");
+
+$v = {
+  key2 => {
+    replace => 's/(\d{3})\D*(\d{3})\D*(\d{4})/($1) $2-$3/g',
+  },
+};
+
+$e = validate($form, $v);
+ok(! $e, "No error");
+is($form->{'key2'}, '(123) 456-7890', "Phone updated");
+
+$v = {
+  key2 => {
+    replace => 's/.+//g',
+    required => 1,
+  },
+};
+
+$e = validate($form, $v);
+ok($e, "Error");
+is($form->{'key2'}, '', "All replaced");
+
+$v = {
+    key3 => {
+        replace => 's/\d//',
+    },
+};
+$e = validate($form, $v);
+ok(! $e, "No error");
+is($form->{'key3'}, '23', "Non-global is fine");
 
