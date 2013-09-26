@@ -243,13 +243,13 @@ sub cgix {
 sub form {
     my $self = shift;
     $self->{'form'} = shift if @_ == 1;
-    return $self->{'form'} ||= $self->cgix->get_form;
+    return $self->{'form'} ||= $self->cgix->form();
 }
 
 sub cookies {
     my $self = shift;
     $self->{'cookies'} = shift if @_ == 1;
-    return $self->{'cookies'} ||= $self->cgix->get_cookies;
+    return $self->{'cookies'} ||= $self->cgix->cookies();
 }
 
 sub delete_cookie {
