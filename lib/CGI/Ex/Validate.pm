@@ -28,7 +28,7 @@ sub validate {
     my ($form, $val_hash, $what_was_validated) = @_;
 
     die "Invalid form hash or cgi object" if ! $form || ! ref $form;
-    $form = $self->cgix->get_form($form) if ref $form ne 'HASH';
+    $form = $self->cgix->form($form) if ref $form ne 'HASH';
 
     my ($fields, $ARGS) = $self->get_ordered_fields($val_hash);
     return if ! @$fields;
