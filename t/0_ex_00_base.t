@@ -130,12 +130,12 @@ foreach my $meth (qw(
 
 # try out time_calc
 my $sec;
-is(($sec = CGI::Ex::time_calc('1m')),    time + 60, "Time_calc ($sec)"); # race conditions here
-is(($sec = CGI::Ex::time_calc('-1m')),   time - 60, "Time_calc ($sec)");
-is(($sec = CGI::Ex::time_calc('1 m')),   time + 60, "Time_calc ($sec)");
-is(($sec = CGI::Ex::time_calc('1 min')), time + 60, "Time_calc ($sec)");
-is(($sec = CGI::Ex::time_calc('1')),     1, "Time_calc ($sec)");
-is(($sec = CGI::Ex::time_calc('now')),   time, "Time_calc ($sec)");
-ok(($sec = CGI::Ex::time_calc(__FILE__)), "Time_calc ($sec)");
+is(($sec = CGI::Ex->time_calc('1m')),    time + 60, "Time_calc ($sec)"); # race conditions here
+is(($sec = CGI::Ex->time_calc('-1m')),   time - 60, "Time_calc ($sec)");
+is(($sec = CGI::Ex->time_calc('1 m')),   time + 60, "Time_calc ($sec)");
+is(($sec = CGI::Ex->time_calc('1 min')), time + 60, "Time_calc ($sec)");
+is(($sec = CGI::Ex->time_calc('1')),     1, "Time_calc ($sec)");
+is(($sec = CGI::Ex->time_calc('now')),   time, "Time_calc ($sec)");
+ok(($sec = CGI::Ex->time_calc(__FILE__)), "Time_calc ($sec)");
 
 ###----------------------------------------------------------------###
