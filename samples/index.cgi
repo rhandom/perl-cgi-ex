@@ -10,7 +10,7 @@ use strict;
 use base qw(CGI::Ex::App);
 use FindBin qw($Bin);
 
-__PACKAGE__->navigate;
+__PACKAGE__->start;
 
 sub main_file_print {
     return \ q{<html>
