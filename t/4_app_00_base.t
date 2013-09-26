@@ -1095,7 +1095,7 @@ print "### Header tests ###\n";
 {
     package CGIX;
     sub new { bless {}, __PACKAGE__ }
-    sub get_form { {} }
+    sub form { {} }
     sub print_js {
         my ($self, $file) = @_;
         $Foo::test_stdout = "Print JS: $file";
