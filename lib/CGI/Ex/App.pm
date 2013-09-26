@@ -273,7 +273,7 @@ sub conf_args          { $_[0]->{'conf_args'} }
 sub conf_die_on_fail   { $_[0]->{'conf_die_on_fail'} || ! defined $_[0]->{'conf_die_on_fail'} }
 sub conf_path          { $_[0]->{'conf_path'}      ||  $_[0]->base_dir_abs }
 sub conf_validation    { $_[0]->{'conf_validation'} }
-sub daemon_args        { $_[0]->{'daemon_args'}    || [app => [['/' => sub { $_[0]->navigate($_[0]) }]], port => 3000, server_type => 'PreFork'] }
+sub daemon_args        { my ($self, $args) = @_; (ref($self) && $self->{'daemon_args'}) || [app => [['/' => sub { $self->navigate($args||()) }]], port => 3000, server_type => 'PreFork'] }
 sub default_step       { $_[0]->{'default_step'}   || 'main'        }
 sub error_step         { $_[0]->{'error_step'}     || '__error'     }
 sub fill_args          { $_[0]->{'fill_args'} }
