@@ -1,6 +1,12 @@
 3.00
-    2013-08-14
+    2013-09-26
+        * Documentation overhaul
+        * Remove deprecated and obsolete interfaces
+        * Allow for psgi_capture in CGI::Ex
+        * Add Cea alias
+        * Allow for ->start in CGI::Ex::App which eases use as psgi, or daemon, or cgi
         * Allow for field:key in comparison valiation
+        * Allow for alias in validation
 
 2.39
     2012-12-17
