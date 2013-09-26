@@ -8,7 +8,7 @@ ex_00_base.t - Testing of the base CGI::Ex module.
 
 use strict;
 use warnings;
-use Test::More tests => 47;
+use Test::More tests => 46;
 
 our $test_stdout;
 our @ISA;
@@ -122,7 +122,6 @@ foreach my $meth (qw(
                      print_js
                      send_status
                      send_header
-                     set_apache_request
                      set_cookie
                      )) {
     ok($cgix->can($meth), "Has method $meth");
