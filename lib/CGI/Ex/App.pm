@@ -2,13 +2,12 @@ package CGI::Ex::App;
 
 ###---------------------###
 #  Copyright 2004-2013 - Paul Seamons
-#  Distributed under the Perl Artistic License without warranty
+#  Distributed under the Artistic License without warranty
 
 use strict;
-BEGIN {
-    eval { use Time::HiRes qw(time) };
-    eval { use Scalar::Util };
-}
+use warnings;
+use Scalar::Util;
+use Time::HiRes qw(time);
 our $VERSION = '2.39';
 
 sub croak { die sprintf "%s at %3\$s line %4\$s\n", $_[0], caller 1 }
@@ -43,7 +42,7 @@ sub navigate {
 
     $self->{'_time'} = time;
     eval {
-        return $self if ! $self->{'_no_pre_navigate'} && $self->pre_navigate;
+        return $self if !$self->{'_no_pre_navigate'} && $self->pre_navigate;
         local $self->{'_morph_lineage_start_index'} = $#{$self->{'_morph_lineage'} || []};
         $self->nav_loop;
     };
@@ -54,20 +53,20 @@ sub navigate {
             die "$err\nAdditionally, the following happened while calling handle_error: $@";
         }
     }
-    $self->handle_error($@) if ! $self->{'_no_post_navigate'} && ! eval { $self->post_navigate; 1 } && $@ && $@ ne "Long Jump\n";
+    $self->handle_error($err = $@) if !$self->{'_no_post_navigate'} && ! eval { $self->post_navigate; 1 } && $@ && $@ ne "Long Jump\n";
     $self->destroy;
     return $self;
 }
 
 sub start {
-    my ($self, $args) = @_;
-    my $action = $ARGV[0] || '';
+    my ($self, $args, $action) = @_;
+    $action ||= $ARGV[0] || '';
     return $self->navigate($args) if $ENV{'REQUEST_METHOD'} || $action eq 'cgi';
     return $self->psgi_app($args, (caller)[1]) if $ENV{'PLACK_ENV'} || $action eq 'psgi';
     if ($action eq 'daemon' || $action eq 'prefork') {
         local @ARGV = @ARGV[1..$#ARGV];
         require Net::Server::HTTP;
-        return Net::Server::HTTP->run(app => [['/' => sub { $self->navigate($args) }]], port => 3000, server_type => 'PreFork');
+        return Net::Server::HTTP->run(@{$self->daemon_args($args)});
     }
     die "Usage: $0\n  daemon - Start a Net::Server::HTTP daemon\n  cgi    - Run a cgi request\n  psgi   - Force running as psgi\n";
 }
@@ -76,22 +75,22 @@ sub psgi_app {
     my ($self, $args, $psgi_file) = @_;
     require CGI::Ex;
     sub { CGI::Ex->psgi_capture(shift, sub {
-        my $cgix = shift;
-        local *ENV = shift;
+        (my $cgix, local *ENV) = @_;
         my $copy = ref($self) ? {%$self} : $self->new($args);
-        local $copy->{'cgix'} = $cgix;
-        local $copy->{'psgi_file'} = $psgi_file;
+        local @$copy{qw(cgix psgi_file)} = ($cgix, $psgi_file);
         $copy->navigate;
     }) };
+}
+
+sub __throw_recurse_limit {
+    my $self = shift;
+    die "recurse_limit (".$self->recurse_limit.") reached" . ($self->{'jumps'}||0 <= 1 ? '' : " number of jumps ($self->{'jumps'})");
 }
 
 sub nav_loop {
     my $self = shift;
     local $self->{'_recurse'} = $self->{'_recurse'} || 0;
-    if ($self->{'_recurse'}++ >= $self->recurse_limit) {
-        my $err = "recurse_limit (".$self->recurse_limit.") reached";
-        croak(($self->{'jumps'} || 0) <= 1 ? $err : "$err number of jumps (".$self->{'jumps'}.")");
-    }
+    $self->__throw_recurse_limit if $self->{'_recurse'}++ >= $self->recurse_limit;
 
     my $path = $self->path;
     return if $self->pre_loop($path);
@@ -274,6 +273,7 @@ sub conf_args          { $_[0]->{'conf_args'} }
 sub conf_die_on_fail   { $_[0]->{'conf_die_on_fail'} || ! defined $_[0]->{'conf_die_on_fail'} }
 sub conf_path          { $_[0]->{'conf_path'}      ||  $_[0]->base_dir_abs }
 sub conf_validation    { $_[0]->{'conf_validation'} }
+sub daemon_args        { $_[0]->{'daemon_args'}    || [app => [['/' => sub { $_[0]->navigate($_[0]) }]], port => 3000, server_type => 'PreFork'] }
 sub default_step       { $_[0]->{'default_step'}   || 'main'        }
 sub error_step         { $_[0]->{'error_step'}     || '__error'     }
 sub fill_args          { $_[0]->{'fill_args'} }
@@ -323,11 +323,11 @@ sub auth_data    { (@_ == 2) ? $_[0]->{'auth_data'}    = pop : $_[0]->{'auth_dat
 sub base_dir_abs { (@_ == 2) ? $_[0]->{'base_dir_abs'} = pop : $_[0]->{'base_dir_abs'} || ['.']  }
 sub base_dir_rel { (@_ == 2) ? $_[0]->{'base_dir_rel'} = pop : $_[0]->{'base_dir_rel'} || ''     }
 sub cgix         { (@_ == 2) ? $_[0]->{'cgix'}         = pop : $_[0]->{'cgix'}         ||= do { require CGI::Ex; CGI::Ex->new } }
-sub cookies      { (@_ == 2) ? $_[0]->{'cookies'}      = pop : $_[0]->{'cookies'}      ||= $_[0]->cgix->get_cookies }
+sub cookies      { (@_ == 2) ? $_[0]->{'cookies'}      = pop : $_[0]->{'cookies'}      ||= $_[0]->cgix->cookies() }
 sub ext_conf     { (@_ == 2) ? $_[0]->{'ext_conf'}     = pop : $_[0]->{'ext_conf'}     || 'pl'   }
 sub ext_print    { (@_ == 2) ? $_[0]->{'ext_print'}    = pop : $_[0]->{'ext_print'}    || 'html' }
 sub ext_val      { (@_ == 2) ? $_[0]->{'ext_val'}      = pop : $_[0]->{'ext_val'}      || 'val'  }
-sub form         { (@_ == 2) ? $_[0]->{'form'}         = pop : $_[0]->{'form'}         ||= $_[0]->cgix->get_form    }
+sub form         { (@_ == 2) ? $_[0]->{'form'}         = pop : $_[0]->{'form'}         ||= $_[0]->cgix->form()    }
 sub load_conf    { (@_ == 2) ? $_[0]->{'load_conf'}    = pop : $_[0]->{'load_conf'}              }
 
 sub conf {
@@ -542,7 +542,7 @@ sub morph {
         $ref->{'info'} = "already isa $new";
         $ok = 1;
 
-    ### if we are not already that package - bless us there
+    # if we are not already that package - bless us there
     } else {
         (my $file = "$new.pm") =~ s|::|/|g;
         if (UNIVERSAL::can($new, 'fixup_after_morph')  # check if the package space exists
@@ -672,7 +672,7 @@ sub hash_base {
         path_info   => $self->path_info,
     };
 
-    my $copy = $self;  eval { require Scalar::Util; Scalar::Util::weaken($copy) };
+    my $copy = $self; Scalar::Util::weaken($copy);
     $hash->{'js_validation'} = sub { $copy->run_hook('js_validation', $step, shift) };
     $hash->{'generate_form'} = sub { $copy->run_hook('generate_form', $step, (ref($_[0]) ? (undef, shift) : shift)) };
     $hash->{'form_name'}     = $self->run_hook('form_name', $step);
