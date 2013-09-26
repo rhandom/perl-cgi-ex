@@ -22,7 +22,7 @@ use CGI::Ex::Dump qw(debug);
 sub main {
     my $cgix = CGI::Ex->new;
     my $vob  = CGI::Ex::Validate->new;
-    my $form = $cgix->get_form();
+    my $form = $cgix->form();
 
     ### allow for js validation libraries
     ### path_info should contain something like /CGI/Ex/yaml_load.js
