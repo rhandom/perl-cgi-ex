@@ -12,63 +12,28 @@ CGI::Ex::Fill - Fast but compliant regex based form filler
 ###----------------------------------------------------------------###
 
 use strict;
-use vars qw($VERSION
-            @EXPORT @EXPORT_OK
-            $REMOVE_SCRIPT
-            $REMOVE_COMMENT
-            $MARKER_SCRIPT
-            $MARKER_COMMENT
-            $OBJECT_METHOD
-            $_TEMP_TARGET
-            );
-use base qw(Exporter);
+use warnings;
 
-BEGIN {
-    $VERSION   = '2.39';
-    @EXPORT    = qw(form_fill);
-    @EXPORT_OK = qw(fill form_fill html_escape get_tagval_by_key swap_tagval_by_key);
-};
+sub import {
+    no strict 'refs';  my $cl = shift;  my $pkg = caller;  @_ = @{"${cl}::EXPORT"} if ! @_;
+    !/^(?:_|new)/ && defined &{"${cl}::${_}"} ? (*{"${pkg}::${_}"} = \&{"${cl}::${_}"}) : die "Cannot export $_ from $cl to $pkg.\n" for @_;
+}
+
+our $VERSION   = '2.39';
 
 ### These directives are used to determine whether or not to
 ### remove html comments and script sections while filling in
 ### a form.  Default is on.  This may give some trouble if you
 ### have a javascript section with form elements that you would
 ### like filled in.
-BEGIN {
-    $REMOVE_SCRIPT  = 1;
-    $REMOVE_COMMENT = 1;
-    $MARKER_SCRIPT  = "\0SCRIPT\0";
-    $MARKER_COMMENT = "\0COMMENT\0";
-    $OBJECT_METHOD  = "param";
-};
+our $REMOVE_SCRIPT  = 1;
+our $REMOVE_COMMENT = 1;
+our $MARKER_SCRIPT  = "\0SCRIPT\0";
+our $MARKER_COMMENT = "\0COMMENT\0";
+our $OBJECT_METHOD  = "param";
+our $_TEMP_TARGET;
 
 ###----------------------------------------------------------------###
-
-### Regex based filler - as opposed to HTML::Parser based HTML::FillInForm
-### arguments are positional
-### pos1 - text or textref - if textref it is modified in place
-### pos2 - hash or cgi obj ref, or array ref of hash and cgi obj refs
-### pos3 - target - to be used for choosing a specific form - default undef
-### pos4 - boolean fill in password fields - default is true
-### pos5 - hashref or arrayref of fields to ignore
-sub form_fill {
-    my $text          = shift;
-    my $ref           = ref($text) ? $text : \$text;
-    my $form          = shift;
-    my $target        = shift;
-    my $fill_password = shift;
-    my $ignore        = shift || {};
-
-    fill({
-        text          => $ref,
-        form          => $form,
-        target        => $target,
-        fill_password => $fill_password,
-        ignore_fields => $ignore,
-    });
-
-    return ref($text) ? 1 : $$ref;
-}
 
 sub fill {
     my $args          = shift;
@@ -150,7 +115,7 @@ sub fill {
             return $all ? [] : undef;
         }
 
-        ### fix up the value some
+        # fix up the value some
         if (UNIVERSAL::isa($val, 'CODE')) {
             $val = $val->($key, $_TEMP_TARGET);
         }
@@ -161,7 +126,6 @@ sub fill {
             $val = "$val";  # stringify anything else
         }
 
-        ### html escape them all
         html_escape(\$_) foreach (ref($val) ? @$val : $val);
 
         ### allow for returning all elements
@@ -182,8 +146,7 @@ sub fill {
 
     ###--------------------------------------------------------------###
 
-    ### First pass
-    ### swap <input > form elements if they have a name
+    # First pass - swap <input > form elements if they have a name
     $$ref =~ s{
         (<input \s (?: ([\"\'])(?:|.*?[^\\])\2 | [^>] )+ >) # nested html ok
         }{
@@ -229,8 +192,7 @@ sub fill {
         }sigex;
 
 
-    ### Second pass
-    ### swap select boxes (must be done in such a way as to allow no closing tag)
+    # Second pass - swap select boxes (must be done in such a way as to allow no closing tag)
     my @start = ();
     my @close = ();
     push @start, pos($$ref) - length($1) while $$ref =~ m|(<\s*select\b)|ig;
@@ -282,8 +244,7 @@ sub fill {
     }
 
 
-    ### Third pass
-    ### swap textareas (must be done in such a way as to allow no closing tag)
+    # Third pass - swap textareas (must be done in such a way as to allow no closing tag)
     @start = ();
     @close = ();
     push @start, pos($$ref) - length($1) while $$ref =~ m|(<\s*textarea\b)|ig;
@@ -316,15 +277,15 @@ sub fill {
         }
     }
 
-    ### put scripts and comments back and return
+    # put scripts and comments back and return
     $$ref =~ s/$MARKER_COMMENT/shift(@comment)/eg if $#comment != -1;
     $$ref =~ s/$MARKER_SCRIPT/ shift(@script) /eg if $#script  != -1;
     return 1;
 }
 
 
-### yet another html escaper
-### allow pass by value or by reference (reference is modified inplace)
+# yet another html escaper
+# allow pass by value or by reference (reference is modified inplace)
 sub html_escape {
     my $str = shift;
     return $str if ! $str;
@@ -338,9 +299,9 @@ sub html_escape {
     return ref($str) ? 1 : $$ref;
 }
 
-### get a named value for key="value" pairs
-### usage: my $val     = get_tagval_by_key(\$tag, $key);
-### usage: my $valsref = get_tagval_by_key(\$tag, $key, 'all');
+# get a named value for key="value" pairs
+# usage: my $val     = get_tagval_by_key(\$tag, $key);
+# usage: my $valsref = get_tagval_by_key(\$tag, $key, 'all');
 sub get_tagval_by_key {
     my $tag = shift;
     my $ref = ref($tag) ? $tag : \$tag;
@@ -349,7 +310,7 @@ sub get_tagval_by_key {
     my @all = ();
     pos($$ref) = 0; # fix for regex below not resetting and forcing order on key value pairs
 
-    ### loop looking for tag pairs
+    # loop looking for tag pairs
     while ($$ref =~ m{
         (?<![\w\.\-])                  # 0 - not proceded by letter or .
             ([\w\.\-]+)                  # 1 - the key
@@ -368,9 +329,9 @@ sub get_tagval_by_key {
     return \@all;
 }
 
-### swap out values for key="value" pairs
-### usage: my $count  = &swap_tagval_by_key(\$tag, $key, $val);
-### usage: my $newtag = &swap_tagval_by_key($tag, $key, $val);
+# swap out values for key="value" pairs
+# usage: my $count  = swap_tagval_by_key(\$tag, $key, $val);
+# usage: my $newtag = swap_tagval_by_key($tag, $key, $val);
 sub swap_tagval_by_key {
     my $tag = shift;
     my $ref = ref($tag) ? $tag : \$tag;
