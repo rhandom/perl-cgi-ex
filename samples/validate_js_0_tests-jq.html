@@ -4,29 +4,29 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <title>CGI/Ex/validate.js tests</title>
 <script src="../lib/CGI/Ex/jquery-1.10.2.min.js"></script>
-<script src="../lib/CGI/Ex/validate2.js"></script>
+<script src="../lib/CGI/Ex/validate-jq.js"></script>
 </style>
 </head>
 <body>
 <h1>CGI/Ex/validate.js tests</h1>
 <div style="background:#eee">
 Test Form
-<form name=the_form>
-<input type=text     size=3 name=text1>
-<input type=text     size=3 name=text2>
-<input type=text     size=3 name=text3>
-<input type=text     size=3 name=text3>
-<input type=password size=3 name=password1>
-<input type=hidden   name=hidden1>
-<select name=select1><option>foo</option></select>
-<select name=select2><option value="foo">foo</option></select>
-<select name=select3><option value="foo">foo</option><option value="bar">bar</option></select>
-<select name=select4 multiple=multiple><option value="foo">foo</option><option value="bar">bar</option></select>
-<textarea name=textarea1 rows=1 cols=3></textarea>
-<input type=checkbox name=checkbox1 value=1>
-<input type=checkbox name=checkbox2 value=1><input type=checkbox name=checkbox2 value=2>
-<input type=radio name=radio1 value=1>
-<input type=radio name=radio2 value=1><input type=radio name=radio2 value=2>
+<form name="the_form">
+<input type="text"     size="3" name="text1">
+<input type="text"     size="3" name="text2">
+<input type="text"     size="3" name="text3">
+<input type="text"     size="3" name="text3">
+<input type="password" size="3" name="password1">
+<input type="hidden"   name="hidden1">
+<select name="select1"><option>foo</option></select>
+<select name="select2"><option value="foo">foo</option></select>
+<select name="select3"><option value="foo">foo</option><option value="bar">bar</option></select>
+<select name="select4" multiple="multiple"><option value="foo">foo</option><option value="bar">bar</option></select>
+<textarea name="textarea1" rows="1" cols="3"></textarea>
+<input type="checkbox" name="checkbox1" value="1">
+<input type="checkbox" name="checkbox2" value="1"><input type="checkbox" name="checkbox2" value="2">
+<input type="radio" name="radio1" value="1">
+<input type="radio" name="radio2" value="1"><input type="radio" name="radio2" value="2">
 </form>
 </div>
 <div id="output"></div>
@@ -37,12 +37,11 @@ var nok  = 0;
 function ok (is_ok, str) {
   if (! is_ok) nok++;
   str = ""+ (is_ok ? "ok" : "not ok") +" "+ (++ok_i) +" - "+ str;
-  str = "<span style=color:"+(is_ok ? "green" : "red")+">"+ str +"</span><br>\n";
+  str = '<span style="color:'+(is_ok ? 'green' : 'red')+'">'+ str +'</span><br>\n';
   var el = document.getElementById("output")
   el.innerHTML = str + el.innerHTML;
 }
 
-var last_err;
 function validate (vars, vals) {
   var f = document.the_form;
   f.text1.value     = typeof(vars.text1    ) != 'undefined' ? vars.text1     : '';
@@ -57,14 +56,9 @@ function validate (vars, vals) {
       for (var j = 0; j < f.checkbox2.length; j++)
         if (vars.checkbox2[i] == f.checkbox2[j].value) f.checkbox2[j].checked = true;
 
-  var err_obj = v_validate(f, vals);
-  if (err_obj) {
-    last_err = err_obj.as_string();
-    return err_obj.as_hash();
-  } else {
-    last_err = '';
-    return false;
-  }
+  var err_obj = $v.validate(f, vals);
+  if (err_obj) return err_obj.as_hash();
+  return false;
 }
 
 function run_tests () {
