@@ -15,5 +15,4 @@ use FindBin qw($Bin);
 use lib "$Bin/lib";
 use base qw(App1);
 
-App1->navigate;
-exit;
+App1->start;
